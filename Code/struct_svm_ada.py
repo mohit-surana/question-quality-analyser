@@ -38,6 +38,7 @@ regex = re.compile('[%s]' % re.escape(string.punctuation))
 
 PREPARE_VOCAB = False
 TRAIN_CLASSIFIER = False
+FILTERED = True
 
 def clean(sentence):
     sentence = sentence.lower()
@@ -80,7 +81,7 @@ Y_know = []
 # sys.setdefaultencoding('utf8')
 
 if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
-    vocab = set()
+    freq = dict()
     with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
         csvreader = csv.reader(csvfile.read().splitlines()[1:])
         for row in csvreader:
@@ -91,7 +92,7 @@ if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
             label_know = label_know.split('/')[0]
             clean_sentence = clean(sentence)
             for word in clean_sentence:
-                vocab.add(word)
+                freq[word] = freq.get(word, 0) + 1
             X.append(clean_sentence)
             Y_cog.append(mapping_cog[label_cog])
             Y_know.append(mapping_know[label_know])
@@ -103,19 +104,20 @@ if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
             clean_sentence = clean(sentence)
             if(PREPARE_VOCAB):
                 for word in clean_sentence:
-                    vocab.add(word)
+                    freq[word] = freq.get(word, 0) + 1
             X.append(clean_sentence)
             Y_cog.append(mapping_cog[label_cog])
             # TODO: Label
             Y_know.append(1)
 
+    vocab = {word for word in freq if freq[word]> (1 if FILTERED else 0)}
     vocab_list = list(vocab)
     if(PREPARE_VOCAB):
-        pickle.dump(vocab, open("models/vocab.pkl", 'wb'))
-        pickle.dump(vocab_list, open("models/vocab_list.pkl", 'wb'))
+        pickle.dump(vocab, open("models/vocab%s.pkl" % ('_filtered' if FILTERED else '',), 'wb'))
+        pickle.dump(vocab_list, open("models/vocab_list%s.pkl" % ('_filtered' if FILTERED else '',), 'wb'))
 
-vocab = pickle.load(open("models/vocab.pkl", 'rb'))
-vocab_list = pickle.load(open("models/vocab_list.pkl", 'rb'))
+vocab = pickle.load(open("models/vocab%s.pkl" % ('_filtered' if FILTERED else '',), 'rb'))
+vocab_list = pickle.load(open("models/vocab_list%s.pkl" % ('_filtered' if FILTERED else '',), 'rb'))
 vocab_size = len(vocab_list)
 
 if(TRAIN_CLASSIFIER):
@@ -132,19 +134,20 @@ if(TRAIN_CLASSIFIER):
         X_vec.append(np.zeros((vocab_size, ), dtype=np.int32))
         for j in range(len(sentence)):
             word = sentence[j]
-            X_vec[i][vocab_list.index(word)] += 1
+            if(word in vocab):
+                X_vec[i][vocab_list.index(word)] += 1
 
     transformer = TfidfTransformer(smooth_idf=True)
     tfidf = transformer.fit_transform(X_vec)
 
     X = tfidf.toarray()
 
-    prepare_file('datasets/train_ada_cog.dat', X[:(7*len(X))//10], Y_cog[:(7*len(X))//10])
-    prepare_file('datasets/test_ada_cog.dat', X[(7*len(X))//10:], Y_cog[(7*len(X))//10:])
+    prepare_file('datasets/train_ada_cog%s.dat' % ('_filtered' if FILTERED else ''), X[:(7*len(X))//10], Y_cog[:(7*len(X))//10])
+    prepare_file('datasets/test_ada_cog%s.dat' % ('_filtered' if FILTERED else ''), X[(7*len(X))//10:], Y_cog[(7*len(X))//10:])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_learn', '-c', '5000', 'datasets/train_ada_cog.dat', 'models/model_ada_cog.dat'])
+    subprocess.call(['svm_multiclass/svm_multiclass_learn', '-c', '5000', 'datasets/train_ada_cog%s.dat' % ('_filtered' if FILTERED else ''), 'models/model_ada_cog%s.dat' % ('_filtered' if FILTERED else '',)])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/test_ada_cog.dat', 'models/model_ada_cog.dat', 'datasets/predictions_ada_cog.dat'])
+    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/test_ada_cog%s.dat' % ('_filtered' if FILTERED else ''), 'models/model_ada_cog%s.dat' % ('_filtered' if FILTERED else '',), 'datasets/predictions_ada_cog.dat'])
 
 def get_cognitive_probs(question):
     clean_question = clean(question)
@@ -155,13 +158,13 @@ def get_cognitive_probs(question):
         if(word in vocab_list):
             vec[vocab_list.index(word)] += 1
 
-    transformer = joblib.load('models/tfidf_transformer.pkl')
+    transformer = joblib.load('models/tfidf_transformer%s.pkl' % ('_filtered' if FILTERED else '',))
     tfidf = transformer.fit_transform([vec])
     X = tfidf.toarray()
 
     prepare_file('datasets/test_ada_cog_sample.dat', X, [0])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/test_ada_cog_sample.dat', 'models/model_ada_cog.dat', 'datasets/predictions_ada_cog_sample.dat'])
+    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/test_ada_cog_sample.dat', 'models/model_ada_cog%s.dat' % ('_filtered' if FILTERED else '',), 'datasets/predictions_ada_cog_sample.dat'])
 
     with open('datasets/predictions_ada_cog_sample.dat', 'r') as f:
         line = f.read().split('\n')[0]
