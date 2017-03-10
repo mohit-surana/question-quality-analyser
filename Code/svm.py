@@ -1,26 +1,31 @@
+import codecs
 import csv
+import numpy as np
+import pickle
 import random
 import re
-import numpy as np
-from nltk import word_tokenize
-from sklearn import svm
-from sklearn.externals import joblib
+import string
+import sys
 
+from nltk import word_tokenize
+from nltk.corpus import stopwords
+#if not word in stopwords.words('english'): # Loss of crucial words
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
+from sklearn import svm
+from sklearn.externals import joblib
+from sklearn.feature_extraction.text import TfidfTransformer
 
 porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
 
-import re
-import string
 regex = re.compile('[%s]' % re.escape(string.punctuation))
 #see documentation here: http://docs.python.org/2/library/string.html
 
-from nltk.corpus import stopwords
-#if not word in stopwords.words('english'): # Loss of crucial words
+PREPARE_VOCAB = False
+TRAIN_CLASSIFIER = False
 
 def clean(sentence):
     sentence = sentence.lower()
@@ -42,57 +47,64 @@ def print_sentence(sentence):
         print(vocab_list[word] ,)
     print()
 
-mapping = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
+mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
+mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
-vocab = set()
 
 X = []
-Y = []
-max_len = 0
-with open('datasets/BCLs_Question_Dataset.csv', 'r') as csvfile:
-    csvreader = csv.reader(csvfile)
-    for row in csvreader:
-        sentence, label = row
-        clean_sentence = clean(sentence)
-        for word in clean_sentence:
-            vocab.add(word)
-        X.append(clean_sentence)
-        Y.append(mapping[label])
+Y_cog = []
+Y_know = []
 
-vocab_list = list(vocab)
+# Uncomment for python2 usage
+# reload(sys)
+# sys.setdefaultencoding('utf8')
+
+if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
+    vocab = set()
+    with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
+        csvreader = csv.reader(csvfile.read().splitlines()[1:])
+        for row in csvreader:
+            sentence, label_cog, label_know = row
+            m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+            sentence = m.groups()[2]
+            label_cog = label_cog.split('/')[0]
+            label_know = label_know.split('/')[0]
+            clean_sentence = clean(sentence)
+            for word in clean_sentence:
+                vocab.add(word)
+            X.append(clean_sentence)
+            Y_cog.append(mapping_cog[label_cog])
+            Y_know.append(mapping_know[label_know])
+
+    with codecs.open('datasets/BCLs_Question_Dataset.csv', 'r', encoding="utf-8") as csvfile:
+        csvreader = csv.reader(csvfile.read().splitlines())
+        for row in csvreader:
+            sentence, label_cog = row
+            clean_sentence = clean(sentence)
+            if(PREPARE_VOCAB):
+                for word in clean_sentence:
+                    vocab.add(word)
+            X.append(clean_sentence)
+            Y_cog.append(mapping_cog[label_cog])
+            # TODO: Label
+            Y_know.append(1)
+
+    vocab_list = list(vocab)
+    if(PREPARE_VOCAB):
+        pickle.dump(vocab, open("models/vocab.pkl", 'wb'))
+        pickle.dump(vocab_list, open("models/vocab_list.pkl", 'wb'))
+
+vocab = pickle.load(open("models/vocab.pkl", 'rb'))
+vocab_list = pickle.load(open("models/vocab_list.pkl", 'rb'))
 vocab_size = len(vocab_list)
 
-def get_cognitive_probs(question):
-    clean_question = clean(question)
-
-    vec = np.zeros((vocab_size, ), dtype=np.int32)
-    for j in range(len(clean_question)):
-        word = clean_question[j]
-        if(word in vocab_list):
-            vec[vocab_list.index(word)] += 1
-
-    clf = joblib.load('models/svm_model.pkl')
-    probs = clf.decision_function([vec])
-    probs = abs(1/probs[0])
-
-    label = clf.predict([vec])[0]
-
-    probs = np.exp(probs)/np.sum(np.exp(probs))
-
-    for i in range(label + 1, 6):
-        probs[i] = 0.0
-
-    return probs
-
-
-if __name__ == '__main__':
-    # TODO: Requires massive cleanup
-    dataset = list(zip(X,Y))
+if(TRAIN_CLASSIFIER):
+    dataset = list(zip(X,Y_cog))
     random.shuffle(dataset)
-    X, Y = zip(*dataset)
+    X, Y_cog = zip(*dataset)
 
     X = np.array(X)
-    Y = np.array(Y)
+    Y_cog = np.array(Y_cog)
 
     X_vec = []
     for i in range(len(X)):
@@ -102,39 +114,21 @@ if __name__ == '__main__':
             word = sentence[j]
             X_vec[i][vocab_list.index(word)] += 1
 
-
-    from sklearn.feature_extraction.text import TfidfTransformer
     transformer = TfidfTransformer(smooth_idf=True)
     tfidf = transformer.fit_transform(X_vec)
 
-    #from sklearn.feature_extraction.text import TfidfVectorizer
-    #vectorizer = TfidfVectorizer(min_df=1)
-    #print(vectorizer.fit_transform(X_vec[0]).toarray())
-
     X = tfidf.toarray()
 
-    # 72% accuracy
-    # Default 1k for max_iter
-    # can adjust tol, C -> http://scikit-learn.org/stable/modules/generated/sklearn.svm.LinearSVC.html#sklearn.svm.LinearSVC
-
-    '''
-    clf = svm.LinearSVC(max_iter=1000)
-    clf.fit(X[:(7*len(X))//10], Y[:(7*len(X))//10])
-    predictions = clf.predict(X[(7*len(X))//10:])
-    targets = Y[(7*len(X))//10:]
-    '''
-
     clf = svm.LinearSVC()
-    clf.fit(X[:(7*len(X))//10], Y[:(7*len(X))//10])
+    clf.fit(X[:(7*len(X))//10], Y_cog[:(7*len(X))//10])
 
-    joblib.dump(clf, 'svm_model.pkl')
-    clf = joblib.load('svm_model.pkl')
+    joblib.dump(transformer, 'models/tfidf_transformer.pkl')
+    joblib.dump(clf, 'models/svm_model.pkl')
 
     predictions = clf.decision_function(X[(7*len(X))//10:])
-    # This will return noOfSamples x noOfClasses probs
 
     predictions = [np.argmax(prediction) for prediction in predictions]
-    targets = Y[(7*len(X))//10:]
+    targets = Y_cog[(7*len(X))//10:]
 
     correct = 0
     for i in range(len(predictions)):
@@ -150,3 +144,33 @@ if __name__ == '__main__':
     # print(recall_score(targets, predictions, average="macro"))
     print(classification_report(targets, predictions))
     # print(confusion_matrix(targets, predictions))
+
+
+def get_cognitive_probs(question):
+    clean_question = clean(question)
+
+    vec = np.zeros((vocab_size, ), dtype=np.int32)
+    for j in range(len(clean_question)):
+        word = clean_question[j]
+        if(word in vocab_list):
+            vec[vocab_list.index(word)] += 1
+
+    transformer = joblib.load('models/tfidf_transformer.pkl')
+    tfidf = transformer.fit_transform([vec])
+    X = tfidf.toarray()
+
+    clf = joblib.load('models/svm_model.pkl')
+    probs = clf.decision_function(X)
+    probs = abs(1/probs[0])
+
+    label = clf.predict([vec])[0]
+
+    probs = np.exp(probs)/np.sum(np.exp(probs))
+
+    for i in range(label + 1, 6):
+        probs[i] = 0.0
+
+    return probs
+
+if __name__ == '__main__':
+    pass
