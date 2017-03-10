@@ -3,7 +3,8 @@ import numpy as np
 import classifier
 from classifier import DocumentClassifier
 #import docsim_lda
-import svm
+#import svm
+import struct_svm_ada as svm
 
 class Visualize:
 
