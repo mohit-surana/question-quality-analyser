@@ -1,10 +1,11 @@
-from tkinter import *
-import numpy as np
 import classifier
+import docsim_lda
+import numpy as np
+import struct_svm_ada
+import svm
+
 from classifier import DocumentClassifier
-#import docsim_lda
-#import svm
-import struct_svm_ada as svm
+from tkinter import *
 
 class Visualize:
 
@@ -19,7 +20,8 @@ class Visualize:
 		array2 = [0.1, 0.1, 0.3, 0.3, 0, 0]
 		# TODO: Requires rework
 		array1 = classifier.get_knowledge_probs(question, 'ADA')
-		#array1 = docsim_lda.get_vector(question)
+		# sims, array1 = docsim_lda.get_vector('n', question, 'tfidf')
+		#array2 = struct_svm_ada.get_cognitive_probs(question)
 		array2 = svm.get_cognitive_probs(question)
 		nmarray = np.outer(np.array(array1), np.array(array2))
 		nmarray = nmarray / np.max(np.max(nmarray))

@@ -68,7 +68,8 @@ def get_knowledge_probs(question, subject):
     print(level, highest_prob)
     probs = [0.0] * 4
     for i in range(level):
-        probs[i] = (i + 1) * highest_prob / (level * (level + 1) / 2)
+        # probs[i] = (i + 1) * highest_prob / (level * (level + 1) / 2)
+        probs[i] = (i + 1) * highest_prob / (level + 1)
     probs[level] = highest_prob
     return probs
 
