@@ -133,7 +133,7 @@ if TRAIN:
 lsi_tfidf = models.LsiModel.load('models/lsa/%s_lsi.model' %subject)
 corpus_lsi_tfidf = lsi_tfidf[corpus_tfidf]
 index = similarities.MatrixSimilarity(corpus_lsi_tfidf, num_features=lsi_tfidf.num_topics)
-index.save('models/lsa/%s_lsi.index')
+index.save('models/lsa/%s_lsi.index' %subject)
 
 '''
 queries = ["How would you arrange 1000 numbers such that each number is smaller than the one to its right?",
