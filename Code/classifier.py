@@ -13,6 +13,7 @@ import re
 import pickle
 import csv
 import pprint
+import platform
 
 from nltk import stem
 from nltk.tokenize import wordpunct_tokenize
@@ -95,7 +96,10 @@ def __probs_to_classes_dict(probs, all_classes):
 
 class DocumentClassifier:
 
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    if(platform.system() == 'Windows'):
+        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding = 'utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    else:
+        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
     stopwords.update(['.', ',', '"', "'", '?', '!', ':', ';', '(', ')', '[', ']', '{', '}'])
 
     def __preprocess(self, text):
