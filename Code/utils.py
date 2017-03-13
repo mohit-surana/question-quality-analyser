@@ -16,7 +16,7 @@ wordnet = WordNetLemmatizer()
 regex = re.compile('[%s]' % re.escape(string.punctuation))
 #see documentation here: http://docs.python.org/2/library/string.html
 
-def clean(sentence):
+def clean(sentence, stem=True, return_as_list=True):
     sentence = sentence.lower()
 
     final_sentence = []
@@ -24,7 +24,9 @@ def clean(sentence):
         word = regex.sub(u'', word)
         if not (word == u'' or word == ''):
             word = wordnet.lemmatize(word)
-            word = porter.stem(word)
+            if stem:
+                word = porter.stem(word)
             #word = snowball.stem(word)
             final_sentence.append(word)
-    return final_sentence
+
+    return final_sentence if return_as_list else ' '.join(final_sentence)

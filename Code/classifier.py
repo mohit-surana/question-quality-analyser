@@ -113,7 +113,7 @@ class DocumentClassifier:
         count = 0
         for file_name in sorted(os.listdir('resources/%s' % (self.subject, ))):
             if not len([1 for f in skip_files if (f in file_name)]):
-                with open(os.path.join(self.subject, file_name), encoding='cp1252') as f:
+                with open(os.path.join('resources', self.subject, file_name), encoding='cp1252') as f:
                     sentences = nltk.sent_tokenize(f.read())
 
                 rows = []
@@ -150,8 +150,8 @@ if __name__ == "__main__":
 
     subject = sys.argv[1]
 
-    if not os.path.exists('models/%s/__Classifier.pkl' % (subject, )):
-        classifier = DocumentClassifier(subject=subject, skip_files={'__'})
+    if True:#not os.path.exists('models/%s/__Classifier.pkl' % (subject, )):
+        classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store'})
         classifier.save('models/%s/__Classifier.pkl' % (subject, ))
 
     classifier = pickle.load(open('models/%s/__Classifier.pkl' % (subject, ), 'rb'))
