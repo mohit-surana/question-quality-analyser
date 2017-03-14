@@ -87,14 +87,14 @@ for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[
 
 	section_text = re.search(r'(?:%s[ ]*)?%s[\s]*(.*?)(?:%s[ ]*)?%s[\s]*' %(cur_topic['sno'], r'(?:[\s]+)'.join(cur_topic['title'].split()), next_topic['sno'], r'(?:[\s]+)'.join(next_topic['title'].split())), section_text, re.M | re.DOTALL).group(1)
 
-	section_text = re.sub('[\s]+', ' ', re.sub('[^a-z\s.!?\']', ' ', re.sub('-\n', '', re.sub('\n[\s]*', '\n', section_text.lower(), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL)
+	section_text2 = re.sub('[\s]+', ' ', re.sub('[^a-z\s.!?\']', ' ', re.sub('-\n', '', re.sub('\n[\s]*', '\n', section_text.lower(), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL)
 
 	with open(str(cur_topic['pno']) + ' ' + cur_topic['title'] + '.txt', 'w') as f:
 		f.write(section_text)
 
-	preprocessed_sections.append(section_text)
+	preprocessed_sections.append(section_text2)
 
-	keywords = keywords.union(map(lambda x: x[0], unigram_rake.run(section_text))).union(map(lambda x: x[0], bigram_rake.run(section_text))).union(map(lambda x: x[0], trigram_rake.run(section_text)))
+	keywords = keywords.union(map(lambda x: x[0], unigram_rake.run(section_text2))).union(map(lambda x: x[0], bigram_rake.run(section_text2))).union(map(lambda x: x[0], trigram_rake.run(section_text2)))
 
 print >> open('__Keywords.txt', 'w'), '\n'.join(list(keywords))
 
