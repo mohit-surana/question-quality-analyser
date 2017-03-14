@@ -13,7 +13,6 @@ import re
 import pickle
 import csv
 import pprint
-import platform
 
 from nltk import stem
 from nltk.tokenize import wordpunct_tokenize
@@ -95,21 +94,24 @@ def __probs_to_classes_dict(probs, all_classes):
     return classes
 
 class DocumentClassifier:
-
-    if(platform.system() == 'Windows'):
-        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding = 'utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
-    else:
-        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stemmer = stem.porter.PorterStemmer()
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
     stopwords.update(['.', ',', '"', "'", '?', '!', ':', ';', '(', ')', '[', ']', '{', '}'])
 
     def __preprocess(self, text):
-        tokens = [word.lower() for word in text.split() if word.lower() not in self.stopwords]
-        return ' '.join([i for i in [j for j in tokens if re.match('[a-z]', j) ]])
+        tokens = [word for word in nltk.word_tokenize(text) if word.lower() not in self.stopwords]  
+        return ' '.join(list(set([self.stemmer.stem(i) for i in [j for j in tokens if re.match('[a-zA-Z]', j) ]])))
 
     def __init__(self, subject, skip_files=[]):
         self.subject = subject
         self.pipeline = Pipeline([
-                        ('vectorizer', TfidfVectorizer(sublinear_tf=True, max_df=0.5, ngram_range=(1, 2))),
+                        ('vectorizer', TfidfVectorizer(sublinear_tf=True, 
+                                                       max_df=0.5, 
+                                                       ngram_range=(1, 2), 
+                                                       stop_words='english', 
+                                                       strip_accents='unicode', 
+                                                       norm='l2',
+                                                       decode_error="ignore")),
                         ('classifier', MultinomialNB(alpha=.01)) ])
 
         self.data = DataFrame({'text': [], 'class': []})
