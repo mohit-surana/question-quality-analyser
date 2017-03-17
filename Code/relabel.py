@@ -4,6 +4,11 @@ import re
 
 from utils import clean
 
+import classifier as Nsq
+from classifier import DocumentClassifier
+import docsim_lda
+# import docsim_lsa
+
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
@@ -31,3 +36,13 @@ with codecs.open('datasets/ADA_Exercise_Questions_Relabelled.csv', 'w', encoding
     # NOTE: This does not have the headers and must be appropriately handled by modifying the code
     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
         csvwriter.writerow([x, y_cog + 6 * y_know])
+
+with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v2.csv', 'w', encoding="utf-8") as csvfile:
+    csvwriter = csv.writer(csvfile)
+    # NOTE: This does not have the headers and must be appropriately handled by modifying the code
+    for x, y_cog, y_know in zip(X, Y_cog, Y_know):
+        nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
+        lda = max(docsim_lda.get_vector('n', x, 'tfidf')[1])
+        lsa = 0
+
+        csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda, lsa])
