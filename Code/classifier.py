@@ -111,7 +111,7 @@ class DocumentClassifier:
         self.pipeline = Pipeline([
                         ('vectorizer', TfidfVectorizer(sublinear_tf=True, 
                                                        max_df=0.5, 
-                                                       ngram_range=(1, 2), 
+                                                       ngram_range=(1, 3), 
                                                        stop_words='english', 
                                                        strip_accents='unicode', 
                                                        norm='l2',
@@ -160,7 +160,8 @@ if __name__ == "__main__":
 
     subject = sys.argv[1]
 
-    if True:#not os.path.exists('models/%s/__Classifier.pkl' % (subject, )):
+    TRAIN = True
+    if TRAIN:
         classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store'})
         classifier.save('models/%s/__Classifier.pkl' % (subject, ))
 
@@ -168,6 +169,7 @@ if __name__ == "__main__":
 
     all_classes = sorted(list(set(list(classifier.data['class'].values))))
 
+    '''
     questions = ["""Having some problems implementing a quicksort sorting algorithm in java. I get a stackoverflow error when I run this program and I'm not exactly sure why. If anyone can point out the error, it would be great.""",
 
     """Give an example that shows that the approximation sequence of Newton's method may diverge. """,
@@ -176,13 +178,10 @@ if __name__ == "__main__":
 
     """ Write a brute force pattern matching program for playing the game Battleship on the computer."""]
 
-    '''
+    
     for i, prob in enumerate(classifier.classify(questions)):
         print('Question', i + 1)
 
         for c, p in __probs_to_classes(prob, all_classes)[:5]:
             print(c, '[{}]'.format(p))
     '''
-
-    probs = get_knowledge_probs(questions[0], subject)
-    print(probs)
