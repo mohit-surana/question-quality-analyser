@@ -46,20 +46,21 @@ def run(tid, chunk, return_dict):
         query_lsi = lsi_tfidf[query_bow]
 
         sims = index[query_lsi]
-        sorted_similarities = sorted(enumerate(sims), key=lambda item: -item[1])[:10]
-        sim_sum = sum([x[1] for x in sorted_similarities])
-        if sim_sum == 0:
-            j += 1
-            continue
+        #sorted_similarities = sorted(enumerate(sims), key=lambda item: -item[1])[:10]
+        #sim_sum = sum([x[1] for x in sorted_similarities])
+        # if sim_sum == 0:
+        #     j += 1
+        #     continue
 
-        sims = [(s[0], (s[1] / sim_sum)) for s in sorted_similarities]
-        sims_p = [x[1] for x in sims]
+        #sims = [(s[0], (s[1] / sim_sum)) for s in sorted_similarities]
+        #sims_p = [x[1] for x in sims]
         
         #if max(sims_p) > 0.5:
         i += 1
         j += 1
         #print("[Process-{}]\t Dumped {} [EVAL {}; TOTAL {}] questions".format(tid, i, j, len(chunk)))
-        results.append((query, max(sims_p)))
+        #results.append((query, max(sims_p)))
+        results.append((query, max(sims)))
         #else:
         #    j += 1
 
@@ -85,7 +86,7 @@ def cosToProb(cos, gamma=1):
     return [float(c) / float(sum_cos_shifted) for c in cos_shifted]
 
 
-TRAIN = False
+TRAIN = True
 
 doc = dict()
 documents = list()
@@ -155,13 +156,17 @@ queries = ["How would you arrange 1000 numbers such that each number is smaller 
 '''
 def get_values(question):
     return_dict = dict()
-    run(1,[question],return_dict)
+    run(1, [question], return_dict)
     #print(return_dict)
-    for v in return_dict.values():
-        #print(v)
-        if(len(v) == 0):
-            return 0
-        return v[0][1]
+    results = return_dict[1]
+    # for v in return_dict.values():
+    #     #print(v)
+    #     if(len(v) == 0):
+    #         return 0
+    #     return v[0][1]
+
+    return results[0][1]
+
 
 if __name__ == '__main__':
     queries = []

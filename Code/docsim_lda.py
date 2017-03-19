@@ -8,7 +8,7 @@ from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
 
-LOG = False
+LOG = True
 if(LOG):
     import logging
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -242,6 +242,9 @@ def get_vector(prep_model, new_question, do_what='tfidf'):
         probs_tfidf[level] = highest_prob
         #print('probs for tfidf' , probs_tfidf)
         probs = probs_tfidf
+
+    if not len(sims1):
+        sims1.append(0)
     return sims1, probs
 
 if __name__ == "__main__":
@@ -266,7 +269,7 @@ Find the number of comparisons made by the sentinel version of linear search a. 
 
 Write a brute force backtracking program for playing the game Battleship on the computer.'''
 
-    TRAIN = False
+    TRAIN = True
     if TRAIN:
         prepare_model()
 

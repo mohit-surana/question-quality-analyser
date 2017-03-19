@@ -19,13 +19,14 @@ labels = []
 labels_nsq = []
 labels_lda = []
 labels_lsa = []
+labels_knw = []
 def get_model(label):
     return np.array([[p] for p in label]).astype(np.float)
 
 def get_prob(probs, y):        
     X = probs
 
-    y = np.array(labels)
+    y = np.array(y)
     data = list(zip(probs, labels, questions))
     #pprint.pprint(data)
     data = sorted(data, key=lambda x: x[0])
@@ -42,9 +43,9 @@ def get_prob(probs, y):
 
     #pprint.pprint(rdict)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
 
-
+    '''
     et = GaussianNB()
     et.fit(X_train, y_train)
 
@@ -64,20 +65,25 @@ def get_prob(probs, y):
 
     clf = svm.LinearSVC()
     grid = GridSearchCV(clf, parameters).fit(X_train, y_train)
-    print(grid.score(X_test, y_test))
 
     print("The best parameters are %s with a score of %0.2f"
           % (grid.best_params_, grid.best_score_))
 
-    predicted = grid.predict(X_test)
+    print('Prediction on test')
+    preds = grid.predict(X_test)
+    print(preds)
+
+    print('Original samples')
     print(y_test)
-    print(predicted)
-    cnf_matrix = confusion_matrix(y_test, predicted)
+
+    print('Accuracy')
+    print(accuracy_score(y_test, preds))
+
+    cnf_matrix = confusion_matrix(y_test, preds)
     print(cnf_matrix)
-    '''
+    
 
-
-with open('datasets/ADA_Exercise_Questions_Relabelled_v2.csv') as csvfile:
+with open('datasets/ADA_Exercise_Questions_Relabelled_v4.csv') as csvfile:
     csvreader = csv.reader(csvfile)
     for row in csvreader:
         questions.append(utils.clean2(row[0]))
@@ -85,7 +91,26 @@ with open('datasets/ADA_Exercise_Questions_Relabelled_v2.csv') as csvfile:
         labels_nsq.append(row[2])
         labels_lda.append(row[3])
         labels_lsa.append(row[4])
+        labels_knw.append(int(row[-1]))
 
+data_1d = list(zip(labels_nsq, labels_knw))
+
+data_1d_dict = {0 : [], 1: [], 2: [], 3: []}
+
+for x, y in data_1d:
+    data_1d_dict[y].append((x, y))
+
+data_1d = []
+for k in data_1d_dict:
+    data_1d.extend(data_1d_dict[k])
+
+labels_nsq = []
+labels_knw = []
+for x, y in data_1d:
+    labels_nsq.append(x)
+    labels_knw.append(y)
+
+'''
 print('Test on N-Squared')
 get_prob(get_model(labels_nsq), labels)
 
@@ -94,3 +119,7 @@ get_prob(get_model(labels_lda), labels)
 
 print('\n\nTest on LSA')
 get_prob(get_model(labels_lsa), labels)
+'''
+
+print('Test on Knowledge Labels')
+get_prob(get_model(labels_nsq), labels_knw)
