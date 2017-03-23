@@ -35,7 +35,7 @@ with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="
         Y_cog.append(mapping_cog[label_cog])
         Y_know.append(mapping_know[label_know])
 
-TRAIN = True
+TRAIN = False
 TEST = True
 EPOCHS = 1000
 # EPOCHS = 1
@@ -53,7 +53,8 @@ if(TRAIN or TEST):
 		Cs.append(np.array(C))
 
 if(TRAIN):
-	W = np.random.randn(4, 6) * 0.01
+	W = abs(np.random.randn(4, 6))*0.5
+    # W = np.ones((4, 6))
 	inv = linalg.lstsq
 	alpha = 0.001
 
@@ -69,7 +70,7 @@ if(TRAIN):
 			target = temp
 
 			y = W_old.dot(C_t)
-			dy = target - y
+			dy = y - target
 
 			dW = dy.dot(C_t.T)
 			dC_t = W_old.T.dot(dy) # Not relevant for us
