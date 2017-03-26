@@ -14,6 +14,7 @@ porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
 
+
 if(platform.system() == 'Windows'):
     stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 else:
@@ -25,7 +26,6 @@ regex = re.compile('[%s]' % re.escape(string.punctuation))
 
 def clean(sentence, stem=True, return_as_list=True):
     sentence = sentence.lower()
-
     final_sentence = []
     for word in word_tokenize(sentence):
         word = regex.sub(u'', word)
@@ -38,7 +38,13 @@ def clean(sentence, stem=True, return_as_list=True):
 
     return final_sentence if return_as_list else ' '.join(final_sentence)
 
-
 def clean2(text):
     tokens = [word for word in nltk.word_tokenize(text) if word.lower() not in stopwords]  
     return ' '.join(list(set([porter.stem(i) for i in [j for j in tokens if re.match('[a-zA-Z]', j) ]])))
+
+def clean_no_stopwords(text, as_list=True):
+    tokens = [porter.stem(wordnet.lemmatize(w)) for w in text.lower().split() if w.isalpha()]
+    if as_list:
+        return tokens
+    else:
+        return ' '.join(tokens)
