@@ -27,7 +27,7 @@ from sklearn.feature_extraction.text import TfidfTransformer
 from utils import clean
 
 PREPARE_VOCAB = False
-TRAIN_CLASSIFIER = False
+TRAIN_CLASSIFIER = True
 FILTERED = True
 
 filtered_suffix = '_filtered' if FILTERED else ''

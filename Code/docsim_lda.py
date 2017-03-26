@@ -206,7 +206,6 @@ def get_vector(prep_model, new_question, do_what='tfidf'):
         vec_lda = lda_tfidf[vec_bow]
         sims_tfidf1 = index[vec_lda]
         sims_tfidf = sorted(enumerate(sims_tfidf1), key=lambda item: -item[1])
-        sims_tfidf = sims_tfidf
         finalsims_tfidf = list()
         for i in range(len(sims_tfidf)):
             if(sims_tfidf[i][1] != 0):
@@ -217,10 +216,6 @@ def get_vector(prep_model, new_question, do_what='tfidf'):
         finalsims_tfidf_values = [s / sum(finalsims_tfidf_values) for s in finalsims_tfidf_values]
         finalsims_tfidf = zip(finalsims_tfidf_sections, finalsims_tfidf_values)
         sims1 = finalsims_tfidf_values
-
-        #for i in finalsims_tfidf:
-        #    print(i)
-
 
         if len(finalsims_tfidf_values) > 0:
             highest_prob = finalsims_tfidf_values[0]

@@ -68,19 +68,19 @@ with codecs.open('datasets/ADA_Exercise_Questions_Relabelled.csv', 'w', encoding
 #         csvwriter.writerow([x, y_cog * 16 + 100 * y_know, nsq, lda, lsa])
 
 
+
 stupid_count = 1
-with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v3.csv', 'w', encoding="utf-8") as csvfile:
+with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v4.csv', 'w', encoding="utf-8") as csvfile:
+
     csvwriter = csv.writer(csvfile)
     # NOTE: This does not have the headers and must be appropriately handled by modifying the code
     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
         #print(x)
         nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
         if stupid_count == 0:
-            lda = max(docsim_lda.get_vector('y', x, 'tfidf')[1])
+            lda = max(docsim_lda.get_vector('y', x, 'tfidf')[0])
             stupid_count = 1
         else:
-            lda = max(docsim_lda.get_vector('n', x, 'tfidf')[1])
+            lda = max(docsim_lda.get_vector('n', x, 'tfidf')[0])
         lsa = docsim_lsa.get_values(x)
-        csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda, lsa, y_know, y_cog])
-        
-
+        csvwriter.writerow([x, y_cog * 16 + 100 * y_know, nsq, lda, lsa, y_know])
