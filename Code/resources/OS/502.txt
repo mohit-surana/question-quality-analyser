@@ -1,0 +1,150 @@
+Operating System Design Issues
+480  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+      Processor          DMA  I/O                                    I/O       Memory
+                              (a) Single-bus, detached DMA
+      Processor          DMA            DMA                                    Memory
+                         I/O
+                              I/O                                    I/O
+                              (b) Single-bus, integrated DMA-I/O
+                                                   System bus
+      Processor               DMA                                              Memory
+                                                            I/O bus
+                   I/O             I/O                                    I/O
+                                   (c) I/O bus
+      Figure 11.3  Alternative DMA Configurations
+      system bus. The DMA logic may actually be a part of an I/O module, or it may be a
+      separate module that controls one or more I/O modules. This concept can be taken
+      one step further by connecting I/O modules to the DMA module using an I/O bus
+      (Figure 11.3c). This reduces the number of I/O interfaces in the DMA module
+      to one and provides for an easily expandable configuration. In all of these cases
+      (Figure 11.3b and 11.3c), the system bus that the DMA module shares with the
+      processor and main memory is used by the DMA module only to exchange data
+      with memory and to exchange control signals with the processor. The exchange of
+      data between the DMA and I/O modules takes place off the system bus.
+11.3  OPERATING SYSTEM DESIGN ISSUES
+      Design Objectives
+      Two objectives are paramount in designing the I/O facility: efficiency and gener-
+      ality. Efficiency is important because I/O operations often form a bottleneck in a
+      computing system. Looking again at Figure 11.1, we see that most I/O devices are
+
+                              11.3 / OPERATING SYSTEM DESIGN ISSUES                       481
+extremely slow compared with main memory and the processor. One way to tackle
+this problem is multiprogramming, which, as we have seen, allows some processes
+to be waiting on I/O operations while another process is executing. However, even
+with the vast size of main memory in today's machines, it will still often be the case
+that I/O is not keeping up with the activities of the processor. Swapping is used to
+bring in additional ready processes to keep the processor busy, but this in itself is an
+I/O operation. Thus, a major effort in I/O design has been schemes for improving
+the efficiency of the I/O. The area that has received the most attention, because of
+its importance, is disk I/O, and much of this chapter will be devoted to a study of
+disk I/O efficiency.
+The other major objective is generality. In the interests of simplicity and
+freedom from error, it is desirable to handle all devices in a uniform manner. This
+applies both to the way in which processes view I/O devices and to the way in
+which the OS manages I/O devices and operations. Because of the diversity of
+device characteristics, it is difficult in practice to achieve true generality. What can
+be done is to use a hierarchical, modular approach to the design of the I/O func-
+tion. This approach hides most of the details of device I/O in lower-level routines
+so that user processes and upper levels of the OS see devices in terms of general
+functions, such as read, write, open, close, lock, and unlock. We turn now to a
+discussion of this approach.
+Logical Structure of the I/O Function
+In Chapter 2, in the discussion of system structure, we emphasized the hierar-
+chical nature of modern operating systems. The hierarchical philosophy is that
+the functions of the OS should be separated according to their complexity, their
+characteristic time scale, and their level of abstraction. Following this approach
+leads to an organization of the OS into a series of layers. Each layer performs
+a related subset of the functions required of the OS. It relies on the next lower
+layer to perform more primitive functions and to conceal the details of those
+functions. It provides services to the next higher layer. Ideally, the layers should
+be defined so that changes in one layer do not require changes in other layers.
+Thus, we have decomposed one problem into a number of more manageable
+subproblems.
+In general, lower layers deal with a far shorter time scale. Some parts of the
+OS must interact directly with the computer hardware, where events can have a
+time scale as brief as a few billionths of a second. At the other end of the spectrum,
+parts of the OS communicate with the user, who issues commands at a much more
+leisurely pace, perhaps one every few seconds. The use of a set of layers conforms
+nicely to this environment.
+Applying this philosophy specifically to the I/O facility leads to the type
+of organization suggested by Figure 11.4. The details of the organization will
+depend on the type of device and the application. The three most important
+logical structures are presented in the figure. Of course, a particular operat-
+ing system may not conform exactly to these structures. However, the general
+principles are valid, and most operating systems approach I/O in approximately
+this way.
+
+482  CHAPTER  11  / I/O MANAGEMENT       AND DISK SCHEDULING
+                  User                   User                     User
+                  processes              processes                processes
+                                                                  Directory
+                                                                  management
+                  Logical                Communication            File system
+                  I/O                    architecture
+                                                                  Physical
+                                                                  organization
+                  Device                 Device                   Device
+                  I/O                    I/O                      I/O
+                  Scheduling             Scheduling               Scheduling
+                  & control              & control                & control
+                  Hardware               Hardware                 Hardware
+        (a) Local peripheral device      (b) Communications port  (c) File system
+        Figure 11.4     A Model of I/O Organization
+        Let us consider the simplest case first, that of a local peripheral device that
+     communicates in a simple fashion, such as a stream of bytes or records (Figure 11.4a).
+     The following layers are involved:
+     ·  Logical I/O: The logical I/O module deals with the device as a logical resource
+        and is not concerned with the details of actually controlling the device. The
+        logical I/O module is concerned with managing general I/O functions on behalf
+        of user processes, allowing them to deal with the device in terms of a device
+        identifier and simple commands such as open, close, read, and write.
+     ·  Device I/O: The requested operations and data (buffered characters, records,
+        etc.) are converted into appropriate sequences of I/O instructions, channel
+        commands, and controller orders. Buffering techniques may be used to improve
+        utilization.
+     ·  Scheduling and control: The actual queueing and scheduling of I/O operations
+        occurs at this layer, as well as the control of the operations. Thus, interrupts
+
+                                                                 11.4 / I/O BUFFERING       483
+         are handled at this layer and I/O status is collected and reported. This is the
+         layer of software that actually interacts with the I/O module and hence the
+         device hardware.
+         For a communications device, the I/O structure (Figure 11.4b) looks much the
+      same as that just described. The principal difference is that the logical I/O module is
+      replaced by a communications architecture, which may itself consist of a number of
+      layers. An example is TCP/IP, which is discussed in Chapter 17.
+         Figure 11.4c shows a representative structure for managing I/O on a secondary
+      storage device that supports a file system. The three layers not previously discussed
+      are as follows:
+      ·  Directory management: At this layer, symbolic file names are converted to
+         identifiers that either reference the file directly or indirectly through a file
+         descriptor or index table. This layer is also concerned with user operations
+         that affect the directory of files, such as add, delete, and reorganize.
+      ·  File system: This layer deals with the logical structure of files and with the
+         operations that can be specified by users, such as open, close, read, and write.
+         Access rights are also managed at this layer.
+      ·  Physical organization: Just as virtual memory addresses must be converted
+         into physical main memory addresses, taking into account the segmentation
+         and paging structure, logical references to files and records must be con-
+         verted to physical secondary storage addresses, taking into account the physi-
+         cal track and sector structure of the secondary storage device. Allocation of
+         secondary storage space and main storage buffers is generally treated at this
+         layer as well.
+         Because of the importance of the file system, we will spend some time, in this
+      chapter and the next, looking at its various components. The discussion in this chap-
+      ter focuses on the lower three layers, while the upper two layers are examined in
+      Chapter 12.
+11.4  I/O BUFFERING
+      Suppose that a user process wishes to read blocks of data from a disk one at a time,
+      with each block having a length of 512 bytes. The data are to be read into a data
+      area within the address space of the user process at virtual location 1000 to 1511.
+      The simplest way would be to execute an I/O command (something like Read_
+      Block[1000,      disk]) to the disk unit and then wait for the data to become avail-
+      able. The waiting could either be busy waiting (continuously test the device status)
+      or, more practically, process suspension on an interrupt.
+         There are two problems with this approach. First, the program is hung up
+      waiting for the relatively slow I/O to complete. The second problem is that this
+      approach to I/O interferes with swapping decisions by the OS. Virtual locations
+      1000 to 1511 must remain in main memory during the course of the block transfer.
+      Otherwise, some of the data may be lost. If paging is being used, at least the page
+      containing the target locations must be locked into main memory. Thus, although

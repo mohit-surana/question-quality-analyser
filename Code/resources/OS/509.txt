@@ -1,0 +1,347 @@
+Disk Scheduling
+                                                           11.5 / DISK SCHEDULING                  487
+      service. Even with multiple buffers, all of the buffers will eventually fill up and the
+      process will have to wait after processing each chunk of data. However, in a multi-
+      programming environment, when there is a variety of I/O activity and a variety of
+      process activity to service, buffering is one tool that can increase the efficiency of
+      the OS and the performance of individual processes.
+11.5  DISK SCHEDULING
+      Over the last 40 years, the increase in the speed of processors and main memory has
+      far outstripped that for disk access, with processor and main memory speeds increas-
+      ing by about two orders of magnitude compared to one order of magnitude for disk.
+      The result is that disks are currently at least four orders of magnitude slower than
+      main memory. This gap is expected to continue into the foreseeable future. Thus,
+      the performance of disk storage subsystem is of vital concern, and much research
+      has gone into schemes for improving that performance. In this section, we highlight
+      some of the key issues and look at the most important approaches. Because the
+      performance of the disk system is tied closely to file system design issues, the discus-
+      sion continues in Chapter 12.
+      Disk Performance Parameters
+      The actual details of disk I/O operation depend on the computer system, the oper-
+      ating system, and the nature of the I/O channel and disk controller hardware. A
+      general timing diagram of disk I/O transfer is shown in Figure 11.6.
+      When the disk drive is operating, the disk is rotating at constant speed. To
+      read or write, the head must be positioned at the desired track and at the beginning
+      of the desired sector on that track.1 Track selection involves moving the head in a
+      movable-head system or electronically selecting one head on a fixed-head system.
+      On a movable-head system, the time it takes to position the head at the track is
+      known as seek time. In either case, once the track is selected, the disk controller
+      waits until the appropriate sector rotates to line up with the head. The time it takes
+      for the beginning of the sector to reach the head is known as rotational delay, or
+      rotational latency. The sum of the seek time, if any, and the rotational delay equals
+      the access time, which is the time it takes to get into position to read or write. Once
+      the head is in position, the read or write operation is then performed as the sector
+      moves under the head; this is the data transfer portion of the operation; the time
+      required for the transfer is the transfer time.
+      Wait for         Wait for      Seek                                    Rotational  Data
+      device           channel                                               delay       transfer
+                                                       Device busy
+      Figure 11.6  Timing of a Disk I/O Transfer
+      1See Appendix J for a discussion of disk organization and formatting.
+
+488  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     In addition to the access time and transfer time, there are several queueing
+     delays normally associated with a disk I/O operation. When a process issues an
+     I/O request, it must first wait in a queue for the device to be available. At that
+     time, the device is assigned to the process. If the device shares a single I/O channel
+     or a set of I/O channels with other disk drives, then there may be an additional
+     wait for the channel to be available. At that point, the seek is performed to begin
+     disk access.
+     In some high-end systems for servers, a technique known as rotational
+     positional sensing (RPS) is used. This works as follows: When the seek command
+     has been issued, the channel is released to handle other I/O operations. When
+     the seek is completed, the device determines when the data will rotate under
+     the head. As that sector approaches the head, the device tries to reestablish the
+     communication path back to the host. If either the control unit or the channel is
+     busy with another I/O, then the reconnection attempt fails and the device must
+     rotate one whole revolution before it can attempt to reconnect, which is called
+     an RPS miss. This is an extra delay element that must be added to the time line
+     of Figure 11.6.
+     SEEK TIME       Seek time is the time required to move the disk arm to the required
+     track. It turns out that this is a difficult quantity to pin down. The seek time consists
+     of two key components: the initial startup time and the time taken to traverse the
+     tracks that have to be crossed once the access arm is up to speed. Unfortunately, the
+     traversal time is not a linear function of the number of tracks but includes a settling
+     time (time after positioning the head over the target track until track identification
+     is confirmed).
+     Much improvement comes from smaller and lighter disk components. Some
+     years ago, a typical disk was 14 inches (36 cm) in diameter, whereas the most common
+     size today is 3.5 inches (8.9 cm), reducing the distance that the arm has to travel. A
+     typical average seek time on contemporary hard disks is under 10 ms.
+     ROTATIONAL       DELAY  Rotational delay is the time required for the addressed
+     area of the disk to rotate into a position where it is accessible by the read/write
+     head. Disks rotate at speeds ranging from 3,600 rpm (for handheld devices such as
+     digital cameras) up to, as of this writing, 15,000 rpm; at this latter speed, there is one
+     revolution per 4 ms. Thus, on the average, the rotational delay will be 2 ms.
+     TRANSFER TIME    The transfer time to or from the  disk  depends      on  the  rotation
+     speed of the disk in the following fashion:
+                                    T=            b
+                                                  rN
+     where
+     T  transfer time
+     b  number of bytes to be transferred
+     N  number of bytes on a track
+     r  rotation speed, in revolutions per second
+
+                                                             11.5 / DISK SCHEDULING     489
+     Thus, the total average access time can be expressed as
+                                  Ta = Ts +        1   +  b
+                                                   2r     rN
+where Ts is the average seek time.
+A TIMING COMPARISON         With the foregoing parameters defined, let us look at
+two different I/O operations that illustrate the danger of relying on average values.
+Consider a disk with an advertised average seek time of 4 ms, rotation speed of
+7,500 rpm, and 512-byte sectors with 500 sectors per track. Suppose that we wish to
+read a file consisting of 2,500 sectors for a total of 1.28 Mbytes. We would like to
+estimate the total time for the transfer.
+     First, let us assume that the file is stored as compactly as possible on
+the  disk.  That  is,  the  file  occupies    all  of  the   sectors  on  5  adjacent  tracks
+(5 tracks * 500 sectors/track = 2,500 sectors). This is known as sequential organiza-
+tion. The time to read the first track is as follows:
+                            Average seek                      4 ms
+                            Rotational delay                  4 ms
+                            Read 500 sectors                  8 ms
+                                                             16 ms
+     Suppose that the remaining tracks can now be read with essentially no seek
+time. That is, the I/O operation can keep up with the flow from the disk. Then, at
+most, we need to deal with rotational delay for each succeeding track. Thus, each
+successive track is read in 4 + 8 = 12 rmms. To read the entire file,
+            Total time = 16 + (4 * 12) = 64 ms = 0.064 seconds
+     Now let us calculate the time required to read the same data using random
+access rather than sequential access; that is, accesses to the sectors are distributed
+randomly over the disk. For each sector, we have:
+                            Average seek                  4   ms
+                            Rotational delay              4   ms
+                            Read 1 sector                 0.016 ms
+                                                          8.016 ms
+            Total time = 2,500 * 8.016 = 20,040 ms = 20.04 seconds
+     It is clear that the order in which sectors are read from the disk has a tremen-
+dous effect on I/O performance. In the case of file access in which multiple sectors
+are read or written, we have some control over the way in which sectors of data are
+deployed, and we shall have something to say on this subject in the next chapter.
+However, even in the case of a file access, in a multiprogramming environment,
+there will be I/O requests competing for the same disk. Thus, it is worthwhile to
+examine ways in which the performance of disk I/O can be improved over that
+achieved with purely random access to the disk.
+
+490  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     Disk Scheduling Policies
+     In the example just described, the reason for the difference in performance can be
+     traced to seek time. If sector access requests involve selection of tracks at random,
+     then the performance of the disk I/O system will be as poor as possible. To improve
+     matters, we need to reduce the average time spent on seeks.
+     Consider the typical situation in a multiprogramming environment, in which
+     the OS maintains a queue of requests for each I/O device. So, for a single disk, there
+     will be a number of I/O requests (reads and writes) from various processes in the
+     queue. If we selected items from the queue in random order, then we can expect that
+     the tracks to be visited will occur randomly, giving poor performance. This random
+     scheduling is useful as a benchmark against which to evaluate other techniques.
+     Figure 11.7 compares the performance of various scheduling algorithms for an
+     example sequence of I/O requests. The vertical axis corresponds to the tracks on the
+     disk. The horizontal axis corresponds to time or, equivalently, the number of tracks
+     traversed. For this figure, we assume that the disk head is initially located at track 100.
+     In this example, we assume a disk with 200 tracks and that the disk request queue has
+     random requests in it. The requested tracks, in the order received by the disk sched-
+     uler, are 55, 58, 39, 18, 90, 160, 150, 38, 184. Table 11.2a tabulates the results.
+     FIRST IN FIRST OUT  The simplest form of scheduling is first-in-first-out (FIFO)
+     scheduling, which processes items from the queue in sequential order. This strategy
+     has the advantage of being fair, because every request is honored and the requests are
+     honored in the order received. Figure 11.7a illustrates the disk arm movement with
+     FIFO. This graph is generated directly from the data in Table 11.2a. As can be seen,
+     the disk accesses are in the same order as the requests were originally received.
+     With FIFO, if there are only a few processes that require access and if many
+     of the requests are to clustered file sectors, then we can hope for good performance.
+     However, this technique will often approximate random scheduling in performance,
+     if there are many processes competing for the disk. Thus, it may be profitable to
+     consider a more sophisticated scheduling policy. A number of these are listed in
+     Table 11.3 and will now be considered.
+     PRIORITY  With a system based on priority (PRI), the control of the scheduling is
+     outside the control of disk management software. Such an approach is not intended
+     to optimize disk utilization but to meet other objectives within the OS. Often short
+     batch jobs and interactive jobs are given higher priority than longer jobs that require
+     longer computation. This allows a lot of short jobs to be flushed through the system
+     quickly and may provide good interactive response time. However, longer jobs
+     may have to wait excessively long times. Furthermore, such a policy could lead to
+     countermeasures on the part of users, who split their jobs into smaller pieces to beat
+     the system. This type of policy tends to be poor for database systems.
+     SHORTEST  SERVICE   TIME  FIRST  The shortest-service-time-first (SSTF) policy
+     is to select the disk I/O request that requires the least movement of the disk arm
+     from its current position. Thus, we always choose to incur the minimum seek time.
+     Of course, always choosing the minimum seek time does not guarantee that the
+
+                                                           11.5 /          DISK   SCHEDULING  491
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (a) FIFO
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (b) SSTF
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (c) SCAN
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (d) C-SCAN
+Figure             11.7  Comparison  of  Disk  Scheduling Algorithms (see  Table  11.2)
+
+492   CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+Table 11.2  Comparison     of Disk Scheduling Algorithms
+                                                                    (c) SCAN (starting             (d) C-SCAN (starting
+                                                                    at track 100, in the           at track 100, in the
+     (a) FIFO (starting    (b) SSTF (starting                       direction of increasing        direction of increasing
+      at track 100)        at track 100)                            track number)                        track number)
+             Number                             Number                            Number           Next       Number
+Next track   of tracks     Next track           of tracks   Next track            of tracks        track      of tracks
+accessed     traversed     accessed             traversed           accessed      traversed        accessed   traversed
+     55              45    90                   10                  150             50             150        50
+     58              3     58                   32                  160             10             160        10
+     39              19    55                        3              184             24             184        24
+     18              21    39                   16                  90              94             18         166
+     90              72    38                        1              58              32             38         20
+160                  70    18                   20                  55              3              39         1
+150                  10    150                  132                 39              16             55         16
+     38           112      160                  10                  38              1              58         3
+184               146      184                  24                  18              20             90         32
+Average              55.3  Average              27.5                Average         27.8           Average    35.8
+seek                       seek                                     seek                           seek
+length                     length                                   length                         length
+         average seek time over a number of arm movements will be minimum. However,
+         this should provide better performance than FIFO. Because the arm can move in
+         two directions, a random tie-breaking algorithm may be used to resolve cases of
+         equal distances.
+Table 11.3  Disk     Scheduling Algorithms
+Name                               Description                                                Remarks
+                                               Selection according  to requestor
+RSS                        Random scheduling                                  For analysis and simulation
+FIFO                       First-in-first-out                                 Fairest of them all
+PRI                        Priority by process                                Control outside of disk queue management
+LIFO                       Last in first out                                  Maximize locality and resource utilization
+                                 Selection according to             requested item
+SSTF                       Shortest-service-time first                        High utilization, small queues
+SCAN                       Back and forth over disk                           Better service distribution
+C-SCAN                     One way with fast return                           Lower service variability
+N-step-SCAN                SCAN of N records at a time                        Service guarantee
+FSCAN                      N-step-SCAN with N = queue size                    Load sensitive
+                           at beginning of SCAN cycle
+
+                                                    11.5 / DISK SCHEDULING                 493
+Figure 11.7b and Table 11.2b show the performance of SSTF on the same
+example as was used for FIFO. The first track accessed is 90, because this is the
+closest requested track to the starting position. The next track accessed is 58 because
+this is the closest of the remaining requested tracks to the current position of 90.
+Subsequent tracks are selected accordingly.
+SCAN    With the exception of FIFO, all of the policies described so far can leave
+some request unfulfilled until the entire queue is emptied. That is, there may always
+be new requests arriving that will be chosen before an existing request. A simple
+alternative that prevents this sort of starvation is the SCAN algorithm, also known
+as the elevator algorithm because it operates much the way an elevator does.
+With SCAN, the arm is required to move in one direction only, satisfying all
+outstanding requests en route, until it reaches the last track in that direction or until
+there are no more requests in that direction. This latter refinement is sometimes
+referred to as the LOOK policy. The service direction is then reversed and the scan
+proceeds in the opposite direction, again picking up all requests in order.
+Figure 11.7c and Table 11.2c illustrate the SCAN policy. Assuming that the
+initial direction is of increasing track number, then the first track selected is 150,
+since this is the closest track to the starting track of 100 in the increasing direction.
+As can be seen, the SCAN policy behaves almost identically with the SSTF
+policy. Indeed, if we had assumed that the arm was moving in the direction of lower
+track numbers at the beginning of the example, then the scheduling pattern would
+have been identical for SSTF and SCAN. However, this is a static example in which
+no new items are added to the queue. Even when the queue is dynamically chang-
+ing, SCAN will be similar to SSTF unless the request pattern is unusual.
+Note that the SCAN policy is biased against the area most recently traversed.
+Thus it does not exploit locality as well as SSTF.
+It is not difficult to see that the SCAN policy favors jobs whose requests are
+for tracks nearest to both innermost and outermost tracks and favors the latest-
+arriving jobs. The first problem can be avoided via the C-SCAN policy, while the
+second problem is addressed by the N-step-SCAN policy.
+C-SCAN  The C-SCAN (circular SCAN) policy restricts scanning to one direction
+only. Thus, when the last track has been visited in one direction, the arm is returned
+to the opposite end of the disk and the scan begins again. This reduces the maximum
+delay experienced by new requests. With SCAN, if the expected time for a scan
+from inner track to outer track is t, then the expected service interval for sectors at
+the periphery is 2t. With C-SCAN, the interval is on the order of t + s max , where
+smax is the maximum seek time.
+Figure 11.7d and Table 11.2d illustrate C-SCAN behavior. In this case the first
+three requested tracks encountered are 150, 160, and 184. Then the scan begins
+starting at the lowest track number, and the next requested track encountered is 18.
+N-STEP-SCAN AND FSCAN           With SSTF, SCAN, and C-SCAN, it is possible that
+the arm may not move for a considerable period of time. For example, if one or a
+few processes have high access rates to one track, they can monopolize the entire
+device by repeated requests to that track. High-density multisurface disks are more
+
+494  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     likely to be affected by this characteristic than lower-density disks and/or disks with
+     only one or two surfaces. To avoid this "arm stickiness," the disk request queue
+     can be segmented, with one segment at a time being processed completely. Two
+     examples of this approach are N-step-SCAN and FSCAN.
+         The N-step-SCAN policy segments the disk request queue into subqueues of
+     length N. Subqueues are processed one at a time, using SCAN. While a queue is
+     being processed, new requests must be added to some other queue. If fewer than N
+     requests are available at the end of a scan, then all of them are processed with the
+     next scan. With large values of N, the performance of N-step-SCAN approaches
+     that of SCAN; with a value of N = 1, the FIFO policy is adopted.
+         FSCAN is a policy that uses two subqueues. When a scan begins, all of the
+     requests are in one of the queues, with the other empty. During the scan, all new
+     requests are put into the other queue. Thus, service of new requests is deferred until
+     all of the old requests have been processed.
+11.6 RAID
+     As discussed earlier, the rate in improvement in secondary storage performance
+     has been considerably less than the rate for processors and main memory. This
+     mismatch has made the disk storage system perhaps the main focus of concern in
+     improving overall computer system performance.
+         As in other areas of computer performance, disk storage designers recognize
+     that if one component can only be pushed so far, additional gains in performance
+     are to be had by using multiple parallel components. In the case of disk storage,
+     this leads to the development of arrays of disks that operate independently and
+     in parallel. With multiple disks, separate I/O requests can be handled in parallel,
+     as long as the data required reside on separate disks. Further, a single I/O request
+     can be executed in parallel if the block of data to be accessed is distributed across
+     multiple disks.
+         With the use of multiple disks, there is a wide variety of ways in which the data
+     can be organized and in which redundancy can be added to improve reliability. This
+     could make it difficult to develop database schemes that are usable on a number of
+     platforms and operating systems. Fortunately, industry has agreed on a standard-
+     ized scheme for multiple-disk database design, known as RAID (redundant array of
+     independent disks). The RAID scheme consists of seven levels,2 zero through six.
+     These levels do not imply a hierarchical relationship but designate different design
+     architectures that share three common characteristics:
+     1.  RAID is a set of physical disk drives viewed by the OS as a single logical drive.
+     2.  Data are distributed across the physical drives of an array in a scheme known
+         as striping, described subsequently.
+     3.  Redundant disk capacity is used to store parity information, which guarantees
+         data recoverability in case of a disk failure.
+     2Additional levels have been defined by some researchers and some companies, but the seven levels
+     described in this section are the ones universally agreed on.

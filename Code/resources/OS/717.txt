@@ -1,0 +1,216 @@
+Remote Procedure Calls
+                                   16.4 / REMOTE PROCEDURE CALLS                            695
+      require confirmation that a message has been delivered, the applications them-
+      selves may use request and reply messages to satisfy the requirement.
+      Blocking versus Nonblocking
+      With nonblocking, or asynchronous, primitives, a process is not suspended as a
+      result of issuing a Send or Receive. Thus, when a process issues a Send primi-
+      tive, the operating system returns control to the process as soon as the message
+      has been queued for transmission or a copy has been made. If no copy is made,
+      any changes made to the message by the sending process before or even while it
+      is being transmitted are made at the risk of the process. When the message has
+      been transmitted or copied to a safe place for subsequent transmission, the send-
+      ing process is interrupted to be informed that the message buffer may be reused.
+      Similarly, a nonblocking Receive is issued by a process that then proceeds to run.
+      When a message arrives, the process is informed by interrupt, or it can poll for
+      status periodically.
+          Nonblocking primitives provide for efficient, flexible use of the message-
+      passing facility by processes. The disadvantage of this approach is that it is difficult
+      to test and debug programs that use these primitives. Irreproducible, timing-
+      dependent sequences can create subtle and difficult problems.
+          The alternative is to use blocking, or synchronous, primitives. A blocking
+      Send does not return control to the sending process until the message has been
+      transmitted (unreliable service) or until the message has been sent and an acknowl-
+      edgment received (reliable service). A blocking Receive does not return control
+      until a message has been placed in the allocated buffer.
+16.4  REMOTE PROCEDURE CALLS
+      A variation on the basic message-passing model is the remote procedure call. This
+      is now a widely accepted and common method for encapsulating communica-
+      tion in a distributed system. The essence of the technique is to allow programs on
+      different machines to interact using simple procedure call/return semantics, just as
+      if the two programs were on the same machine. That is, the procedure call is used
+      for access to remote services. The popularity of this approach is due to the following
+      advantages.
+      1.  The procedure call is a widely accepted, used, and understood abstraction.
+      2.  The use of remote procedure calls enables remote interfaces to be specified
+          as a set of named operations with designated types. Thus, the interface can
+          be clearly documented and distributed programs can be statically checked for
+          type errors.
+      3.  Because a standardized and precisely defined interface is specified, the
+          communication code for an application can be generated automatically.
+      4.  Because a standardized and precisely defined interface is specified, develop-
+          ers can write client and server modules that can be moved among computers
+          and operating systems with little modification and recoding.
+
+696  CHAPTER 16 / DISTRIBUTED PROCESSING, CLIENT/SERVER, AND CLUSTERS
+     The remote procedure call mechanism can be viewed as a refinement of reli-
+     able, blocking message passing. Figure 16.12b illustrates the general architecture,
+     and Figure 16.14 provides a more detailed look. The calling program makes a nor-
+     mal procedure call with parameters on its machine. For example,
+                                                 CALL P(X,Y)
+     where
+     P  procedure name
+     X  passed arguments
+     Y  returned values
+     It may or may not be transparent to the user that the intention is to invoke a remote
+     procedure on some other machine. A dummy or stub procedure P must be included
+     in the caller's address space or be dynamically linked to it at call time. This proce-
+     dure creates a message that identifies the procedure being called and includes the
+     parameters. It then sends this message to a remote system and waits for a reply.
+     When a reply is received, the stub procedure returns to the calling program, provid-
+     ing the returned values.
+     At the remote machine, another stub program is associated with the called
+     procedure. When a message comes in, it is examined and a local CALL P(X, Y) is
+     generated. This remote procedure is thus called locally, so its normal assumptions
+     about where to find parameters, the state of the stack, and so on are identical to the
+     case of a purely local procedure call.
+     Several design issues are associated with remote procedure calls, and these are
+     addressed in the remainder of this section.
+                        Client                                           Remote server
+                        application                                      application
+     Local                           Local
+     response                        response
+                        Local                                                           Local
+                        procedure                                        Local          procedure
+                        calls                                            response           call
+     Local application               Local stub                                 Local stub
+     or                                           Remote procedure call
+     operating system                RPC                                           RPC
+                                     mechanism                           mechanism
+                                                  Remote procedure call
+     Figure 16.14  Remote Procedure Call Mechanism
+
+                                         16.4 / REMOTE PROCEDURE CALLS                697
+Parameter Passing
+Most programming languages allow parameters to be passed as values (call by
+value) or as pointers to a location that contains the value (call by reference). Call by
+value is simple for a remote procedure call: The parameters are simply copied into
+the message and sent to the remote system. It is more difficult to implement call by
+reference. A unique, systemwide pointer is needed for each object. The overhead
+for this capability may not be worth the effort.
+Parameter Representation
+Another issue is how to represent parameters and results in messages. If the called
+and calling programs are in identical programming languages on the same type of
+machines with the same operating system, then the representation requirement
+may present no problems. If there are differences in these areas, then there will
+probably be differences in the ways in which numbers and even text are repre-
+sented. If a full-blown communications architecture is used, then this issue is han-
+dled by the presentation layer. However, the overhead of such an architecture has
+led to the design of remote procedure call facilities that bypass most of the com-
+munications architecture and provide their own basic communications facility. In
+that case, the conversion responsibility falls on the remote procedure call facility
+(e.g., see [GIBB87]).
+       The best approach to this problem is to provide a standardized format for
+common objects, such as integers, floating-point numbers, characters, and character
+strings. Then the native parameters on any machine can be converted to and from
+the standardized representation.
+Client/Server Binding
+Binding specifies how the relationship between a remote procedure and the
+calling program will be established. A binding is formed when two applications
+have made a logical connection and are prepared to exchange commands and
+data.
+       Nonpersistent   binding    means  that     a  logical  connection  is  established
+between the two processes at the time of the remote procedure call and that as
+soon as the values are returned, the connection is dismantled. Because a con-
+nection requires the maintenance of state information on both ends, it consumes
+resources. The nonpersistent style is used to conserve those resources. On the
+other hand, the overhead involved in establishing connections makes nonpersist-
+ent binding inappropriate for remote procedures that are called frequently by the
+same caller.
+       With persistent binding, a connection that is set up for a remote procedure
+call is sustained after the procedure return. The connection can then be used for
+future remote procedure calls. If a specified period of time passes with no activ-
+ity on the connection, then the connection is terminated. For applications that
+make many repeated calls to remote procedures, persistent binding maintains the
+logical connection and allows a sequence of calls and returns to use the same
+connection.
+
+698  CHAPTER 16 / DISTRIBUTED PROCESSING, CLIENT/SERVER, AND CLUSTERS
+     Synchronous versus Asynchronous
+     The concepts of synchronous and asynchronous remote procedure calls are analo-
+     gous to the concepts of blocking and nonblocking messages. The traditional remote
+     procedure call is synchronous, which requires that the calling process wait until the
+     called process returns a value. Thus, the synchronous RPC behaves much like a
+     subroutine call.
+         The synchronous RPC is easy to understand and program because its behavior
+     is predictable. However, it fails to exploit fully the parallelism inherent in distrib-
+     uted applications. This limits the kind of interaction the distributed application can
+     have, resulting in lower performance.
+         To provide greater flexibility, various asynchronous RPC facilities have been
+     implemented to achieve a greater degree of parallelism while retaining the famili-
+     arity and simplicity of the RPC [ANAN92]. Asynchronous RPCs do not block the
+     caller; the replies can be received as and when they are needed, thus allowing client
+     execution to proceed locally in parallel with the server invocation.
+         A typical asynchronous RPC use is to enable a client to invoke a server repeatedly
+     so that the client has a number of requests in the pipeline at one time, each with its own
+     set of data. Synchronization of client and server can be achieved in one of two ways:
+     1.  A higher-layer application in the client and server can initiate the exchange
+         and then check at the end that all requested actions have been performed.
+     2.  A client can issue a string of asynchronous RPCs followed by a final syn-
+         chronous RPC. The server will respond to the synchronous RPC only after
+         completing all of the work requested in the preceding asynchronous RPCs.
+         In some schemes, asynchronous RPCs require no reply from the server and
+     the server cannot send a reply message. Other schemes either require or allow a
+     reply, but the caller does not wait for the reply.
+     Object-Oriented Mechanisms
+     As object-oriented technology becomes more prevalent in operating system design,
+     client/server designers have begun to embrace this approach. In this approach, cli-
+     ents and servers ship messages back and forth between objects. Object communica-
+     tions may rely on an underlying message or RPC structure or be developed directly
+     on top of object-oriented capabilities in the operating system.
+         A client that needs a service sends a request to an object request broker, which
+     acts as a directory of all the remote service available on the network (Figure 16.12c).
+     The broker calls the appropriate object and passes along any relevant data. Then
+     the remote object services the request and replies to the broker, which returns the
+     response to the client.
+         The success of the object-oriented approach depends on standardization
+     of the object mechanism. Unfortunately, there are several competing designs
+     in this area. One is Microsoft's Component Object Model (COM), the basis for
+     Object Linking and Embedding (OLE). A competing approach, developed by the
+     Object Management Group, is the Common Object Request Broker Architecture
+     (CORBA), which has wide industry support. IBM, Apple, Sun, and many other
+     vendors support the CORBA approach.
+
+                                                                16.5 / CLUSTERS                 699
+16.5  CLUSTERS
+      Clustering is an alternative to symmetric multiprocessing (SMP) as an approach to
+      providing high performance and high availability and is particularly attractive for
+      server applications. We can define a cluster as a group of interconnected, whole
+      computers working together as a unified computing resource that can create the
+      illusion of being one machine. The term whole computer means a system that can
+      run on its own, apart from the cluster; in the literature, each computer in a cluster is
+      typically referred to as a node.
+         [BREW97] lists four benefits that can be achieved with clustering. These can
+      also be thought of as objectives or design requirements:
+      �  Absolute scalability: It is possible to create large clusters that far surpass the
+         power of even the largest stand-alone machines. A cluster can have dozens or
+         even hundreds of machines, each of which is a multiprocessor.
+      �  Incremental scalability: A cluster is configured in such a way that it is possible
+         to add new systems to the cluster in small increments. Thus, a user can start
+         out with a modest system and expand it as needs grow, without having to go
+         through a major upgrade in which an existing small system is replaced with a
+         larger system.
+      �  High availability: Because each node in a cluster is a stand-alone computer,
+         the failure of one node does not mean loss of service. In many products, fault
+         tolerance is handled automatically in software.
+      �  Superior price/performance: By using commodity building blocks, it is possible
+         to put together a cluster with equal or greater computing power than a single
+         large machine, at much lower cost.
+      Cluster Configurations
+      In the literature, clusters are classified in a number of different ways. Perhaps the sim-
+      plest classification is based on whether the computers in a cluster share access to the
+      same disks. Figure 16.15a shows a two-node cluster in which the only interconnection
+      is by means of a high-speed link that can be used for message exchange to coordinate
+      cluster activity. The link can be a LAN that is shared with other computers that are
+      not part of the cluster, or the link can be a dedicated interconnection facility. In the
+      latter case, one or more of the computers in the cluster will have a link to a LAN
+      or WAN so that there is a connection between the server cluster and remote client
+      systems. Note that in the figure, each computer is depicted as being a multiprocessor.
+      This is not necessary but does enhance both performance and availability.
+         In the simple classification depicted in Figure 16.15, the other alternative is
+      a shared-disk cluster. In this case, there generally is still a message link between
+      nodes. In addition, there is a disk subsystem that is directly linked to multiple com-
+      puters within the cluster. In Figure 16.15b, the common disk subsystem is a RAID
+      system. The use of RAID or some similar redundant disk technology is common in
+      clusters so that the high availability achieved by the presence of multiple computers
+      is not compromised by a shared disk that is a single point of failure.

@@ -1,0 +1,80 @@
+Linux Virtual Machine Process Scheduling
+468  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+      it has used up its current time quantum, the kernel lowers its priority. Thus, proces-
+      sor-bound threads tend toward lower priorities and I/O-bound threads tend toward
+      higher priorities. In the case of I/O-bound threads, the kernel boosts the priority
+      more for interactive waits (e.g., wait on keyboard or mouse) than for other types
+      of I/O (e.g., disk I/O). Thus, interactive threads tend to have the highest priorities
+      within the variable priority class.
+      Multiprocessor Scheduling
+      When Windows is run on a single processor, the highest-priority thread is always
+      active unless it is waiting on an event. If there is more than one thread that has
+      the same highest priority, then the processor is shared, round robin, among all the
+      threads at that priority level. In a multiprocessor system with N processors, the ker-
+      nel tries to give the N processors to the N highest-priority threads that are ready
+      to run. The remaining, lower priority, threads must wait until the other threads
+      block or have their priority decay. Lower-priority threads may also have their pri-
+      ority boosted to 15 for a very short time if they are being starved, solely to correct
+      instances of priority inversion.
+      The foregoing scheduling discipline is affected by the processor affinity
+      attribute of a thread. If a thread is ready to execute but the only available processors
+      are not in its processor affinity set, then that thread is forced to wait, and the kernel
+      schedules the next available thread.
+10.7  LINUX VIRTUAL MACHINE PROCESS SCHEDULING
+      The Linux VServer virtual machine facility, introduced in Chapter 2, provides a
+      way of controlling VM use of processor time. VServer overlays a token bucket filter
+      (TBF) on top of the standard Linux schedule. The purpose of the TBF is to deter-
+      mine how much of the processor execution time (single processor, multiprocessor,
+      or multicore) is allocated to each VM. If only the underlying Linux scheduler is
+      used to globally schedule processes across all VMs, then resource hunger processes
+      in one VM crowd out processes in other VMs.
+      Figure 10.16 illustrates the TBF concept. For each VM, a bucket is defined
+      with a capacity of S tokens. Tokens are added to the bucket at a rate of R tokens
+      during every time interval of length T. When the bucket is full, additional incoming
+      tokens are simply discarded. When a process is executing on this VM, it consumes
+      one token for each timer clock tick. If the bucket empties, the process is put on
+      hold and cannot be restarted until the bucket is refilled to a minimum threshold
+      value of M tokens. At that point, the process is rescheduled. A significant conse-
+      quence of the TBF approach is that a VM may accumulate tokens during a period of
+      quiescence, and then later use the tokens in a burst when required.
+      Adjusting the values of R and T allows for regulating the percentage of capac-
+      ity that a VM can claim. For a single processor, we can define capacity allocation
+      as follows:
+                   R  = Fraction of processor allocation
+                   T
+
+                                                                         10.8 / SUMMARY        469
+                                  token input rate =
+                               R/T tokens per second
+                                                                         bucket size =
+               current bucket                                            S tokens
+               occupancy                                    minimum
+                                                            threshold =
+                                                            M tokens
+                                  running process consumes
+                                     1 token/timer tick
+               Figure 10.16    Linux VServer Token Bucket Scheme
+      This equation denotes the fraction of a single processor in a system. Thus, for exam-
+      ple, if a system is multicore with four cores and we wish to provide one VM on
+      an average of one dedicated processor, then we set R = 1 and T = 4. The overall
+      system is limited as follows. If there are N VMs, then:
+                                        N    Ri
+                                        a    Ti       ...1
+                                        i=1
+      The parameters S and M are set so as to penalize a VM after a certain amount
+      of burst time. The following parameters must be configured or allocated for a VM:
+      following a burst time of B, the VM suffers a hold time of H. With these parameters,
+      it is possible to calculate the desired values of S and M as follows:
+                                  M=W*H*                       R
+                                                               T
+                               S  =  W  *    B  *     a1    -  Rb
+                                                                  T
+      where W is the rate at which the schedule runs (makes decisions). For example, consider
+      a VM with a limit of 1/2 of processor time, and we wish to say that after using the proces-
+      sor for 30 seconds, there will be a hold time of 5 seconds. The scheduler runs at 1,000 Hz.
+      This requirement is met with the following values: M  1,000 * 5 * 0.5  2,500
+      tokens; S = 1,000 * 30 * (1 - 0.5) = 15,000 tokens.
+10.8  SUMMARY
+      With a tightly coupled multiprocessor, multiple processors have access to the same
+      main memory. In this configuration, the scheduling structure is somewhat more
+      complex. For example, a given process may be assigned to the same processor for

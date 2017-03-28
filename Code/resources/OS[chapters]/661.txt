@@ -1,0 +1,1607 @@
+Computer Security Techniques
+                                 CHAPTER
+COMPUTER SECURITY
+TECHNIQUES
+15.1  Authentication
+      Password-Based Authentication
+      Token-Based Authentication
+      Biometric Authentication
+15.2  Access Control
+      Discretionary Access Control
+      Role-Based Access Control
+15.3  Intrusion Detection
+      Basic Principles
+      Host-Based Intrusion Detection Techniques
+      Audit Records
+15.4  Malware Defense
+      Antivirus Approaches
+      Worm Countermeasures
+      Bot Countermeasures
+      Rootkit Countermeasures
+15.5  Dealing with Buffer Overflow Attacks
+      Compile-Time Defenses
+      Run-Time Defenses
+15.6  Windows 7 Security
+      Access Control Scheme
+      Access Token
+      Security Descriptors
+15.7  Recommended Reading and Web Sites
+15.8  Key Terms, Review Questions, and Problems
+                                                 639
+
+640  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+         To guard against the baneful influence exerted by strangers is therefore
+         an elementary dictate of savage prudence. Hence before strangers are
+         allowed to enter a district, or at least before they are permitted to mingle
+         freely with the inhabitants, certain ceremonies are often performed by
+         the natives of the country for the purpose of disarming the strangers
+         of their magical powers, or of disinfecting, so to speak, the tainted
+         atmosphere by which they are supposed to be surrounded.
+                                     --THE GOLDEN BOUGH, Sir James George Frazer
+      LEARNING OBJECTIVES
+      After studying this chapter, you should be able to:
+      ·     Define and compare three methods of user authentication.
+      ·     Compare and contrast two methods of access control.
+      ·     Explain the basic principles and techniques of intrusion detection.
+      ·     Explain the basic principles and techniques of malware defense.
+      ·     Understand how to defend against buffer overflow attacks.
+      ·     Explain the file system used in Windows 7.
+      This chapter introduces common measures used to counter the security threats
+      discussed in Chapter 14.
+15.1  AUTHENTICATION
+      User authentication was introduced in Section 3.6. Note that user authentication is
+      distinct from message authentication. Message authentication is a procedure that
+      allows communicating parties to verify that the contents of a received message have
+      not been altered and that the source is authentic. This chapter is concerned solely
+      with user authentication.
+      Password-Based Authentication
+      A widely used line of defense against intruders is the password system. Virtually all
+      multiuser systems, network-based servers, Web-based e-commerce sites, and other
+      similar services require that a user provide not only a name or identifier (ID) but
+      also a password. The system compares the password to a previously stored pass-
+      word for that user ID, maintained in a system password file. The password serves
+      to authenticate the ID of the individual logging on to the system. In turn, the ID
+      provides security in the following ways:
+         ·  The ID determines whether the user is authorized to gain access to a system.
+            In some systems, only those who already have an ID filed on the system are
+            allowed to gain access.
+
+                                                     15.1 / AUTHENTICATION             641
+·  The ID determines the privileges accorded to the user. A few users may have
+   supervisory or "superuser" status that enables them to read files and perform
+   functions that are especially protected by the operating system. Some systems
+   have guest or anonymous accounts, and users of these accounts have more
+   limited privileges than others.
+·  The ID is used in what is referred to as discretionary access control. For exam-
+   ple, by listing the IDs of the other users, a user may grant permission to them
+   to read files owned by that user.
+THE USE OF HASHED PASSWORDS           A widely used password security technique is
+the use of hashed passwords and a salt value. This scheme is found on virtually all
+UNIX variants as well as on a number of other operating systems. The following
+procedure is employed (Figure 15.1a). To load a new password into the system,
+the user selects or is assigned a password. This password is combined with a fixed-
+length salt value [MORR79]. In older implementations, this value is related to the
+time at which the password is assigned to the user. Newer implementations use a
+pseudorandom or random number. The password and salt serve as inputs to a hashing
+algorithm to produce a fixed-length hash code. The hash algorithm is designed to
+be slow to execute to thwart attacks. The hashed password is then stored, together
+with a plaintext copy of the salt, in the password file for the corresponding user
+ID. The hashed-password method has been shown to be secure against a variety of
+cryptanalytic attacks [WAGN00].
+   When a user attempts to log on to a UNIX system, the user provides an ID
+and a password (Figure 15.1b). The operating system uses the ID to index into the
+password file and retrieve the plaintext salt and the encrypted password. The salt
+and user-supplied password are used as input to the encryption routine. If the result
+matches the stored value, the password is accepted.
+   The salt serves three purposes:
+·  It prevents duplicate passwords from being visible in the password file. Even
+   if two users choose the same password, those passwords will be assigned
+   different salt values. Hence, the hashed passwords of the two users will
+   differ.
+·  It greatly increases the difficulty of offline dictionary attacks. For a salt of
+   length b bits, the number of possible passwords is increased by a factor of 2b,
+   increasing the difficulty of guessing a password in a dictionary attack.
+·  It becomes nearly impossible to find out whether a person with passwords on
+   two or more systems has used the same password on all of them.
+   To see the second point, consider the way that an offline dictionary attack
+would work. The attacker obtains a copy of the password file. Suppose first that the
+salt is not used. The attacker's goal is to guess a single password. To that end, the
+attacker submits a large number of likely passwords to the hashing function. If any
+of the guesses matches one of the hashes in the file, then the attacker has found a
+password that is in the file. But faced with the UNIX scheme, the attacker must take
+each guess and submit it to the hash function once for each salt value in the diction-
+ary file, multiplying the number of guesses that must be checked.
+
+642  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+                               Password                    Password file
+           Salt                                           User ID   Salt   Hash code
+                    Slow hash                  Load
+                    function
+                               (a) Loading a new password
+                               Password file
+           User ID             User ID   Salt  Hash code
+                                                                    Salt
+                    Select                                                                Password
+                                                                           Slow hash
+                                                                           function
+                                                          Hashed password  Compare
+                               (b) Verifying a password
+     Figure 15.1            UNIX Password Scheme
+     There are two threats to the UNIX password scheme. First, a user can gain
+     access on a machine using a guest account or by some other means and then run a
+     password guessing program, called a password cracker, on that machine. The attacker
+     should be able to check many thousands of possible passwords with little resource
+     consumption. Second, if an opponent is able to obtain a copy of the password file,
+     then a cracker program can be run on another machine at leisure. This enables the
+     opponent to run through millions of possible passwords in a reasonable period.
+     UNIX  IMPLEMENTATIONS               Since       the  original  development       of  UNIX,     most
+     implementations have relied on the following password scheme. Each user selects a
+
+                                                             15.1 / AUTHENTICATION       643
+password of up to eight printable characters in length. This is converted into a 56-bit
+value (using 7-bit ASCII) that serves as the key input to an encryption routine. The
+hash routine, known as crypt(3), is based on DES. A 12-bit salt value is used. The
+modified DES algorithm is executed with a data input consisting of a 64-bit block
+of zeros. The output of the algorithm then serves as input for a second encryption.
+This process is repeated for a total of 25 encryptions. The resulting 64-bit output
+is then translated into an 11-character sequence. The modification of the DES
+algorithm converts it into a one-way hash function. The crypt(3) routine is designed
+to discourage guessing attacks. Software implementations of DES are slow compared
+to hardware versions, and the use of 25 iterations multiplies the time required by 25.
+This particular implementation is now considered woefully inadequate. For
+example, [PERR03] reports the results of a dictionary attack using a supercom-
+puter. The attack was able to process over 50 million password guesses in about
+80 minutes. Further, the results showed that for about $10,000 anyone should be
+able to do the same in a few months using one uniprocessor machine. Despite its
+known weaknesses, this UNIX scheme is still often required for compatibility with
+existing account management software or in multivendor environments.
+There are other, much stronger, hash/salt schemes available for UNIX. The
+recommended hash function for many UNIX systems, including Linux, Solaris, and
+FreeBSD, is based on the MD5 secure hash algorithm (which is similar to, but not
+as secure as, SHA-1).1 The MD5 crypt routine uses a salt of up to 48 bits and effec-
+tively has no limitations on password length. It produces a 128-bit hash value. It is
+also far slower than crypt(3). To achieve the slowdown, MD5 crypt uses an inner
+loop with 1,000 iterations.
+Probably the most secure version of the UNIX hash/salt scheme was devel-
+oped for OpenBSD, another widely used open source UNIX. This scheme, reported
+in [PROV99], uses a hash function based on the Blowfish symmetric block cipher.
+The hash function, called Bcrypt, is quite slow to execute. Bcrypt allows passwords
+of up to 55 characters in length and requires a random salt value of 128 bits, to
+produce a 192-bit hash value. Bcrypt also includes a cost variable; an increase in
+the cost variable causes a corresponding increase in the time required to perform a
+Bcyrpt hash. The cost assigned to a new password is configurable, so that adminis-
+trators can assign a higher cost to privileged users.
+Token-Based Authentication
+Objects that a user possesses for the purpose of user authentication are called
+tokens. In this subsection, we examine two types of tokens that are widely used;
+these are cards that have the appearance and size of bank cards.
+MEMORY CARDS  Memory cards can store but not process data. The most common
+such card is the bank card with a magnetic stripe on the back. A magnetic stripe
+can store only a simple security code, which can be read (and unfortunately
+reprogrammed) by an inexpensive card reader. There are also memory cards that
+include an internal electronic memory.
+1See Appendix K for a discussion of secure hash algorithms.
+
+644  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+        Memory cards can be used alone for physical access, such as a hotel room. For
+     computer user authentication, such cards are typically used with some form of pass-
+     word or personal identification number (PIN). A typical application is an automatic
+     teller machine (ATM).
+        The memory card, when combined with a PIN or password, provides signifi-
+     cantly greater security than a password alone. An adversary must gain physical
+     possession of the card (or be able to duplicate it) plus must gain knowledge of the
+     PIN. Among the potential drawbacks are the following [NIST95]:
+     ·  Requires special reader: This increases the cost of using the token and creates
+        the requirement to maintain the security of the reader's hardware and software.
+     ·  Token loss: A lost token temporarily prevents its owner from gaining system
+        access. Thus, there is an administrative cost in replacing the lost token. In
+        addition, if the token is found, stolen, or forged, then an adversary now need
+        only determine the PIN to gain unauthorized access.
+     ·  User dissatisfaction: Although users may have no difficulty in accepting the
+        use of a memory card for ATM access, its use for computer access may be
+        deemed inconvenient.
+     SMART CARDS  A wide variety of devices qualify as smart tokens. These can be
+     categorized along three dimensions that are not mutually exclusive:
+     ·  Physical characteristics: Smart tokens include an embedded microprocessor.
+        A smart token that looks like a bank card is called a smart card. Other smart
+        tokens can look like calculators, keys, or other small portable objects.
+     ·  Interface: Manual interfaces include a keypad and display for human/token
+        interaction. Smart tokens with an electronic interface communicate with a
+        compatible reader/writer.
+     ·  Authentication protocol: The purpose of a smart token is to provide a means
+        for user authentication. We can classify the authentication protocols used with
+        smart tokens into three categories:
+        -- Static: With a static protocol, the user authenticates himself or herself to the
+        token and then the token authenticates the user to the computer. The latter
+        half of this protocol is similar to the operation of a memory token.
+        -- Dynamic password generator: In this case, the token generates a unique
+        password periodically (e.g., every minute). This password is then entered
+        into the computer system for authentication, either manually by the user or
+        electronically via the token. The token and the computer system must be
+        initialized and kept synchronized so that the computer knows the password
+        that is current for this token.
+        -- Challenge-response: In this case, the computer system generates a chal-
+        lenge, such as a random string of numbers. The smart token generates a
+        response based on the challenge. For example, public-key cryptography
+        could be used and the token could encrypt the challenge string with the
+        token's private key.
+
+                                                   15.1 / AUTHENTICATION                645
+   For user authentication to computer, the most important category of smart
+token is the smart card, which has the appearance of a credit card, has an electronic
+interface, and may use any of the type of protocols just described. The remainder of
+this section discusses smart cards.
+   A smart card contains within it an entire microprocessor, including processor,
+memory, and I/O ports. Some versions incorporate a special coprocessing circuit for
+cryptographic operation to speed the task of encoding and decoding messages or
+generating digital signatures to validate the information transferred. In some cards,
+the I/O ports are directly accessible by a compatible reader by means of exposed
+electrical contacts. Other cards rely instead on an embedded antenna for wireless
+communication with the reader.
+Biometric Authentication
+A biometric authentication system attempts to authenticate an individual based on
+his or her unique physical characteristics. These include static characteristics, such
+as fingerprints, hand geometry, facial characteristics, and retinal and iris patterns;
+and dynamic characteristics, such as voiceprint and signature. In essence, biomet-
+rics is based on pattern recognition. Compared to passwords and tokens, biometric
+authentication is both technically complex and expensive. While it is used in a num-
+ber of specific applications, biometrics has yet to mature as a standard tool for user
+authentication to computer systems.
+   A number of different types of physical characteristics are either in use or
+under study for user authentication. The most common are the following:
+·  Facial characteristics: Facial characteristics are the most common means of
+   human-to-human identification; thus it is natural to consider them for iden-
+   tification by computer. The most common approach is to define characteris-
+   tics based on relative location and shape of key facial features, such as eyes,
+   eyebrows, nose, lips, and chin shape. An alternative approach is to use an
+   infrared camera to produce a face thermogram that correlates with the under-
+   lying vascular system in the human face.
+·  Fingerprints: Fingerprints have been used as a means of identification for
+   centuries, and the process has been systematized and automated particu-
+   larly for law enforcement purposes. A fingerprint is the pattern of ridges and
+   furrows on the surface of the fingertip. Fingerprints are believed to be unique
+   across the entire human population. In practice, automated fingerprint recog-
+   nition and matching system extract a number of features from the fingerprint
+   for storage as a numerical surrogate for the full fingerprint pattern.
+·  Hand geometry: Hand geometry systems identify features of the hand, includ-
+   ing shape, and lengths and widths of fingers.
+·  Retinal pattern: The pattern formed by veins beneath the retinal surface is
+   unique and therefore suitable for identification. A retinal biometric system
+   obtains a digital image of the retinal pattern by projecting a low-intensity
+   beam of visual or infrared light into the eye.
+·  Iris: Another unique physical characteristic is the detailed structure of the iris.
+
+646  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+                             Hand                        Iris
+                             Signature  Retina
+         Cost
+                             Face       Finger
+                             Voice
+                                        Accuracy
+         Figure 15.2                Cost versus Accuracy of Various Biometric
+         Characteristics in User Authentication Schemes
+      ·  Signature: Each individual has a unique style of handwriting, and this is
+         reflected especially in the signature, which is typically a frequently written
+         sequence. However, multiple signature samples from a single individual will
+         not be identical. This complicates the task of developing a computer represen-
+         tation of the signature that can be matched to future samples.
+      ·  Voice: Whereas the signature style of an individual reflects not only the unique
+         physical attributes of the writer but also the writing habit that has developed,
+         voice patterns are more closely tied to the physical and anatomical characteris-
+         tics of the speaker. Nevertheless, there is still a variation from sample to sample
+         over time from the same speaker, complicating the biometric recognition task.
+         Figure 15.2 gives a rough indication of the relative cost and accuracy of these
+      biometric measures. The concept of accuracy does not apply to user authentication
+      schemes using smart cards or passwords. For example, if a user enters a password, it
+      either matches exactly the password expected for that user or not. In the case of bio-
+      metric parameters, the system instead must determine how closely a presented biomet-
+      ric characteristic matches a stored characteristic. Before elaborating on the concept of
+      biometric accuracy, we need to have a general idea of how biometric systems work.
+15.2  ACCESS CONTROL
+      An access control policy dictates what types of access are permitted, under what
+      circumstances, and by whom. Access control policies are generally grouped into the
+      following categories:
+      ·  Discretionary access control (DAC): Controls access based on the identity
+         of the requestor and on access rules (authorizations) stating what requestors
+         are (or are not) allowed to do. This policy is termed discretionary because an
+         entity might have access rights that permit the entity, by its own volition, to
+         enable another entity to access some resource.
+      ·  Mandatory access control (MAC): Controls access based on comparing secu-
+         rity labels (which indicate how sensitive or critical system resources are) with
+
+                                                        15.2 / ACCESS CONTROL             647
+   security clearances (which indicate system entities are eligible to access cer-
+   tain resources). This policy is termed mandatory because an entity that has
+   clearance to access a resource may not, just by its own volition, enable another
+   entity to access that resource.
+·  Role-based access control (RBAC): Controls access based on the roles that
+   users have within the system and on rules stating what accesses are allowed to
+   users in given roles.
+   DAC is the traditional method of implementing access control. This method
+was introduced in Chapter 12; we provide more detail in this section. MAC is a
+concept that evolved out of requirements for military information security and is
+beyond the scope of this book. RBAC has become increasingly popular and is intro-
+duced later in this section.
+   These three policies are not mutually exclusive (Figure 15.3). An access control
+mechanism can employ two or even all three of these policies to cover different
+classes of system resources.
+Discretionary Access Control2
+This section introduces a general model for DAC developed by Lampson, Graham,
+and Denning [LAMP71, GRAH72, DENN71]. The model assumes a set of subjects,
+a set of objects, and a set of rules that govern the access of subjects to objects. Let us
+define the protection state of a system to be the set of information, at a given point in
+time, that specifies the access rights for each subject with respect to each object. We can
+identify three requirements: representing the protection state, enforcing access rights,
+and allowing subjects to alter the protection state in certain ways. The model addresses
+all three requirements, giving a general, logical description of a DAC system.
+                  Discretionary                         Mandatory
+                  access control                        access control
+                              policy                    policy
+                                      Role-based
+                                      access control
+                                      policy
+                  Figure 15.3  Access Control Policies
+2Before continuing, the reader should review Section 12.8 and the discussion of UNIX file access control
+in Section 12.9.
+
+648  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+                 To represent the protection state, we extend the universe of objects in the
+          access control matrix to include the following:
+             ·   Processes: Access rights include the ability to delete a process, stop (block),
+                 and wake up a process.
+             ·   Devices: Access rights include the ability to read/write the device, to control
+                 its operation (e.g., a disk seek), and to block/unblock the device for use.
+             ·   Memory locations or regions: Access rights include the ability to read/write
+                 certain locations of regions of memory that are protected so that the default is
+                 that access is not allowed.
+             ·   Subjects: Access rights with respect to a subject have to do with the ability to grant
+                 or delete access rights of that subject to other objects, as explained subsequently.
+                 Figure 15.4 is an example (compare Figure 12.13a). For an access control
+          matrix A, each entry A[S, X] contains strings, called access attributes, that specify
+          the access rights of subject S to object X. For example, in Figure 15.4, S1 may read
+          file F2, because read appears in A[S1, F1].
+                 From a logical or functional point of view, a separate access control module
+          is associated with each type of object (Figure 15.5). The module evaluates each
+          request by a subject to access an object to determine if the access right exists. An
+          access attempt triggers the following steps:
+          1.     A subject S0 issues a request of type a for object X.
+          2.     The request causes the system (the operating system or an access control
+                 interface module of some sort) to generate a message of the form (S0, a, X) to
+                 the controller for X.
+          3.     The controller interrogates the access matrix A to determine if a is in A[S0, X].
+                 If so, the access is allowed; if not, the access is denied and a protection violation
+                 occurs. The violation should trigger a warning and an appropriate action.
+                 Figure 15.5 suggests that every access by a subject to an object is mediated
+          by the controller for that object, and that the controller's decision is based on the
+                                                          Objects
+                           Subjects                      Files         Processes       Disk drives
+                 S1        S2           S3       F1             F2     P1         P2   D1     D2
+             S1  control   owner        owner    read *         read   wakeup  wakeup  seek   owner
+                                        control                 owner
+Subjects     S2            control               write *  execute                      owner  seek *
+             S3                         control                 write  stop
+                                     *  copy flag set
+Figure 15.4      Extended  Access Control Matrix
+
+                                                                           15.2  /  ACCESS  CONTROL       649
+                                            System intervention
+    Subjects                Access control mechanisms                                       Objects
+Si           read F         (Si, read, F )
+                                                        Filesystem                          Files
+                                                        Memory                              Segments
+                                                        addressing                          & pages
+                                                        hardware
+Sj  wakeup P             (Sj, wakeup, P)                Process
+                                                        manager                             Processes
+                                                        Terminal                            Terminal
+                                                        & device                            & devices
+                                                        manager
+                                                        Instruction
+                                                        decoding                            Instructions
+                                                        hardware
+Sk  grant a to Sn, X     (Sk, grant, a, Sn, X)
+Sm  delete b from Sp, Y  (Sm, delete, b, Sp, Y)         Access
+                                                        matrix
+                                                        monitor
+                                                        Access
+                                                 write  matrix       read
+Figure 15.5  An Organization of the Access Control Function
+    current contents of the matrix. In addition, certain subjects have the authority to
+    make specific changes to the access matrix. A request to modify the access matrix is
+    treated as an access to the matrix, with the individual entries in the matrix treated as
+    objects. Such accesses are mediated by an access matrix controller, which controls
+    updates to the matrix.
+             The model also includes a set of rules that govern modifications to the access
+    matrix, shown in Table 15.1. For this purpose, we introduce the access rights owner
+    and control and the concept of a copy flag, explained in the subsequent paragraphs.
+             The first three rules deal with transferring, granting, and deleting access rights.
+    Suppose that the entry   exists in A[S0, X]. This means that S0 has access right                      to
+    subject X and, because of the presence of the copy flag, can transfer this right, with
+
+650  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+Table 15.1  Access Control System           Commands
+Rule        Command (by S0)                       Authorization                  Operation
+R1          transfer  e   a*  f  to  S,  X  ` *' in A[So, X]       store  e  a*  f  in  A[S,  X]
+                          a                                                  a
+R2          grant  e  a*  f  to  S,  X      `owner' in A[So, X]    store  e  a*  f  in  A[S,  X]
+                      a                                                      a
+R3          delete  from S, X               `control' in A[So, S]  delete  from A[S, X]
+                                                  or
+                                            `owner' in A[So, X]
+R4          w  read S, X                    `control' in A[So, S]  copy A[S, X] into w
+                                                  or
+                                            `owner' in A[So, X]
+R5          create object X                 None                   add column for X to A; store
+                                                                   `owner' in A[So, X]
+R6          destroy object X                `owner' in A[So, X]    delete column for X from A
+R7          create subject S                None                   add row for S to A; execute
+                                                                   create object S; store `control'
+                                                                   in A[S, S]
+R8          destroy subject S               `owner' in A[So, S]    delete row for S from A;
+                                                                   execute destroy object S
+      or without copy flag, to another subject. Rule R1 expresses this capability. A subject
+      would transfer the access right without the copy flag if there were a concern that the
+      new subject would maliciously transfer the right to another subject that should not
+      have that access right. For example, S1 may place read or read* in any matrix entry in
+      the F1 column. Rule R2 states that if S0 is designated as the owner of object X, then S0
+      can grant an access right to that object for any other subject. Rule 2 states that S0 can
+      add any access right to A[S, X] for any S, if S0 has owner access to X. Rule R3 permits
+      S0 to delete any access right from any matrix entry in a row for which S0 controls the
+      subject and for any matrix entry in a column for which S0 owns the object. Rule R4
+      permits a subject to read that portion of the matrix that it owns or controls.
+            The remaining rules in Table 15.1 govern the creation and deletion of subjects
+      and objects. Rule R5 states that any subject can create a new object, which it owns,
+      and can then grant and delete access to the object. Under rule R6, the owner of an
+      object can destroy the object, resulting in the deletion of the corresponding column
+      of the access matrix. Rule R7 enables any subject to create a new subject; the crea-
+      tor owns the new subject and the new subject has control access to itself. Rule R8
+      permits the owner of a subject to delete the row and column (if there are subject
+      columns) of the access matrix designated by that subject.
+            The set of rules in Table 15.1 is an example of the rule set that could be defined
+      for an access control system. The following are examples of additional or alternative
+      rules that could be included. A transfer-only right could be defined, which results in
+      the transferred right being added to the target subject and deleted from the trans-
+      ferring subject. The number of owners of an object or a subject could be limited to
+      one by not allowing the copy flag to accompany the owner right.
+
+                                                         15.2 / ACCESS CONTROL               651
+The ability of one subject to create another subject and to have owner access
+right to that subject can be used to define a hierarchy of subjects. For example, in
+Figure 15.4, S1 owns S2 and S3, so that S2 and S3 are subordinate to S1. By the rules
+of Table 15.1, S1 can grant and delete to S2 access rights that S1 already has. Thus, a
+subject can create another subject with a subset of its own access rights. This might be
+useful, for example, if a subject is invoking an application that is not fully trusted, and
+does not want that application to be able to transfer access rights to other subjects.
+Role-Based Access Control
+Traditional DAC systems define the access rights of individual users and groups of
+users. In contrast, RBAC is based on the roles that users assume in a system rather
+than the user's identity. Typically, RBAC models define a role as a job function within
+an organization. RBAC systems assign access rights to roles instead of individual users.
+In turn, users are assigned to different roles, either statically or dynamically, according
+to their responsibilities.
+RBAC now enjoys widespread commercial use and remains an area of active
+research. The National Institute of Standards and Technology (NIST) has issued a
+standard, Security Requirements for Cryptographic Modules (FIPS PUB 140-2, May 25,
+2001), that requires support for access control and administration through roles.
+The relationship of users to roles is many to many, as is the relationship of
+roles to resources, or system objects (Figure 15.6). The set of users changes, in some
+Users                       Roles                        Resources
+                            Role 1
+                            Role 2
+                            Role 3
+Figure 15.6                 Users, Roles, and Resources
+
+652  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+            environments frequently, and the assignment of a user to one or more roles may
+            also be dynamic. The set of roles in the system in most environments is likely to be
+            static, with only occasional additions or deletions. Each role will have specific access
+            rights to one or more resources. The set of resources and the specific access rights
+            associated with a particular role are also likely to change infrequently.
+                We can use the access matrix representation to depict the key elements of an
+            RBAC system in simple terms, as shown in Figure 15.7. The upper matrix relates
+            individual users to roles. Typically there are many more users than roles. Each
+            matrix entry is either blank or marked, the latter indicating that this user is assigned
+                                          R1       R2                  Rn
+                                  U1
+                                  U2
+                                  U3
+                                  U4
+                                  U5
+                                  U6
+                                  Um
+                                                        Objects
+                  R1     R2           Rn       F1       F1       P1        P2      D1     D2
+            R1  control  owner        owner    read *   read     wakeup    wakeup  seek   owner
+                                      control           owner
+            R2           control               write *  execute                    owner  seek *
+     Roles
+            Rn                        control           write    stop
+     Figure 15.7      Access Control Matrix Representation of RBAC
+
+                                               15.3 / INTRUSION DETECTION                     653
+      to this role. Note that a single user may be assigned multiple roles (more than one
+      mark in a row) and that multiple users may be assigned to a single role (more
+      than one mark in a column). The lower matrix has the same structure as the DAC
+      matrix, with roles as subjects. Typically, there are few roles and many objects, or
+      resources. In this matrix the entries are the specific access rights enjoyed by the
+      roles. Note that a role can be treated as an object, allowing the definition of role
+      hierarchies.
+          RBAC lends itself to an effective implementation of the principle of least
+      privilege. That is, each role should contain the minimum set of access rights needed
+      for that role. A user is assigned to a role that enables him or her to perform only
+      what is required for that role. Multiple users assigned to the same role enjoy the
+      same minimal set of access rights.
+15.3  INTRUSION DETECTION
+      Intrusion detection systems were introduced in Section 3.6.
+      Basic Principles
+      Authentication facilities, access control facilities, and firewalls all play a role in
+      countering intrusions. Another line of defense is intrusion detection, and this has
+      been the focus of much research in recent years. This interest is motivated by a
+      number of considerations, including the following:
+      1.  If an intrusion is detected quickly enough, the intruder can be identified and
+          ejected from the system before any damage is done or any data are compro-
+          mised. Even if the detection is not sufficiently timely to preempt the intruder,
+          the sooner that the intrusion is detected, the less the amount of damage and
+          the more quickly that recovery can be achieved.
+      2.  An effective IDS can serve as a deterrent, thus acting to prevent intrusions.
+      3.  Intrusion detection enables the collection of information about intrusion tech-
+          niques that can be used to strengthen intrusion prevention measures.
+          Intrusion detection is based on the assumption that the behavior of the intruder
+      differs from that of a legitimate user in ways that can be quantified. Of course, we
+      cannot expect that there will be a crisp, exact distinction between an attack by an
+      intruder and the normal use of resources by an authorized user. Rather, we must
+      expect that there will be some overlap.
+          Figure 15.8 suggests, in abstract terms, the nature of the task confronting the
+      designer of an IDS. Although the typical behavior of an intruder differs from the
+      typical behavior of an authorized user, there is an overlap in these behaviors. Thus,
+      a loose interpretation of intruder behavior, which will catch more intruders, will
+      also lead to a number of false positives, or authorized users identified as intruders.
+      On the other hand, an attempt to limit false positives by a tight interpretation of
+      intruder behavior will lead to an increase in false negatives, or intruders not identi-
+      fied as intruders. Thus, there is an element of compromise and art in the practice of
+      intrusion detection.
+
+654  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     Probability
+density function                             Profile of
+                  Profile of    authorized user
+             intruder behavior                    behavior
+                                                                                Overlap in observed
+                                                                                or expected behavior
+                                Average behavior            Average behavior    Measurable behavior
+                                of intruder                 of authorized user  parameter
+Figure 15.8       Profiles of Behavior of Intruders and Authorized Users
+                  In Anderson's study [ANDE80], it was postulated that one could, with reason-
+     able confidence, distinguish between a masquerader and a legitimate user. Patterns
+     of legitimate user behavior can be established by observing past history, and signifi-
+     cant deviation from such patterns can be detected. Anderson suggests that the task
+     of detecting a misfeasor (legitimate user performing in an unauthorized fashion) is
+     more difficult, in that the distinction between abnormal and normal behavior may be
+     small. Anderson concluded that such violations would be undetectable solely through
+     the search for anomalous behavior. However, misfeasor behavior might nevertheless
+     be detectable by intelligent definition of the class of conditions that suggest unau-
+     thorized use. Finally, the detection of the clandestine user was felt to be beyond the
+     scope of purely automated techniques. These observations, which were made in 1980,
+     remain true today.
+                  For the remainder of this section, we concentrate on host-based intrusion
+     detection.
+     Host-Based Intrusion Detection Techniques
+     Host-based IDSs add a specialized layer of security software to vulnerable or sensi-
+     tive systems; examples include database servers and administrative systems. The
+     host-based IDS monitors activity on the system in a variety of ways to detect suspi-
+     cious behavior. In some cases, an IDS can halt an attack before any damage is done,
+     but its primary purpose is to detect intrusions, log suspicious events, and send alerts.
+
+                                    15.3 / INTRUSION DETECTION                           655
+    The primary benefit of a host-based IDS is that it can detect both external and
+internal intrusions, something that is not possible either with network-based IDSs or
+firewalls.
+    Host-based IDSs follow one of two general approaches to intrusion detection:
+1.  Anomaly detection: Involves the collection of data relating to the behavior
+    of legitimate users over a period of time. Then statistical tests are applied to
+    observed behavior to determine with a high level of confidence whether that
+    behavior is not legitimate user behavior. The following are two approaches to
+    statistical anomaly detection:
+    a. Threshold detection: This approach involves defining thresholds, independ-
+    ent of user, for the frequency of occurrence of various events.
+    b. Profile based: A profile of the activity of each user is developed and used to
+    detect changes in the behavior of individual accounts.
+2.  Signature detection: Involves an attempt to define a set of rules or attack pat-
+    terns that can be used to decide that a given behavior is that of an intruder.
+    In essence, anomaly approaches attempt to define normal, or expected, behav-
+ior, whereas signature-based approaches attempt to define proper behavior.
+    In terms of the types of attackers listed earlier, anomaly detection is effective
+against masqueraders, who are unlikely to mimic the behavior patterns of the accounts
+they appropriate. On the other hand, such techniques may be unable to deal with mis-
+feasors. For such attacks, signature-based approaches may be able to recognize events
+and sequences that, in context, reveal penetration. In practice, a system may employ a
+combination of both approaches to be effective against a broad range of attacks.
+Audit Records
+A fundamental tool for intrusion detection is the audit record. Some record of ongoing
+activity by users must be maintained as input to an IDS. Basically, two plans are used:
+·   Native audit records: Virtually all multiuser operating systems include ac-
+    counting software that collects information on user activity. The advantage
+    of using this information is that no additional collection software is needed.
+    The disadvantage is that the native audit records may not contain the needed
+    information or may not contain it in a convenient form.
+·   Detection-specific audit records: A collection facility can be implemented that
+    generates audit records containing only that information required by the IDS.
+    One advantage of such an approach is that it could be made vendor independ-
+    ent and ported to a variety of systems. The disadvantage is the extra overhead
+    involved in having, in effect, two accounting packages running on a machine.
+    A good example of detection-specific audit records is one developed by
+Dorothy Denning [DENN87]. Each audit record contains the following fields:
+·   Subject: Initiators of actions. A subject is typically a terminal user but might
+    also be a process acting on behalf of users or groups of users. All activity arises
+    through commands issued by subjects. Subjects may be grouped into different
+    access classes, and these classes may overlap.
+
+656  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     ·   Action: Operation performed by the subject on or with an object; for example,
+         login, read, perform I/O, and execute.
+     ·   Object: Receptors of actions. Examples include files, programs, messages,
+         records, terminals, printers, and user- or program-created structures. When a
+         subject is the recipient of an action, such as electronic mail, then that subject
+         is considered an object. Objects may be grouped by type. Object granularity
+         may vary by object type and by environment. For example, database actions
+         may be audited for the database as a whole or at the record level.
+     ·   Exception-condition: Denotes which, if any, exception condition is raised on
+         return.
+     ·   Resource-usage: A list of quantitative elements in which each element gives
+         the amount used of some resource (e.g., number of lines printed or displayed,
+         number of records read or written, processor time, I/O units used, session
+         elapsed time).
+     ·   Time-stamp: Unique time-and-date stamp identifying when the action took
+         place.
+         Most user operations are made up of a number of elementary actions. For
+     example, a file copy involves the execution of the user command, which includes
+     doing access validation and setting up the copy, plus the read from one file, plus the
+     write to another file. Consider the command
+                     COPY GAME.EXE TO 6 Library7 GAME.EXE
+     issued by Smith to copy an executable file GAME from the current directory to the
+     <Library> directory. The following audit records may be generated:
+     Smith  execute  <Library>COPY.EXE            0          CPU  00002      11058721678
+     Smith  Read         <Smith>GAME.EXE          0          RECORDS  0      11058721679
+     Smith  execute  <Library>COPY.EXE           write-viol  RECORDS  0      11058721680
+     In this case, the copy is aborted because Smith does not have write permission to
+     <Library>.
+         The decomposition of a user operation into elementary actions has three
+     advantages:
+     1.  Because objects are the protectable entities in a system, the use of elemen-
+         tary actions enables an audit of all behavior affecting an object. Thus, the
+         system can detect attempted subversions of access controls (by noting an
+         abnormality in the number of exception conditions returned) and can detect
+         successful subversions (by noting an abnormality in the set of objects acces-
+         sible to the subject).
+     2.  Single-object, single-action audit records simplify the model and the imple-
+         mentation.
+
+                                                        15.4 / MALWARE DEFENSE                  657
+      3.  Because of the simple, uniform structure of the detection-specific audit
+          records, it may be relatively easy to obtain this information or at least part
+          of it by a straightforward mapping from existing native audit records to the
+          detection-specific audit records.
+15.4  MALWARE DEFENSE
+      Antivirus Approaches
+      The ideal solution to the threat of viruses is prevention: Do not allow a virus to
+      get into the system in the first place. This goal is, in general, impossible to achieve,
+      although prevention can reduce the number of successful viral attacks. The next
+      best approach is to be able to do the following:
+      ·   Detection: Once the infection has occurred, determine that it has occurred
+          and locate the virus.
+      ·   Identification: Once detection has been achieved, identify the specific virus
+          that has infected a program.
+      ·   Removal: Once the specific virus has been identified, remove all traces of
+          the virus from the infected program and restore it to its original state.
+          Remove the virus from all infected systems so that the disease cannot
+          spread further.
+      If detection succeeds but either identification or removal is not possible, then the
+      alternative is to discard the infected program and reload a clean backup version.
+          Advances in virus and antivirus technology go hand in hand. Early viruses
+      were relatively simple code fragments and could be identified and purged with rela-
+      tively simple antivirus software packages. As the virus arms race has evolved, both
+      viruses and, necessarily, antivirus software have grown more complex and sophis-
+      ticated. Increasingly sophisticated antivirus approaches and products continue to
+      appear. In this subsection, we highlight two of the most important.
+      GENERIC DECRYPTION         Generic decryption (GD) technology enables the antivirus
+      program to easily detect even the most complex polymorphic viruses while
+      maintaining fast scanning speeds [NACH97]. Recall that when a file containing a
+      polymorphic virus is executed, the virus must decrypt itself to activate. In order
+      to detect such a structure, executable files are run through a GD scanner, which
+      contains the following elements:
+      ·   CPU emulator: A software-based virtual computer. Instructions in an execut-
+          able file are interpreted by the emulator rather than executed on the under-
+          lying processor. The emulator includes software versions of all registers and
+          other processor hardware, so that the underlying processor is unaffected by
+          programs interpreted on the emulator.
+      ·   Virus signature scanner: A module that scans the target code looking for
+          known virus signatures.
+      · Emulation control module: Controls the execution of the target code.
+
+658  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+         At the start of each simulation, the emulator begins interpreting instructions
+     in the target code, one at a time. Thus, if the code includes a decryption routine that
+     decrypts and hence exposes the virus, that code is interpreted. In effect, the virus
+     does the work for the antivirus program by exposing the virus. Periodically, the
+     control module interrupts interpretation to scan the target code for virus signatures.
+         During interpretation, the target code can cause no damage to the actual per-
+     sonal computer environment, because it is being interpreted in a completely con-
+     trolled environment.
+         The most difficult design issue with a GD scanner is to determine how long to
+     run each interpretation. Typically, virus elements are activated soon after a program
+     begins executing, but this need not be the case. The longer the scanner emulates a
+     particular program, the more likely it is to catch any hidden viruses. However, the
+     antivirus program can take up only a limited amount of time and resources before
+     users complain of degraded system performance.
+     DIGITAL IMMUNE SYSTEM  The digital immune system is a comprehensive approach
+     to virus protection developed by IBM [KEPH97a, KEPH97b, WHIT99] and
+     subsequently refined by Symantec [SYMA01]. The motivation for this development
+     has been the rising threat of Internet-based virus propagation. We first say a few
+     words about this threat and then summarize IBM's approach.
+         Traditionally, the virus threat was characterized by the relatively slow spread
+     of new viruses and new mutations. Antivirus software was typically updated on a
+     monthly basis, and this was sufficient to control the problem. Also traditionally, the
+     Internet played a comparatively small role in the spread of viruses. But as [CHES97]
+     points out, two major trends in Internet technology have had an increasing impact
+     on the rate of virus propagation in recent years:
+     ·   Integrated mail systems: Systems such as Lotus Notes and Microsoft Outlook
+         make it very simple to send anything to anyone and to work with objects that
+         are received.
+     ·   Mobile-program systems: Capabilities such as Java and ActiveX allow pro-
+         grams to move on their own from one system to another.
+         In response to the threat posed by these Internet-based capabilities, IBM has
+     developed a prototype digital immune system. This system expands on the use of
+     program emulation discussed in the preceding subsection and provides a general-
+     purpose emulation and virus-detection system. The objective of this system is to
+     provide rapid response time so that viruses can be stamped out almost as soon as
+     they are introduced. When a new virus enters an organization, the immune system
+     automatically captures it, analyzes it, adds detection and shielding for it, removes it,
+     and passes information about that virus to systems running IBM AntiVirus so that it
+     can be detected before it is allowed to run elsewhere.
+         Figure 15.9 illustrates the typical steps in digital immune system operation:
+     1.  A monitoring program on each PC uses a variety of heuristics based on system
+         behavior, suspicious changes to programs, or family signature to infer that a
+         virus may be present. The monitoring program forwards a copy of any program
+         thought to be infected to an administrative machine within the organization.
+
+                                                                  15.4 / MALWARE DEFENSE              659
+                                                               1          Virus-
+                                                                          infected
+3              Virus                                                      client             Client
+                                2      Administrative          5          machine            machine
+Analyze virus  analysis                machine
+behavior and   machine
+structure                                                         6
+                                       Private                                      Client
+Extract                                network                    Client            machine
+signature                                                      machine
+               4
+Derive
+prescription   7
+                                       Administrative                       Client
+                                                machine
+                                                                     Other          Client
+                  Individual                           Client     private
+                  user                                            network
+Figure 15.9   Digital Immune System
+2.           The administrative machine encrypts the sample and sends it to a central virus
+             analysis machine.
+3.           This machine creates an environment in which the infected program can be
+             safely run for analysis. Techniques used for this purpose include emulation,
+             or the creation of a protected environment within which the suspect program
+             can be executed and monitored. The virus analysis machine then produces a
+             prescription for identifying and removing the virus.
+4.           The resulting prescription is sent back to the administrative machine.
+5.           The administrative machine forwards the prescription to the infected client.
+6.           The prescription is also forwarded to other clients in the organization.
+7.           Subscribers around the world receive regular antivirus updates that protect
+             them from the new virus.
+             The success of the digital immune system depends on the ability of the virus
+analysis machine to detect new and innovative virus strains. By constantly analyzing
+and monitoring the viruses found in the wild, it should be possible to continually
+update the digital immune software to keep up with the threat.
+BEHAVIOR-BLOCKING SOFTWARE             Unlike heuristics or fingerprint-based scanners,
+behavior blocking software integrates with the operating system of a host computer
+and monitors program behavior in real time for malicious actions [CONR02,
+NACH02]. The behavior blocking software then blocks potentially malicious actions
+before they have a chance to affect the system. Monitored behaviors can include
+· Attempts to open, view, delete, and/or modify files;
+· Attempts to format disk drives and other unrecoverable disk operations;
+
+660  CHAPTER 15 /               COMPUTER               SECURITY  TECHNIQUES
+                                                                          3. Behavior-blocking
+                                                                          software at server flags
+                                                                          suspicious code. The
+                                                                          blocker "sandboxes" the
+                                                                          suspicious software to
+1. Administrator sets                                                     prevent it from proceeding.
+acceptable software behavior
+policies and uploads them to
+a server. Policies can also be                                                                              Internet
+uploaded to desktops.                                            Sandbox
+                                                                       2. Malicious software
+                                !                                      manages to make it
+Administrator                                                          through the firewall.      Firewall
+                                                       Server running
+                       4. Server alerts administrator  behavior-blocking
+                       that suspicious code has been   software
+                       identified and sandboxed,
+                       awaiting administrator's
+                       decision on whether the code
+                       should be removed or allowed
+                       to run.
+Figure 15.10     Behavior-Blocking Software Operation
+              ·        Modifications to the logic of executable files or macros;
+              ·        Modification of critical system settings, such as start-up settings;
+              ·        Scripting of e-mail and instant messaging clients to send executable content; and
+              ·        Initiation of network communications.
+                       Figure 15.10 illustrates the operation of a behavior blocker. Behavior-blocking
+     software runs on server and desktop computers and is instructed through policies
+     set by the network administrator to let benign actions take place but to intercede
+     when unauthorized or suspicious actions occur. The module blocks any suspicious
+     software from executing. A blocker isolates the code in a sandbox, which restricts
+     the code's access to various OS resources and applications. The blocker then sends
+     an alert.
+                       Because a behavior blocker can block suspicious software in real time, it has
+     an advantage over such established antivirus detection techniques as fingerprinting
+     or heuristics. While there are literally trillions of different ways to obfuscate and
+     rearrange the instructions of a virus or worm, many of which will evade detection
+     by a fingerprint scanner or heuristic, eventually malicious code must make a well-
+     defined request to the operating system. Given that the behavior blocker can inter-
+     cept all such requests, it can identify and block malicious actions regardless of how
+     obfuscated the program logic appears to be.
+                       Behavior blocking alone has limitations. Because the malicious code must run
+     on the target machine before all its behaviors can be identified, it can cause harm
+
+                                                 15.4 / MALWARE DEFENSE               661
+before it has been detected and blocked. For example, a new virus might shuffle a
+number of seemingly unimportant files around the hard drive before infecting a single
+file and being blocked. Even though the actual infection was blocked, the user may be
+unable to locate his or her files, causing a loss to productivity or possibly worse.
+Worm Countermeasures
+There is considerable overlap in techniques for dealing with viruses and worms.
+Once a worm is resident on a machine, antivirus software can be used to detect it.
+In addition, because worm propagation generates considerable network activity,
+network activity and usage monitoring can form the basis of a worm defense.
+    To begin, let us consider the requirements for an effective worm countermeas-
+ure scheme:
+·   Generality: The approach taken should be able to handle a wide variety of
+    worm attacks, including polymorphic worms.
+·   Timeliness: The approach should respond quickly so as to limit the number
+    infected systems and the number of generated transmissions from infected
+    systems.
+·   Resiliency: The approach should be resistant to evasion techniques employed
+    by attackers to evade worm countermeasures.
+·   Minimal denial-of-service costs: The approach should result in minimal reduc-
+    tion in capacity or service due to the actions of the countermeasure software.
+    That is, in an attempt to contain worm propagation, the countermeasure
+    should not significantly disrupt normal operation.
+·   Transparency: The countermeasure software and devices should not require
+    modification to existing (legacy) OSs, application software, and hardware.
+·   Global and local coverage: The approach should be able to deal with attack
+    sources both from outside and inside the enterprise network.
+    No existing worm countermeasure scheme appears to satisfy all these require-
+ments. Thus, administrators typically need to use multiple approaches in defending
+against worm attacks.
+    Following [JHI07], we list six classes of worm defense:
+A.  Signature-based worm scan filtering: This type of approach generates a worm
+    signature, which is then used to prevent worm scans from entering/leaving a
+    network/host. Typically, this approach involves identifying suspicious flows
+    and generating a worm signature. This approach is vulnerable to the use of
+    polymorphic worms: Either the detection software misses the worm or, if it
+    is sufficiently sophisticated to deal with polymorphic worms, the scheme may
+    take a long time to react. [NEWS05] is an example of this approach.
+B.  Filter-based worm containment: This approach is similar to class A but focuses
+    on worm content rather than a scan signature. The filter checks a message
+    to determine if it contains worm code. An example is Vigilante [COST05],
+    which relies on collaborative worm detection at end hosts. This approach can
+    be quite effective but requires efficient detection algorithms and rapid alert
+    dissemination.
+
+662  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     C.  Payload-classification-based  worm  containment:       These        network-based
+         techniques examine packets to see if they contain a worm. Various anomaly
+         detection techniques can be used, but care is needed to avoid high levels
+         of false positives or negatives. An example of this approach is reported in
+         [CHIN05], which looks for exploit code in network flows. This approach does
+         not generate signatures based on byte patterns but rather looks for control
+         and data flow structures that suggest an exploit.
+     D.  Threshold random walk (TRW) scan detection: TRW exploits randomness in
+         picking destinations to connect to as a way of detecting if a scanner is in opera-
+         tion [JUNG04]. TRW is suitable for deployment in high-speed, low-cost net-
+         work devices. It is effective against the common behavior seen in worm scans.
+     E.  Rate limiting: This class limits the rate of scanlike traffic from an infected host.
+         Various strategies can be used, including limiting the number of new machines
+         a host can connect to in a window of time, detecting a high connection fail-
+         ure rate, and limiting the number of unique IP addresses a host can scan in a
+         window of time. [CHEN04] is an example. This class of countermeasures may
+         introduce longer delays for normal traffic. This class is also not suited for slow,
+         stealthy worms that spread slowly to avoid detection based on activity level.
+     F.  Rate halting: This approach immediately blocks outgoing traffic when a
+         threshold is exceeded either in outgoing connection rate or diversity of con-
+         nection attempts [JHI07]. The approach must include measures to quickly
+         unblock mistakenly blocked hosts in a transparent way. Rate halting can inte-
+         grate with a signature- or filter-based approach so that once a signature or
+         filter is generated, every blocked host can be unblocked. Rate halting appears
+         to offer a very effective countermeasure. As with rate limiting, rate halting
+         techniques are not suitable for slow, stealthy worms.
+     Bot Countermeasures
+     A number of the countermeasures discussed in this chapter make sense against bots,
+     including IDSs and digital immune systems. Once bots are activated and an attack is
+     underway, these countermeasures can be used to detect the attack. But the primary
+     objective is to try to detect and disable the botnet during its construction phase.
+     Rootkit Countermeasures
+     Rootkits can be extraordinarily difficult to detect and neutralize, particularly so
+     for kernel-level rootkits. Many of the administrative tools that could be used to
+     detect a rootkit or its traces can be compromised by the rootkit precisely so that it
+     is undetectable.
+         Countering rootkits requires a variety of network- and computer-level secu-
+     rity tools. Both network-based and host-based intrusion detection systems can look
+     for the code signatures of known rootkit attacks in incoming traffic. Host-based
+     antivirus software can also be used to recognize the known signatures.
+         Of course, there are always new rootkits and modified versions of existing
+     rootkits that display novel signatures. For these cases, a system needs to look for
+     behaviors that could indicate the presence of a rootkit, such as the interception of
+
+                        15.5 / DEALING WITH BUFFER OVERFLOW ATTACKS                        663
+      system calls or a keylogger interacting with a keyboard driver. Such behavior detec-
+      tion is far from straightforward. For example, antivirus software typically intercepts
+      system calls.
+         Another approach is to do some sort of file integrity check. An example of
+      this is RootkitRevealer, a freeware package from SysInternals. The package com-
+      pares the results of a system scan using APIs with the actual view of storage using
+      instructions that do not go through an API. Because a rootkit conceals itself by
+      modifying the view of storage seen by administrator calls, RootkitRevealer catches
+      the discrepancy.
+         If a kernel-level rootkit is detected, by any means, the only secure and reliable
+      way to recover is to do an entire new OS install on the infected machine.
+15.5  DEALING WITH BUFFER OVERFLOW ATTACKS3
+      Finding and exploiting a stack buffer overflow is not difficult. The large number
+      of exploits over the previous couple of decades clearly illustrates this. There is
+      consequently a need to defend systems against such attacks by either preventing
+      them, or at least detecting and aborting such attacks. This section discusses possible
+      approaches to implementing such protections. These can be broadly classified into
+      two categories:
+      ·  Compile-time defenses, which aim to harden programs to resist attacks in new
+         programs
+      ·  Run-time defenses, which aim to detect and abort attacks in existing programs
+      While suitable defenses have been known for a couple of decades, the very large
+      existing base of vulnerable software and systems hinders their deployment; hence
+      the interest in run-time defenses, which can be deployed in operating systems and
+      updates and can provide some protection for existing vulnerable programs. Most of
+      these techniques are mentioned in [LHEE03].
+      Compile-Time Defenses
+      Compile-time defenses aim to prevent or detect buffer overflows by instrument-
+      ing programs when they are compiled. The possibilities for doing this range from
+      choosing a high-level language that does not permit buffer overflows to encourag-
+      ing safe coding standards, using safe standard libraries, or including additional code
+      to detect corruption of the stack frame.
+      CHOICE OF PROGRAMMING LANGUAGE            One possibility is to write the program using
+      a modern high-level programming language, one that has a strong notion of variable
+      type and what constitutes permissible operations on them. Such languages are not
+      vulnerable to buffer overflow attacks, because their compilers include additional
+      code to enforce range checks automatically, removing the need for the programmer
+      to explicitly code them. The flexibility and safety provided by these languages
+      3The material in this section was developed by Lawrie Brown of the Australian Defence Force Academy.
+
+664  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     does come at a cost in resource use, both at compile time and also in additional
+     code that must execute at run-time to impose checks such as that on buffer limits.
+     These disadvantages are much less significant than they used to be, due to the rapid
+     increase in processor performance. Increasingly programs are being written in these
+     languages and hence should be immune to buffer overflows in their code (though
+     if they use existing system libraries or run-time execution environments written in
+     less safe languages, they may still be vulnerable). The distance from the underlying
+     machine language and architecture also means that access to some instructions and
+     hardware resources is lost. This limits their usefulness in writing code, such as device
+     drivers, that must interact with such resources. For these reasons, there is still likely
+     to be at least some code written in less safe languages such as C.
+     SAFE CODING TECHNIQUES  If languages such as C are being used, programmers
+     need to be aware that their ability to manipulate pointer addresses and access
+     memory directly comes at a cost. C was designed as a systems programming
+     language, running on systems that were vastly smaller and more constrained than
+     we now use. This meant that C's designers placed much more emphasis on space
+     efficiency and performance considerations than on type safety. They assumed that
+     programmers would exercise due care in writing code using these languages and
+     take responsibility for ensuring the safe use of all data structures and variables.
+     Unfortunately, as several decades of experience has shown, this has not been
+     the case. This may be seen in large legacy body of potentially unsafe code in the
+     UNIX and Linux operating systems and applications, some of which are potentially
+     vulnerable to buffer overflows.15.6 azx.
+     In order to harden these systems, the programmer needs to inspect the code
+     and rewrite any unsafe coding constructs in a safe manner. Given the rapid uptake
+     of buffer overflow exploits, this process has begun in some cases. A good exam-
+     ple is the OpenBSD project, which produces a free, multiplatform 4.4BSD-based
+     UNIX-like operating system. Among other technology changes, programmers have
+     undertaken an extensive audit of the existing code base, including the operating
+     system, standard libraries, and common utilities. This has resulted in what is widely
+     regarded as one of the safest operating systems in widespread use. The OpenBSD
+     project claims as of mid-2006 that there has only been one remote hole discov-
+     ered in the default install in more than 8 years. This is a clearly enviable record.
+     Microsoft have also undertaken a major project in reviewing their code base, partly
+     in response to continuing bad publicity over the number of vulnerabilities, including
+     many buffer overflow issues, that have been found in their operating systems and
+     applications code. This has clearly been a difficult process, though they claim that
+     their new Vista operating system will benefit greatly from this process.
+     LANGUAGE  EXTENSIONS    AND  USE          OF  SAFE  LIBRARIES       Given the problems
+     that can occur in C with unsafe array and pointer references, there have been a
+     number of proposals to augment compilers to automatically insert range checks
+     on such references. While this is fairly easy for statically allocated arrays, handling
+     dynamically allocated memory is more problematic, because the size information
+     is not available at compile-time. Handling this requires an extension to the
+     semantics of a pointer to include bounds information and the use of library routines
+
+                     15.5 / DEALING WITH BUFFER OVERFLOW ATTACKS                          665
+to ensure that these values are set correctly. Several such approaches are listed in
+[LHEE03]. However, there is generally a performance penalty with the use of
+such techniques that may or may not be acceptable. These techniques also require
+all programs and libraries that require these safety features to be recompiled with
+the modified compiler. While this can be feasible for a new release of an operating
+system and its associated utilities, there will still likely be problems with third-
+party applications.
+A common concern with C comes from the use of unsafe standard library
+routines, especially some of the string manipulation routines. One approach to
+improving the safety of systems has been to replace these with safer variants. This
+can include the provision of new functions, such as strlcpy() in the BSD fam-
+ily of systems, including OpenBSD. Using these requires rewriting the source to
+conform to the new safer semantics. Alternatively, it involves replacement of the
+standard string library with a safer variant. Libsafe is a well-known example of
+this. It implements the standard semantics but includes additional checks to ensure
+that the copy operations do not extend beyond the local variable space in the stack
+frame. So, while it cannot prevent corruption of adjacent local variables, it can
+prevent any modification of the old stack frame and return address values, and
+thus prevent the classic stack buffer overflow types of attack we examined previ-
+ously. This library is implemented as a dynamic library, arranged to load before
+the existing standard libraries, and can thus provide protection for existing pro-
+grams without requiring them to be recompiled, provided they dynamically access
+the standard library routines (as most programs do). The modified library code has
+been found to typically be at least as efficient as the standard libraries, and thus
+its use is an easy way of protecting existing programs against some forms of buffer
+overflow attacks.
+STACK PROTECTION MECHANISMS  An effective method for protecting programs
+against classic stack overflow attacks is to instrument the function entry and exit
+code to setup and then check its stack frame for any evidence of corruption. If
+any modification is found, the program is aborted rather than allowing the attack
+to proceed. There are several approaches to providing this protection, which we
+discuss next.
+Stackguard is one of the best known protection mechanisms. It is a GCC
+(GNU Compiler Collection) compiler extension that inserts additional function
+entry and exit code. The added function entry code writes a canary4 value below
+the old frame pointer address, before the allocation of space for local variables.
+The added function exit code checks that the canary value has not changed before
+continuing with the usual function exit operations of restoring the old frame pointer
+and transferring control back to the return address. Any attempt at a classic stack
+buffer overflow would have to alter this value in order to change the old frame
+pointer and return addresses, and would thus be detected, resulting in the program
+being aborted. For this defense to function successfully, it is critical that the canary
+4Named after the miner's canary used to detect poisonous air in a mine and thus warn the miners in time
+for them to escape.
+
+666  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     value be unpredictable and should be different on different systems. If this were not
+     the case, the attacker would simply ensure the shellcode included the correct canary
+     value in the required location. Typically, a random value is chosen as the canary
+     value on process creation and saved as part of the processes state. The code added
+     to the function entry and exit then uses this value.
+     There are some issues with using this approach. First, it requires that all pro-
+     grams needing protection be recompiled. Second, because the structure of the stack
+     frame has changed, it can cause problems with programs, such as debuggers, which
+     analyze stack frames. However, the canary technique has been used to recompile an
+     entire Linux distribution and provide it with a high level of resistance to stack over-
+     flow attacks. Similar functionality is available for Windows programs by compiling
+     them using Microsoft's /GS Visual C++ compiler option.
+     Run-Time Defenses
+     As has been noted, most of the compile-time approaches require recompilation
+     of existing programs. Hence, there is interest in run-time defenses that can be
+     deployed as operating systems updates to provide some protection for existing vul-
+     nerable programs. These defenses involve changes to the memory management of
+     the virtual address space of processes. These changes act either to alter the proper-
+     ties of regions of memory or to make predicting the location of targeted buffers
+     sufficiently difficult to thwart many types of attacks.
+     EXECUTABLE ADDRESS SPACE PROTECTION  Many of the buffer overflow attacks
+     involve copying machine code into the targeted buffer and then transferring
+     execution to it. A possible defense is to block the execution of code on the stack,
+     on the assumption that executable code should only be found elsewhere in the
+     processes address space.
+     To support this feature efficiently requires support from the processor's
+     memory management unit (MMU) to tag pages of virtual memory as being nonex-
+     ecutable. Some processors, such as the SPARC used by Solaris, have had support
+     for this for some time. Enabling its use in Solaris requires a simple kernel param-
+     eter change. Other processors, such as the x86 family, have not had this support
+     until recently, with the relatively recent addition of the no-execute bit in its MMU.
+     Extensions have been made available to Linux, BSD, and other UNIX-style sys-
+     tems to support the use of this feature. Some indeed are also capable of protecting
+     the heap as well as the stack, which also is the target of attacks. Support for enabling
+     no-execute protection is also included in recent Windows systems.
+     Making the stack (and heap) nonexecutable provides a high degree of pro-
+     tection against many types of buffer overflow attacks for existing programs; hence
+     the inclusion of this practice is standard in a number of recent operating systems
+     releases. However, one issue is support for programs that do need to place execut-
+     able code on the stack. This can occur, for example, in just-in-time compilers, such
+     as is used in the Java Run-time system. Executable code on the stack is also used to
+     implement nested functions in C (a GCC extension) and also Linux signal handlers.
+     Special provisions are needed to support these requirements. Nonetheless, this is
+     regarded as one of the best methods for protecting existing programs and hardening
+     systems against some attacks.
+
+                                                    15.6 / WINDOWS 7 SECURITY                   667
+      ADDRESS SPACE RANDOMIZATION       Another run-time technique that can be used
+      to thwart attacks involves manipulation of the location of key data structures in a
+      processes address space. In particular, recall that in order to implement the classic
+      stack overflow attack, the attacker needs to be able to predict the approximate
+      location of the targeted buffer. The attacker uses this predicted address to determine
+      a suitable return address to use in the attack to transfer control to the shellcode. One
+      technique to greatly increase the difficulty of this prediction is to change the address
+      at which the stack is located in a random manner for each process. The range of
+      addresses available on modern processors is large (32 bits), and most programs only
+      need a small fraction of that. Therefore, moving the stack memory region around by
+      a megabyte or so has minimal impact on most programs but makes predicting the
+      targeted buffer's address almost impossible.
+      Another target of attack is the location of standard library routines. In an
+      attempt to bypass protections such as nonexecutable stacks, some buffer overflow
+      variants exploit existing code in standard libraries. These are typically loaded at
+      the same address by the same program. To counter this form of attack, we can use
+      a security extension that randomizes the order of loading standard libraries by a
+      program and their virtual memory address locations. This makes the address of any
+      specific function sufficiently unpredictable as to render the chance of a given attack
+      correctly predicting its address very low.
+      The OpenBSD system includes versions of these extensions in its technologi-
+      cal support for a secure system.
+      GUARD PAGES     A final run-time technique that can be used places guard pages
+      between critical regions of memory in a processes address space. Again, this
+      exploits the fact that a process has much more virtual memory available than
+      it typically needs. Gaps are placed between the ranges of addresses used for
+      each of the components of the address space. These gaps, or guard pages, are
+      flagged in the MMU as illegal addresses, and any attempt to access them results
+      in the process being aborted. This can prevent buffer overflow attacks, typically
+      of global data, which attempt to overwrite adjacent regions in the processes
+      address space.
+      A further extension places guard pages between stack frames or between dif-
+      ferent allocations on the heap. This can provide further protection against stack and
+      heap overflow attacks, but at cost in execution time supporting the large number of
+      page mappings necessary.
+15.6  WINDOWS 7 SECURITY
+      A good example of the access control concepts we have been discussing is the
+      Windows access control facility, which exploits object-oriented concepts to provide
+      a powerful and flexible access control capability.
+      Windows provides a uniform access control facility that applies to processes,
+      threads, files, semaphores, windows, and other objects. Access control is governed
+      by two entities: an access token associated with each process and a security descrip-
+      tor associated with each object for which interprocess access is possible.
+
+668  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     Access Control Scheme
+     When a user logs on to a Windows system, Windows uses a name/password scheme
+     to authenticate the user. If the logon is accepted, a process is created for the user and
+     an access token is associated with that process object. The access token, whose details
+     are described later, include a security ID (SID), which is the identifier by which this
+     user is known to the system for purposes of security. The token also contains SIDs
+     for the security groups to which the user belongs. If the initial user process spawns a
+     new process, the new process object inherits the same access token.
+         The access token serves two purposes:
+     1.  It keeps all necessary security information together to speed access validation.
+         When any process associated with a user attempts access, the security subsys-
+         tem can make use of the token associated with that process to determine the
+         user's access privileges.
+     2.  It allows each process to modify its security characteristics in limited ways
+         without affecting other processes running on behalf of the user.
+         The chief significance of the second point has to do with privileges that may be
+     associated with a user. The access token indicates which privileges a user may have.
+     Generally, the token is initialized with each of these privileges in a disabled state.
+     Subsequently, if one of the user's processes needs to perform a privileged opera-
+     tion, the process may enable the appropriate privilege and attempt access. It would
+     be undesirable to share the same token among all of the user's processes, because in
+     that case enabling a privilege for one process enables it for all of them.
+         Associated with each object for which interprocess access is possible is a security
+     descriptor. The chief component of the security descriptor is an access control list that
+     specifies access rights for various users and user groups for this object. When a process
+     attempts to access this object, the SIDs in the process token are matched against the
+     access control list of the object to determine if access will be allowed or denied.
+         When an application opens a reference to a securable object, Windows veri-
+     fies that the object's security descriptor grants the process the requested access. If
+     the check succeeds, Windows caches the resulting granted access rights.
+         An important aspect of Windows security is the concept of impersonation,
+     which simplifies the use of security in a client/server environment. If client and
+     server talk through a RPC connection, the server can temporarily assume the iden-
+     tity of the client so that it can evaluate a request for access relative to that client's
+     rights. After the access, the server reverts to its own identity.
+     Access Token
+     Figure 15.11a shows the general structure of an access token, which includes the
+     following parameters:
+     ·   Security ID: Identifies a user uniquely across all of the machines on the net-
+         work. This generally corresponds to a user's logon name. Special user SIDs
+         were added in Windows 7 for use by processes and services. These specially
+         managed SIDs are designed for secure management; they do not use the ordi-
+         nary password polices human accounts do.
+
+                                               15.6   /  WINDOWS  7 SECURITY        669
+   Security ID (SID)         Flags                                ACL header
+   Group SIDS                Owner                                ACE header
+   Privileges                System access                        Access mask
+   Default owner             control list                         SID
+   Default ACL               Discretionary                        ACE header
+                             access
+                             control list                         Access mask
+                                                                  SID
+   (a) Access token          (b) Security descriptor     (c) Access control list
+   Figure 15.11   Windows Security Structures
+·  Group SIDs: A list of the groups to which this user belongs. A group is simply
+   a set of user IDs that are identified as a group for purposes of access control.
+   Each group has a unique group SID. Access to an object can be defined on the
+   basis of group SIDs, individual SIDs, or a combination. There is also a SID
+   which reflects the process integrity level (low, medium, high, or system).
+·  Privileges: A list of security-sensitive system services that this user may call,
+   for example CreateToken. Another example is the SeBackupPrivilege; users
+   with this privilege are allowed to use a backup tool to back up files that they
+   normally would not be able to read.
+·  Default owner: If this process creates another object, this field specifies the
+   owner of the new object. Generally, the owner of a new object is the same
+   as the owner of the spawning process. However, a user may specify that the
+   default owner of any processes spawned by this process is a group SID to
+   which this user belongs.
+·  Default ACL: This is an initial list of protections applied to the objects that
+   the user creates. The user may subsequently alter the ACL for any object that
+   it owns or that one of its groups owns.
+Security Descriptors
+Figure 15.11b shows the general structure of a security descriptor, which includes
+the following parameters:
+·  Flags: Define the type and contents of a security descriptor. The flags indicate
+   whether or not the SACL and DACL are present, whether or not they were
+   placed on the object by a defaulting mechanism, and whether the pointers
+   in the descriptor use absolute or relative addressing. Relative descriptors are
+   required for objects that are transmitted over a network, such as information
+   transmitted in a RPC.
+
+670  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     ·  Owner: The owner of the object can generally perform any action on the secu-
+        rity descriptor. The owner can be an individual or a group SID. The owner has
+        the authority to change the contents of the DACL.
+     ·  System access control list (SACL): Specifies what kinds of operations on the
+        object should generate audit messages. An application must have the corre-
+        sponding privilege in its access token to read or write the SACL of any object.
+        This is to prevent unauthorized applications from reading SACLs (thereby
+        learning what not to do to avoid generating audits) or writing them (to gener-
+        ate many audits to cause an illicit operation to go unnoticed). The SACL also
+        specifies the object integrity level. Processes cannot modify an object unless
+        the process integrity level meets or exceeds the level on the object.
+     ·  Discretionary access control list (DACL): Determines which users and groups
+        can access this object for which operations. It consists of a list of access control
+        entries (ACEs).
+        When an object is created, the creating process can assign as owner its own
+     SID or any group SID in its access token. The creating process cannot assign an
+     owner that is not in the current access token. Subsequently, any process that has
+     been granted the right to change the owner of an object may do so, but again with
+     the same restriction. The reason for the restriction is to prevent a user from cover-
+     ing his or her tracks after attempting some unauthorized action.
+        Let us look in more detail at the structure of access control lists, because
+     these are at the heart of the Windows access control facility (Figure 15.11c). Each
+     list consists of an overall header and a variable number of access control entries.
+     Each entry specifies an individual or group SID and an access mask that defines
+     the rights to be granted to this SID. When a process attempts to access an object,
+     the object manager in the Windows Executive reads the SID and group SIDs from
+     the access token along with the integrity level SID. If the access requested includes
+     modifying the object, the integrity level is checked against the object integrity level
+     in the SACL. If that test passes, the object manager then scans down the object's
+     DACL. If a match is found--that is, if an ACE is found with a SID that matches
+     one of the SIDs from the access token--then the process can have the access rights
+     specified by the access mask in that ACE. This also may include denying access, in
+     which case the access request fails. The first matching ACE determines the result
+     of the access check.
+        Figure 15.12 shows the contents of the access mask. The least significant 16 bits
+     specify access rights that apply to a particular type of object. For example, bit
+     0 for a file object is FILE_READ_DATA access and bit 0 for an event object is
+     EVENT_QUERY_STATE access.
+        The most significant 16 bits of the mask contains bits that apply to all types of
+     objects. Five of these are referred to as standard access types:
+     ·  Synchronize: Gives permission to synchronize execution with some event asso-
+        ciated with this object. In particular, this object can be used in a wait function.
+     ·  Write_owner: Allows a program to modify the owner of the object. This is
+        useful because the owner of an object can always change the protection on the
+        object. (The owner may not be denied Write DAC access.)
+
+                                                        15.6 / WINDOWS 7 SECURITY       671
+              Delete
+              Read control
+              Write DAC
+              Write owner
+   Generic    Synchronize
+access types
+                                Standard                Specific access types
+                                access types
+                                Access system security
+                                Maximum allowed
+              Generic all
+              Generic execute
+              Generic write
+              Generic read
+Figure 15.12  Access Mask
+·  Write_DAC: Allows the application to modify the DACL and hence the
+   protection on this object.
+·  Read_control: Allows the application to query the owner and DACL fields of
+   the security descriptor of this object.
+·  Delete: Allows the application to delete this object.
+   The high-order half of the access mask also contains the four generic access
+types. These bits provide a convenient way to set specific access types in a number
+of different object types. For example, suppose an application wishes to create sev-
+eral types of objects and ensure that users have read access to the objects, even
+though read has a somewhat different meaning for each object type. To protect
+each object of each type without the generic access bits, the application would have
+to construct a different ACE for each type of object and be careful to pass the cor-
+rect ACE when creating each object. It is more convenient to create a single ACE
+that expresses the generic concept "allow read," and simply apply this ACE to each
+object that is created, and have the right thing happen. That is the purpose of the
+generic access bits, which are
+·  Generic_all: Allow all access
+·  Generic_execute: Allow execution if executable
+·  Generic_write: Allow write access
+·  Generic_read: Allow read-only access
+   The generic bits also affect the standard access types. For example, for
+a file object, the Generic_Read bit maps to the standard bits Read_Control and
+Synchronize and to the object-specific bits File_Read_Data, File_Read_Attributes,
+and File_Read_EA. Placing an ACE on a file object that grants some SID Generic_
+Read grants those five access rights as if they had been specified individually in the
+access mask.
+
+672  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+         The remaining two bits in the access mask have special meanings. The Access_
+     System_Security bit allows modifying audit and alarm control for this object.
+     However, not only must this bit be set in the ACE for a SID but the access token for
+     the process with that SID must have the corresponding privilege enabled.
+         Finally, the Maximum_Allowed bit is not really an access bit, but a bit that
+     modifies the algorithm for scanning the DACL for this SID. Normally, Windows
+     will scan through the DACL until it reaches an ACE that specifically grants (bit
+     set) or denies (bit not set) the access requested by the requesting process or until it
+     reaches the end of the DACL, in which latter case access is denied. The Maximum_
+     Allowed bit allows the object's owner to define a set of access rights that is the
+     maximum that will be allowed to a given user. With this in mind, suppose that an
+     application does not know all of the operations that it is going to be asked to per-
+     form on an object during a session. There are three options for requesting access:
+     1.  Attempt to open the object for all possible accesses. The disadvantage of this
+         approach is that the access may be denied even though the application may
+         have all of the access rights actually required for this session.
+     2.  Only open the object when a specific access is requested, and open a new han-
+         dle to the object for each different type of request. This is generally the pre-
+         ferred method because it will not unnecessarily deny access, nor will it allow
+         more access than necessary. In many cases the object itself does not need to
+         be referenced a second time, but the DuplicateHandle function can be used to
+         make a copy of the handle with a lower level of access.
+     3.  Attempt to open the object for as much access as the object will allow this
+         SID. The advantage is that the user will not be artificially denied access, but
+         the application may have more access than it needs. This latter situation may
+         mask bugs in the application.
+         An important feature of Windows security is that applications can make
+     use of the Windows security framework for user-defined objects. For example, a
+     database server might create its own security descriptors and attach them to por-
+     tions of a database. In addition to normal read/write access constraints, the server
+     could secure database-specific operations, such as scrolling within a result set or
+     performing a join. It would be the server's responsibility to define the meaning of
+     special rights and perform access checks. But the checks would occur in a stand-
+     ard context, using systemwide user/group accounts and audit logs. The extensible
+     security model should also prove useful to implementers of non-Microsoft file
+     systems.
+15.7 RECOMMENDED READING AND WEB SITES
+     The topics in this chapter are covered in more detail in [STAL08].
+         [OGOR03] is the paper to read for an authoritative survey of user authenti-
+     cation. [BURR04] is also a worthwhile survey. [SAND94] is an excellent overview
+     of access control. [SAND96] is a comprehensive overview of RBAC. [SAUN01]
+     compares RBAC and DAC. [SCAR07] is a detailed and worthwhile treatment
+
+                    15.7 / RECOMMENDED READING AND WEB SITES                           673
+of intrusion detection. Two short but useful survey articles on the subject are
+[KENT00] and [MCHU00]. [NING04] surveys recent advances in intrusion
+detection techniques. Good overview articles on antivirus approaches and mal-
+ware defense generally are [CASS01], [FORR97], [KEPH97a], and [NACH97].
+[LHEE03] surveys a range of alternative buffer overflow techniques, including a
+number not mentioned in this chapter, along with possible defensive techniques.
+The original published description of buffer overflow attacks is given in [LEVY96].
+[KUPE05] is a good overview.
+BURR04   Burr, W., Dodson, D., and Polk, W. Electronic Authentication Guideline.
+Gaithersburg, MD: National Institute of Standards and Technology, Special
+Publication 800-63, September 2004.
+CASS01   Cass, S. "Anatomy of Malice." IEEE Spectrum, November 2001.
+FORR97   Forrest, S., Hofmeyr, S., and Somayaji, A. "Computer Immunology."
+Communications of the ACM, October 1997.
+KENT00   Kent, S. "On the Trail of Intrusions into Information Systems." IEEE
+Spectrum, December 2000.
+KEPH97a  Kephart, J., Sorkin, G., Chess, D., and White, S. "Fighting Computer
+Viruses." Scientific American, November 1997.
+KUPE05   Kuperman, B., et al. "Detection and Prevention of Stack Buffer Overflow
+Attacks." Communications of the ACM, November 2005.
+LEVY96   Levy, E., "Smashing the Stack for Fun and Profit." Phrack Magazine, File 14,
+Issue 49, November 1996.
+LHEE03   Lhee, K., and Chapin, S., "Buffer Overflow and Format String Overflow
+Vulnerabilities." Software--Practice and Experience, Vol. 33, 2003.
+MCHU00   McHugh, J., Christie, A., and Allen, J. "The Role of Intrusion Detection
+Systems." IEEE Software, September/October 2000.
+NACH97   Nachenberg, C. "Computer Virus-Antivirus Coevolution." Communications
+of the ACM, January 1997.
+NING04   Ning, P., et al. "Techniques and Tools for Analyzing Intrusion Alerts." ACM
+Transactions on Information and System Security, May 2004.
+OGOR03   O'Gorman, L. "Comparing Passwords, Tokens and Biometrics for User
+Authentication." Proceedings of the IEEE, December 2003.
+SAND94   Sandhu, R., and Samarati, P. "Access Control: Principles and Practice."
+IEEE Communications Magazine, February 1996.
+SAND96   Sandhu, R., et al. "Role-Based Access Control Models." Computer,
+September 1994.
+SAUN01   Saunders,  G.,  Hitchens,   M.,  and  Varadharajan,  V.      "Role-Based
+Access Control and the Access Control Matrix." Operating Systems Review,
+October 2001.
+SCAR07   Scarfone, K., and Mell, P. Guide to Intrusion Detection and Prevention
+Systems. NIST Special Publication SP 800-94, February 2007.
+STAL08   Stallings, W., and Brown L. Computer Security: Principles and Practice.
+Upper Saddle River, NJ: Prentice Hall, 2008.
+
+674  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+           Recommended Web sites:
+           ·     Password usage and generation: NIST documents on this topic
+           ·     Biometrics Consortium: Government-sponsored site for the research, testing, and eval-
+                 uation of biometric technology
+           ·     NIST RBAC site: Includes numerous documents, standards, and software on RBAC
+           ·     STAT Project: A research and open source project that focuses on signature-based
+                 intrusion detection tools for hosts, applications, and networks
+           ·     Snort: Web site for Snort, an open source network intrusion prevention and detection
+                 system
+           ·     AntiVirus Online: IBM's site on virus information
+           ·     VirusList: Site maintained by commercial antivirus software provider. Good collection
+                 of useful information
+15.8 KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS
+Key Terms
+access control                    discretionary access control      malware
+antivirus                               (DAC)                       memory cards
+audit records                     hashed passwords                  role-based access control
+authentication                    host-based IDS                    (RBAC)
+bot                               intrusion detection               rootkit
+buffer overflow                   intrusion detections system       smart cards
+digital immune system                   (IDS)                       worm
+     Review Questions
+           15.1  In general terms, what are four means of authenticating a user's identity?
+           15.2  Explain the purpose of the salt in Figure 15.1.
+           15.3  Explain the difference between a simple memory card and a smart card.
+           15.4  List and briefly describe the principal physical characteristics used for biometric
+                 identification.
+           15.5  Briefly describe the difference between DAC and RBAC.
+           15.6  Explain the difference between anomaly intrusion detection and signature intrusion
+                 detection.
+           15.7  What is a digital immune system?
+           15.8  How does behavior-blocking software work?
+           15.9  Describe some worm countermeasures.
+     15.10       What types of programming languages are vulnerable to buffer overflows?
+     15.11       What are the two broad categories of defenses against buffer overflows?
+     15.12       List and briefly describe some of the defenses against buffer overflows that can be
+                 used when compiling new programs.
+     15.13       List and briefly describe some of the defenses against buffer overflows that can be
+                 implemented when running existing, vulnerable programs.
+
+          15.8 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                                        675
+Problems
+15.1  Explain the suitability or unsuitability of the following passwords:
+          a. YK 334                                e. Aristotle
+          b. mfmitm (for "my favorite              f. tv9stove
+                       movie is tender mercies")   g. 12345678
+          c. Natalie1                              h. dribgib
+          d. Washington
+15.2  An early attempt to force users to use less predictable passwords involved computer-
+      supplied passwords. The passwords were eight characters long and were taken from
+      the character set consisting of lowercase letters and digits. They were generated by a
+      pseudorandom number generator with 215 possible starting values. Using the technol-
+      ogy of the time, the time required to search through all character strings of length 8
+      from a 36-character alphabet was 112 years. Unfortunately, this is not a true reflection
+      of the actual security of the system. Explain the problem.
+15.3  Assume that passwords are selected from four-character combinations of 26 alpha-
+      betic characters. Assume that an adversary is able to attempt passwords at a rate of
+      one per second.
+      a.  Assuming no feedback to the adversary until each attempt has been completed,
+          what is the expected time to discover the correct password?
+      b.  Assuming feedback to the adversary flagging an error as each incorrect character
+          is entered, what is the expected time to discover the correct password?
+15.4  Assume that source elements of length k are mapped in some uniform fashion into a
+      target elements of length p. If each digit can take on one of r values, then the number
+      of source elements is rk and the number of target elements is the smaller number rp.
+      A particular source element xi is mapped to a particular target element yj.
+      a.  What is the probability that the correct source element can be selected by an ad-
+          versary on one try?
+      b.  What is the probability that a different source element xk (xi  xk) that results in
+          the same target element, yj, could be produced by an adversary?
+      c.  What is the probability that the correct target element can be produced by an
+          adversary on one try?
+15.5  Assume that passwords are limited to the use of the 95 printable ASCII characters
+      and that all passwords are 10 characters in length. Assume a password cracker with
+      an encryption rate of 6.4 million encryptions per second. How long will it take to test
+      exhaustively all possible passwords on a UNIX system?
+15.6  Because of the known risks of the UNIX password system, the SunOS-4.0 documen-
+      tation recommends that the password file be removed and replaced with a publicly
+      readable file called /etc/publickey. An entry in the file for user A consists of a user's
+      identifier IDA, the user's public key, PUa, and the corresponding private key, PRa. This
+      private key is encrypted using DES with a key derived from the user's login password
+      Pa. When A logs in, the system decrypts E(Pa, PRa) to obtain PRa.
+      a.  The system then verifies that Pa was correctly supplied. How?
+      b.  How can an opponent attack this system?
+15.7  It was stated that the inclusion of the salt in the UNIX password scheme increases the dif-
+      ficulty of guessing by a factor of 4096. But the salt is stored in plaintext in the same entry
+      as the corresponding ciphertext password. Therefore, those two characters are known to
+      the attacker and need not be guessed. Why is it asserted that the salt increases security?
+15.8  Assuming that you have successfully answered the preceding problem and under-
+      stand the significance of the salt, here is another question. Wouldn't it be possible to
+      thwart completely all password crackers by dramatically increasing the salt size to,
+      say, 24 or 48 bits?
+
+676  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     15.9   For the DAC model discussed in Section 15.2, an alternative representation of the
+            protection state is a directed graph. Each subject and each object in the protection
+            state is represented by a node (a single node is used for an entity that is both subject
+            and object). A directed line from a subject to an object indicates an access right, and
+            the label on the link defines the access right.
+            a.  Draw a directed graph that corresponds to the access matrix of Figure 12.15a.
+            b.  Draw a directed graph that corresponds to the access matrix of Figure 15.4.
+            c.  Is there a one-to-one correspondence between the directed graph representation
+                and the access matrix representation? Explain.
+     15.10  UNIX treats file directories in the same fashion as files; that is, both are defined by
+            the same type of data structure, called an inode. As with files, directories include a
+            9-bit protection string. If care is not taken, this can create access control problems. For
+            example, consider a file with protection mode 644 (octal) contained in a directory with
+            protection mode 730. How might the file be compromised in this case?
+     15.11  In the traditional UNIX file access model, UNIX systems provide a default setting for
+            newly created files and directories, which the owner may later change.The default is typ-
+            ically full access for the owner combined with one of the following: no access for group
+            and other, read/execute access for group and none for other, or read/execute access for
+            both group and other. Briefly discuss the advantages and disadvantages of each of these
+            cases, including an example of a type of organization where each would be appropriate.
+     15.12  Consider user accounts on a system with a Web server configured to provide access to
+            user Web areas. In general, this scheme uses a standard directory name, such as public_
+            html, in a user's home directory. This acts as the user's Web area if it exists. However,
+            to allow the Web server to access the pages in this directory, it must have at least search
+            (execute) access to the user's home directory, read/execute access to the Web directory,
+            and read access to any Web pages in it. Consider the interaction of this requirement
+            with the cases you discussed for the preceding problem. What consequences does this
+            requirement have? Note that a Web server typically executes as a special user, and in a
+            group that is not shared with most users on the system. Are there some circumstances
+            when running such a Web service is simply not appropriate? Explain.
+     15.13  Assume a system with N job positions. For job position i, the number of individual users
+            in that position is Ui and the number of permissions required for the job position is Pi.
+            a.  For a traditional DAC scheme, how many relationships between users and permis-
+                sions must be defined?
+            b.  For a RBAC scheme, how many relationships between users and permissions must
+                be defined?
+     15.14  In the context of an IDS, we define a false positive to be an alarm generated by an IDS
+            in which the IDS alerts to a condition that is actually benign. A false negative occurs
+            when an IDS fails to generate an alarm when an alert-worthy condition is in effect.
+            Using the following diagram, depict two curves that roughly indicate false positives
+            and false negatives, respectively.
+                              Frequency
+                              of alerts
+                              Less specific     Conservativeness  More specific
+                              or looser         of signatures     or stricter
+     15.15  Rewrite the function shown in Figure 7.13a so that it is no longer vulnerable to a stack
+            buffer overflow.
+
+PART 8 Distributed Systems
+                                      CHAPTER
+DISTRIBUTED PROCESSING,
+CLIENT/SERVER, AND CLUSTERS
+16.1   Client/Server Computing
+       What Is Client/Server Computing?
+       Client/Server Applications
+       Middleware
+16.2   Service-Oriented Architecture
+16.3   Distributed Message Passing
+       Reliability versus Unreliability
+       Blocking versus Nonblocking
+16.4   Remote Procedure Calls
+       Parameter Passing
+       Parameter Representation
+       Client/Server Binding
+       Synchronous versus Asynchronous
+       Object-Oriented Mechanisms
+16.5   Clusters
+       Cluster Configurations
+       Operating System Design Issues
+       Cluster Computer Architecture
+       Clusters Compared to SMP
+16.6   Windows Cluster Server
+16.7   Beowulf and Linux Clusters
+       Beowulf Features
+       Beowulf Software
+16.8   Summary
+16.9   Recommended Reading and Web Sites
+16.10  Key Terms, Review Questions, and Problems
+                                                  677

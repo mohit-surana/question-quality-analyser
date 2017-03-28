@@ -1,0 +1,243 @@
+UNIX and Solaris Memory Management
+                             8.3 / UNIX AND SOLARIS MEMORY MANAGEMENT                              379
+     As in so many other areas of OS design, which policy to choose is a matter of
+     judgment and depends on many other design factors in the OS as well as the charac-
+     teristics of the programs being executed.
+8.3  UNIX AND SOLARIS MEMORY MANAGEMENT
+     Because UNIX is intended to be machine independent, its memory management
+     scheme will vary from one system to the next. Earlier versions of UNIX simply used
+     variable partitioning with no virtual memory scheme. Current implementations of
+     UNIX and Solaris make use of paged virtual memory.
+     In SVR4 and Solaris, there are actually two separate memory management
+     schemes. The paging system provides a virtual memory capability that allocates
+     page frames in main memory to processes and also allocates page frames to disk
+     block buffers. Although this is an effective memory management scheme for user
+     processes and disk I/O, a paged virtual memory scheme is less suited to manag-
+     ing the memory allocation for the kernel. For this latter purpose, a kernel memory
+     allocator is used. We examine these two mechanisms in turn.
+     Paging System
+     DATA STRUCTURES         For paged virtual memory, UNIX makes use of a number of
+     data structures that, with minor adjustment, are machine independent (Figure 8.22
+     and Table 8.6):
+                                                               Copy    Mod-  Refe-           Pro-
+                      Page frame number            Age             on  ify   rence  Valid    tect
+                                                               write
+                                         (a) Page table entry
+     Swap device number                  Device block number           Type of storage
+                                        (b) Disk block descriptor
+     Page state              Reference   Logical               Block                Pfdata
+                             count         device             number                pointer
+                                    (c) Page frame data table entry
+     Reference               Page/storage
+                      count  unit number
+                                        (d) Swap-use table entry
+     Figure 8.22             UNIX SVR4 Memory Management Formats
+
+380    CHAPTER 8 / VIRTUAL MEMORY
+Table 8.6   UNIX SVR4 Memory Management Parameters
+                                                 Page Table Entry
+Page frame number
+       Refers to frame in real memory.
+Age
+       Indicates how long the page has been in memory without being referenced. The length and contents of
+       this field are processor dependent.
+Copy on write
+       Set when more than one process shares a page. If one of the processes writes into the page, a separate
+       copy of the page must first be made for all other processes that share the page. This feature allows the
+       copy operation to be deferred until necessary and avoided in cases where it turns out not to be necessary.
+Modify
+       Indicates page has been modified.
+Reference
+       Indicates page has been referenced. This bit is set to 0 when the page is first loaded and may be periodi-
+       cally reset by the page replacement algorithm.
+Valid
+       Indicates page is in main memory.
+Protect
+       Indicates whether write operation is allowed.
+                                               Disk Block Descriptor
+Swap device number
+       Logical device number of the secondary device that holds the corresponding page. This allows more
+       than one device to be used for swapping.
+Device block number
+       Block location of page on swap device.
+Type of storage
+       Storage may be swap unit or executable file. In the latter case, there is an indication as to whether the
+       virtual memory to be allocated should be cleared first.
+                                            Page Frame Data Table Entry
+Page state
+       Indicates whether this frame is available or has an associated page. In the latter case, the status of the
+       page is specified: on swap device, in executable file, or DMA in progress.
+Reference count
+       Number of processes that reference the page.
+Logical device
+       Logical device that contains a copy of the page.
+Block number
+       Block location of the page copy on the logical device.
+Pfdata pointer
+       Pointer to other pfdata table entries on a list of free pages and on a hash queue of pages.
+                                               Swap-Use Table Entry
+Reference count
+Number of page table entries that point to a page on the swap device.
+Page/storage unit number
+Page identifier on storage unit.
+
+                  8.3 / UNIX AND SOLARIS MEMORY MANAGEMENT                                 381
+·  Page table: Typically, there will be one page table per process, with one entry
+   for each page in virtual memory for that process.
+·  Disk block descriptor: Associated with each page of a process is an entry in
+   this table that describes the disk copy of the virtual page.
+·  Page frame data table: Describes each frame of real memory and is indexed by
+   frame number. This table is used by the replacement algorithm.
+·  Swap-use table: There is one swap-use table for each swap device, with one
+   entry for each page on the device.
+   Most of the fields defined in Table 8.6 are self-explanatory. A few warrant
+further comment. The Age field in the page table entry is an indication of how long
+it has been since a program referenced this frame. However, the number of bits
+and the frequency of update of this field are implementation dependent. Therefore,
+there is no universal UNIX use of this field for page replacement policy.
+   The Type of Storage field in the disk block descriptor is needed for the
+following reason: When an executable file is first used to create a new process, only
+a portion of the program and data for that file may be loaded into real memory.
+Later, as page faults occur, new portions of the program and data are loaded. It is
+only at the time of first loading that virtual memory pages are created and assigned
+to locations on one of the devices to be used for swapping. At that time, the OS is
+told whether it needs to clear (set to 0) the locations in the page frame before the
+first loading of a block of the program or data.
+PAGE REPLACEMENT  The page frame data table is used for page replacement.
+Several pointers are used to create lists within this table. All of the available frames
+are linked together in a list of free frames available for bringing in pages. When the
+number of available frames drops below a certain threshold, the kernel will steal a
+number of frames to compensate.
+   The page replacement algorithm used in SVR4 is a refinement of the
+clock policy algorithm (Figure 8.16) known as the two-handed clock algorithm
+(Figure 8.23). The algorithm uses the reference bit in the page table entry for each
+page in memory that is eligible (not locked) to be swapped out. This bit is set to 0
+when the page is first brought in and set to 1 when the page is referenced for a read
+or write. One hand in the clock algorithm, the fronthand, sweeps through the pages
+on the list of eligible pages and sets the reference bit to 0 on each page. Sometime
+later, the backhand sweeps through the same list and checks the reference bit. If
+the bit is set to 1, then that page has been referenced since the fronthand swept by;
+these frames are ignored. If the bit is still set to 0, then the page has not been refer-
+enced in the time interval between the visit by fronthand and backhand; these pages
+are placed on a list to be paged out.
+   Two parameters determine the operation of the algorithm:
+· Scanrate: The rate at which the two hands scan through the page list, in pages
+   per second
+· Handspread: The gap between fronthand and backhand
+   These two parameters have default values set at boot time based on the
+amount of physical memory. The scanrate parameter can be altered to meet changing
+
+382  CHAPTER 8 / VIRTUAL MEMORY
+                                      End of     Beginning
+                                      page list  of page list
+               Handspread             Fronthand
+                                      Backhand
+               Figure 8.23          Two-Handed Clock Page Replacement
+                                    Algorithm
+     conditions. The parameter varies linearly between the values slowscan and fastscan
+     (set at configuration time) as the amount of free memory varies between the values
+     lotsfree and minfree. In other words, as the amount of free memory shrinks, the
+     clock hands move more rapidly to free up more pages. The handspread parameter
+     determines the gap between the fronthand and the backhand and therefore, together
+     with scanrate, determines the window of opportunity to use a page before it is
+     swapped out due to lack of use.
+     Kernel Memory Allocator
+     The kernel generates and destroys small tables and buffers frequently during the
+     course of execution, each of which requires dynamic memory allocation. [VAHA96]
+     lists the following examples:
+     ·  The pathname translation routing may allocate a buffer to copy a pathname
+        from user space.
+     ·  The allocb() routine allocates STREAMS buffers of arbitrary size.
+     ·  Many UNIX implementations allocate zombie structures to retain exit status
+        and resource usage information about deceased processes.
+     ·  In SVR4 and Solaris, the kernel allocates many objects (such as proc struc-
+        tures, vnodes, and file descriptor blocks) dynamically when needed.
+     Most of these blocks are significantly smaller than the typical machine page size, and
+     therefore the paging mechanism would be inefficient for dynamic kernel memory
+     allocation. For SVR4, a modification of the buddy system, described in Section 7.2,
+     is used.
+
+                        8.3 / UNIX AND SOLARIS MEMORY MANAGEMENT                        383
+In buddy systems, the cost to allocate and free a block of memory is low
+compared to that of best-fit or first-fit policies [KNUT97]. However, in the case of
+kernel memory management, the allocation and free operations must be made as
+fast as possible. The drawback of the buddy system is the time required to fragment
+and coalesce blocks.
+Barkley and Lee at AT&T proposed a variation known as a lazy buddy system
+[BARK89], and this is the technique adopted for SVR4. The authors observed that
+UNIX often exhibits steady-state behavior in kernel memory demand; that is, the
+amount of demand for blocks of a particular size varies slowly in time. Therefore, if
+a block of size 2i is released and is immediately coalesced with its buddy into a block
+of size 2i1, the kernel may next request a block of size 2i, which may necessitate
+splitting the larger block again. To avoid this unnecessary coalescing and splitting,
+the lazy buddy system defers coalescing until it seems likely that it is needed, and
+then coalesces as many blocks as possible.
+The lazy buddy system uses the following parameters:
+Ni  current number of blocks of size 2i.
+Ai  current number of blocks of size 2i that are allocated (occupied).
+Gi  current number of blocks of size 2i that are globally free; these are blocks
+that are eligible for coalescing; if the buddy of such a block becomes
+globally free, then the two blocks will be coalesced into a globally free
+block of size 2i1. All free blocks (holes) in the standard buddy system
+could be considered globally free.
+Li  current number of blocks of size 2i that are locally free; these are blocks that
+are not eligible for coalescing. Even if the buddy of such a block becomes
+free, the two blocks are not coalesced. Rather, the locally free blocks are
+retained in anticipation of future demand for a block of that size.
+The following relationship holds:
+                                   Ni = Ai + Gi + Li
+In general, the lazy buddy system tries to maintain a pool of locally free blocks
+and only invokes coalescing if the number of locally free blocks exceeds a thresh-
+old. If there are too many locally free blocks, then there is a chance that there will
+be a lack of free blocks at the next level to satisfy demand. Most of the time, when
+a block is freed, coalescing does not occur, so there is minimal bookkeeping and
+operational costs. When a block is to be allocated, no distinction is made between
+locally and globally free blocks; again, this minimizes bookkeeping.
+The criterion used for coalescing is that the number of locally free blocks
+of a given size should not exceed the number of allocated blocks of that size (i.e.,
+we must have Li  Ai). This is a reasonable guideline for restricting the growth of
+locally free blocks, and experiments in [BARK89] confirm that this scheme results
+in noticeable savings.
+To implement the scheme, the authors define a delay variable as follows:
+                        Di = Ai - Li = Ni - 2Li - Gi
+Figure 8.24 shows the algorithm.
+
+384  CHAPTER 8 / VIRTUAL MEMORY
+     Initial value of Di is 0
+     After an operation, the value of Di is updated as follows
+     (I) if the next operation is a block allocate request:
+        if there is any free block, select one to allocate
+                  if the selected block is locally free
+                      then Di : Di  2
+                      else Di : Di  1
+        otherwise
+                  first get two blocks by splitting a larger one into two (recursive operation)
+                  allocate one and mark the other locally free
+                  Di remains unchanged (but D may change for other block sizes because
+                               of the recursive call)
+     (II) if the next operation is a block free request
+        Case Di  2
+              mark it locally free and free it locally
+              Di  2
+        Case Di  1
+              mark it globally free and free it globally; coalesce if possible
+              Di  0
+        Case Di  0
+              mark it globally free and free it globally; coalesce if possible
+              select one locally free block of size 2i and free it globally; coalesce  if  possible
+              Di : 0
+     Figure 8.24  Lazy Buddy System Algorithm
+8.4  LINUX MEMORY MANAGEMENT
+     Linux shares many of the characteristics of the memory management schemes of
+     other UNIX implementations but has its own unique features. Overall, the Linux
+     memory management scheme is quite complex [DUBE98]. In this section, we give
+     a brief overview of the two main aspects of Linux memory management: process
+     virtual memory and kernel memory allocation.
+     Linux Virtual Memory
+     VIRTUAL      MEMORY  ADDRESSING   Linux makes use of a three-level page table
+     structure, consisting of the following types of tables (each individual table is the size
+     of one page):
+     ·  Page directory: An active process has a single page directory that is the size
+        of one page. Each entry in the page directory points to one page of the page
+        middle directory. The page directory must be in main memory for an active
+        process.

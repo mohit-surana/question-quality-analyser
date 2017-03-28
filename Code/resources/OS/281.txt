@@ -1,0 +1,389 @@
+Principles of Deadlock
+                                                 6.1 / PRINCIPLES OF DEADLOCK            259
+        When two trains approach each other at a crossing, both shall come
+        to a full stop and neither shall start up again until the other has gone.
+        STATUTE PASSED BY THE KANSAS STATE LEGISLATURE, EARLY IN THE 20TH CENTURY
+                                                 --A TREASURY OF RAILROAD FOLKLORE,
+                                                       B. A. Botkin and Alvin F. Harlow
+     LEARNING OBJECTIVES
+     After studying this chapter, you should be able to:
+     ·  List and explain the conditions for deadlock.
+     ·  Define deadlock prevention and describe deadlock prevention strategies
+        related to each of the conditions for deadlock.
+     ·  Explain the difference between deadlock prevention and deadlock avoidance.
+     ·  Understand two approaches to deadlock avoidance.
+     ·  Explain the fundamental difference in approach between deadlock detection
+        and deadlock prevention or avoidance.
+     ·  Understand how an integrated deadlock strategy can be designed.
+     ·  Analyze the dining philosophers problem.
+     ·  Explain the concurrency and synchronization methods used in UNIX, Linux,
+        Solaris, and Windows 7.
+     This chapter examines two problems that plague all efforts to support concurrent
+     processing: deadlock and starvation. We begin with a discussion of the underlying
+     principles of deadlock and the related problem of starvation. Then we examine
+     the three common approaches to dealing with deadlock: prevention, detection,
+     and avoidance. We then look at one of the classic problems used to illustrate
+     both synchronization and deadlock issues: the dining philosophers problem.
+        As with Chapter 5, the discussion in this chapter is limited to a consideration
+     of concurrency and deadlock on a single system. Measures to deal with distributed
+     deadlock problems are assessed in Chapter 18. An animation illustrating deadlock
+     is available online. Click on the rotating globe at WilliamStallings.com/OS/OS7e.
+     html for access.
+6.1  PRINCIPLES OF DEADLOCK
+     Deadlock can be defined as the permanent blocking of a set of processes that either
+     compete for system resources or communicate with each other. A set of processes
+     is deadlocked when each process in the set is blocked awaiting an event (typically
+     the freeing up of some requested resource) that can only be triggered by another
+     blocked process in the set. Deadlock is permanent because none of the events is
+     ever triggered. Unlike other problems in concurrent process management, there is
+     no efficient solution in the general case.
+
+260  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+               3
+               c  b  2                                        3  2
+            4  d  a                                           4  1
+                  1
+            (a) Deadlock possible                             (b) Deadlock
+Figure 6.1  Illustration of Deadlock
+            All deadlocks involve conflicting needs for resources by two or more proc-
+     esses. A common example is the traffic deadlock. Figure 6.1a shows a situation in
+     which four cars have arrived at a four-way stop intersection at approximately the
+     same time. The four quadrants of the intersection are the resources over which con-
+     trol is needed. In particular, if all four cars wish to go straight through the intersec-
+     tion, the resource requirements are as follows:
+     ·      Car 1, traveling north, needs quadrants a and b.
+     ·      Car 2 needs quadrants b and c.
+     ·      Car 3 needs quadrants c and d.
+     ·      Car 4 needs quadrants d and a.
+            The rule of the road in the United States is that a car at a four-way stop should
+     defer to a car immediately to its right. This rule works if there are only two or three
+     cars at the intersection. For example, if only the northbound and westbound cars
+     arrive at the intersection, the northbound car will wait and the westbound car pro-
+     ceeds. However, if all four cars arrive at about the same time and all four follow the
+     rule, each will refrain from entering the intersection. This causes a potential deadlock.
+     It is only a potential deadlock, because the necessary resources are available for any
+     of the cars to proceed. If one car eventually chooses to proceed, it can do so.
+            However, if all four cars ignore the rules and proceed (cautiously) into the
+     intersection at the same time, then each car seizes one resource (one quadrant) but
+     cannot proceed because the required second resource has already been seized by
+     another car. This is an actual deadlock.
+            Let us now look at a depiction of deadlock involving processes and com-
+     puter resources. Figure 6.2 (based on one in [BACO03]), which we refer to as a
+     joint progress diagram, illustrates the progress of two processes competing for two
+
+                                                    6.1 / PRINCIPLES     OF  DEADLOCK                      261
+               Progress
+                  of Q
+                                    1     2
+               Release
+               A
+                                                    P and Q
+A                                                   want A
+Required       Release
+               B
+               Get A
+            B                          3  Deadlock           P and Q
+   Required                               inevitable         want B
+               Get B                                                              5
+                                                 4
+                                                                                  6
+                                                                                                           Progress
+                                       Get A        Get B    Release A Release B                           of P
+ Both P and Q want resource A
+                                              A
+ Both P and Q want resource B             Required
+                                                             B Required
+ Deadlock-inevitable region
+                                Possible progress path of P and Q.
+                                    Horizontal portion of path indicates P is executing and Q is waiting.
+                                    Vertical portion of path indicates Q is executing and P is waiting.
+Figure 6.2     Example of Deadlock
+resources. Each process needs exclusive use of both resources for a certain period of
+time. Two processes, P and Q, have the following general form:
+                        Process P                Process Q
+                        ···                      ···
+                        Get A                    Get B
+                        ···                      ···
+                        Get B                    Get A
+                        ···                      ···
+                        Release A                Release B
+                        ···                      ···
+                        Release B                Release A
+                        ···                      ···
+   In Figure 6.2, the x-axis represents progress in the execution of P and the y-axis
+represents progress in the execution of Q. The joint progress of the two processes
+is therefore represented by a path that progresses from the origin in a northeasterly
+direction. For a uniprocessor system, only one process at a time may execute, and
+the path consists of alternating horizontal and vertical segments, with a horizontal
+
+262  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     segment representing a period when P executes and Q waits and a vertical segment
+     representing a period when Q executes and P waits. The figure indicates areas in
+     which both P and Q require resource A (upward slanted lines); both P and Q require
+     resource B (downward slanted lines); and both P and Q require both resources.
+     Because we assume that each process requires exclusive control of any resource,
+     these are all forbidden regions; that is, it is impossible for any path representing the
+     joint execution progress of P and Q to enter these regions.
+         The figure shows six different execution paths. These can be summarized as
+     follows:
+     1.  Q acquires B and then A and then releases B and A. When P resumes execution,
+         it will be able to acquire both resources.
+     2.  Q acquires B and then A. P executes and blocks on a request for A. Q releases
+         B and A. When P resumes execution, it will be able to acquire both resources.
+     3.  Q acquires B and then P acquires A. Deadlock is inevitable, because as execution
+         proceeds, Q will block on A and P will block on B.
+     4.  P acquires A and then Q acquires B. Deadlock is inevitable, because as execu-
+         tion proceeds, Q will block on A and P will block on B.
+     5.  P acquires A and then B. Q executes and blocks on a request for B. P releases
+         A and B. When Q resumes execution, it will be able to acquire both resources.
+     6.  P acquires A and then B and then releases A and B. When Q resumes execution,
+         it will be able to acquire both resources.
+         The gray-shaded area of Figure 6.2, which can be referred to as a fatal region,
+     applies to the commentary on paths 3 and 4. If an execution path enters this fatal
+     region, then deadlock is inevitable. Note that the existence of a fatal region depends
+     on the logic of the two processes. However, deadlock is only inevitable if the joint
+     progress of the two processes creates a path that enters the fatal region.
+         Whether or not deadlock occurs depends on both the dynamics of the execu-
+     tion and on the details of the application. For example, suppose that P does not need
+     both resources at the same time so that the two processes have the following form:
+               Process P  Process Q
+               ···        ···
+               Get A      Get B
+               ···        ···
+               Release A  Get A
+               ···        ···
+               Get B      Release B
+               ···        ···
+               Release B  Release A
+               ···        ···
+     This situation is reflected in Figure 6.3. Some thought should convince you that
+     regardless of the relative timing of the two processes, deadlock cannot occur.
+         As shown, the joint progress diagram can be used to record the execution his-
+     tory of two processes that share resources. In cases where more than two processes
+
+                                                           6.1 / PRINCIPLES OF DEADLOCK                           263
+                     Progress
+                        of Q
+                                  1      2            3
+                    Release
+                     A
+                                                                              4
+A                   Release                  P and Q
+Required             B                       want A
+                    Get A                                          P and Q
+                                                                   want B
+          B
+   Required
+                    Get B                                                     5
+                                                                              6
+                                                                                 Progress
+                                         Get A  Release A  Get B   Release B     of P
+                                         A Required        B Required
+ Both P and Q want resource    A
+ Both P and Q want resource    B          Possible progress path of P and Q.
+                                             Horizontal portion of path indicates P is executing and Q is waiting.
+                                             Vertical portion of path indicates Q is executing and P is waiting.
+Figure 6.3   Example of No     Deadlock  [BACO03]
+          may compete for the same resource, a higher-dimensional diagram would be
+          required. The principles concerning fatal regions and deadlock would remain
+          the same.
+          Reusable Resources
+          Two general categories of resources can be distinguished: reusable and consumable.
+          A reusable resource is one that can be safely used by only one process at a time and
+          is not depleted by that use. Processes obtain resource units that they later release
+          for reuse by other processes. Examples of reusable resources include processors;
+          I/O channels; main and secondary memory; devices; and data structures such as
+          files, databases, and semaphores.
+             As an example of deadlock involving reusable resources, consider two
+          processes that compete for exclusive access to a disk file D and a tape drive T. The
+          programs engage in the operations depicted in Figure 6.4. Deadlock occurs if each
+          process holds one resource and requests the other. For example, deadlock occurs
+          if the multiprogramming system interleaves the execution of the two processes as
+          follows:
+                                                p0 p1 q0 q1 p2 q2
+
+264  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     Step             Process P Action                 Step     Process Q Action
+     p0               Request (D)                      q0       Request (T)
+     p1               Lock (D)                         q1       Lock (T)
+     p2               Request (T)                      q2       Request (D)
+     p3               Lock (T)                         q3       Lock (D)
+     p4               Perform function                 q4       Perform function
+     p5               Unlock (D)                       q5       Unlock (T)
+     p6               Unlock (T)                       q6       Unlock (D)
+     Figure 6.4       Example of Two Processes Competing for Reusable Resources
+     It may appear that this is a programming error rather than a problem for the OS
+     designer. However, we have seen that concurrent program design is challenging.
+     Such deadlocks do occur, and the cause is often embedded in complex program
+     logic, making detection difficult. One strategy for dealing with such a deadlock is
+     to impose system design constraints concerning the order in which resources can be
+     requested.
+     Another example of deadlock with a reusable resource has to do with requests
+     for main memory. Suppose the space available for allocation is 200 Kbytes, and the
+     following sequence of requests occurs:
+                      P1                                        P2
+                 ...                                       ...
+                 Request 80 Kbytes;                        Request 70 Kbytes;
+                 ...                                       ...
+                 Request 60 Kbytes;                        Request 80 Kbytes;
+     Deadlock occurs if both processes progress to their second request. If the
+     amount of memory to be requested is not known ahead of time, it is difficult to deal
+     with this type of deadlock by means of system design constraints. The best way to
+     deal with this particular problem is, in effect, to eliminate the possibility by using
+     virtual memory, which is discussed in Chapter 8.
+     Consumable Resources
+     A consumable resource is one that can be created (produced) and destroyed (con-
+     sumed). Typically, there is no limit on the number of consumable resources of a
+     particular type. An unblocked producing process may create any number of such
+     resources. When a resource is acquired by a consuming process, the resource ceases
+     to exist. Examples of consumable resources are interrupts, signals, messages, and
+     information in I/O buffers.
+
+                                                          6.1 / PRINCIPLES OF DEADLOCK             265
+            As an example of deadlock involving consumable resources, consider the
+           following pair of processes, in which each process attempts to receive a message
+           from the other process and then send a message to the other process:
+                              P1                                          P2
+                      ...                                           ...
+                      Receive (P2);                                 Receive (P1);
+                      ...                                           ...
+                      Send (P2, M1);                                Send (P1, M2);
+            Deadlock occurs if the Receive is blocking (i.e., the receiving process is
+           blocked until the message is received). Once again, a design error is the cause of
+           the deadlock. Such errors may be quite subtle and difficult to detect. Furthermore,
+           it may take a rare combination of events to cause the deadlock; thus a program
+Table 6.1   Summary of Deadlock Detection,    Prevention, and Avoidance   Approaches for Operating
+            Systems [ISLO80]
+            Resource
+            Allocation        Different
+Approach    Policy            Schemes         Major Advantages            Major Disadvantages
+                              Requesting all  · Works well for processes  · Inefficient
+                              resources at    that perform a single       · Delays process initiation
+                              once            burst of activity           · Future resource require-
+                                              · No preemption necessary   ments must be known by
+                                                                          processes
+Prevention  Conservative;     Preemption      · Convenient when           · Preempts more often
+            undercommits                      applied to resources        than necessary
+            resources                         whose state can be saved
+                                              and restored easily
+                              Resource        · Feasible to enforce via   · Disallows incremental
+                              ordering        compile-time checks         resource requests
+                                              · Needs no run-time com-
+                                              putation since problem is
+                                              solved in system design
+Avoidance   Midway            Manipulate to   · No preemption             · Future resource require-
+            between that      find at least   necessary                   ments must be known
+            of detection      one safe path                               by OS
+            and prevention                                                · Processes can be blocked
+                                                                          for long periods
+Detection   Very liberal;     Invoke peri-    · Never delays process      · Inherent preemption
+            requested         odically to     initiation                  losses
+            resources are     test for        · Facilitates online
+            granted where     deadlock        handling
+            possible
+
+266  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+         could be in use for a considerable period of time, even years, before the deadlock
+         actually occurs.
+              There is no single effective strategy that can deal with all types of deadlock.
+         Table 6.1 summarizes the key elements of the most important approaches that have
+         been developed: prevention, avoidance, and detection. We examine each of these
+         in turn, after first introducing resource allocation graphs and then discussing the
+         conditions for deadlock.
+         Resource Allocation Graphs
+         A useful tool in characterizing the allocation of resources to processes is the
+         resource allocation graph, introduced by Holt [HOLT72]. The resource allocation
+         graph is a directed graph that depicts a state of the system of resources and pro-
+         cesses, with each process and each resource represented by a node. A graph edge
+         directed from a process to a resource indicates a resource that has been requested
+         by the process but not yet granted (Figure 6.5a). Within a resource node, a dot is
+         shown for each instance of that resource. Examples of resource types that may have
+         multiple instances are I/O devices that are allocated by a resource management
+         module in the OS. A graph edge directed from a reusable resource node dot to a
+         process indicates a request that has been granted (Figure 6.5b); that is, the process
+     P1       Requests                   Ra                  P1            Held by               Ra
+              (a) Resource is requested                          (b) Resource is held
+                        Ra                                                 Ra
+              Requests      Held by                              Requests           Held by
+     P1                                  P2                  P1                                  P2
+              Held by       Requests                             Held by               Requests
+                        Rb                                                 Rb
+              (c) Circular wait                                            (d) No deadlock
+Figure   6.5  Examples of Resource       Allocation  Graphs
+
+                                  6.1 / PRINCIPLES OF DEADLOCK                        267
+                      P1      P2                      P3               P4
+                      Ra      Rb                      Rc               Rd
+           Figure 6.6     Resource Allocation Graph for Figure 6.1b
+has been assigned one unit of that resource. A graph edge directed from a consum-
+able resource node dot to a process indicates that the process is the producer of that
+resource.
+    Figure 6.5c shows an example deadlock. There is only one unit each of
+resources Ra and Rb. Process P1 holds Rb and requests Ra, while P2 holds Ra but
+requests Rb. Figure 6.5d has the same topology as Figure 6.5c, but there is no dead-
+lock because multiple units of each resource are available.
+    The resource allocation graph of Figure 6.6 corresponds to the deadlock situa-
+tion in Figure 6.1b. Note that in this case, we do not have a simple situation in which
+two processes each have one resource the other needs. Rather, in this case, there is
+a circular chain of processes and resources that results in deadlock.
+The Conditions for Deadlock
+Three conditions of policy must be present for a deadlock to be possible:
+1.  Mutual exclusion. Only one process may use a resource at a time. No process
+    may access a resource unit that has been allocated to another process.
+2.  Hold and wait. A process may hold allocated resources while awaiting assign-
+    ment of other resources.
+3.  No preemption. No resource can be forcibly removed from a process holding it.
+    In many ways these conditions are quite desirable. For example, mutual
+exclusion is needed to ensure consistency of results and the integrity of a data-
+base. Similarly, preemption should not be done arbitrarily. For example, when data
+resources are involved, preemption must be supported by a rollback recovery mech-
+anism, which restores a process and its resources to a suitable previous state from
+which the process can eventually repeat its actions.
+    The first three conditions are necessary but not sufficient for a deadlock to
+exist. For deadlock to actually take place, a fourth condition is required:
+4.  Circular wait. A closed chain of processes exists, such that each process holds
+    at least one resource needed by the next process in the chain (e.g., Figure 6.5c
+    and Figure 6.6).
+
+268  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     The fourth condition is, actually, a potential consequence of the first three.
+     That is, given that the first three conditions exist, a sequence of events may occur
+     that lead to an unresolvable circular wait. The unresolvable circular wait is in fact
+     the definition of deadlock. The circular wait listed as condition 4 is unresolvable
+     because the first three conditions hold. Thus, the four conditions, taken together,
+     constitute necessary and sufficient conditions for deadlock.1
+     To clarify this discussion, it is useful to return to the concept of the joint
+     progress diagram, such as the one shown in Figure 6.2. Recall that we defined a
+     fatal region as one such that once the processes have progressed into that region,
+     those processes will deadlock. A fatal region exists only if all of the first three con-
+     ditions listed above are met. If one or more of these conditions are not met, there
+     is no fatal region and deadlock cannot occur. Thus, these are necessary conditions
+     for deadlock. For deadlock to occur, there must not only be a fatal region, but
+     also a sequence of resource requests that has led into the fatal region. If a circular
+     wait condition occurs, then in fact the fatal region has been entered. Thus, all four
+     conditions listed above are sufficient for deadlock. To summarize,
+     Possibility of Deadlock  Existence of Deadlock
+     1.  Mutual exclusion     1.  Mutual exclusion
+     2.  No preemption        2.  No preemption
+     3.  Hold and wait        3.  Hold and wait
+                              4.  Circular wait
+     Three general approaches exist for dealing with deadlock. First, one can
+     prevent deadlock by adopting a policy that eliminates one of the conditions
+     (conditions 1 through 4). Second, one can avoid deadlock by making the appropri-
+     ate dynamic choices based on the current state of resource allocation. Third, one
+     can attempt to detect the presence of deadlock (conditions 1 through 4 hold) and
+     take action to recover. We discuss each of these approaches in turn.
+6.2  DEADLOCK PREVENTION
+     The strategy of deadlock prevention is, simply put, to design a system in such a
+     way that the possibility of deadlock is excluded. We can view deadlock prevention
+     methods as falling into two classes. An indirect method of deadlock prevention
+     is to prevent the occurrence of one of the three necessary conditions listed previ-
+     ously (items 1 through 3). A direct method of deadlock prevention is to prevent the
+     occurrence of a circular wait (item 4). We now examine techniques related to each
+     of the four conditions.
+     1Virtually all textbooks simply list these four conditions as the conditions needed for deadlock, but such
+     a presentation obscures some of the subtler issues. Item 4, the circular wait condition, is fundamentally
+     different from the other three conditions. Items 1 through 3 are policy decisions, while item 4 is a circum-
+     stance that might occur depending on the sequencing of requests and releases by the involved processes.
+     Linking circular wait with the three necessary conditions leads to inadequate distinction between preven-
+     tion and avoidance. See [SHUB90] and [SHUB03] for a discussion.

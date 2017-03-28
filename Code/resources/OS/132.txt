@@ -1,0 +1,702 @@
+Process States
+110  CHAPTER  3  /  PROCESS  DESCRIPTION AND CONTROL
+                                Identifier
+                                State
+                                Priority
+                                Program counter
+                                Memory pointers
+                                Context data
+                                I/O status
+                                information
+                                Accounting
+                                information
+                    Figure 3.1  Simplified Process Control Block
+     The information in the preceding list is stored in a data structure, typically
+     called a process control block (Figure 3.1), that is created and managed by the OS.
+     The significant point about the process control block is that it contains sufficient
+     information so that it is possible to interrupt a running process and later resume
+     execution as if the interruption had not occurred. The process control block is
+     the key tool that enables the OS to support multiple processes and to provide for
+     multiprocessing. When a process is interrupted, the current values of the program
+     counter and the processor registers (context data) are saved in the appropriate fields
+     of the corresponding process control block, and the state of the process is changed
+     to some other value, such as blocked or ready (described subsequently). The OS is
+     now free to put some other process in the running state. The program counter and
+     context data for this process are loaded into the processor registers and this process
+     now begins to execute.
+     Thus, we can say that a process consists of program code and associated data
+     plus a process control block. For a single-processor computer, at any given time, at
+     most one process is executing and that process is in the running state.
+3.2  PROCESS STATES
+     As just discussed, for a program to be executed, a process, or task, is created for
+     that program. From the processor's point of view, it executes instructions from its
+     repertoire in some sequence dictated by the changing values in the program counter
+
+                                                          3.2 / PROCESS STATES         111
+Address                Main memory                        Program counter
+                    0                                     8000
+100
+                       Dispatcher
+5000
+                       Process A
+8000
+                       Process B
+12000
+                       Process C
+Figure 3.2             Snapshot of Example Execution (Figure 3.4)
+                       at Instruction Cycle 13
+register. Over time, the program counter may refer to code in different programs
+that are part of different processes. From the point of view of an individual pro-
+gram, its execution involves a sequence of instructions within that program.
+We can characterize the behavior of an individual process by listing the
+sequence of instructions that execute for that process. Such a listing is referred to
+as a trace of the process. We can characterize behavior of the processor by showing
+how the traces of the various processes are interleaved.
+Let us consider a very simple example. Figure 3.2 shows a memory layout
+of three processes. To simplify the discussion, we assume no use of virtual mem-
+ory; thus all three processes are represented by programs that are fully loaded
+in main memory. In addition, there is a small dispatcher program that switches
+the processor from one process to another. Figure 3.3 shows the traces of each
+of the processes during the early part of their execution. The first 12 instructions
+executed in processes A and C are shown. Process B executes four instructions,
+and we assume that the fourth instruction invokes an I/O operation for which the
+process must wait.
+Now let us view these traces from the processor's point of view. Figure 3.4
+shows the interleaved traces resulting from the first 52 instruction cycles (for con-
+venience, the instruction cycles are numbered). In this figure, the shaded areas
+represent code executed by the dispatcher. The same sequence of instructions is
+executed by the dispatcher in each instance because the same functionality of the
+dispatcher is being executed. We assume that the OS only allows a process to con-
+tinue execution for a maximum of six instruction cycles, after which it is interrupted;
+
+112  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+                 5000           8000                                      12000
+                 5001           8001                                      12001
+                 5002           8002                                      12002
+                 5003           8003                                      12003
+                 5004                                                     12004
+                 5005                                                     12005
+                 5006                                                     12006
+                 5007                                                     12007
+                 5008                                                     12008
+                 5009                                                     12009
+                 5010                                                     12010
+                 5011                                                     12011
+     (a) Trace of process A  (b) Trace of process B                       (c) Trace of process C
+     5000  Starting address of program of process A
+     8000  Starting address of program of process B
+     12000  Starting address of program of process C
+     Figure 3.3  Traces of Processes of Figure 3.2
+     this prevents any single process from monopolizing processor time. As Figure 3.4
+     shows, the first six instructions of process A are executed, followed by a time-out
+     and the execution of some code in the dispatcher, which executes six instructions
+     before turning control to process B.2 After four instructions are executed, proc-
+     ess B requests an I/O action for which it must wait. Therefore, the processor stops
+     executing process B and moves on, via the dispatcher, to process C. After a time-
+     out, the processor moves back to process A. When this process times out, process
+     B is still waiting for the I/O operation to complete, so the dispatcher moves on to
+     process C again.
+     A Two-State Process Model
+     The operating system's principal responsibility is controlling the execution of
+     processes; this includes determining the interleaving pattern for execution and allo-
+     cating resources to processes. The first step in designing an OS to control processes
+     is to describe the behavior that we would like the processes to exhibit.
+     We can construct the simplest possible model by observing that, at any time, a
+     process is either being executed by a processor or not. In this model, a process may
+     be in one of two states: Running or Not Running, as shown in Figure 3.5a. When
+     the OS creates a new process, it creates a process control block for the process and
+     enters that process into the system in the Not Running state. The process exists,
+     is known to the OS, and is waiting for an opportunity to execute. From time to
+     time, the currently running process will be interrupted and the dispatcher portion
+     of the OS will select some other process to run. The former process moves from the
+     2The small number of instructions executed for the processes and the dispatcher are unrealistically low;
+     they are used in this simplified example to clarify the discussion.
+
+                                                        3.2 / PROCESS STATES             113
+1           5000                   27                   12004
+2           5001                   28                   12005
+3           5002                   ----------------------Time-out
+4           5003                   29                   100
+5           5004                   30                   101
+6           5005                   31                   102
+----------------------Time-out     32                   103
+7           100                    33                   104
+8           101                    34                   105
+9           102                    35                   5006
+10          103                    36                   5007
+11          104                    37                   5008
+12          105                    38                   5009
+13          8000                   39                   5010
+14          8001                   40                   5011
+15          8002                   ----------------------Time-out
+16          8003                   41                   100
+----------------------I/O request  42                   101
+17          100                    43                   102
+18          101                    44                   103
+19          102                    45                   104
+20          103                    46                   105
+21          104                    47                   12006
+22          105                    48                   12007
+23          12000                  49                   12008
+24          12001                  50                   12009
+25          12002                  51                   12010
+26          12003                  52                   12011
+                                   ----------------------Time-out
+100  Starting address of dispatcher program
+Shaded areas indicate execution of dispatcher process;
+first and third columns count instruction cycles;
+second and fourth columns show address of instruction being executed
+Figure 3.4  Combined Trace of Processes of Figure 3.2
+Running state to the Not Running state, and one of the other processes moves to
+the Running state.
+   From this simple model, we can already begin to appreciate some of the design
+elements of the OS. Each process must be represented in some way so that the OS
+can keep track of it. That is, there must be some information relating to each proc-
+ess, including current state and location in memory; this is the process control block.
+Processes that are not running must be kept in some sort of queue, waiting their turn
+to execute. Figure 3.5b suggests a structure. There is a single queue in which each
+entry is a pointer to the process control block of a particular process. Alternatively,
+
+114  CHAPTER   3  /  PROCESS  DESCRIPTION AND CONTROL
+                                              Dispatch
+                     Enter    Not                                    Running    Exit
+                              running
+                                              Pause
+                                       (a) State transition diagram
+                              Queue
+                     Enter                           Dispatch                   Exit
+                                                                     Processor
+                                              Pause
+                                       (b) Queueing diagram
+               Figure 3.5   Two-State Process Model
+     the queue may consist of a linked list of data blocks, in which each block represents
+     one process; we will explore this latter implementation subsequently.
+     We can describe the behavior of the dispatcher in terms of this queueing
+     diagram. A process that is interrupted is transferred to the queue of waiting proc-
+     esses. Alternatively, if the process has completed or aborted, it is discarded (exits
+     the system). In either case, the dispatcher takes another process from the queue to
+     execute.
+     The Creation and Termination of Processes
+     Before refining our simple two-state model, it will be useful to discuss the cre-
+     ation and termination of processes; ultimately, and regardless of the model of
+     process behavior that is used, the life of a process is bounded by its creation and
+     termination.
+     PROCESS CREATION         When a new process is to be added to those currently being
+     managed, the OS builds the data structures that are used to manage the process
+     and allocates address space in main memory to the process. We describe these data
+     structures in Section 3.3. These actions constitute the creation of a new process.
+     Four common events lead to the creation of a process, as indicated in Table 3.1.
+     In a batch environment, a process is created in response to the submission of a job.
+     In an interactive environment, a process is created when a new user attempts to
+     log on. In both cases, the OS is responsible for the creation of the new process.
+     An OS may also create a process on behalf of an application. For example, if a
+     user requests that a file be printed, the OS can create a process that will manage
+     the printing. The requesting process can thus proceed independently of the time
+     required to complete the printing task.
+
+                                                                 3.2 / PROCESS STATES                                 115
+Table 3.1  Reasons for Process Creation
+New batch job                       The OS is provided with a batch job control stream, usually on tape
+                                    or disk. When the OS is prepared to take on new work, it will read the
+                                    next sequence of job control commands.
+Interactive log-on                  A user at a terminal logs on to the system.
+Created by OS to provide a service  The OS can create a process to perform a function on behalf of a user
+                                    program, without the user having to wait (e.g., a process to control
+                                    printing).
+Spawned by existing process         For purposes of modularity or to exploit parallelism, a user program
+                                    can dictate the creation of a number of processes.
+               Traditionally, the OS created all processes in a way that was transparent to the
+           user or application program, and this is still commonly found with many contem-
+           porary operating systems. However, it can be useful to allow one process to cause
+           the creation of another. For example, an application process may generate another
+           process to receive data that the application is generating and to organize those data
+           into a form suitable for later analysis. The new process runs in parallel to the origi-
+           nal process and is activated from time to time when new data are available. This
+           arrangement can be very useful in structuring the application. As another example,
+           a server process (e.g., print server, file server) may generate a new process for each
+           request that it handles. When the OS creates a process at the explicit request of
+           another process, the action is referred to as process spawning.
+               When one process spawns another, the former is referred to as the parent
+           process, and the spawned process is referred to as the child process. Typically, the
+           "related" processes need to communicate and cooperate with each other. Achieving
+           this cooperation is a difficult task for the programmer; this topic is discussed in
+           Chapter 5.
+           PROCESS     TERMINATION       Table  3.2  summarizes  typical         reasons                for  process
+           termination. Any computer system must provide a means for a process to indicate its
+           completion. A batch job should include a Halt instruction or an explicit OS service
+           call for termination. In the former case, the Halt instruction will generate an interrupt
+           to alert the OS that a process has completed. For an interactive application, the action
+           of the user will indicate when the process is completed. For example, in a time-sharing
+           system, the process for a particular user is to be terminated when the user logs off or
+           turns off his or her terminal. On a personal computer or workstation, a user may quit
+           an application (e.g., word processing or spreadsheet). All of these actions ultimately
+           result in a service request to the OS to terminate the requesting process.
+               Additionally, a number of error and fault conditions can lead to the termina-
+           tion of a process. Table 3.2 lists some of the more commonly recognized conditions.3
+               Finally, in some operating systems, a process may be terminated by the proc-
+           ess that created it or when the parent process is itself terminated.
+           3A forgiving operating system might, in some cases, allow the user to recover from a fault without termi-
+           nating the process. For example, if a user requests access to a file and that access is denied, the operating
+           system might simply inform the user that access is denied and allow the process to proceed.
+
+116  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+Table 3.2    Reasons for Process Termination
+Normal completion            The process executes an OS service call to indicate that it has completed
+                             running.
+Time limit exceeded          The process has run longer than the specified total time limit. There are a
+                             number of possibilities for the type of time that is measured. These include
+                             total elapsed time ("wall clock time"), amount of time spent executing, and,
+                             in the case of an interactive process, the amount of time since the user last
+                             provided any input.
+Memory unavailable           The process requires more memory than the system can provide.
+Bounds violation             The process tries to access a memory location that it is not allowed to access.
+Protection error             The process attempts to use a resource such as a file that it is not allowed
+                             to use, or it tries to use it in an improper fashion, such as writing to a read-
+                             only file.
+Arithmetic error             The process tries a prohibited computation, such as division by zero, or tries
+                             to store numbers larger than the hardware can accommodate.
+Time overrun                 The process has waited longer than a specified maximum for a certain event
+                             to occur.
+I/O failure                  An error occurs during input or output, such as inability to find a file, failure
+                             to read or write after a specified maximum number of tries (when, for exam-
+                             ple, a defective area is encountered on a tape), or invalid operation (such as
+                             reading from the line printer).
+Invalid instruction          The process attempts to execute a nonexistent instruction (often a result of
+                             branching into a data area and attempting to execute the data).
+Privileged instruction       The process attempts to use an instruction reserved for the operating system.
+Data misuse                  A piece of data is of the wrong type or is not initialized.
+Operator or OS intervention  For some reason, the operator or the operating system has terminated the
+                             process (e.g., if a deadlock exists).
+Parent termination           When a parent terminates, the operating system may automatically termi-
+                             nate all of the offspring of that parent.
+Parent request               A parent process typically has the authority to terminate any of its offspring.
+           A Five-State Model
+           If all processes were always ready to execute, then the queueing discipline suggested
+           by Figure 3.5b would be effective. The queue is a first-in-first-out list and the pro-
+           cessor operates in round-robin fashion on the available processes (each process in
+           the queue is given a certain amount of time, in turn, to execute and then returned to
+           the queue, unless blocked). However, even with the simple example that we have
+           described, this implementation is inadequate: Some processes in the Not Running
+           state are ready to execute, while others are blocked, waiting for an I/O operation
+           to complete. Thus, using a single queue, the dispatcher could not just select the
+           process at the oldest end of the queue. Rather, the dispatcher would have to scan
+           the list looking for the process that is not blocked and that has been in the queue
+           the longest.
+                  A more natural way to handle this situation is to split the Not Running state
+           into two states: Ready and Blocked. This is shown in Figure 3.6. For good measure,
+
+                                                         3.2 / PROCESS STATES           117
+                                               Dispatch
+New         Admit     Ready                              Running  Release  Exit
+                                               Time-out
+                                        Event  Event
+                      occurs                   wait
+                      Blocked
+Figure 3.6  Five-State Process Model
+we have added two additional states that will prove useful. The five states in this
+new diagram are:
+·           Running: The process that is currently being executed. For this chapter, we
+            will assume a computer with a single processor, so at most one process at a
+            time can be in this state.
+·           Ready: A process that is prepared to execute when given the opportunity.
+·           Blocked/Waiting:4 A process that cannot execute until some event occurs,
+            such as the completion of an I/O operation.
+·           New: A process that has just been created but has not yet been admitted to the
+            pool of executable processes by the OS. Typically, a new process has not yet
+            been loaded into main memory, although its process control block has been
+            created.
+·           Exit: A process that has been released from the pool of executable processes
+            by the OS, either because it halted or because it aborted for some reason.
+            The New and Exit states are useful constructs for process management. The
+New state corresponds to a process that has just been defined. For example, if a new
+user attempts to log on to a time-sharing system or a new batch job is submitted for
+execution, the OS can define a new process in two stages. First, the OS performs the
+necessary housekeeping chores. An identifier is associated with the process. Any
+tables that will be needed to manage the process are allocated and built. At this
+point, the process is in the New state. This means that the OS has performed the
+necessary actions to create the process but has not committed itself to the execution
+of the process. For example, the OS may limit the number of processes that may
+be in the system for reasons of performance or main memory limitation. While a
+process is in the new state, information concerning the process that is needed by the
+OS is maintained in control tables in main memory. However, the process itself is
+4Waiting is a frequently used alternative term for Blocked as a process state. Generally, we will use
+Blocked, but the terms are interchangeable.
+
+118  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+     not in main memory. That is, the code of the program to be executed is not in main
+     memory, and no space has been allocated for the data associated with that program.
+     While the process is in the New state, the program remains in secondary storage,
+     typically disk storage.5
+        Similarly, a process exits a system in two stages. First, a process is terminated
+     when it reaches a natural completion point, when it aborts due to an unrecoverable
+     error, or when another process with the appropriate authority causes the process to
+     abort. Termination moves the process to the exit state. At this point, the process is
+     no longer eligible for execution. The tables and other information associated with
+     the job are temporarily preserved by the OS, which provides time for auxiliary or
+     support programs to extract any needed information. For example, an accounting
+     program may need to record the processor time and other resources utilized by
+     the process for billing purposes. A utility program may need to extract information
+     about the history of the process for purposes related to performance or utilization
+     analysis. Once these programs have extracted the needed information, the OS no
+     longer needs to maintain any data relating to the process and the process is deleted
+     from the system.
+        Figure 3.6 indicates the types of events that lead to each state transition for a
+     process; the possible transitions are as follows:
+     ·  Null : New: A new process is created to execute a program. This event occurs
+        for any of the reasons listed in Table 3.1.
+     ·  New : Ready: The OS will move a process from the New state to the Ready
+        state when it is prepared to take on an additional process. Most systems set
+        some limit based on the number of existing processes or the amount of virtual
+        memory committed to existing processes. This limit assures that there are not
+        so many active processes as to degrade performance.
+     ·  Ready : Running: When it is time to select a process to run, the OS chooses
+        one of the processes in the Ready state. This is the job of the scheduler or
+        dispatcher. Scheduling is explored in Part Four.
+     ·  Running : Exit: The currently running process is terminated by the OS if the
+        process indicates that it has completed, or if it aborts. See Table 3.2.
+     ·  Running : Ready: The most common reason for this transition is that the
+        running process has reached the maximum allowable time for uninterrupted
+        execution; virtually all multiprogramming operating systems impose this type
+        of time discipline. There are several other alternative causes for this transi-
+        tion, which are not implemented in all operating systems. Of particular impor-
+        tance is the case in which the OS assigns different levels of priority to different
+        processes. Suppose, for example, that process A is running at a given priority
+        level, and process B, at a higher priority level, is blocked. If the OS learns
+        that the event upon which process B has been waiting has occurred, moving
+        B to a ready state, then it can interrupt process A and dispatch process B. We
+     5In the discussion in this paragraph, we ignore the concept of virtual memory. In systems that support
+     virtual memory, when a process moves from New to Ready, its program code and data are loaded
+     into virtual memory. Virtual memory was briefly discussed in Chapter 2 and is examined in detail in
+     Chapter 8.
+
+                                                               3.2 / PROCESS STATES                       119
+               say that the OS has preempted process A.6 Finally, a process may voluntarily
+               release control of the processor. An example is a background process that
+               performs some accounting or maintenance function periodically.
+            ·  Running : Blocked: A process is put in the Blocked state if it requests some-
+               thing for which it must wait. A request to the OS is usually in the form of a
+               system service call; that is, a call from the running program to a procedure
+               that is part of the operating system code. For example, a process may request
+               a service from the OS that the OS is not prepared to perform immediately. It
+               can request a resource, such as a file or a shared section of virtual memory,
+               that is not immediately available. Or the process may initiate an action, such
+               as an I/O operation, that must be completed before the process can continue.
+               When processes communicate with each other, a process may be blocked
+               when it is waiting for another process to provide data or waiting for a message
+               from another process.
+            ·  Blocked : Ready: A process in the Blocked state is moved to the Ready state
+               when the event for which it has been waiting occurs.
+            ·  Ready : Exit: For clarity, this transition is not shown on the state diagram. In
+               some systems, a parent may terminate a child' process at any time. Also, if a par-
+               ent terminates, all child processes associated with that parent may be terminated.
+            ·  Blocked : Exit: The comments under the preceding item apply.
+               Returning to our simple example, Figure 3.7 shows the transition of each proc-
+ess among the states. Figure 3.8a suggests the way in which a queueing discipline
+might be implemented with two queues: a Ready queue and a Blocked queue. As
+each process is admitted to the system, it is placed in the Ready queue. When it is
+time for the OS to choose another process to run, it selects one from the Ready
+Process A
+Process B
+Process C
+Dispatcher
+            0  5  10     15           20      25           30        35  40           45  50
+                Running                Ready                Blocked
+Figure 3.7     Process States for the Trace of Figure 3.4
+6In general, the term preemption is defined to be the reclaiming of a resource from a process before the
+process has finished using it. In this case, the resource is the processor itself. The process is executing and
+could continue to execute, but is preempted so that another process can be executed.
+
+120  CHAPTER  3  /  PROCESS  DESCRIPTION AND CONTROL
+                             Ready queue                               Release
+                    Admit                   Dispatch
+                                                            Processor
+                                            Time-out
+                             Blocked queue
+                    Event                             Event wait
+                    occurs
+                             (a) Single blocked queue
+                             Ready queue                               Release
+                    Admit                   Dispatch
+                                                            Processor
+                                            Time-out
+                             Event 1 queue
+                    Event 1                           Event 1 wait
+                    occurs
+                             Event 2 queue
+                    Event 2                           Event 2 wait
+                    occurs
+                             Event n queue
+                    Event n                           Event n wait
+                    occurs
+                             (b) Multiple blocked queues
+                 Figure 3.8  Queueing Model for Figure 3.6
+     queue. In the absence of any priority scheme, this can be a simple first-in-first-out
+     queue. When a running process is removed from execution, it is either terminated
+     or placed in the Ready or Blocked queue, depending on the circumstances. Finally,
+     when an event occurs, any process in the Blocked queue that has been waiting on
+     that event only is moved to the Ready queue.
+     This latter arrangement means that, when an event occurs, the OS must scan
+     the entire blocked queue, searching for those processes waiting on that event. In a
+     large OS, there could be hundreds or even thousands of processes in that queue.
+     Therefore, it would be more efficient to have a number of queues, one for each
+     event. Then, when the event occurs, the entire list of processes in the appropriate
+     queue can be moved to the Ready state (Figure 3.8b).
+     One final refinement: If the dispatching of processes is dictated by a priority
+     scheme, then it would be convenient to have a number of Ready queues, one for
+     each priority level. The OS could then readily determine which is the highest-prior-
+     ity ready process that has been waiting the longest.
+
+                                                      3.2 / PROCESS STATES               121
+Suspended Processes
+THE  NEED  FOR  SWAPPING        The three principal states just described (Ready,
+Running, Blocked) provide a systematic way of modeling the behavior of processes
+and guide the implementation of the OS. Some operating systems are constructed
+using just these three states.
+     However, there is good justification for adding other states to the model. To
+see the benefit of these new states, consider a system that does not employ virtual
+memory. Each process to be executed must be loaded fully into main memory.
+Thus, in Figure 3.8b, all of the processes in all of the queues must be resident in
+main memory.
+     Recall that the reason for all of this elaborate machinery is that I/O activities
+are much slower than computation and therefore the processor in a uniprogramming
+system is idle most of the time. But the arrangement of Figure 3.8b does not entirely
+solve the problem. It is true that, in this case, memory holds multiple processes and
+that the processor can move to another process when one process is blocked. But the
+processor is so much faster than I/O that it will be common for all of the processes in
+memory to be waiting for I/O. Thus, even with multiprogramming, a processor could
+be idle most of the time.
+     What to do? Main memory could be expanded to accommodate more proc-
+esses. But there are two flaws in this approach. First, there is a cost associated with
+main memory, which, though small on a per-byte basis, begins to add up as we get
+into the gigabytes of storage. Second, the appetite of programs for memory has
+grown as fast as the cost of memory has dropped. So larger memory results in larger
+processes, not more processes.
+     Another solution is swapping, which involves moving part or all of a process
+from main memory to disk. When none of the processes in main memory is in the
+Ready state, the OS swaps one of the blocked processes out on to disk into a sus-
+pend queue. This is a queue of existing processes that have been temporarily kicked
+out of main memory, or suspended. The OS then brings in another process from the
+suspend queue, or it honors a new-process request. Execution then continues with
+the newly arrived process.
+     Swapping, however, is an I/O operation, and therefore there is the potential
+for making the problem worse, not better. But because disk I/O is generally the
+fastest I/O on a system (e.g., compared to tape or printer I/O), swapping will usually
+enhance performance.
+     With the use of swapping as just described, one other state must be added to
+our process behavior model (Figure 3.9a): the Suspend state. When all of the proc-
+esses in main memory are in the Blocked state, the OS can suspend one process by
+putting it in the Suspend state and transferring it to disk. The space that is freed in
+main memory can then be used to bring in another process.
+     When the OS has performed a swapping-out operation, it has two choices for
+selecting a process to bring into main memory: It can admit a newly created process
+or it can bring in a previously suspended process. It would appear that the prefer-
+ence should be to bring in a previously suspended process, to provide it with service
+rather than increasing the total load on the system.
+
+122  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+                    Admit                    Dispatch                      Release
+     New                      Ready                               Running           Exit
+                                             Time-out
+                    Activate  Event  occurs  Event wait
+     Suspend        Suspend   Blocked
+                                     (a) With one suspend state
+                    New
+            Admit             Admit          Suspend
+                    Activate                 Dispatch                      Release
+     Ready/                   Ready                               Running           Exit
+     suspend
+                    Suspend                  Time-out
+     Event  occurs            Event  occurs           Event wait
+     Blocked/       Activate
+     suspend                  Blocked
+                    Suspend
+                                     (b) With two suspend states
+     Figure 3.9     Process State Transition Diagram with Suspend States
+     But this line of reasoning presents a difficulty. All of the processes that have
+     been suspended were in the Blocked state at the time of suspension. It clearly would
+     not do any good to bring a blocked process back into main memory, because it is
+     still not ready for execution. Recognize, however, that each process in the Suspend
+     state was originally blocked on a particular event. When that event occurs, the proc-
+     ess is not blocked and is potentially available for execution.
+     Therefore, we need to rethink this aspect of the design. There are two inde-
+     pendent concepts here: whether a process is waiting on an event (blocked or not)
+     and whether a process has been swapped out of main memory (suspended or not).
+     To accommodate this 2 * 2 combination, we need four states:
+     · Ready: The process is in main memory and available for execution
+     · Blocked: The process is in main memory and awaiting an event.
+
+                                                        3.2 / PROCESS STATES          123
+·  Blocked/Suspend: The process is in secondary memory and awaiting an event.
+·  Ready/Suspend: The process is in secondary memory but is available for
+   execution as soon as it is loaded into main memory.
+   Before looking at a state transition diagram that encompasses the two new
+suspend states, one other point should be mentioned. The discussion so far has
+assumed that virtual memory is not in use and that a process is either all in main
+memory or all out of main memory. With a virtual memory scheme, it is possible
+to execute a process that is only partially in main memory. If reference is made to
+a process address that is not in main memory, then the appropriate portion of the
+process can be brought in. The use of virtual memory would appear to eliminate the
+need for explicit swapping, because any desired address in any desired process can
+be moved in or out of main memory by the memory management hardware of the
+processor. However, as we shall see in Chapter 8, the performance of a virtual mem-
+ory system can collapse if there is a sufficiently large number of active processes, all
+of which are partially in main memory. Therefore, even in a virtual memory system,
+the OS will need to swap out processes explicitly and completely from time to time
+in the interests of performance.
+   Let us look now, in Figure 3.9b, at the state transition model that we have
+developed. (The dashed lines in the figure indicate possible but not necessary tran-
+sitions.) Important new transitions are the following:
+·  Blocked : Blocked/Suspend: If there are no ready processes, then at least
+   one blocked process is swapped out to make room for another process that
+   is not blocked. This transition can be made even if there are ready processes
+   available, if the OS determines that the currently running process or a ready
+   process that it would like to dispatch requires more main memory to maintain
+   adequate performance.
+·  Blocked/Suspend : Ready/Suspend: A process in the Blocked/Suspend state
+   is moved to the Ready/Suspend state when the event for which it has been
+   waiting occurs. Note that this requires that the state information concerning
+   suspended processes must be accessible to the OS.
+·  Ready/Suspend : Ready: When there are no ready processes in main mem-
+   ory, the OS will need to bring one in to continue execution. In addition, it
+   might be the case that a process in the Ready/Suspend state has higher priority
+   than any of the processes in the Ready state. In that case, the OS designer may
+   dictate that it is more important to get at the higher-priority process than to
+   minimize swapping.
+·  Ready : Ready/Suspend: Normally, the OS would prefer to suspend a
+   blocked process rather than a ready one, because the ready process can now
+   be executed, whereas the blocked process is taking up main memory space
+   and cannot be executed. However, it may be necessary to suspend a ready
+   process if that is the only way to free up a sufficiently large block of main
+   memory. Also, the OS may choose to suspend a lower­priority ready process
+   rather than a higher­priority blocked process if it believes that the blocked
+   process will be ready soon.
+
+124  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+     Several other transitions that are worth considering are the following:
+     ·   New : Ready/Suspend and New : Ready: When a new process is created, it
+         can either be added to the Ready queue or the Ready/Suspend queue. In either
+         case, the OS must create a process control block and allocate an address space
+         to the process. It might be preferable for the OS to perform these housekeep-
+         ing duties at an early time, so that it can maintain a large pool of processes that
+         are not blocked. With this strategy, there would often be insufficient room in
+         main memory for a new process; hence the use of the (New : Ready/Suspend)
+         transition. On the other hand, we could argue that a just-in-time philosophy of
+         creating processes as late as possible reduces OS overhead and allows that OS
+         to perform the process-creation duties at a time when the system is clogged
+         with blocked processes anyway.
+     ·   Blocked/Suspend : Blocked: Inclusion of this transition may seem to be poor
+         design. After all, if a process is not ready to execute and is not already in
+         main memory, what is the point of bringing it in? But consider the follow-
+         ing scenario: A process terminates, freeing up some main memory. There is a
+         process in the (Blocked/Suspend) queue with a higher priority than any of the
+         processes in the (Ready/Suspend) queue and the OS has reason to believe that
+         the blocking event for that process will occur soon. Under these circumstances,
+         it would seem reasonable to bring a blocked process into main memory in
+         preference to a ready process.
+     ·   Running : Ready/Suspend: Normally, a running process is moved to the
+         Ready state when its time allocation expires. If, however, the OS is preempt-
+         ing the process because a higher-priority process on the Blocked/Suspend
+         queue has just become unblocked, the OS could move the running process
+         directly to the (Ready/Suspend) queue and free some main memory.
+     ·   Any State : Exit: Typically, a process terminates while it is running, either
+         because it has completed or because of some fatal fault condition. However, in
+         some operating systems, a process may be terminated by the process that cre-
+         ated it or when the parent process is itself terminated. If this is allowed, then a
+         process in any state can be moved to the Exit state.
+     OTHER USES OF SUSPENSION  So far, we have equated the concept of a suspended
+     process with that of a process that is not in main memory. A process that is not
+     in main memory is not immediately available for execution, whether or not it is
+     awaiting an event.
+         We can generalize the concept of a suspended process. Let us define a
+     suspended process as having the following characteristics:
+     1.  The process is not immediately available for execution.
+     2.  The process may or may not be waiting on an event. If it is, this blocked condi-
+         tion is independent of the suspend condition, and occurrence of the blocking
+         event does not enable the process to be executed immediately.
+
+                                                                     3.2 / PROCESS STATES                      125
+Table 3.3  Reasons for Process Suspension
+Swapping                  The OS needs to release sufficient main memory to bring in a process that is ready
+                          to execute.
+Other OS reason           The OS may suspend a background or utility process or a process that is suspected
+                          of causing a problem.
+Interactive user request  A user may wish to suspend execution of a program for purposes of debugging or
+                          in connection with the use of a resource.
+Timing                    A process may be executed periodically (e.g., an accounting or system monitoring
+                          process) and may be suspended while waiting for the next time interval.
+Parent process request    A parent process may wish to suspend execution of a descendent to examine or
+                          modify the suspended process, or to coordinate the activity of various descendants.
+           3.  The process was placed in a suspended state by an agent: either itself, a parent
+               process, or the OS, for the purpose of preventing its execution.
+           4.  The process may not be removed from this state until the agent explicitly
+               orders the removal.
+               Table 3.3 lists some reasons for the suspension of a process. One reason that
+           we have discussed is to provide memory space either to bring in a Ready/Suspended
+           process or to increase the memory allocated to other Ready processes. The OS may
+           have other motivations for suspending a process. For example, an auditing or trac-
+           ing process may be employed to monitor activity on the system; the process may
+           be used to record the level of utilization of various resources (processor, memory,
+           channels) and the rate of progress of the user processes in the system. The OS,
+           under operator control, may turn this process on and off from time to time. If the
+           OS detects or suspects a problem, it may suspend a process. One example of this
+           is deadlock, which is discussed in Chapter 6. As another example, a problem is
+           detected on a communications line, and the operator has the OS suspend the proc-
+           ess that is using the line while some tests are run.
+               Another set of reasons concerns the actions of an interactive user. For example, if
+           a user suspects a bug in the program, he or she may debug the program by suspending
+           its execution, examining and modifying the program or data, and resuming execution.
+           Or there may be a background process that is collecting trace or accounting statistics,
+           which the user may wish to be able to turn on and off.
+               Timing considerations may also lead to a swapping decision. For example, if a
+           process is to be activated periodically but is idle most of the time, then it should be
+           swapped out between uses. A program that monitors utilization or user activity is
+           an example.
+               Finally, a parent process may wish to suspend a descendent process. For exam-
+           ple, process A may spawn process B to perform a file read. Subsequently, process B
+           encounters an error in the file read procedure and reports this to process A. Process
+           A suspends process B to investigate the cause.
+               In all of these cases, the activation of a suspended process is requested by the
+           agent that initially requested the suspension.
+
+126  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+3.3  PROCESS DESCRIPTION
+     The OS controls events within the computer system. It schedules and dispatches
+     processes for execution by the processor, allocates resources to processes, and
+     responds to requests by user processes for basic services. Fundamentally, we can
+     think of the OS as that entity that manages the use of system resources by processes.
+     This concept is illustrated in Figure 3.10. In a multiprogramming environment,
+     there are a number of processes (P1,..., Pn) that have been created and exist in
+     virtual memory. Each process, during the course of its execution, needs access to
+     certain system resources, including the processor, I/O devices, and main memory. In
+     the figure, process P1 is running; at least part of the process is in main memory, and
+     it has control of two I/O devices. Process P2 is also in main memory but is blocked
+     waiting for an I/O device allocated to P1. Process Pn has been swapped out and is
+     therefore suspended.
+     We explore the details of the management of these resources by the OS
+     on behalf of the processes in later chapters. Here we are concerned with a more
+     fundamental question: What information does the OS need to control processes and
+     manage resources for them?
+     Operating System Control Structures
+     If the OS is to manage processes and resources, it must have information about
+     the current status of each process and resource. The universal approach to provid-
+     ing this information is straightforward: The OS constructs and maintains tables of
+     information about each entity that it is managing. A general idea of the scope of this
+     effort is indicated in Figure 3.11, which shows four different types of tables main-
+     tained by the OS: memory, I/O, file, and process. Although the details will differ
+     from one OS to another, fundamentally, all operating systems maintain information
+     in these four categories.
+     Memory tables are used to keep track of both main (real) and second-
+     ary (virtual) memory. Some of main memory is reserved for use by the OS; the
+     remainder is available for use by processes. Processes are maintained on secondary
+     memory using some sort of virtual memory or simple swapping mechanism. The
+     memory tables must include the following information:
+     · The allocation of main memory to processes
+     · The allocation of secondary memory to processes
+                  P1             P2                         Pn
+                                                                    Virtual
+                                                                    memory
+                                                                    Computer
+                                                                    resources
+     Processor             I/O   I/O      I/O               Main
+                                                            memory
+     Figure 3.10  Processes and Resources (resource allocation at one snapshot in time)

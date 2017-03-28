@@ -1,0 +1,286 @@
+Process Control
+134  CHAPTER 3 / PROCESS  DESCRIPTION      AND  CONTROL
+                          Process
+                          control block
+        Running
+        Ready
+        Blocked
+     Figure 3.14  Process List Structures
+     access to these tables is not difficult. Each process is equipped with a unique ID, and
+     this can be used as an index into a table of pointers to the process control blocks.
+     The difficulty is not access but rather protection. Two problems present themselves:
+     ·  A bug in a single routine, such as an interrupt handler, could damage process
+        control blocks, which could destroy the system's ability to manage the affected
+        processes.
+     ·  A design change in the structure or semantics of the process control block
+        could affect a number of modules in the OS.
+        These problems can be addressed by requiring all routines in the OS to go
+     through a handler routine, the only job of which is to protect process control blocks,
+     and which is the sole arbiter for reading and writing these blocks. The trade-off in
+     the use of such a routine involves performance issues and the degree to which the
+     remainder of the system software can be trusted to be correct.
+3.4  PROCESS CONTROL
+     Modes of Execution
+     Before continuing with our discussion of the way in which the OS manages pro-
+     cesses, we need to distinguish between the mode of processor execution normally
+     associated with the OS and that normally associated with user programs. Most
+
+                                                                      3.4 / PROCESS CONTROL         135
+           processors support at least two modes of execution. Certain instructions can only
+           be executed in the more-privileged mode. These would include reading or alter-
+           ing a control register, such as the program status word; primitive I/O instructions;
+           and instructions that relate to memory management. In addition, certain regions of
+           memory can only be accessed in the more-privileged mode.
+              The less-privileged mode is often referred to as the user mode, because user
+           programs typically would execute in this mode. The more-privileged mode is referred
+           to as the system mode, control mode, or kernel mode. This last term refers to the
+           kernel of the OS, which is that portion of the OS that encompasses the important
+           system functions. Table 3.7 lists the functions typically found in the kernel of an OS.
+              The reason for using two modes should be clear. It is necessary to protect the
+           OS and key operating system tables, such as process control blocks, from interfer-
+           ence by user programs. In the kernel mode, the software has complete control of the
+           processor and all its instructions, registers, and memory. This level of control is not
+           necessary and for safety is not desirable for user programs.
+              Two questions arise: How does the processor know in which mode it is to be
+           executing and how is the mode changed? Regarding the first question, typically there
+           is a bit in the program status word (PSW) that indicates the mode of execution. This
+           bit is changed in response to certain events. Typically, when a user makes a call to
+           an operating system service or when an interrupt triggers execution of an operating
+           system routine, the mode is set to the kernel mode and, upon return from the service
+           to the user process, the mode is set to user mode. As an example, consider the Intel
+           Itanium processor, which implements the 64-bit IA-64 architecture. The processor
+           has a processor status register (psr) that includes a 2-bit cpl (current privilege level)
+           field. Level 0 is the most privileged level, while level 3 is the least privileged level.
+           Most operating systems, such as Linux, use level 0 for the kernel and one other level
+Table 3.7   Typical Functions of an Operating System Kernel
+                                            Process Management
+· Process creation and termination
+· Process scheduling and dispatching
+· Process switching
+· Process synchronization and support for interprocess communication
+· Management of process control blocks
+                                            Memory Management
+· Allocation of address space to processes
+· Swapping
+· Page and segment management
+                                            I/O Management
+· Buffer management
+· Allocation of I/O channels and devices to processes
+                                            Support Functions
+· Interrupt handling
+· Accounting
+· Monitoring
+
+136  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+     for user mode. When an interrupt occurs, the processor clears most of the bits in the
+     psr, including the cpl field. This automatically sets the cpl to level 0. At the end of
+     the interrupt-handling routine, the final instruction that is executed is irt (interrupt
+     return). This instruction causes the processor to restore the psr of the interrupted pro-
+     gram, which restores the privilege level of that program. A similar sequence occurs
+     when an application places a system call. For the Itanium, an application places a
+     system call by placing the system call identifier and the system call arguments in a
+     predefined area and then executing a special instruction that has the effect of inter-
+     rupting execution at the user level and transferring control to the kernel.
+     Process Creation
+     In Section 3.2, we discussed the events that lead to the creation of a new process.
+     Having discussed the data structures associated with a process, we are now in a
+     position to describe briefly the steps involved in actually creating the process.
+         Once the OS decides, for whatever reason (Table 3.1), to create a new process,
+     it can proceed as follows:
+     1.  Assign a unique process identifier to the new process. At this time, a new entry
+         is added to the primary process table, which contains one entry per process.
+     2.  Allocate space for the process. This includes all elements of the process image.
+         Thus, the OS must know how much space is needed for the private user address
+         space (programs and data) and the user stack. These values can be assigned by
+         default based on the type of process, or they can be set based on user request
+         at job creation time. If a process is spawned by another process, the parent
+         process can pass the needed values to the OS as part of the process-creation
+         request. If any existing address space is to be shared by this new process, the
+         appropriate linkages must be set up. Finally, space for a process control block
+         must be allocated.
+     3.  Initialize the process control block. The process identification portion contains
+         the ID of this process plus other appropriate IDs, such as that of the parent
+         process. The processor state information portion will typically be initialized
+         with most entries zero, except for the program counter (set to the program
+         entry point) and system stack pointers (set to define the process stack bound-
+         aries). The process control information portion is initialized based on standard
+         default values plus attributes that have been requested for this process. For
+         example, the process state would typically be initialized to Ready or Ready/
+         Suspend. The priority may be set by default to the lowest priority unless an
+         explicit request is made for a higher priority. Initially, the process may own
+         no resources (I/O devices, files) unless there is an explicit request for these or
+         unless they are inherited from the parent.
+     4.  Set the appropriate linkages. For example, if the OS maintains each schedul-
+         ing queue as a linked list, then the new process must be put in the Ready or
+         Ready/Suspend list.
+     5.  Create or expand other data structures. For example, the OS may maintain
+         an accounting file on each process to be used subsequently for billing and/or
+         performance assessment purposes.
+
+                                                                   3.4 / PROCESS CONTROL                 137
+           Process Switching
+           On the face of it, the function of process switching would seem to be straightforward.
+           At some time, a running process is interrupted and the OS assigns another process
+           to the Running state and turns control over to that process. However, several design
+           issues are raised. First, what events trigger a process switch? Another issue is that
+           we must recognize the distinction between mode switching and process switching.
+           Finally, what must the OS do to the various data structures under its control to
+           achieve a process switch?
+           WHEN TO SWITCH PROCESSES   A process switch may occur any time that the OS has
+           gained control from the currently running process. Table 3.8 suggests the possible
+           events that may give control to the OS.
+                 First, let us consider system interrupts. Actually, we can distinguish, as many
+           systems do, two kinds of system interrupts, one of which is simply referred to as an
+           interrupt, and the other as a trap. The former is due to some sort of event that is
+           external to and independent of the currently running process, such as the completion
+           of an I/O operation. The latter relates to an error or exception condition generated
+           within the currently running process, such as an illegal file access attempt. With an
+           ordinary interrupt, control is first transferred to an interrupt handler, which does
+           some basic housekeeping and then branches to an OS routine that is concerned with
+           the particular type of interrupt that has occurred. Examples include the following:
+           ·     Clock interrupt: The OS determines whether the currently running process
+                 has been executing for the maximum allowable unit of time, referred to as a
+                 time slice. That is, a time slice is the maximum amount of time that a process
+                 can execute before being interrupted. If so, this process must be switched to a
+                 Ready state and another process dispatched.
+           ·     I/O interrupt: The OS determines what I/O action has occurred. If the I/O
+                 action constitutes an event for which one or more processes are waiting,
+                 then the OS moves all of the corresponding blocked processes to the Ready
+                 state (and Blocked/Suspend processes to the Ready/Suspend state). The OS
+                 must then decide whether to resume execution of the process currently in
+                 the Running state or to preempt that process for a higher-priority Ready
+                 process.
+           ·     Memory fault: The processor encounters a virtual memory address refer-
+                 ence for a word that is not in main memory. The OS must bring in the block
+Table 3.8  Mechanisms for Interrupting the Execution of a Process
+Mechanism                  Cause                                   Use
+Interrupt                  External to the execution of the        Reaction to an asynchronous external
+                           current instruction                     event
+Trap                       Associated with the execution of        Handling of an error or an exception
+                           the current instruction                 condition
+Supervisor call            Explicit request                        Call to an operating system function
+
+138  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+         (page or segment) of memory containing the reference from secondary mem-
+         ory to main memory. After the I/O request is issued to bring in the block of
+         memory, the process with the memory fault is placed in a blocked state; the
+         OS then performs a process switch to resume execution of another process.
+         After the desired block is brought into memory, that process is placed in the
+         Ready state.
+         With a trap, the OS determines if the error or exception condition is fatal.
+     If so, then the currently running process is moved to the Exit state and a proc-
+     ess switch occurs. If not, then the action of the OS will depend on the nature of
+     the error and the design of the OS. It may attempt some recovery procedure or
+     simply notify the user. It may do a process switch or resume the currently running
+     process.
+         Finally, the OS may be activated by a supervisor call from the program being
+     executed. For example, a user process is running and an instruction is executed that
+     requests an I/O operation, such as a file open. This call results in a transfer to a
+     routine that is part of the operating system code. The use of a system call may place
+     the user process in the Blocked state.
+     MODE SWITCHING    In Chapter 1, we discussed the inclusion of an interrupt stage as
+     part of the instruction cycle. Recall that, in the interrupt stage, the processor checks
+     to see if any interrupts are pending, indicated by the presence of an interrupt signal.
+     If no interrupts are pending, the processor proceeds to the fetch stage and fetches
+     the next instruction of the current program in the current process. If an interrupt is
+     pending, the processor does the following:
+     1.  It sets the program counter to the starting address of an interrupt handler
+         program.
+     2.  It switches from user mode to kernel mode so that the interrupt processing
+         code may include privileged instructions.
+     The processor now proceeds to the fetch stage and fetches the first instruction of
+     the interrupt handler program, which will service the interrupt. At this point, typi-
+     cally, the context of the process that has been interrupted is saved into that process
+     control block of the interrupted program.
+         One question that may now occur to you is, What constitutes the context that
+     is saved? The answer is that it must include any information that may be altered by
+     the execution of the interrupt handler and that will be needed to resume the pro-
+     gram that was interrupted. Thus, the portion of the process control block that was
+     referred to as processor state information must be saved. This includes the program
+     counter, other processor registers, and stack information.
+         Does anything else need to be done? That depends on what happens next. The
+     interrupt handler is typically a short program that performs a few basic tasks related
+     to an interrupt. For example, it resets the flag or indicator that signals the presence
+     of an interrupt. It may send an acknowledgment to the entity that issued the inter-
+     rupt, such as an I/O module. And it may do some basic housekeeping relating to the
+     effects of the event that caused the interrupt. For example, if the interrupt relates
+     to an I/O event, the interrupt handler will check for an error condition. If an error
+
+                                                 3.4 / PROCESS CONTROL                                    139
+has occurred, the interrupt handler may send a signal to the process that originally
+requested the I/O operation. If the interrupt is by the clock, then the handler will
+hand control over to the dispatcher, which will want to pass control to another proc-
+ess because the time slice allotted to the currently running process has expired.
+    What about the other information in the process control block? If this inter-
+rupt is to be followed by a switch to another process, then some work will need to be
+done. However, in most operating systems, the occurrence of an interrupt does not
+necessarily mean a process switch. It is possible that, after the interrupt handler has
+executed, the currently running process will resume execution. In that case, all that
+is necessary is to save the processor state information when the interrupt occurs and
+restore that information when control is returned to the program that was running.
+Typically, the saving and restoring functions are performed in hardware.
+CHANGE OF PROCESS STATE      It is clear, then, that the mode switch is a concept
+distinct from that of the process switch.10 A mode switch may occur without
+changing the state of the process that is currently in the Running state. In that case,
+the context saving and subsequent restoral involve little overhead. However, if the
+currently running process is to be moved to another state (Ready, Blocked, etc.),
+then the OS must make substantial changes in its environment. The steps involved
+in a full process switch are as follows:
+1.  Save the context of the processor, including program counter and other
+    registers.
+2.  Update the process control block of the process that is currently in the
+    Running state. This includes changing the state of the process to one of the
+    other states (Ready; Blocked; Ready/Suspend; or Exit). Other relevant fields
+    must also be updated, including the reason for leaving the Running state and
+    accounting information.
+3.  Move the process control block of this process to the appropriate queue
+    (Ready; Blocked on Event i; Ready/Suspend).
+4.  Select another process for execution; this topic is explored in Part Four.
+5.  Update the process control block of the process selected. This includes chang-
+    ing the state of this process to Running.
+6.  Update memory management data structures. This may be required, depend-
+    ing on how address translation is managed; this topic is explored in Part Three.
+7.  Restore the context of the processor to that which existed at the time the
+    selected process was last switched out of the Running state, by loading in the
+    previous values of the program counter and other registers.
+Thus, the process switch, which involves a state change, requires more effort than a
+mode switch.
+10The term context switch is often found in OS literature and textbooks. Unfortunately, although most of
+the literature uses this term to mean what is here called a process switch, other sources use it to mean a
+mode switch or even a thread switch (defined in the next chapter). To avoid ambiguity, the term is not
+used in this book.
+
+140  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+3.5  EXECUTION OF THE OPERATING SYSTEM
+     In Chapter 2, we pointed out two intriguing facts about operating systems:
+     ·  The OS functions in the same way as ordinary computer software in the sense
+        that the OS is a set of programs executed by the processor.
+     ·  The OS frequently relinquishes control and depends on the processor to
+        restore control to the OS.
+        If the OS is just a collection of programs and if it is executed by the processor
+     just like any other program, is the OS a process? If so, how is it controlled? These
+     interesting questions have inspired a number of design approaches. Figure 3.15
+     illustrates a range of approaches that are found in various contemporary operating
+     systems.
+     Nonprocess Kernel
+     One traditional approach, common on many older operating systems, is to execute
+     the kernel of the OS outside of any process (Figure 3.15a). With this approach,
+     when the currently running process is interrupted or issues a supervisor call, the
+     mode context of this process is saved and control is passed to the kernel. The OS has
+     its own region of memory to use and its own system stack for controlling procedure
+     calls and returns. The OS can perform any desired functions and restore the con-
+     text of the interrupted process, which causes execution to resume in the interrupted
+               P1           P2              Pn
+                                    Kernel
+               (a) Separate kernel
+               P1           P2              Pn
+               OS           OS              OS
+               func-        func-           func-
+               tions        tions           tions
+                        Process-switching functions
+               (b) OS functions execute within user processes
+               P1           P2              Pn       OS1             OSk
+                                    Process-switching functions
+               (c) OS functions execute as separate processes
+               Figure 3.15  Relationship between Operating System
+                            and User Processes

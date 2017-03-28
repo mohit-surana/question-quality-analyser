@@ -1,0 +1,251 @@
+UNIX SVR4 Process Management
+                                              3.7 / UNIX SVR4 PROCESS MANAGEMENT                          147
+                [BELL94] lists the following design goals for a firewall:
+           1.   All traffic from inside to outside, and vice versa, must pass through the fire-
+                wall. This is achieved by physically blocking all access to the local network
+                except via the firewall. Various configurations are possible, as explained later
+                in this chapter.
+           2.   Only authorized traffic, as defined by the local security policy, will be allowed
+                to pass. Various types of firewalls are used, which implement various types of
+                security policies.
+           3.   The firewall itself is immune to penetration. This implies the use of a hard-
+                ened system with a secured operating system. Trusted computer systems are
+                suitable for hosting a firewall and often required in government applications.
+3.7        UNIX SVR4 PROCESS MANAGEMENT
+           UNIX System V makes use of a simple but powerful process facility that is highly
+           visible to the user. UNIX follows the model of Figure 3.15b, in which most of the OS
+           executes within the environment of a user process. UNIX uses two categories of pro-
+           cesses: system processes and user processes. System processes run in kernel mode and
+           execute operating system code to perform administrative and housekeeping func-
+           tions, such as allocation of memory and process swapping. User processes operate
+           in user mode to execute user programs and utilities and in kernel mode to execute
+           instructions that belong to the kernel. A user process enters kernel mode by issuing a
+           system call, when an exception (fault) is generated, or when an interrupt occurs.
+           Process States
+           A total of nine process states are recognized by the UNIX SVR4 operating system;
+           these are listed in Table 3.9 and a state transition diagram is shown in Figure 3.17
+Table 3.9  UNIX Process States
+User Running       Executing in user mode.
+Kernel Running     Executing in kernel mode.
+Ready to Run, in   Ready to run as soon as the kernel schedules it.
+Memory
+Asleep in Memory   Unable to execute until an event occurs; process is in main memory (a blocked state).
+Ready to Run,      Process is ready to run, but the swapper must swap the process into main memory
+Swapped            before the kernel can schedule it to execute.
+Sleeping, Swapped  The process is awaiting an event and has been swapped to secondary storage (a
+                   blocked state).
+Preempted          Process is returning from kernel to user mode, but the kernel preempts it and does a
+                   process switch to schedule another process.
+Created            Process is newly created and not yet ready to run.
+Zombie             Process no longer exists, but it leaves a record for its parent process to collect.
+
+148  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+                                                                         Fork
+                                                                         Created
+                                    Preempted
+              Return                                       Enough                  Not enough memory
+              to User                                      memory                  (swapping system only)
+     User                           Preempt
+     running                                                             Swap out
+                            Return             Reschedule  Ready to run            Ready to run
+                                               process     in memory     Swap in   swapped
+              System call,
+              interrupt             Kernel
+                                    running
+                 Interrupt,                    Sleep       Wakeup                  Wakeup
+              interrupt return      Exit
+                                                           Asleep in     Swap out  Sleep,
+                                    Zombie                 memory                  swapped
+Figure 3.17      UNIX Process State Transition Diagram
+     (based on figure in [BACH86]). This figure is similar to Figure 3.9b, with the two
+     UNIX sleeping states corresponding to the two blocked states. The differences are
+     as follows:
+              �  UNIX employs two Running states to indicate whether the process is execut-
+                 ing in user mode or kernel mode.
+              �  A distinction is made between the two states: (Ready to Run, in Memory) and
+                 (Preempted). These are essentially the same state, as indicated by the dotted
+                 line joining them. The distinction is made to emphasize the way in which the
+                 preempted state is entered. When a process is running in kernel mode (as a
+                 result of a supervisor call, clock interrupt, or I/O interrupt), there will come
+                 a time when the kernel has completed its work and is ready to return control
+                 to the user program. At this point, the kernel may decide to preempt the cur-
+                 rent process in favor of one that is ready and of higher priority. In that case,
+                 the current process moves to the preempted state. However, for purposes of
+                 dispatching, those processes in the Preempted state and those in the (Ready to
+                 Run, in Memory) state form one queue.
+                 Preemption can only occur when a process is about to move from kernel mode
+     to user mode. While a process is running in kernel mode, it may not be preempted.
+     This makes UNIX unsuitable for real-time processing. Chapter 10 discusses the
+     requirements for real-time processing.
+
+                                             3.7 / UNIX SVR4 PROCESS MANAGEMENT                                  149
+                  Two processes are unique in UNIX. Process 0 is a special process that is cre-
+           ated when the system boots; in effect, it is predefined as a data structure loaded
+           at boot time. It is the swapper process. In addition, process 0 spawns process 1,
+           referred to as the init process; all other processes in the system have process 1 as
+           an ancestor. When a new interactive user logs on to the system, it is process 1 that
+           creates a user process for that user. Subsequently, the user process can create child
+           processes in a branching tree, so that any particular application can consist of a
+           number of related processes.
+           Process Description
+           A process in UNIX is a rather complex set of data structures that provide the OS
+           with all of the information necessary to manage and dispatch processes. Table 3.10
+           summarizes the elements of the process image, which are organized into three parts:
+           user-level context, register context, and system-level context.
+                  The user-level context contains the basic elements of a user's program and
+           can be generated directly from a compiled object file. The user's program is sepa-
+           rated into text and data areas; the text area is read-only and is intended to hold
+           the program's instructions. While the process is executing, the processor uses the
+           user stack area for procedure calls and returns and parameter passing. The shared
+           memory area is a data area that is shared with other processes. There is only one
+           physical copy of a shared memory area, but, by the use of virtual memory, it appears
+Table 3.10    UNIX   Process Image
+                                         User-Level Context
+Process text         Executable machine instructions of the program
+Process data         Data accessible by the program of this process
+User stack           Contains the arguments, local variables, and pointers for functions executing in user mode
+Shared memory        Memory shared with other processes, used for interprocess communication
+                                             Register Context
+Program counter      Address of next instruction to be executed; may be in kernel or user memory space of
+                     this process
+Processor status     Contains the hardware status at the time of preemption; contents and format are hard-
+register             ware dependent
+Stack pointer        Points to the top of the kernel or user stack, depending on the mode of operation at
+                     the time or preemption
+General-purpose      Hardware dependent
+registers
+                                         System-Level Context
+Process table entry  Defines state of a process; this information is always accessible to the operating system
+U (user) area        Process control information that needs to be accessed only in the context of the process
+Per process region   Defines the mapping from virtual to physical addresses; also contains a permission
+table                field that indicates the type of access allowed the process: read-only, read-write, or
+                     read-execute
+Kernel stack         Contains the stack frame of kernel procedures as the process executes in kernel mode
+
+150     CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+Table 3.11    UNIX Process Table Entry
+Process status  Current state of process.
+Pointers        To U area and process memory area (text, data, stack).
+Process size    Enables the operating system to know how much space to allocate the process.
+User            The real user ID identifies the user who is responsible for the running process. The effective
+identifiers     user ID may be used by a process to gain temporary privileges associated with a particular
+                program; while that program is being executed as part of the process, the process operates
+                with the effective user ID.
+Process         ID of this process; ID of parent process. These are set up when the process enters the
+identifiers     Created state during the fork system call.
+Event           Valid when a process is in a sleeping state; when the event occurs, the process is transferred
+descriptor      to a ready-to-run state.
+Priority        Used for process scheduling.
+Signal          Enumerates signals sent to a process but not yet handled.
+Timers          Include process execution time, kernel resource utilization, and user-set timer used to send
+                alarm signal to a process.
+P_link          Pointer to the next link in the ready queue (valid if process is ready to execute).
+Memory          Indicates whether process image is in main memory or swapped out. If it is in memory,
+status          this field also indicates whether it may be swapped out or is temporarily locked into main
+                memory.
+          to each sharing process that the shared memory region is in its address space. When
+          a process is not running, the processor status information is stored in the register
+          context area.
+                The system-level context contains the remaining information that the OS
+          needs to manage the process. It consists of a static part, which is fixed in size and
+          stays with a process throughout its lifetime, and a dynamic part, which varies in
+          size through the life of the process. One element of the static part is the process
+          table entry. This is actually part of the process table maintained by the OS, with
+          one entry per process. The process table entry contains process control information
+          that is accessible to the kernel at all times; hence, in a virtual memory system, all
+          process table entries are maintained in main memory. Table 3.11 lists the contents
+          of a process table entry. The user area, or U area, contains additional process con-
+          trol information that is needed by the kernel when it is executing in the context of
+          this process; it is also used when paging processes to and from memory. Table 3.12
+          shows the contents of this table.
+                The distinction between the process table entry and the U area reflects the
+          fact that the UNIX kernel always executes in the context of some process. Much
+          of the time, the kernel will be dealing with the concerns of that process. However,
+          some of the time, such as when the kernel is performing a scheduling algorithm
+          preparatory to dispatching another process, it will need access to information about
+          other processes. The information in a process table can be accessed when the given
+          process is not the current one.
+                The third static portion of the system-level context is the per process region
+          table, which is used by the memory management system. Finally, the kernel stack is
+
+                                            3.7 / UNIX SVR4 PROCESS MANAGEMENT                                 151
+Table 3.12    UNIX  U Area
+Process table       Indicates entry that corresponds to the U area.
+pointer
+User identifiers    Real and effective user IDs. Used to determine user privileges.
+Timers              Record time that the process (and its descendants) spent executing in user mode and in
+                    kernel mode.
+Signal-handler      For each type of signal defined in the system, indicates how the process will react to
+array               receipt of that signal (exit, ignore, execute specified user function).
+Control terminal    Indicates login terminal for this process, if one exists.
+Error field         Records errors encountered during a system call.
+Return value        Contains the result of system calls.
+I/O parameters      Describe the amount of data to transfer, the address of the source (or target) data array
+                    in user space, and file offsets for I/O.
+File parameters     Current directory and current root describe the file system environment of the process.
+User file           Records the files the process has opened.
+descriptor table
+Limit fields        Restrict the size of the process and the size of a file it can write.
+Permission modes    Mask mode settings on files the process creates.
+fields
+           the dynamic portion of the system-level context. This stack is used when the process
+           is executing in kernel mode and contains the information that must be saved and
+           restored as procedure calls and interrupts occur.
+           Process Control
+           Process creation in UNIX is made by means of the kernel system call, fork( ). When
+           a process issues a fork request, the OS performs the following functions [BACH86]:
+              1.  It allocates a slot in the process table for the new process.
+              2.  It assigns a unique process ID to the child process.
+              3.  It makes a copy of the process image of the parent, with the exception of any
+                  shared memory.
+              4.  It increments counters for any files owned by the parent, to reflect that an
+                  additional process now also owns those files.
+              5.  It assigns the child process to the Ready to Run state.
+              6.  It returns the ID number of the child to the parent process, and a 0 value to
+                  the child process.
+                  All of this work is accomplished in kernel mode in the parent process. When
+           the kernel has completed these functions it can do one of the following, as part of
+           the dispatcher routine:
+               � Stay in the parent process. Control returns to user mode at the point of the
+                  fork call of the parent.
+
+152  CHAPTER 3 / PROCESS DESCRIPTION AND CONTROL
+     �  Transfer control to the child process. The child process begins executing
+        at the same point in the code as the parent, namely at the return from the
+        fork call.
+     �  Transfer control to another process. Both parent and child are left in the
+        Ready to Run state.
+        It is perhaps difficult to visualize this method of process creation because both
+     parent and child are executing the same passage of code. The difference is this:
+     When the return from the fork occurs, the return parameter is tested. If the value is
+     zero, then this is the child process, and a branch can be executed to the appropriate
+     user program to continue execution. If the value is nonzero, then this is the parent
+     process, and the main line of execution can continue.
+3.8  SUMMARY
+     The most fundamental concept in a modern OS is the process. The principal func-
+     tion of the OS is to create, manage, and terminate processes. While processes are
+     active, the OS must see that each is allocated time for execution by the proces-
+     sor, coordinate their activities, manage conflicting demands, and allocate system
+     resources to processes.
+        To perform its process management functions, the OS maintains a description
+     of each process, or process image, which includes the address space within which the
+     process executes, and a process control block. The latter contains all of the informa-
+     tion that is required by the OS to manage the process, including its current state,
+     resources allocated to it, priority, and other relevant data.
+        During its lifetime, a process moves among a number of states. The most
+     important of these are Ready, Running, and Blocked. A ready process is one that
+     is not currently executing but that is ready to be executed as soon as the OS dis-
+     patches it. The running process is that process that is currently being executed by
+     the processor. In a multiple-processor system, more than one process can be in this
+     state. A blocked process is waiting for the completion of some event, such as an I/O
+     operation.
+        A running process is interrupted either by an interrupt, which is an event that
+     occurs outside the process and that is recognized by the processor, or by executing
+     a supervisor call to the OS. In either case, the processor performs a mode switch,
+     transferring control to an operating system routine. The OS, after it has completed
+     necessary work, may resume the interrupted process or switch to some other
+     process.
+3.9  RECOMMENDED READING
+     Good descriptions of UNIX process management are found in [GOOD94] and
+     [GRAY97]. [NEHM75] is an interesting discussion of process states and the operat-
+     ing system primitives needed for process dispatching.

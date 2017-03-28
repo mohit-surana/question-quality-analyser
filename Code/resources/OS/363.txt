@@ -1,0 +1,779 @@
+Hardware and Control Structures
+                           8.1 / HARDWARE AND CONTROL STRUCTURES                                              341
+              You're gonna need a bigger boat.
+                                                                   --Steven Spielberg, JAWS, 1975
+           LEARNING OBJECTIVES
+           After studying this chapter, you should be able to:
+           ·   Define virtual memory.
+           ·   Describe the hardware and control structures that support virtual memory.
+           ·   Describe the various OS mechanisms used to implement virtual memory.
+           ·   Describe the virtual memory management mechanisms in UNIX, Linux, and
+               Windows 7.
+           Chapter 7 introduced the concepts of paging and segmentation and analyzed their
+           shortcomings. We now move to a discussion of virtual memory. An analysis of this
+           topic is complicated by the fact that memory management is a complex interrela-
+           tionship between processor hardware and operating system software. We focus first
+           on the hardware aspect of virtual memory, looking at the use of paging, segmenta-
+           tion, and combined paging and segmentation. Then we look at the issues involved in
+           the design of a virtual memory facility in operating systems.
+                 Table 8.1 defines some key terms related to virtual memory. A set of anima-
+           tions that illustrate concepts in this chapter is available online. Click on the rotating
+           globe at WilliamStallings.com/OS/OS7e.html for access.
+8.1        HARDWARE AND CONTROL STRUCTURES
+           Comparing simple paging and simple segmentation, on the one hand, with fixed and
+           dynamic partitioning, on the other, we see the foundation for a fundamental break-
+           through in memory management. Two characteristics of paging and segmentation
+           are the keys to this breakthrough:
+Table 8.1  Virtual Memory Terminology
+Virtual memory         A storage allocation scheme in which secondary memory can be addressed as
+                       though it were part of main memory. The addresses a program may use to reference
+                       memory are distinguished from the addresses the memory system uses to identify
+                       physical storage sites, and program-generated addresses are translated automatically
+                       to the corresponding machine addresses. The size of virtual storage is limited by the
+                       addressing scheme of the computer system and by the amount of secondary memory
+                       available and not by the actual number of main storage locations.
+Virtual address        The address assigned to a location in virtual memory to allow that location to be
+                       accessed as though it were part of main memory.
+Virtual address space  The virtual storage assigned to a process.
+Address space          The range of memory addresses available to a process.
+Real address           The address of a storage location in main memory.
+
+342  CHAPTER 8 / VIRTUAL MEMORY
+     1.  All memory references within a process are logical addresses that are dynami-
+         cally translated into physical addresses at run time. This means that a process
+         may be swapped in and out of main memory such that it occupies different
+         regions of main memory at different times during the course of execution.
+     2.  A process may be broken up into a number of pieces (pages or segments) and
+         these pieces need not be contiguously located in main memory during execu-
+         tion. The combination of dynamic run-time address translation and the use of
+         a page or segment table permits this.
+         Now we come to the breakthrough. If the preceding two characteristics are
+     present, then it is not necessary that all of the pages or all of the segments of a process
+     be in main memory during execution. If the piece (segment or page) that holds the
+     next instruction to be fetched and the piece that holds the next data location to be
+     accessed are in main memory, then at least for a time execution may proceed.
+         Let us consider how this may be accomplished. For now, we can talk in general
+     terms, and we will use the term piece to refer to either page or segment, depending
+     on whether paging or segmentation is employed. Suppose that it is time to bring a
+     new process into memory. The OS begins by bringing in only one or a few pieces, to
+     include the initial program piece and the initial data piece to which those instructions
+     refer. The portion of a process that is actually in main memory at any time is called
+     the resident set of the process. As the process executes, things proceed smoothly as
+     long as all memory references are to locations that are in the resident set. Using the
+     segment or page table, the processor always is able to determine whether this is so.
+     If the processor encounters a logical address that is not in main memory, it generates
+     an interrupt indicating a memory access fault. The OS puts the interrupted process
+     in a blocking state. For the execution of this process to proceed later, the OS must
+     bring into main memory the piece of the process that contains the logical address
+     that caused the access fault. For this purpose, the OS issues a disk I/O read request.
+     After the I/O request has been issued, the OS can dispatch another process to run
+     while the disk I/O is performed. Once the desired piece has been brought into main
+     memory, an I/O interrupt is issued, giving control back to the OS, which places the
+     affected process back into a Ready state.
+         It may immediately occur to you to question the efficiency of this maneuver,
+     in which a process may be executing and have to be interrupted for no other reason
+     than that you have failed to load in all of the needed pieces of the process. For now,
+     let us defer consideration of this question with the assurance that efficiency is possible.
+     Instead, let us ponder the implications of our new strategy. There are two implications,
+     the second more startling than the first, and both lead to improved system utilization:
+     1.  More processes may be maintained in main memory. Because we are only go-
+         ing to load some of the pieces of any particular process, there is room for more
+         processes. This leads to more efficient utilization of the processor because it
+         is more likely that at least one of the more numerous processes will be in a
+         Ready state at any particular time.
+     2.  A process may be larger than all of main memory. One of the most fundamental
+         restrictions in programming is lifted. Without the scheme we have been discuss-
+         ing, a programmer must be acutely aware of how much memory is available.
+         If the program being written is too large, the programmer must devise ways to
+
+                                          8.1 / HARDWARE AND CONTROL STRUCTURES                             343
+               structure the program into pieces that can be loaded separately in some sort of
+               overlay strategy. With virtual memory based on paging or segmentation, that
+               job is left to the OS and the hardware. As far as the programmer is concerned,
+               he or she is dealing with a huge memory, the size associated with disk storage.
+               The OS automatically loads pieces of a process into main memory as required.
+               Because a process executes only in main memory, that memory is referred to
+           as real memory. But a programmer or user perceives a potentially much larger mem-
+           ory--that which is allocated on disk. This latter is referred to as virtual memory.
+           Virtual memory allows for very effective multiprogramming and relieves the user
+           of the unnecessarily tight constraints of main memory. Table 8.2 summarizes char-
+           acteristics of paging and segmentation, with and without the use of virtual memory.
+Table 8.2  Characteristics of Paging and Segmentation
+                                 Virtual Memory                                    Virtual Memory
+Simple Paging                        Paging            Simple Segmentation         Segmentation
+Main memory parti-         Main memory parti-          Main memory not             Main memory not
+tioned into small fixed-   tioned into small fixed-    partitioned                 partitioned
+size chunks called frames  size chunks called frames
+Program broken into        Program broken into         Program segments speci-     Program segments speci-
+pages by the compiler      pages by the compiler       fied by the programmer      fied by the programmer
+or memory management       or memory management        to the compiler (i.e., the  to the compiler (i.e., the
+system                     system                      decision is made by the     decision is made by the
+                                                       programmer)                 programmer)
+Internal fragmentation     Internal fragmentation      No internal                 No internal
+within frames              within frames               fragmentation               fragmentation
+No external                No external                 External fragmentation      External fragmentation
+fragmentation              fragmentation
+Operating system must      Operating system must       Operating system must       Operating system must
+maintain a page table      maintain a page table       maintain a segment table    maintain a segment table
+for each process showing   for each process showing    for each process show-      for each process show-
+which frame each page      which frame each page       ing the load address and    ing the load address and
+occupies                   occupies                    length of each segment      length of each segment
+Operating system must      Operating system must       Operating system must       Operating system must
+maintain a free frame      maintain a free frame       maintain a list of free     maintain a list of free
+list                       list                        holes in main memory        holes in main memory
+Processor uses page        Processor uses page         Processor uses segment      Processor uses segment
+number, offset to calcu-   number, offset to calcu-    number, offset to calcu-    number, offset to calcu-
+late absolute address      late absolute address       late absolute address       late absolute address
+All the pages of a         Not all pages of a process  All the segments of a       Not all segments of a
+process must be in main    need be in main memory      process must be in main     process need be in main
+memory for process to      frames for the process to   memory for process to       memory for the process
+run, unless overlays are   run. Pages may be read      run, unless overlays are    to run. Segments may be
+used                       in as needed                used                        read in as needed
+                           Reading a page into                                     Reading a segment into
+                           main memory may                                         main memory may require
+                           require writing a page                                  writing one or more seg-
+                           out to disk                                             ments out to disk
+
+344  CHAPTER 8 / VIRTUAL MEMORY
+     Locality and Virtual Memory
+     The benefits of virtual memory are attractive, but is the scheme practical? At one
+     time, there was considerable debate on this point, but experience with numerous
+     operating systems has demonstrated beyond doubt that virtual memory does work.
+     Accordingly, virtual memory, based on either paging or paging plus segmentation,
+     has become an essential component of contemporary operating systems.
+     To understand the key issue and why virtual memory was a matter of much
+     debate, let us examine again the task of the OS with respect to virtual memory.
+     Consider a large process, consisting of a long program plus a number of arrays of
+     data. Over any short period of time, execution may be confined to a small section of
+     the program (e.g., a subroutine) and access to perhaps only one or two arrays of data.
+     If this is so, then it would clearly be wasteful to load in dozens of pieces for that proc-
+     ess when only a few pieces will be used before the program is suspended and swapped
+     out. We can make better use of memory by loading in just a few pieces. Then, if the
+     program branches to an instruction or references a data item on a piece not in main
+     memory, a fault is triggered. This tells the OS to bring in the desired piece.
+     Thus, at any one time, only a few pieces of any given process are in memory,
+     and therefore more processes can be maintained in memory. Furthermore, time is
+     saved because unused pieces are not swapped in and out of memory. However, the
+     OS must be clever about how it manages this scheme. In the steady state, practically
+     all of main memory will be occupied with process pieces, so that the processor and
+     OS have direct access to as many processes as possible. Thus, when the OS brings one
+     piece in, it must throw another out. If it throws out a piece just before it is used, then it
+     will just have to go get that piece again almost immediately. Too much of this leads to
+     a condition known as thrashing: The system spends most of its time swapping pieces
+     rather than executing instructions. The avoidance of thrashing was a major research
+     area in the 1970s and led to a variety of complex but effective algorithms. In essence,
+     the OS tries to guess, based on recent history, which pieces are least likely to be used
+     in the near future.
+     This reasoning is based on belief in the principle of locality, which was intro-
+     duced in Chapter 1 (see especially Appendix 1A). To summarize, the principle of
+     locality states that program and data references within a process tend to cluster.
+     Hence, the assumption that only a few pieces of a process will be needed over a
+     short period of time is valid. Also, it should be possible to make intelligent guesses
+     about which pieces of a process will be needed in the near future, which avoids
+     thrashing.
+     One way to confirm the principle of locality is to look at the performance of
+     processes in a virtual memory environment. Figure 8.1 is a rather famous diagram
+     that dramatically illustrates the principle of locality [HATF72]. Note that, during
+     the lifetime of the process, references are confined to a subset of pages.
+     Thus we see that the principle of locality suggests that a virtual memory
+     scheme may work. For virtual memory to be practical and effective, two ingre-
+     dients are needed. First, there must be hardware support for the paging and/or
+     segmentation scheme to be employed. Second, the OS must include software for
+     managing the movement of pages and/or segments between secondary memory
+     and main memory. In this section, we examine the hardware aspect and look at the
+
+                                  8.1 / HARDWARE AND CONTROL STRUCTURES            345
+              34
+              32
+              30
+              28
+              26
+              24
+              22
+Page numbers  20
+              18
+                  Execution time
+Figure 8.1        Paging Behavior
+necessary control structures, which are created and maintained by the OS but are
+used by the memory management hardware. An examination of the OS issues is
+provided in the next section.
+Paging
+The term virtual memory is usually associated with systems that employ paging,
+although virtual memory based on segmentation is also used and is discussed next.
+The use of paging to achieve virtual memory was first reported for the Atlas com-
+puter [KILB62] and soon came into widespread commercial use.
+In the discussion of simple paging, we indicated that each process has its
+own page table, and when all of its pages are loaded into main memory, the page
+
+346  CHAPTER 8 / VIRTUAL MEMORY
+     table for a process is created and loaded into main memory. Each page table entry
+     (PTE) contains the frame number of the corresponding page in main memory. A
+     page table is also needed for a virtual memory scheme based on paging. Again, it
+     is typical to associate a unique page table with each process. In this case, however,
+     the page table entries become more complex (Figure 8.2a). Because only some of
+     the pages of a process may be in main memory, a bit is needed in each page table
+     entry to indicate whether the corresponding page is present (P) in main memory or
+     not. If the bit indicates that the page is in memory, then the entry also includes the
+     frame number of that page.
+     The page table entry includes a modify (M) bit, indicating whether the con-
+     tents of the corresponding page have been altered since the page was last loaded
+     into main memory. If there has been no change, then it is not necessary to write the
+     page out when it comes time to replace the page in the frame that it currently occu-
+     pies. Other control bits may also be present. For example, if protection or sharing is
+     managed at the page level, then bits for that purpose will be required.
+     Virtual address
+                 Page number          Offset
+     Page table entry
+     P M Other control bits   Frame number
+                                      (a) Paging only
+     Virtual address
+     Segment number                   Offset
+     Segment table entry
+     P M Other control bits   Length                     Segment base
+                                 (b) Segmentation only
+     Virtual address
+     Segment number                   Page number                   Offset
+     Segment table entry
+     Control bits             Length                     Segment base
+     Page table entry
+     P M Other control bits   Frame number                                    P  present bit
+                                                                              M  modified bit
+                              (c) Combined segmentation and paging
+     Figure 8.2       Typical Memory Management Formats
+
+                                    8.1 / HARDWARE AND CONTROL STRUCTURES                         347
+        PAGE TABLE STRUCTURE         The basic mechanism for reading a word from memory
+        involves the translation of a virtual, or logical, address, consisting of page number
+        and offset, into a physical address, consisting of frame number and offset, using a
+        page table. Because the page table is of variable length, depending on the size of the
+        process, we cannot expect to hold it in registers. Instead, it must be in main memory
+        to be accessed. Figure 8.3 suggests a hardware implementation. When a particular
+        process is running, a register holds the starting address of the page table for that
+        process. The page number of a virtual address is used to index that table and look
+        up the corresponding frame number. This is combined with the offset portion of the
+        virtual address to produce the desired real address. Typically, the page number field
+        is longer than the frame number field (n  m).
+                    In most systems, there is one page table per process. But each process can occupy
+        huge amounts of virtual memory. For example, in the VAX architecture, each process
+        can have up to 231  2 Gbytes of virtual memory. Using 29  512-byte pages means
+        that as many as 222 page table entries are required per process. Clearly, the amount
+        of memory devoted to page tables alone could be unacceptably high. To overcome
+        this problem, most virtual memory schemes store page tables in virtual memory rather
+        than real memory. This means that page tables are subject to paging just as other pages
+        are. When a process is running, at least a part of its page table must be in main mem-
+        ory, including the page table entry of the currently executing page. Some processors
+        make use of a two-level scheme to organize large page tables. In this scheme, there is
+        a page directory, in which each entry points to a page table. Thus, if the length of the
+        page directory is X, and if the maximum length of a page table is Y, then a process can
+Virtual address                      Physical address
+Page #      Offset                                  Frame #  Offset
+                    Register
+n bits              Page table ptr
+                                     Page table        m bits
+                                                                     Offset       Page
+                              Page#                                               frame
+                    
+                                     Frame #
+Program                       Paging mechanism                       Main memory
+Figure 8.3  Address Translation in a Paging System
+
+348  CHAPTER 8 / VIRTUAL MEMORY
+            4-Kbyte root
+            page table
+            4-Mbyte user
+            page table
+            4-Gbyte user
+            address space
+            Figure 8.4     A Two-Level Hierarchical Page Table
+         consist of up to X × Y pages. Typically, the maximum length of a page table is restricted
+         to be equal to one page. For example, the Pentium processor uses this approach.
+                  Figure 8.4 shows an example of a two-level scheme typical for use with a
+         32-bit address. If we assume byte-level addressing and 4-Kbyte (212) pages, then the
+         4-Gbyte (232) virtual address space is composed of 220 pages. If each of these pages
+         is mapped by a 4-byte page table entry, we can create a user page table composed of
+         220 PTEs requiring 4 Mbytes (222). This huge user page table, occupying 210 pages,
+         can be kept in virtual memory and mapped by a root page table with 210 PTEs occu-
+         pying 4 Kbytes (212) of main memory. Figure 8.5 shows the steps involved in address
+     Virtual address
+10 bits  10 bits  12 bits                                Frame #  Offset
+                           Root page
+                           table ptr
+                                                                                          Page
+                                                                                          frame
+                                                       
+                                                         4-Kbyte page
+                                      Root page table    table (contains
+                             (contains 1024 PTEs)        1024 PTEs)
+         Program                      Paging mechanism                    Main memory
+Figure 8.5  Address Translation in a Two-Level Paging System
+
+                     8.1 / HARDWARE AND CONTROL STRUCTURES                                349
+translation for this scheme. The root page always remains in main memory. The
+first 10 bits of a virtual address are used to index into the root page to find a PTE
+for a page of the user page table. If that page is not in main memory, a page fault
+occurs. If that page is in main memory, then the next 10 bits of the virtual address
+index into the user PTE page to find the PTE for the page that is referenced by the
+virtual address.
+INVERTED PAGE TABLE  A drawback of the type of page tables that we have been
+discussing is that their size is proportional to that of the virtual address space.
+   An alternative approach to the use of one or multiple-level page tables is the
+use of an inverted page table structure. Variations on this approach are used on
+the PowerPC, UltraSPARC, and the IA-64 architecture. An implementation of the
+Mach operating system on the RT-PC also uses this technique.
+   In this approach, the page number portion of a virtual address is mapped into a
+hash value using a simple hashing function.1 The hash value is a pointer to the inverted
+page table, which contains the page table entries. There is one entry in the inverted
+page table for each real memory page frame rather than one per virtual page. Thus,
+a fixed proportion of real memory is required for the tables regardless of the number
+of processes or virtual pages supported. Because more than one virtual address may
+map into the same hash table entry, a chaining technique is used for managing the
+overflow. The hashing technique results in chains that are typically short--between
+one and two entries. The page table's structure is called inverted because it indexes
+page table entries by frame number rather than by virtual page number.
+   Figure 8.6 shows a typical implementation of the inverted page table approach.
+For a physical memory size of 2m frames, the inverted page table contains 2m entries,
+so that the ith entry refers to frame i. Each entry in the page table includes the
+following:
+·  Page number: This is the page number portion of the virtual address.
+·  Process identifier: The process that owns this page. The combination of page
+   number and process identifier identify a page within the virtual address space
+   of a particular process.
+·  Control bits: This field includes flags, such as valid, referenced, and modified;
+   and protection and locking information.
+·  Chain pointer: This field is null (perhaps indicated by a separate bit) if there
+   are no chained entries for this entry. Otherwise, the field contains the index
+   value (number between 0 and 2m ­ 1) of the next entry in the chain.
+   In this example, the virtual address includes an n-bit page number, with n > m.
+The hash function maps the n-bit page number into an m-bit quantity, which is used
+to index into the inverted page table.
+TRANSLATION LOOKASIDE BUFFER                  In principle, every virtual memory reference
+can cause two physical memory accesses: one to fetch the appropriate page table
+entry and one to fetch the desired data. Thus, a straightforward virtual memory
+1See Appendix F for a discussion of hashing.
+
+350  CHAPTER 8 / VIRTUAL         MEMORY
+     Virtual address
+     n bits
+     Page #      Offset
+                                                     Control
+     n bits                                               bits
+                                                 Process
+     Hash                m bits          Page #  ID             Chain
+     function                                                           0
+                                                                        i
+                                                                        j
+                                                                        2m  1  Frame #  Offset
+                                                Inverted page table            m bits
+                                                (one entry for each            Real address
+                                                physical memory frame)
+     Figure 8.6  Inverted Page Table Structure
+     scheme would have the effect of doubling the memory access time. To overcome
+     this problem, most virtual memory schemes make use of a special high-speed cache
+     for page table entries, usually called a translation lookaside buffer (TLB). This
+     cache functions in the same way as a memory cache (see Chapter 1) and contains
+     those page table entries that have been most recently used. The organization of
+     the resulting paging hardware is illustrated in Figure 8.7. Given a virtual address,
+     the processor will first examine the TLB. If the desired page table entry is present
+     (TLB hit), then the frame number is retrieved and the real address is formed. If
+     the desired page table entry is not found (TLB miss), then the processor uses the
+     page number to index the process page table and examine the corresponding page
+     table entry. If the "present bit" is set, then the page is in main memory, and the
+     processor can retrieve the frame number from the page table entry to form the real
+     address. The processor also updates the TLB to include this new page table entry.
+     Finally, if the present bit is not set, then the desired page is not in main memory
+     and a memory access fault, called a page fault, is issued. At this point, we leave the
+     realm of hardware and invoke the OS, which loads the needed page and updates
+     the page table.
+     Figure 8.8 is a flowchart that shows the use of the TLB. The flowchart shows
+     that if the desired page is not in main memory, a page fault interrupt causes the
+     page fault handling routine to be invoked. To keep the flowchart simple, the fact
+     that the OS may dispatch another process while disk I/O is underway is not shown.
+     By the principle of locality, most virtual memory references will be to locations in
+
+                                      8.1 /    HARDWARE AND CONTROL         STRUCTURES         351
+                                                               Main memory         Secondary
+Virtual address                                                                    memory
+Page #      Offset
+                    Translation
+                    lookaside buffer
+                                      TLB hit          Offset
+                                                                            Load
+                    Page table                                              page
+TLB miss
+                                      Frame #  Offset
+                                      Real address
+Page fault
+Figure 8.7  Use of a Translation Lookaside Buffer
+        recently used pages. Therefore, most references will involve page table entries in
+        the cache. Studies of the VAX TLB have shown that this scheme can significantly
+        improve performance [CLAR85, SATY81].
+                    There are a number of additional details concerning the actual organization
+        of the TLB. Because the TLB contains only some of the entries in a full page table,
+        we cannot simply index into the TLB based on page number. Instead, each entry
+        in the TLB must include the page number as well as the complete page table entry.
+        The processor is equipped with hardware that allows it to interrogate simultane-
+        ously a number of TLB entries to determine if there is a match on page number.
+        This technique is referred to as associative mapping and is contrasted with the direct
+        mapping, or indexing, used for lookup in the page table in Figure 8.9. The design of
+        the TLB also must consider the way in which entries are organized in the TLB and
+        which entry to replace when a new entry is brought in. These issues must be consid-
+        ered in any hardware cache design. This topic is not pursued here; the reader may
+        consult a treatment of cache design for further details (e.g., [STAL10]).
+                    Finally, the virtual memory mechanism must interact with the cache system
+        (not the TLB cache, but the main memory cache). This is illustrated in Figure 8.10.
+        A virtual address will generally be in the form of a page number, offset. First, the
+        memory system consults the TLB to see if the matching page table entry is present.
+        If it is, the real (physical) address is generated by combining the frame number with
+        the offset. If not, the entry is accessed from a page table. Once the real address is
+
+352  CHAPTER 8 / VIRTUAL MEMORY
+                                                             Start
+                 Return to
+                 faulted instruction               CPU checks the TLB
+                                                             Page table  Yes
+                                                             entry in
+                                                             TLB?
+                                                             No
+                                                   Access page table
+                 Page fault
+                 handling routine
+                 OS instructs CPU              No            Page
+                 to read the page                            in main
+                 from disk                                   memory?
+                                                             Yes
+                 CPU activates                              Update TLB
+                 I/O hardware
+                 Page transferred
+                 from disk to                                            CPU generates
+                 main memory                                           physical address
+                 Memory                   Yes
+                 full?
+                 No                            Perform page
+                                               replacement
+                 Page tables
+                 updated
+     Figure 8.8  Operation of Paging and Translation Lookaside Buffer (TLB)
+     generated, which is in the form of a tag2 and a remainder, the cache is consulted to
+     see if the block containing that word is present. If so, it is returned to the CPU. If
+     not, the word is retrieved from main memory.
+     The reader should be able to appreciate the complexity of the CPU hardware
+     involved in a single memory reference. The virtual address is translated into a real
+     address. This involves reference to a page table entry, which may be in the TLB, in
+     main memory, or on disk. The referenced word may be in cache, main memory, or
+     on disk. If the referenced word is only on disk, the page containing the word must
+     2See Figure 1.17. Typically, a tag is just the leftmost bits of the real address. Again, for a more detailed
+     discussion of caches, see [STAL10].
+
+                                               8.1   /  HARDWARE AND CONTROL              STRUCTURES             353
+Virtual address                                         Virtual address
+Page #  Offset                                          Page #  Offset
+5       502                                             5       502
+                                                                     Page #   PT entries
+                                                                         19
+                                                                         511
+                                                                         37
+                                                                         27
+                                                                         14
+                         37                                              1
+                                                                         211
+                                                                         5            37
+                                                                         90
+                                     37        502                                                    37      502
+                                     Frame # Offset             Translation lookaside buffer          Frame # Offset
+                                     Real address                                                     Real address
+                 Page table
+                 (a) Direct mapping                                          (b) Associative mapping
+Figure 8.9       Direct versus Associative Lookup       for Page Table Entries
+        TLB operation
+        Virtual address
+        Page #   Offset              TLB
+                         TLB miss
+                                          TLB
+                                          hit                        Cache operation
+                                                        Real address
+                                                        Tag  Remainder                Cache   Hit         Value
+                                                                              Miss
+                                                                                                      Main
+                                                                                                      memory
+                 Page table
+                                                                                                          Value
+Figure 8.10            Translation Lookaside Buffer and Cache Operation
+
+354                 CHAPTER 8 / VIRTUAL MEMORY
+                    be loaded into main memory and its block loaded into the cache. In addition, the
+                    page table entry for that page must be updated.
+                    PAGE SIZE         An important hardware design decision is the size of page to be used.
+                    There are several factors to consider. One is internal fragmentation. Clearly, the
+                    smaller the page size, the lesser is the amount of internal fragmentation. To optimize
+                    the use of main memory, we would like to reduce internal fragmentation. On the
+                    other hand, the smaller the page, the greater is the number of pages required per
+                    process. More pages per process means larger page tables. For large programs in
+                    a heavily multiprogrammed environment, this may mean that some portion of the
+                    page tables of active processes must be in virtual memory, not in main memory.
+                    Thus, there may be a double page fault for a single reference to memory: first to
+                    bring in the needed portion of the page table and second to bring in the process page.
+                    Another factor is that the physical characteristics of most secondary-memory devices,
+                    which are rotational, favor a larger page size for more efficient block transfer of data.
+                    Complicating these matters is the effect of page size on the rate at which page
+                    faults occur. This behavior, in general terms, is depicted in Figure 8.11a and is based
+                    on the principle of locality. If the page size is very small, then ordinarily a relatively
+                    large number of pages will be available in main memory for a process. After a time,
+                    the pages in memory will all contain portions of the process near recent references.
+                    Thus, the page fault rate should be low. As the size of the page is increased, each
+                    individual page will contain locations further and further from any particular recent
+                    reference. Thus the effect of the principle of locality is weakened and the page fault
+                    rate begins to rise. Eventually, however, the page fault rate will begin to fall as the
+                    size of a page approaches the size of the entire process (point P in the diagram).
+                    When a single page encompasses the entire process, there will be no page faults.
+                    A further complication is that the page fault rate is also determined by the
+                    number of frames allocated to a process. Figure 8.11b shows that, for a fixed page
+Page fault rate                                           Page fault rate
+                                                      P                    W                                    N
+                    (a) Page size                                          (b) Number of page frames allocated
+                 P   size of entire process
+                 W  working set size
+                 N  total number of pages in process
+Figure 8.11         Typical Paging Behavior of a Program
+
+              8.1 / HARDWARE AND CONTROL STRUCTURES                                 355
+   Table 8.3  Example Page  Sizes
+              Computer                             Page Size
+   Atlas                    512 48-bit words
+   Honeywell-Multics        1,024 36-bit words
+   IBM 370/XA and 370/ESA   4 Kbytes
+   VAX family               512 bytes
+   IBM AS/400               512 bytes
+   DEC Alpha                8 Kbytes
+   MIPS                     4 Kbytes to 16 Mbytes
+   UltraSPARC               8 Kbytes to 4 Mbytes
+   Pentium                  4 Kbytes or 4 Mbytes
+   Intel Itanium            4 Kbytes to 256 Mbytes
+   Intel core i7            4 Kbytes to 1 Gbyte
+size, the fault rate drops as the number of pages maintained in main memory grows.3
+Thus, a software policy (the amount of memory to allocate to each process) inter-
+acts with a hardware design decision (page size).
+   Table 8.3 lists the page sizes used on some machines.
+   Finally, the design issue of page size is related to the size of physical main memory
+and program size. At the same time that main memory is getting larger, the address
+space used by applications is also growing. The trend is most obvious on personal
+computers and workstations, where applications are becoming increasingly complex.
+Furthermore, contemporary programming techniques used in large programs tend to
+decrease the locality of references within a process [HUCK93]. For example,
+·  Object-oriented techniques encourage the use of many small program and
+   data modules with references scattered over a relatively large number of ob-
+   jects over a relatively short period of time.
+·  Multithreaded applications may result in abrupt changes in the instruction
+   stream and in scattered memory references.
+   For a given size of TLB, as the memory size of processes grows and as locality
+decreases, the hit ratio on TLB accesses declines. Under these circumstances, the
+TLB can become a performance bottleneck (e.g., see [CHEN92]).
+   One way to improve TLB performance is to use a larger TLB with more
+entries. However, TLB size interacts with other aspects of the hardware design,
+such as the main memory cache and the number of memory accesses per instruction
+cycle [TALL92]. The upshot is that TLB size is unlikely to grow as rapidly as main
+memory size. An alternative is to use larger page sizes so that each page table entry
+in the TLB refers to a larger block of memory. But we have just seen that the use of
+large page sizes can lead to performance degradation.
+3The parameter W represents working set size, a concept discussed in Section 8.2.
+
+356  CHAPTER 8 / VIRTUAL MEMORY
+         Accordingly, a number of designers have investigated the use of multiple
+     page sizes [TALL92, KHAL93], and several microprocessor architectures support
+     multiple pages sizes, including MIPS R4000, Alpha, UltraSPARC, Pentium, and
+     IA-64. Multiple page sizes provide the flexibility needed to use a TLB effectively.
+     For example, large contiguous regions in the address space of a process, such as pro-
+     gram instructions, may be mapped using a small number of large pages rather than
+     a large number of small pages, while thread stacks may be mapped using the small
+     page size. However, most commercial operating systems still support only one page
+     size, regardless of the capability of the underlying hardware. The reason for this is
+     that page size affects many aspects of the OS; thus, a change to multiple page sizes
+     is a complex undertaking (see [GANA98] for a discussion).
+     Segmentation
+     VIRTUAL MEMORY IMPLICATIONS  Segmentation allows the programmer to view
+     memory as consisting of multiple address spaces or segments. Segments may be of
+     unequal, indeed dynamic, size. Memory references consist of a (segment number,
+     offset) form of address.
+         This organization has a number of advantages to the programmer over a non-
+     segmented address space:
+     1.  It simplifies the handling of growing data structures. If the programmer does
+         not know ahead of time how large a particular data structure will become, it is
+         necessary to guess unless dynamic segment sizes are allowed. With segmented
+         virtual memory, the data structure can be assigned its own segment, and the
+         OS will expand or shrink the segment as needed. If a segment that needs to be
+         expanded is in main memory and there is insufficient room, the OS may move
+         the segment to a larger area of main memory, if available, or swap it out. In
+         the latter case, the enlarged segment would be swapped back in at the next
+         opportunity.
+     2.  It allows programs to be altered and recompiled independently, without
+         requiring the entire set of programs to be relinked and reloaded. Again, this is
+         accomplished using multiple segments.
+     3.  It lends itself to sharing among processes. A programmer can place a utility
+         program or a useful table of data in a segment that can be referenced by other
+         processes.
+     4.  It lends itself to protection. Because a segment can be constructed to contain a
+         well-defined set of programs or data, the programmer or system administrator
+         can assign access privileges in a convenient fashion.
+     ORGANIZATION      In the discussion of simple segmentation, we indicated that each
+     process has its own segment table, and when all of its segments are loaded into main
+     memory, the segment table for a process is created and loaded into main memory.
+     Each segment table entry contains the starting address of the corresponding segment
+     in main memory, as well as the length of the segment. The same device, a segment
+     table, is needed when we consider a virtual memory scheme based on segmentation.
+     Again, it is typical to associate a unique segment table with each process. In this
+
+                   8.1 / HARDWARE AND CONTROL STRUCTURES                                  357
+case, however, the segment table entries become more complex (Figure 8.2b).
+Because only some of the segments of a process may be in main memory, a bit is
+needed in each segment table entry to indicate whether the corresponding segment
+is present in main memory or not. If the bit indicates that the segment is in memory,
+then the entry also includes the starting address and length of that segment.
+Another control bit in the segmentation table entry is a modify bit, indicating
+whether the contents of the corresponding segment have been altered since the seg-
+ment was last loaded into main memory. If there has been no change, then it is not
+necessary to write the segment out when it comes time to replace the segment in the
+frame that it currently occupies. Other control bits may also be present. For example,
+if protection or sharing is managed at the segment level, then bits for that purpose
+will be required.
+The basic mechanism for reading a word from memory involves the translation
+of a virtual, or logical, address, consisting of segment number and offset, into a physi-
+cal address, using a segment table. Because the segment table is of variable length,
+depending on the size of the process, we cannot expect to hold it in registers. Instead,
+it must be in main memory to be accessed. Figure 8.12 suggests a hardware imple-
+mentation of this scheme (note similarity to Figure 8.3). When a particular process
+is running, a register holds the starting address of the segment table for that process.
+The segment number of a virtual address is used to index that table and look up the
+corresponding main memory address for the start of the segment. This is added to
+the offset portion of the virtual address to produce the desired real address.
+Combined Paging and Segmentation
+Both paging and segmentation have their strengths. Paging, which is transparent
+to the programmer, eliminates external fragmentation and thus provides efficient
+use of main memory. In addition, because the pieces that are moved in and out of
+Virtual address                                    Physical address
+Seg #  Offset = d                   +                Base + d
+                   Register
+                   Seg Table Ptr
+                                    Segment table                    d          Segment
+                   +         Seg #
+                                       Length  Base
+       Program        Segmentation mechanism                         Main memory
+Figure 8.12        Address Translation in a Segmentation System
+
+358  CHAPTER 8 / VIRTUAL MEMORY
+       main memory are of fixed, equal size, it is possible to develop sophisticated mem-
+       ory management algorithms that exploit the behavior of programs, as we shall see.
+       Segmentation, which is visible to the programmer, has the strengths listed earlier,
+       including the ability to handle growing data structures, modularity, and support
+       for sharing and protection. To combine the advantages of both, some systems are
+       equipped with processor hardware and OS software to provide both.
+             In a combined paging/segmentation system, a user's address space is broken
+       up into a number of segments, at the discretion of the programmer. Each segment
+       is, in turn, broken up into a number of fixed-size pages, which are equal in length to
+       a main memory frame. If a segment has length less than that of a page, the segment
+       occupies just one page. From the programmer's point of view, a logical address still
+       consists of a segment number and a segment offset. From the system's point of view,
+       the segment offset is viewed as a page number and page offset for a page within the
+       specified segment.
+             Figure 8.13 suggests a structure to support combined paging/segmentation
+       (note similarity to Figure 8.5). Associated with each process is a segment table and
+       a number of page tables, one per process segment. When a particular process is
+       running, a register holds the starting address of the segment table for that process.
+       Presented with a virtual address, the processor uses the segment number portion to
+       index into the process segment table to find the page table for that segment. Then
+       the page number portion of the virtual address is used to index the page table and
+       look up the corresponding frame number. This is combined with the offset portion
+       of the virtual address to produce the desired real address.
+             Figure 8.2c suggests the segment table entry and page table entry formats. As
+       before, the segment table entry contains the length of the segment. It also contains
+       Virtual address
+Seg #  Page #  Offset                                    Frame #  Offset
+                        Seg table ptr
+                                              Segment             Page
+                                              table               table
+                                                         Page #           Offset       Page
+                                       Seg #                                           frame
+                                                       
+       Program               Segmentation                Paging           Main memory
+                             mechanism                   mechanism
+Figure 8.13    Address Translation in a Segmentation/Paging System
+
+             8.1 / HARDWARE AND CONTROL STRUCTURES                                     359
+a base field, which now refers to a page table. The present and modified bits are not
+needed because these matters are handled at the page level. Other control bits may
+be used, for purposes of sharing and protection. The page table entry is essentially
+the same as is used in a pure paging system. Each page number is mapped into a cor-
+responding frame number if the page is present in main memory. The modified bit
+indicates whether this page needs to be written back out when the frame is allocated
+to another page. There may be other control bits dealing with protection or other
+aspects of memory management.
+Protection and Sharing
+Segmentation lends itself to the implementation of protection and sharing policies.
+Because each segment table entry includes a length as well as a base address, a pro-
+gram cannot inadvertently access a main memory location beyond the limits of a
+segment. To achieve sharing, it is possible for a segment to be referenced in the seg-
+ment tables of more than one process. The same mechanisms are, of course, avail-
+able in a paging system. However, in this case the page structure of programs and
+data is not visible to the programmer, making the specification of protection and
+sharing requirements more awkward. Figure 8.14 illustrates the types of protection
+relationships that can be enforced in such a system.
+Address      Main memory
+0
+20K
+             Dispatcher
+35K                            No access
+                               allowed
+50K
+             Process A
+80K
+90K                            Branch instruction
+                               (not allowed)
+             Process B
+                               Reference to
+                               data (allowed)
+140K
+             Process C
+                                                      Reference to
+                                                      data (not allowed)
+190K
+Figure 8.14  Protection Relationships between Segments
+
+360  CHAPTER 8 / VIRTUAL MEMORY
+         More sophisticated mechanisms can also be provided. A common scheme
+     is to use a ring-protection structure, of the type we referred to in Chapter 3
+     (Figure 3.18). In this scheme, lower-numbered, or inner, rings enjoy greater
+     privilege than higher-numbered, or outer, rings. Typically, ring 0 is reserved
+     for kernel functions of the OS, with applications at a higher level. Some utili-
+     ties or OS services may occupy an intermediate ring. Basic principles of the ring
+     system are as follows:
+     1.  A program may access only data that reside on the same ring or a less privi-
+         leged ring.
+     2.  A program may call services residing on the same or a more privileged ring.
+8.2  OPERATING SYSTEM SOFTWARE
+     The design of the memory management portion of an OS depends on three funda-
+     mental areas of choice:
+     ·   Whether or not to use virtual memory techniques
+     ·   The use of paging or segmentation or both
+     ·   The algorithms employed for various aspects of memory management
+     The choices made in the first two areas depend on the hardware platform available.
+     Thus, earlier UNIX implementations did not provide virtual memory because the
+     processors on which the system ran did not support paging or segmentation. Neither
+     of these techniques is practical without hardware support for address translation
+     and other basic functions.
+         Two additional comments about the first two items in the preceding list: First,
+     with the exception of operating systems for some of the older personal computers,
+     such as MS-DOS, and specialized systems, all important operating systems provide
+     virtual memory. Second, pure segmentation systems are becoming increasingly
+     rare. When segmentation is combined with paging, most of the memory manage-
+     ment issues confronting the OS designer are in the area of paging.4 Thus, we can
+     concentrate in this section on the issues associated with paging.
+         The choices related to the third item are the domain of operating system
+     software and are the subject of this section. Table 8.4 lists the key design elements
+     that we examine. In each case, the key issue is one of performance: We would like to
+     minimize the rate at which page faults occur, because page faults cause considerable
+     software overhead. At a minimum, the overhead includes deciding which resident
+     page or pages to replace, and the I/O of exchanging pages. Also, the OS must schedule
+     another process to run during the page I/O, causing a process switch. Accordingly,
+     we would like to arrange matters so that, during the time that a process is execut-
+     ing, the probability of referencing a word on a missing page is minimized. In all of
+     the areas referred to in Table 8.4, there is no definitive policy that works best.
+     4Protection and sharing are usually dealt with at the segment level in a combined segmentation/paging
+     system. We will deal with these issues in later chapters.

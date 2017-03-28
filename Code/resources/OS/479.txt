@@ -1,0 +1,204 @@
+Linux Scheduling
+                                                    10.3 / LINUX SCHEDULING                    457
+      resource; it should end when the resource is released by the lower-priority task.
+      Figure 10.9b shows that priority inheritance resolves the problem of unbounded
+      priority inversion illustrated in Figure 10.9a. The relevant sequence of events is
+      as follows:
+         t1: T3 begins executing.
+         t2: T3 locks semaphore s and enters its critical section.
+         t3: T1, which has a higher priority than T3, preempts T3 and begins executing.
+         t4: T1 attempts to enter its critical section but is blocked because the sema-
+         phore is locked by T3. T3 is immediately and temporarily assigned the same
+         priority as T1. T3 resumes execution in its critical section.
+         t5: T2 is ready to execute but, because T3 now has a higher priority, T2 is unable
+         to preempt T3.
+         t6: T3 leaves its critical section and unlocks the semaphore: its priority level is
+         downgraded to its previous default level. T1 preempts T3, locks the sema-
+         phore, and enters its critical section.
+         t7: T1 is suspended for some reason unrelated to T2, and T2 begins executing.
+      This was the approach taken to solving the Pathfinder problem.
+         In the priority ceiling approach, a priority is associated with each resource.
+      The priority assigned to a resource is one level higher than the priority of its highest-
+      priority user. The scheduler then dynamically assigns this priority to any task that
+      accesses the resource. Once the task finishes with the resource, its priority returns
+      to normal.
+10.3  LINUX SCHEDULING
+      For Linux 2.4 and earlier, Linux provided a real-time scheduling capability
+      coupled with a scheduler for non-real-time processes that made use of the tra-
+      ditional UNIX scheduling algorithm described in Section 9.3. Linux 2.6 includes
+      essentially the same real-time scheduling capability as previous releases and a sub-
+      stantially revised scheduler for non-real-time processes. We examine these two
+      areas in turn.
+      Real-Time Scheduling
+      The three Linux scheduling classes are
+      ·  SCHED_FIFO: First-in-first-out real-time threads
+      ·  SCHED_RR: Round-robin real-time threads
+      ·  SCHED_OTHER: Other, non-real-time threads
+         Within each class, multiple priorities may be used, with priorities in the real-time
+      classes higher than the priorities for the SCHED_OTHER class. The default values are as
+      follows: Real-time priority classes range from 0 to 99 inclusively, and SCHED_OTHER
+      classes range from 100 to 139. A lower number equals a higher priority.
+
+458  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+         For FIFO threads, the following rules apply:
+     1.  The system will not interrupt an executing FIFO thread except in the following
+         cases:
+         a. Another FIFO thread of higher priority becomes ready.
+         b. The executing FIFO thread becomes blocked waiting for an event, such as I/O.
+         c. The executing FIFO thread voluntarily gives up the processor following a
+         call to the primitive sched_yield.
+     2.  When an executing FIFO thread is interrupted, it is placed in the queue asso-
+         ciated with its priority.
+     3.  When a FIFO thread becomes ready and if that thread has a higher priority than
+         the currently executing thread, then the currently executing thread is preempted
+         and the highest-priority ready FIFO thread is executed. If more than one thread
+         has that highest priority, the thread that has been waiting the longest is chosen.
+         The SCHED_RR policy is similar to the SCHED_FIFO policy, except for the
+     addition of a timeslice associated with each thread. When a SCHED_RR thread has
+     executed for its timeslice, it is suspended and a real-time thread of equal or higher
+     priority is selected for running.
+         Figure 10.10 is an example that illustrates the distinction between FIFO and RR
+     scheduling. Assume a process has four threads with three relative priorities assigned
+     as shown in Figure 10.10a. Assume that all waiting threads are ready to execute when
+     the current thread waits or terminates and that no higher-priority thread is awakened
+     while a thread is executing. Figure 10.10b shows a flow in which all of the threads
+     are in the SCHED_FIFO class. Thread D executes until it waits or terminates. Next,
+     although threads B and C have the same priority, thread B starts because it has been
+     waiting longer than thread C. Thread B executes until it waits or terminates, then
+     thread C executes until it waits or terminates. Finally, thread A executes.
+         Figure 10.10c shows a sample flow if all of the threads are in the SCHED_RR
+     class. Thread D executes until it waits or terminates. Next, threads B and C are time
+     sliced, because they both have the same priority. Finally, thread A executes.
+         The final scheduling class is SCHED_OTHER. A thread in this class can only
+     execute if there are no real-time threads ready to execute.
+                    A  Minimum
+                    B  Middle
+                                                    D     B         C  A
+                    C  Middle
+                    D  Maximum
+                 (a) Relative thread priorities        (b) Flow with FIFO scheduling
+                 D     B            C            B     C         A
+                                    (c) Flow with RR scheduling
+                 Figure 10.10  Example of Linux Real-Time Scheduling
+
+                                                            10.3 / LINUX SCHEDULING                           459
+        Non-Real-Time Scheduling
+        The Linux 2.4 scheduler for the SCHED_OTHER class did not scale well with increas-
+        ing number of processors and increasing number of processes. The drawbacks of
+        this scheduler include the following:
+          ·  The Linux 2.4 scheduler uses a single runqueue for all processors in a symmet-
+             ric multiprocessing system (SMP). This means a task can be scheduled on any
+             processor, which can be good for load balancing but bad for memory caches.
+             For example, suppose a task executed on CPU-1, and its data were in that pro-
+             cessor's cache. If the task got rescheduled to CPU-2, its data would need to be
+             invalidated in CPU-1 and brought into CPU-2.
+          ·  The Linux 2.4 scheduler uses a single runqueue lock. Thus, in an SMP sys-
+             tem, the act of choosing a task to execute locks out any other processor from
+             manipulating the runqueues. The result is idle processors awaiting release of
+             the runqueue lock and decreased efficiency.
+          ·  Preemption is not possible in the Linux 2.4 scheduler; this means that a lower-
+             priority task can execute while a higher-priority task waited for it to complete.
+             To correct these problems, Linux 2.6 uses a completely new priority scheduler
+        known as the O(1) scheduler.5 The scheduler is designed so that the time to select
+        the appropriate process and assign it to a processor is constant, regardless of the
+        load on the system or the number of processors.
+             The kernel maintains two scheduling data structure for each processor in the
+        system, of the following form (Figure 10.11):
+struct  prio_array  {
+int                 nr_active;                          /*  number  of  tasks   in  this  array*/
+unsigned  long      bitmap[BITMAP_SIZE];                /*  priority    bitmap  */
+struct  list_head   queue[MAX_PRIO];                    /*  priority    queues  */
+             A separate queue is maintained for each priority level. The total number of
+        queues in the structure is MAX_PRIO, which has a default value of 140. The struc-
+        ture also includes a bitmap array of sufficient size to provide one bit per priority
+        level. Thus, with 140 priority levels and 32-bit words, BITMAP_SIZE has a value of
+        5. This creates a bitmap of 160 bits, of which 20 bits are ignored. The bitmap indi-
+        cates which queues are not empty. Finally, nr_active indicates the total number
+        of tasks present on all queues. Two structures are maintained: an active queues
+        structure and an expired queues structure.
+             Initially, both bitmaps are set to all zeroes and all queues are empty. As a
+        process becomes ready, it is assigned to the appropriate priority queue in the active
+        queues structure and is assigned the appropriate timeslice. If a task is preempted
+        before it completes its timeslice, it is returned to an active queue. When a task com-
+        pletes its timeslice, it goes into the appropriate queue in the expired queues structure
+        and is assigned a new timeslice. All scheduling is done from among tasks in the active
+        5The term O(1) is an example of the "big-O" notation, used for characterizing the time complexity of
+        algorithms. Appendix I explains this notation.
+
+460    CHAPTER 10 / MULTIPROCESSOR         AND             REAL-TIME  SCHEDULING
+              Highest-priority
+Bit 0         nonempty
+(priority 0)  active queue
+                                                                      Active queues:
+                                                                      140 queues by priority;
+                                                                      each queue contains ready
+                                                                      tasks for that priority
+                                           Bit 139
+140-bit priority array for active queues   (priority 139)
+                                                                      Expired queues:
+                                                                      140 queues by priority;
+                                                                      each queue contains ready
+                                                                      tasks with expired timeslices
+                                                                      for that priority
+140-bit priority array for expired queues
+Figure 10.11  Linux Scheduling Data Structures for Each Processor
+              queues structure. When the active queues structure is empty, a simple pointer assign-
+              ment results in a switch of the active and expired queues, and scheduling continues.
+              Scheduling is simple and efficient. On a given processor, the scheduler picks
+              the highest-priority nonempty queue. If multiple tasks are in that queue, the tasks
+              are scheduled in round-robin fashion.
+              Linux also includes a mechanism for moving tasks from the queue lists of one
+              processor to that of another. Periodically, the scheduler checks to see if there is a sub-
+              stantial imbalance among the number of tasks assigned to each processor. To balance
+              the load, the schedule can transfer some tasks. The highest-priority active tasks are
+              selected for transfer, because it is more important to distribute high-priority tasks fairly.
+              CALCULATING PRIORITIES AND TIMESLICES        Each non-real-time task is assigned
+              an initial priority in the range of 100­139, with a default of 120. This is the task's
+              static priority and is specified by the user. As the task executes, a dynamic priority is
+              calculated as a function of the task's static priority and its execution behavior. The
+              Linux scheduler is designed to favor I/O-bound tasks over processor-bound tasks.
+              This preference tends to provide good interactive response. The technique used by
+              Linux to determine the dynamic priority is to keep a running tab on how much time
+              a process sleeps (waiting for an event) versus how much time the process runs. In
+              essence, a task that spends most of its time sleeping is given a higher priority.
+
+                                                      10.4 / UNIX SVR4 SCHEDULING                              461
+          Timeslices are assigned in the range of 10­200 ms. In general, higher-priority
+      tasks are assigned larger timeslices.
+      RELATIONSHIP   TO      REAL-TIME       TASKS    Real-time  tasks       are  handled                      in  a
+      different manner from non-real-time tasks in the priority queues. The following
+      considerations apply:
+      1.  All real-time tasks have only a static priority; no dynamic priority changes
+          are made.
+      2.  SCHED_FIFO tasks do not have assigned timeslices. Such tasks are scheduled
+          in FIFO discipline. If a SHED_FIFO task is blocked, it returns to the same pri-
+          ority queue in the active queue list when it becomes unblocked.
+      3.  Although SCHED_RR tasks do have assigned timeslices, they also are never
+          moved to the expired queue list. When a SCHED_RR task exhausts its timeslice,
+          it is returned to its priority queue with the same timeslice value. Timeslice val-
+          ues are never changed.
+          The effect of these rules is that the switch between the active queue list and
+      the expired queue list only happens when there are no ready real-time tasks waiting
+      to execute.
+10.4  UNIX SVR4 SCHEDULING
+      The scheduling algorithm used in UNIX SVR4 is a complete overhaul of the sched-
+      uling algorithm used in earlier UNIX systems (described in Section 9.3). The new
+      algorithm is designed to give highest preference to real-time processes, next-highest
+      preference to kernel-mode processes, and lowest preference to other user-mode
+      processes, referred to as time-shared processes.6
+          The two major modifications implemented in SVR4 are as follows:
+      1.  The addition of a preemptable static priority scheduler and the introduction of
+          a set of 160 priority levels divided into three priority classes.
+      2.  The insertion of preemption points. Because the basic kernel is not preemp-
+          tive, it can only be split into processing steps that must run to completion
+          without interruption. In between the processing steps, safe places known as
+          preemption points have been identified where the kernel can safely interrupt
+          processing and schedule a new process. A safe place is defined as a region
+          of code where all kernel data structures are either updated and consistent or
+          locked via a semaphore.
+          Figure 10.12 illustrates the 160 priority levels defined in SVR4. Each process
+      is defined to belong to one of three priority classes and is assigned a priority level
+      within that class. The classes are as follows:
+      · Real time (159-100): Processes at these priority levels are guaranteed to be
+          selected to run before any kernel or time-sharing process. In addition, real-time
+      6Time-shared processes are the processes that correspond to users in a traditional time-sharing system.

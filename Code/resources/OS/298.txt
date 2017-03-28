@@ -1,0 +1,123 @@
+Deadlock Detection
+276  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+6.4  DEADLOCK DETECTION
+     Deadlock prevention strategies are very conservative; they solve the problem
+     of deadlock by limiting access to resources and by imposing restrictions on pro-
+     cesses. At the opposite extreme, deadlock detection strategies do not limit resource
+     access or restrict process actions. With deadlock detection, requested resources are
+     granted to processes whenever possible. Periodically, the OS performs an algorithm
+     that allows it to detect the circular wait condition described earlier in condition (4)
+     and illustrated in Figure 6.6.
+     Deadlock Detection Algorithm
+     A check for deadlock can be made as frequently as each resource request or,
+     less frequently, depending on how likely it is for a deadlock to occur. Checking
+     at each resource request has two advantages: It leads to early detection, and the
+     algorithm is relatively simple because it is based on incremental changes to the
+     state of the system. On the other hand, such frequent checks consume consider-
+     able processor time.
+         A common algorithm for deadlock detection is one described in [COFF71].
+     The Allocation matrix and Available vector described in the previous section are
+     used. In addition, a request matrix Q is defined such that Qij represents the amount
+     of resources of type j requested by process i. The algorithm proceeds by marking
+     processes that are not deadlocked. Initially, all processes are unmarked. Then the
+     following steps are performed:
+     1.  Mark each process that has a row in the Allocation matrix of all zeros.
+     2.  Initialize a temporary vector W to equal the Available vector.
+     3.  Find an index i such that process i is currently unmarked and the ith row of Q
+         is less than or equal to W. That is, Qik ... Wk, for 1 ... k ... m. If no such row is
+         found, terminate the algorithm.
+     4.  If such a row is found, mark process i and add the corresponding row of the
+         allocation matrix to W. That is, set Wk = Wk + Aik, for 1 ... k ... m. Return
+         to step 3.
+         A deadlock exists if and only if there are unmarked processes at the end of
+     the algorithm. Each unmarked process is deadlocked. The strategy in this algo-
+     rithm is to find a process whose resource requests can be satisfied with the available
+     resources, and then assume that those resources are granted and that the process
+     runs to completion and releases all of its resources. The algorithm then looks for
+     another process to satisfy. Note that this algorithm does not guarantee to prevent
+     deadlock; that will depend on the order in which future requests are granted. All
+     that it does is determine if deadlock currently exists.
+         We can use Figure 6.10 to illustrate the deadlock detection algorithm. The
+     algorithm proceeds as follows:
+     1.  Mark P4, because P4 has no allocated resources.
+     2.  Set W = (0 0 0 0 1).
+
+                                                        6.4 / DEADLOCK    DETECTION         277
+    R1  R2   R3   R4      R5             R1  R2     R3  R4        R5  R1  R2  R3  R4        R5
+P1  0   1    0    0       1    P1        1   0      1   1         0   2   1   1   2         1
+P2  0   0    1    0       1    P2        1   1      0   0         0       Resource vector
+P3  0   0    0    0       1    P3        0   0      0   1         0
+P4  1   0    1    0       1    P4        0   0      0   0         0
+        Request matrix Q                     Allocation matrix A      R1  R2  R3  R4        R5
+                                                                      0   0   0   0         1
+                                                                          Available vector
+Figure 6.10  Example      for  Deadlock  Detection
+3.  The request of process P3 is less than or equal to W, so mark P3 and set
+                               W = W + (0 0 0 1 0) = (0 0 0 1 1).
+4.  No other unmarked process has a row in Q that is less than or equal to W.
+    Therefore, terminate the algorithm.
+    The algorithm concludes with P1 and P2 unmarked, indicating that these
+processes are deadlocked.
+Recovery
+Once deadlock has been detected, some strategy is needed for recovery. The follow-
+ing are possible approaches, listed in order of increasing sophistication:
+1.  Abort all deadlocked processes. This is, believe it or not, one of the most
+    common, if not the most common, solution adopted in operating systems.
+2.  Back up each deadlocked process to some previously defined checkpoint, and
+    restart all processes. This requires that rollback and restart mechanisms be built
+    in to the system. The risk in this approach is that the original deadlock may
+    recur. However, the nondeterminancy of concurrent processing may ensure that
+    this does not happen.
+3.  Successively abort deadlocked processes until deadlock no longer exists. The
+    order in which processes are selected for abortion should be on the basis of
+    some criterion of minimum cost. After each abortion, the detection algorithm
+    must be reinvoked to see whether deadlock still exists.
+4.  Successively preempt resources until deadlock no longer exists. As in (3), a cost-
+    based selection should be used, and reinvocation of the detection algorithm is
+    required after each preemption. A process that has a resource preempted from
+    it must be rolled back to a point prior to its acquisition of that resource.
+    For (3) and (4), the selection criteria could be one of the following. Choose the
+process with the
+·   least amount of processor time consumed so far
+·   least amount of output produced so far
+·   most estimated time remaining
+
+278  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     · least total resources allocated so far
+     · lowest priority
+        Some of these quantities are easier to measure than others. Estimated time
+     remaining is particularly suspect. Also, other than by means of the priority measure,
+     there is no indication of the "cost" to the user, as opposed to the cost to the system
+     as a whole.
+6.5  AN INTEGRATED DEADLOCK STRATEGY
+     As Table 6.1 suggests, there are strengths and weaknesses to all of the strategies for
+     dealing with deadlock. Rather than attempting to design an OS facility that employs
+     only one of these strategies, it might be more efficient to use different strategies in
+     different situations. [HOWA73] suggests one approach:
+     ·  Group resources into a number of different resource classes.
+     ·  Use the linear ordering strategy defined previously for the prevention of circular
+        wait to prevent deadlocks between resource classes.
+     ·  Within a resource class, use the algorithm that is most appropriate for that class.
+        As an example of this technique, consider the following classes of resources:
+     ·  Swappable space: Blocks of memory on secondary storage for use in swapping
+        processes
+     ·  Process resources: Assignable devices, such as tape drives, and files
+     ·  Main memory: Assignable to processes in pages or segments
+     ·  Internal resources: Such as I/O channels
+        The order of the preceding list represents the order in which resources are
+     assigned. The order is a reasonable one, considering the sequence of steps that a
+     process may follow during its lifetime. Within each class, the following strategies
+     could be used:
+     ·  Swappable space: Prevention of deadlocks by requiring that all of the required
+        resources that may be used be allocated at one time, as in the hold-and-wait
+        prevention strategy. This strategy is reasonable if the maximum storage
+        requirements are known, which is often the case. Deadlock avoidance is also a
+        possibility.
+     ·  Process resources: Avoidance will often be effective in this category, because
+        it is reasonable to expect processes to declare ahead of time the resources that
+        they will require in this class. Prevention by means of resource ordering within
+        this class is also possible.
+     ·  Main memory: Prevention by preemption appears to be the most appropriate
+        strategy for main memory. When a process is preempted, it is simply swapped
+        to secondary memory, freeing space to resolve the deadlock.
+     ·  Internal resources: Prevention by means of resource ordering can be used.

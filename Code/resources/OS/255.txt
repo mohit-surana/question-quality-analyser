@@ -1,0 +1,304 @@
+Message Passing
+                                                                   5.5 / MESSAGE PASSING      233
+5.5        MESSAGE PASSING
+           When processes interact with one another, two fundamental requirements must
+           be satisfied: synchronization and communication. Processes need to be synchro-
+           nized to enforce mutual exclusion; cooperating processes may need to exchange
+           information. One approach to providing both of these functions is message passing.
+           Message passing has the further advantage that it lends itself to implementation in
+           distributed systems as well as in shared-memory multiprocessor and uniprocessor
+           systems.
+                   Message-passing systems come in many forms. In this section, we provide a
+           general introduction that discusses features typically found in such systems. The
+           actual function of message passing is normally provided in the form of a pair of
+           primitives:
+                   send      (destination,  message)
+                   receive   (source,   message)
+                   This is the minimum set of operations needed for processes to engage in mes-
+           sage passing. A process sends information in the form of a message to another proc-
+           ess designated by a destination. A process receives information by executing the
+           receive primitive, indicating the source and the message.
+                   A number of design issues relating to message-passing systems are listed in
+           Table 5.5, and examined in the remainder of this section.
+Table 5.5   Design Characteristics  of  Message  Systems for Interprocess  Communication
+            and Synchronization
+Synchronization                                  Format
+Send                                              Content
+           blocking                               Length
+           nonblocking                                   fixed
+Receive                                                  variable
+           blocking
+           nonblocking                           Queueing Discipline
+           test for arrival                       FIFO
+                                                  Priority
+Addressing
+Direct
+           send
+           receive
+                 explicit
+                 implicit
+Indirect
+           static
+           dynamic
+           ownership
+
+234  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     Synchronization
+     The communication of a message between two processes implies some level of syn-
+     chronization between the two: The receiver cannot receive a message until it has
+     been sent by another process. In addition, we need to specify what happens to a
+     process after it issues a send or receive primitive.
+         Consider the send primitive first. When a send primitive is executed in a
+     process, there are two possibilities: Either the sending process is blocked until the
+     message is received, or it is not. Similarly, when a process issues a receive primi-
+     tive, there are two possibilities:
+     1.  If a message has previously been sent, the message is received and execution
+         continues.
+     2.  If there is no waiting message, then either (a) the process is blocked until
+         a message arrives, or (b) the process continues to execute, abandoning the
+         attempt to receive.
+         Thus, both the sender and receiver can be blocking or nonblocking. Three
+     combinations are common, although any particular system will usually have only
+     one or two combinations implemented:
+     �   Blocking send, blocking receive: Both the sender and receiver are blocked un-
+         til the message is delivered; this is sometimes referred to as a rendezvous. This
+         combination allows for tight synchronization between processes.
+     �   Nonblocking send, blocking receive: Although the sender may continue on,
+         the receiver is blocked until the requested message arrives. This is probably
+         the most useful combination. It allows a process to send one or more messages
+         to a variety of destinations as quickly as possible. A process that must receive
+         a message before it can do useful work needs to be blocked until such a mes-
+         sage arrives. An example is a server process that exists to provide a service or
+         resource to other processes.
+     �   Nonblocking send, nonblocking receive: Neither party is required to wait.
+         The nonblocking send is more natural for many concurrent programming
+     tasks. For example, if it is used to request an output operation, such as printing, it
+     allows the requesting process to issue the request in the form of a message and then
+     carry on. One potential danger of the nonblocking send is that an error could lead
+     to a situation in which a process repeatedly generates messages. Because there is no
+     blocking to discipline the process, these messages could consume system resources,
+     including processor time and buffer space, to the detriment of other processes and
+     the OS. Also, the nonblocking send places the burden on the programmer to deter-
+     mine that a message has been received: Processes must employ reply messages to
+     acknowledge receipt of a message.
+         For the receive primitive, the blocking version appears to be more natural
+     for many concurrent programming tasks. Generally, a process that requests a mes-
+     sage will need the expected information before proceeding. However, if a message
+     is lost, which can happen in a distributed system, or if a process fails before it sends
+     an anticipated message, a receiving process could be blocked indefinitely. This
+
+                                                  5.5 / MESSAGE PASSING                 235
+problem can be solved by the use of the nonblocking receive. However, the dan-
+ger of this approach is that if a message is sent after a process has already executed
+a matching receive, the message will be lost. Other possible approaches are to
+allow a process to test whether a message is waiting before issuing a receive and
+allow a process to specify more than one source in a receive primitive. The latter
+approach is useful if a process is waiting for messages from more than one source
+and can proceed if any of these messages arrive.
+Addressing
+Clearly, it is necessary to have a way of specifying in the send primitive which pro-
+cess is to receive the message. Similarly, most implementations allow a receiving
+process to indicate the source of a message to be received.
+The various schemes for specifying processes in send and receive primi-
+tives fall into two categories: direct addressing and indirect addressing. With direct
+addressing, the send primitive includes a specific identifier of the destination proc-
+ess. The receive primitive can be handled in one of two ways. One possibility is
+to require that the process explicitly designate a sending process. Thus, the proc-
+ess must know ahead of time from which process a message is expected. This will
+often be effective for cooperating concurrent processes. In other cases, however,
+it is impossible to specify the anticipated source process. An example is a printer-
+server process, which will accept a print request message from any other process.
+For such applications, a more effective approach is the use of implicit addressing. In
+this case, the source parameter of the receive primitive possesses a value returned
+when the receive operation has been performed.
+The other general approach is indirect addressing. In this case, messages are
+not sent directly from sender to receiver but rather are sent to a shared data struc-
+ture consisting of queues that can temporarily hold messages. Such queues are gen-
+erally referred to as mailboxes. Thus, for two processes to communicate, one proc-
+ess sends a message to the appropriate mailbox and the other process picks up the
+message from the mailbox.
+A strength of the use of indirect addressing is that, by decoupling the sender
+and receiver, it allows for greater flexibility in the use of messages. The relationship
+between senders and receivers can be one to one, many to one, one to many, or
+many to many (Figure 5.18). A one-to-one relationship allows a private communi-
+cations link to be set up between two processes. This insulates their interaction from
+erroneous interference from other processes. A many-to-one relationship is use-
+ful for client/server interaction; one process provides service to a number of other
+processes. In this case, the mailbox is often referred to as a port. A one-to-many
+relationship allows for one sender and multiple receivers; it is useful for applications
+where a message or some information is to be broadcast to a set of processes. A
+many-to-many relationship allows multiple server processes to provide concurrent
+service to multiple clients.
+The association of processes to mailboxes can be either static or dynamic.
+Ports are often statically associated with a particular process; that is, the port is
+created and assigned to the process permanently. Similarly, a one-to-one relation-
+ship is typically defined statically and permanently. When there are many senders,
+
+236      CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+                                             S1
+     S1      Mailbox          R1                                  Port                             R1
+                                             Sn
+             (a) One to one                                       (b) Many to one
+                              R1             S1                                                    R1
+     S1      Mailbox                                              Mailbox
+                              Rn             Sn                                                    Rn
+             (c) One to many                                      (d) Many to many
+Figure 5.18  Indirect Process Communication
+         the association of a sender to a mailbox may occur dynamically. Primitives such as
+         connect and disconnect may be used for this purpose.
+             A related issue has to do with the ownership of a mailbox. In the case of a port,
+         it is typically owned by and created by the receiving process. Thus, when the process is
+         destroyed, the port is also destroyed. For the general mailbox case, the OS may offer
+         a create-mailbox service. Such mailboxes can be viewed either as being owned by the
+         creating process, in which case they terminate with the process, or as being owned by
+         the OS, in which case an explicit command will be required to destroy the mailbox.
+         Message Format
+         The format of the message depends on the objectives of the messaging facility and
+         whether the facility runs on a single computer or on a distributed system. For some
+         operating systems, designers have preferred short, fixed-length messages to mini-
+         mize processing and storage overhead. If a large amount of data is to be passed, the
+         data can be placed in a file and the message then simply references that file. A more
+         flexible approach is to allow variable-length messages.
+             Figure 5.19 shows a typical message format for operating systems that support
+         variable-length messages. The message is divided into two parts: a header, which
+         contains information about the message, and a body, which contains the actual con-
+         tents of the message. The header may contain an identification of the source and
+         intended destination of the message, a length field, and a type field to discriminate
+         among various types of messages. There may also be additional control information,
+
+                                                                              5.5  /  MESSAGE  PASSING  237
+                                                         Message type
+                                                         Destination ID
+                                           Header        Source ID
+                                                         Message length
+                                                         Control information
+                                               Body      Message contents
+                                           Figure 5.19   General Message
+                                                         Format
+such as a pointer field so that a linked list of messages can be created; a sequence
+number, to keep track of the number and order of messages passed between source
+and destination; and a priority field.
+Queueing Discipline
+The simplest queueing discipline is first-in-first-out, but this may not be sufficient
+if some messages are more urgent than others. An alternative is to allow the speci-
+fying of message priority, on the basis of message type or by designation by the
+sender. Another alternative is to allow the receiver to inspect the message queue
+and select which message to receive next.
+Mutual Exclusion
+Figure 5.20 shows one way in which message passing can be used to enforce mutual
+exclusion (compare Figures 5.1, 5.2, and 5.6). We assume the use of the blocking
+receive primitive and the nonblocking send primitive. A set of concurrent pro-
+cesses share a mailbox, box, which can be used by all processes to send and receive.
+/*  program      mutualexclusion           */
+const  int    n  =   /*  number  of        process   */
+void   P(int     i)
+{
+       message       msg;
+       while     (true)      {
+             receive     (box,   msg);
+             /*  critical       section        */;
+             send    (box,      msg);
+             /*  remainder      */;
+       }
+}
+void   main()
+{
+      create     mailbox     (box);
+      send   (box,   null);
+      parbegin       (P(1),     P(2),...,  P(n));
+Figure 5.20      Mutual Exclusion Using              Messages
+
+238  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     The mailbox is initialized to contain a single message with null content. A process
+     wishing to enter its critical section first attempts to receive a message. If the mailbox
+     is empty, then the process is blocked. Once a process has acquired the message,
+     it performs its critical section and then places the message back into the mailbox.
+     Thus, the message functions as a token that is passed from process to process.
+            The preceding solution assumes that if more than one process performs the
+     receive operation concurrently, then:
+        �   If there is a message, it is delivered to only one process and the others are
+            blocked, or
+        �   If the message queue is empty, all processes are blocked; when a message is
+            available, only one blocked process is activated and given the message.
+     These assumptions are true of virtually all message-passing facilities.
+            As an example of the use of message passing, Figure 5.21 is a solution to the
+     bounded-buffer producer/consumer problem. Using the basic mutual-exclusion
+     power of message passing, the problem could have been solved with an algorithmic
+     structure similar to that of Figure 5.13. Instead, the program of Figure 5.21 takes
+     advantage of the ability of message passing to be used to pass data in addition to
+     signals. Two mailboxes are used. As the producer generates data, it is sent as mes-
+     sages to the mailbox mayconsume. As long as there is at least one message in that
+     mailbox, the consumer can consume. Hence mayconsume serves as the buffer; the
+     data in the buffer are organized as a queue of messages. The "size" of the buffer is
+     const     int
+           capacity           =  /*     buffering  capacity  */  ;
+           null     =     /*     empty  message    */  ;
+     int   i;
+     void     producer()
+     {     message        pmsg;
+           while       (true)        {
+              receive         (mayproduce,pmsg);
+              pmsg     =  produce();
+              send     (mayconsume,pmsg);
+           }
+     }
+     void     consumer()
+     {     message        cmsg;
+           while       (true)        {
+              receive         (mayconsume,cmsg);
+              consume         (cmsg);
+              send     (mayproduce,null);
+           }
+     }
+     void     main()
+     {
+           create_mailbox               (mayproduce);
+           create_mailbox               (mayconsume);
+           for   (int         i  =   1;i<=  capacity;i++)    send   (mayproduce,null);
+           parbegin           (producer,consumer);
+     }
+     Figure 5.21          A Solution to the Bounded-Buffer Producer/Consumer            Problem  Using  Messages
+
+                           5.6 / READERS/WRITERS PROBLEM                                    239
+     determined by the global variable capacity. Initially, the mailbox mayproduce
+     is filled with a number of null messages equal to the capacity of the buffer. The
+     number of messages in mayproduce shrinks with each production and grows with
+     each consumption.
+         This approach is quite flexible. There may be multiple producers and consum-
+     ers, as long as all have access to both mailboxes. The system may even be distrib-
+     uted, with all producer processes and the mayproduce mailbox at one site and all
+     the consumer processes and the mayconsume mailbox at another.
+5.6  READERS/WRITERS PROBLEM
+     In dealing with the design of synchronization and concurrency mechanisms, it is
+     useful to be able to relate the problem at hand to known problems and to be able
+     to test any solution in terms of its ability to solve these known problems. In the
+     literature, several problems have assumed importance and appear frequently, both
+     because they are examples of common design problems and because of their edu-
+     cational value. One such problem is the producer/consumer problem, which has
+     already been explored. In this section, we look at another classic problem: the read-
+     ers/writers problem.
+         The readers/writers problem is defined as follows: There is a data area shared
+     among a number of processes. The data area could be a file, a block of main mem-
+     ory, or even a bank of processor registers. There are a number of processes that
+     only read the data area (readers) and a number that only write to the data area
+     (writers). The conditions that must be satisfied are as follows:
+     1.  Any number of readers may simultaneously read the file.
+     2.  Only one writer at a time may write to the file.
+     3.  If a writer is writing to the file, no reader may read it.
+         Thus, readers are processes that are not required to exclude one another and
+     writers are processes that are required to exclude all other processes, readers and
+     writers alike.
+         Before proceeding, let us distinguish this problem from two others: the general
+     mutual exclusion problem and the producer/consumer problem. In the readers/writ-
+     ers problem readers do not also write to the data area, nor do writers read the data
+     area while writing. A more general case, which includes this case, is to allow any of
+     the processes to read or write the data area. In that case, we can declare any por-
+     tion of a process that accesses the data area to be a critical section and impose the
+     general mutual exclusion solution. The reason for being concerned with the more
+     restricted case is that more efficient solutions are possible for this case and that the
+     less efficient solutions to the general problem are unacceptably slow. For example,
+     suppose that the shared area is a library catalog. Ordinary users of the library read
+     the catalog to locate a book. One or more librarians are able to update the catalog.
+     In the general solution, every access to the catalog would be treated as a critical sec-
+     tion, and users would be forced to read the catalog one at a time. This would clearly
+     impose intolerable delays. At the same time, it is important to prevent writers from

@@ -1,0 +1,368 @@
+Secondary Storage Management
+                          12.7 / SECONDARY STORAGE MANAGEMENT                                  543
+      the size of records. However, this technique is difficult to implement. Records that
+      span two blocks require two I/O operations, and files are difficult to update, regard-
+      less of the organization. Variable-length unspanned blocking results in wasted space
+      and limits record size to the size of a block.
+          The record-blocking technique may interact with the virtual memory hard-
+      ware, if such is employed. In a virtual memory environment, it is desirable to make
+      the page the basic unit of transfer. Pages are generally quite small, so that it is
+      impractical to treat a page as a block for unspanned blocking. Accordingly, some
+      systems combine multiple pages to create a larger block for file I/O purposes. This
+      approach is used for VSAM files on IBM mainframes.
+12.7  SECONDARY STORAGE MANAGEMENT
+      On secondary storage, a file consists of a collection of blocks. The operating system
+      or file management system is responsible for allocating blocks to files. This raises
+      two management issues. First, space on secondary storage must be allocated to files,
+      and second, it is necessary to keep track of the space available for allocation. We
+      will see that these two tasks are related; that is, the approach taken for file alloca-
+      tion may influence the approach taken for free space management. Further, we will
+      see that there is an interaction between file structure and allocation policy.
+          We begin this section by looking at alternatives for file allocation on a single
+      disk. Then we look at the issue of free space management, and finally we discuss
+      reliability.
+      File Allocation
+      Several issues are involved in file allocation:
+      1.  When a new file is created, is the maximum space required for the file allo-
+          cated at once?
+      2.  Space is allocated to a file as one or more contiguous units, which we shall
+          refer to as portions. That is, a portion is a contiguous set of allocated blocks.
+          The size of a portion can range from a single block to the entire file. What size
+          of portion should be used for file allocation?
+      3.  What sort of data structure or table is used to keep track of the portions
+          assigned to a file? An example of such a structure is a file allocation table
+          (FAT), found on DOS and some other systems.
+      Let us examine these issues in turn.
+      PREALLOCATION VERSUS DYNAMIC ALLOCATION             A preallocation policy requires
+      that the maximum size of a file be declared at the time of the file creation request.
+      In a number of cases, such as program compilations, the production of summary
+      data files, or the transfer of a file from another system over a communications
+      network, this value can be reliably estimated. However, for many applications, it
+      is difficult if not impossible to estimate reliably the maximum potential size of the
+      file. In those cases, users and application programmers would tend to overestimate
+
+544  CHAPTER 12 / FILE MANAGEMENT
+     file size so as not to run out of space. This clearly is wasteful from the point of view
+     of secondary storage allocation. Thus, there are advantages to the use of dynamic
+     allocation, which allocates space to a file in portions as needed.
+     PORTION SIZE  The second issue listed is that of the size of the portion allocated to a
+     file. At one extreme, a portion large enough to hold the entire file is allocated. At the
+     other extreme, space on the disk is allocated one block at a time. In choosing a portion
+     size, there is a trade-off between efficiency from the point of view of a single file versus
+     overall system efficiency. [WIED87] lists four items to be considered in the trade-off:
+     1.  Contiguity of space increases performance, especially for Retrieve_Next
+         operations, and greatly for transactions running in a transaction-oriented
+         operating system.
+     2.  Having a large number of small portions increases the size of tables needed to
+         manage the allocation information.
+     3.  Having fixed-size portions (e.g., blocks) simplifies the reallocation of space.
+     4.  Having variable-size or small fixed-size portions minimizes waste of unused
+         storage due to overallocation.
+         Of course, these items interact and must be considered together. The result is
+     that there are two major alternatives:
+     ·   Variable, large contiguous portions: This will provide better performance. The
+         variable size avoids waste, and the file allocation tables are small. However,
+         space is hard to reuse.
+     ·   Blocks: Small fixed portions provide greater flexibility. They may require
+         large tables or complex structures for their allocation. Contiguity has been
+         abandoned as a primary goal; blocks are allocated as needed.
+         Either option is compatible with preallocation or dynamic allocation. In
+     the case of variable, large contiguous portions, a file is preallocated one contigu-
+     ous group of blocks. This eliminates the need for a file allocation table; all that is
+     required is a pointer to the first block and the number of blocks allocated. In the
+     case of blocks, all of the portions required are allocated at one time. This means that
+     the file allocation table for the file will remain of fixed size, because the number of
+     blocks allocated is fixed.
+         With variable-size portions, we need to be concerned with the fragmentation
+     of free space. This issue was faced when we considered partitioned main memory in
+     Chapter 7. The following are possible alternative strategies:
+     ·   First fit: Choose the first unused contiguous group of blocks of sufficient size
+         from a free block list.
+     ·   Best fit: Choose the smallest unused group that is of sufficient size.
+     ·   Nearest fit: Choose the unused group of sufficient size that is closest to the
+         previous allocation for the file to increase locality.
+         It is not clear which strategy is best. The difficulty in modeling alternative
+     strategies is that so many factors interact, including types of files, pattern of file
+
+                                                   12.7  /  SECONDARY     STORAGE MANAGEMENT                       545
+Table 12.3    File Allocation Methods
+                                  Contiguous                    Chained                         Indexed
+Preallocation?                    Necessary                 Possible                            Possible
+Fixed or Variable Size Portions?  Variable                  Fixed blocks          Fixed blocks           Variable
+Portion Size                      Large                     Small                 Small                  Medium
+Allocation Frequency              Once                      Low to high           High                   Low
+Time to Allocate                  Medium                    Long                  Short                  Medium
+File Allocation Table Size        One entry                 One entry             Large                  Medium
+access, degree of multiprogramming, other performance factors in the system, disk
+caching, disk scheduling, and so on.
+FILE ALLOCATION METHODS                            Having looked at the issues of preallocation versus
+dynamic allocation and portion size, we are in a position to consider specific file
+allocation methods. Three methods are in common use: contiguous, chained, and
+indexed. summarizes some of the characteristics of each method.
+                With contiguous allocation, a single contiguous set of blocks is allocated to a
+file at the time of file creation (Figure 12.9). Thus, this is a preallocation strategy,
+using variable-size portions. The file allocation table needs just a single entry for
+each file, showing the starting block and the length of the file. Contiguous allocation
+is the best from the point of view of the individual sequential file. Multiple blocks
+can be read in at a time to improve I/O performance for sequential processing. It is
+also easy to retrieve a single block. For example, if a file starts at block b, and the
+ith block of the file is wanted, its location on secondary storage is simply b + i ­ 1.
+Contiguous allocation presents some problems. External fragmentation will occur,
+making it difficult to find contiguous blocks of space of sufficient length. From time
+                                                                                  File allocation table
+                                                   File  A                File name  Start block         Length
+                  0         1     2            3            4             File A         2                3
+                                                                          File B         9                5
+                  5         6     7            8            9             File C         18               8
+                                      File  B                             File D         30               2
+                                                                          File E         26               3
+                  10        11    12           13           14
+                  15        16    17           18           19
+                                      File  C
+                  20        21    22           23           24
+                                      File  E
+                  25        26    27           28           29
+                      File D
+                  30        31    32           33           34
+                  Figure 12.9     Contiguous File Allocation
+
+546  CHAPTER 12 / FILE MANAGEMENT
+                                                                     File allocation table
+                File  A                                   File name  Start block            Length
+     0      1              2           3      4           File A        0                      3
+                File  B                                   File B        3                      5
+     5      6              7           8      9           File C        8                      8
+                      File C                              File D     19                        2
+                                                          File E     16                        3
+     10     11           12            13     14
+                              File  E             File D
+     15     16           17            18     19
+     20     21           22            23     24
+     25     26           27            28     29
+     30     31           32            33     34
+     Figure 12.10     Contiguous File Allocation (After Compaction)
+     to time, it will be necessary to perform a compaction algorithm to free up additional
+     space on the disk (Figure 12.10). Also, with preallocation, it is necessary to declare
+     the size of the file at the time of creation, with the problems mentioned earlier.
+     At the opposite extreme from contiguous allocation is chained allocation
+     (Figure 12.11). Typically, allocation is on an individual block basis. Each block con-
+     tains a pointer to the next block in the chain. Again, the file allocation table needs
+     just a single entry for each file, showing the starting block and the length of the
+     file. Although preallocation is possible, it is more common simply to allocate blocks
+     as needed. The selection of blocks is now a simple matter: Any free block can be
+     added to a chain. There is no external fragmentation to worry about because only
+                                                                  File allocation table
+                   File B                                 File name  Start block         Length
+         0      1             2            3      4
+                                                          File B     1                      5
+         5      6             7            8      9
+     10     11             12          13     14
+     15     16             17          18     19
+     20     21             22          23     24
+     25     26             27          28     29
+     30     31             32          33     34
+     Figure 12.11        Chained Allocation
+
+                          12.7 / SECONDARY STORAGE MANAGEMENT                                547
+                                      File allocation table
+        File B                File name                      Start block  Length
+0   1           2      3  4
+                              File B                                0     5
+5   6           7      8  9
+10  11          12  13    14
+15  16          17  18    19
+20  21          22  23    24
+25  26          27  28    29
+30  31          32  33    34
+Figure 12.12  Chained Allocation (After Consolidation)
+one block at a time is needed. This type of physical organization is best suited to
+sequential files that are to be processed sequentially. To select an individual block
+of a file requires tracing through the chain to the desired block.
+One consequence of chaining, as described so far, is that there is no accommo-
+dation of the principle of locality. Thus, if it is necessary to bring in several blocks of
+a file at a time, as in sequential processing, then a series of accesses to different parts
+of the disk are required. This is perhaps a more significant effect on a single-user
+system but may also be of concern on a shared system. To overcome this problem,
+some systems periodically consolidate files (Figure 12.12).
+Indexed allocation addresses many of the problems of contiguous and chained
+allocation. In this case, the file allocation table contains a separate one-level index for
+each file; the index has one entry for each portion allocated to the file. Typically, the
+file indexes are not physically stored as part of the file allocation table. Rather, the
+file index for a file is kept in a separate block, and the entry for the file in the file allo-
+cation table points to that block. Allocation may be on the basis of either fixed-size
+blocks (Figure 12.13) or variable-size portions (Figure 12.14). Allocation by blocks
+eliminates external fragmentation, whereas allocation by variable-size portions
+improves locality. In either case, file consolidation may be done from time to time.
+File consolidation reduces the size of the index in the case of variable-size portions,
+but not in the case of block allocation. Indexed allocation supports both sequential
+and direct access to the file and thus is the most popular form of file allocation.
+Free Space Management
+Just as the space that is allocated to files must be managed, so the space that is not
+currently allocated to any file must be managed. To perform any of the file alloca-
+tion techniques described previously, it is necessary to know what blocks on the disk
+are available. Thus we need a disk allocation table in addition to a file allocation
+table. We discuss here a number of techniques that have been implemented.
+
+548  CHAPTER 12 / FILE MANAGEMENT
+                                                                   File       allocation table
+                        File  B                                    File name       Index block
+         0           1              2      3       4
+                                                                   File B          24
+         5           6              7      8       9
+     10          11              12    13     14
+     15          16              17    18     19
+                                                                   1
+     20          21              22    23     24                   8
+                                                                   3
+     25          26              27    28     29                   14
+                                                                   28
+     30          31              32    33     34
+     Figure      12.13        Indexed  Allocation     with  Block  Portions
+     BIT TABLES  This method uses a vector containing one bit for each block on the
+     disk. Each entry of a 0 corresponds to a free block, and each 1 corresponds to a
+     block in use. For example, for the disk layout of Figure 12.9, a vector of length 35 is
+     needed and would have the following value:
+                                 00111000011111000011111111111011000
+     A bit table has the advantage that it is relatively easy to find one or a con-
+     tiguous group of free blocks. Thus, a bit table works well with any of the file
+     allocation methods outlined. Another advantage is that it is as small as possible.
+                                                                             File allocation table
+                     File  B                                       File name       Index block
+     0           1               2     3      4
+                                                                   File B                       24
+     5           6               7     8      9
+     10          11           12       13     14
+     15          16           17       18     19
+                                                                   Start block     Length
+     20          21           22       23     24                              1                     3
+                                                                              28                    4
+     25          26           27       28     29                              14                    1
+     30          31           32       33     34
+     Figure      12.14     Indexed     Allocation  with  Variable-Length Portions
+
+                              12.7 / SECONDARY STORAGE MANAGEMENT                         549
+However, it can still be sizable. The amount of memory (in bytes) required for a
+block bitmap is
+                              disk size in bytes
+                              8 * file system block size
+Thus, for a 16-Gbyte disk with 512-byte blocks, the bit table occupies about
+4 Mbytes. Can we spare 4 Mbytes of main memory for the bit table? If so, then the
+bit table can be searched without the need for disk access. But even with today's
+memory sizes, 4 Mbytes is a hefty chunk of main memory to devote to a single func-
+tion. The alternative is to put the bit table on disk. But a 4-Mbyte bit table would
+require about 8,000 disk blocks. We can't afford to search that amount of disk space
+every time a block is needed, so a bit table resident in memory is indicated.
+Even when the bit table is in main memory, an exhaustive search of the table
+can slow file system performance to an unacceptable degree. This is especially true
+when the disk is nearly full and there are few free blocks remaining. Accordingly,
+most file systems that use bit tables maintain auxiliary data structures that sum-
+marize the contents of subranges of the bit table. For example, the table could be
+divided logically into a number of equal-size subranges. A summary table could
+include, for each subrange, the number of free blocks and the maximum-sized con-
+tiguous number of free blocks. When the file system needs a number of contiguous
+blocks, it can scan the summary table to find an appropriate subrange and then
+search that subrange.
+CHAINED FREE PORTIONS         The free portions may be chained together by using
+a pointer and length value in each free portion. This method has negligible space
+overhead because there is no need for a disk allocation table, merely for a pointer to
+the beginning of the chain and the length of the first portion. This method is suited
+to all of the file allocation methods. If allocation is a block at a time, simply choose
+the free block at the head of the chain and adjust the first pointer or length value.
+If allocation is by variable-length portion, a first-fit algorithm may be used: The
+headers from the portions are fetched one at a time to determine the next suitable
+free portion in the chain. Again, pointer and length values are adjusted.
+This method has its own problems. After some use, the disk will become quite
+fragmented and many portions will be a single block long. Also note that every
+time you allocate a block, you need to read the block first to recover the pointer to
+the new first free block before writing data to that block. If many individual blocks
+need to be allocated at one time for a file operation, this greatly slows file creation.
+Similarly, deleting highly fragmented files is very time consuming.
+INDEXING  The indexing approach treats free space as a file and uses an index table
+as described under file allocation. For efficiency, the index should be on the basis
+of variable-size portions rather than blocks. Thus, there is one entry in the table for
+every free portion on the disk. This approach provides efficient support for all of
+the file allocation methods.
+FREE BLOCK LIST        In this method, each block is assigned a number sequentially
+and the list of the numbers of all free blocks is maintained in a reserved portion of
+
+550  CHAPTER 12 / FILE MANAGEMENT
+     the disk. Depending on the size of the disk, either 24 or 32 bits will be needed to
+     store a single block number, so the size of the free block list is 24 or 32 times the size
+     of the corresponding bit table and thus must be stored on disk rather than in main
+     memory. However, this is a satisfactory method. Consider the following points:
+     1.  The space on disk devoted to the free block list is less than 1% of the total disk
+         space. If a 32-bit block number is used, then the space penalty is 4 bytes for
+         every 512-byte block.
+     2.  Although the free block list is too large to store in main memory, there are
+         two effective techniques for storing a small part of the list in main memory.
+         a.  The list can be treated as a push-down stack (Appendix P) with the first
+             few thousand elements of the stack kept in main memory. When a new
+             block is allocated, it is popped from the top of the stack, which is in main
+             memory. Similarly, when a block is deallocated, it is pushed onto the stack.
+             There only has to be a transfer between disk and main memory when the
+             in-memory portion of the stack becomes either full or empty. Thus, this
+             technique gives almost zero-time access most of the time.
+         b.  The list can be treated as a FIFO queue, with a few thousand entries from
+             both the head and the tail of the queue in main memory. A block is allo-
+             cated by taking the first entry from the head of the queue and deallocated
+             by adding it to the end of the tail of the queue. There only has to be a trans-
+             fer between disk and main memory when either the in-memory portion of
+             the head of the queue becomes empty or the in-memory portion of the tail
+             of the queue becomes full.
+         In either of the strategies listed in the preceding point (stack or FIFO queue),
+     a background thread can slowly sort the in-memory list or lists to facilitate contigu-
+     ous allocation.
+     Volumes
+     The term volume is used somewhat differently by different operating systems and
+     file management systems, but in essence a volume is a logical disk. [CARR05]
+     defines a volume as follows:
+     Volume: A collection of addressable sectors in secondary memory that an OS or
+     application can use for data storage. The sectors in a volume need not be con-
+     secutive on a physical storage device; instead, they need only appear that way to
+     the OS or application. A volume may be the result of assembling and merging
+     smaller volumes.
+         In the simplest case, a single disk equals one volume. Frequently, a disk is
+     divided into partitions, with each partition functioning as a separate volume. It is
+     also common to treat multiple disks as a single volume or partitions on multiple
+     disks as a single volume.
+
+                                             12.8 / FILE SYSTEM SECURITY                        551
+      Reliability
+      Consider the following scenario:
+      1.  User A requests a file allocation to add to an existing file.
+      2.  The request is granted and the disk and file allocation tables are updated in
+          main memory but not yet on disk.
+      3.  The system crashes and subsequently restarts.
+      4.  User B requests a file allocation and is allocated space on disk that overlaps
+          the last allocation to user A.
+      5.  User A accesses the overlapped portion via a reference that is stored inside
+          A's file.
+          This difficulty arose because the system maintained a copy of the disk alloca-
+      tion table and file allocation table in main memory for efficiency. To prevent this type
+      of error, the following steps could be performed when a file allocation is requested:
+      1.  Lock the disk allocation table on disk. This prevents another user from causing
+          alterations to the table until this allocation is completed.
+      2.  Search the disk allocation table for available space. This assumes that a copy
+          of the disk allocation table is always kept in main memory. If not, it must first
+          be read in.
+      3.  Allocate space, update the disk allocation table, and update the disk. Updating
+          the disk involves writing the disk allocation table back onto disk. For chained
+          disk allocation, it also involves updating some pointers on disk.
+      4.  Update the file allocation table and update the disk.
+      5.  Unlock the disk allocation table.
+          This technique will prevent errors. However, when small portions are allo-
+      cated frequently, the impact on performance will be substantial. To reduce this
+      overhead, a batch storage allocation scheme could be used. In this case, a batch of
+      free portions on the disk is obtained for allocation. The corresponding portions on
+      disk are marked "in use." Allocation using this batch may proceed in main memory.
+      When the batch is exhausted, the disk allocation table is updated on disk and a new
+      batch may be acquired. If a system crash occurs, portions on the disk marked "in
+      use" must be cleaned up in some fashion before they can be reallocated. The tech-
+      nique for cleanup will depend on the file system's particular characteristics.
+12.8  FILE SYSTEM SECURITY
+      Following successful log-on, the user has been granted access to one or a set of
+      hosts and applications. This is generally not sufficient for a system that includes
+      sensitive data in its database. Through the user­access control procedure, a user
+      can be identified to the system. Associated with each user, there can be a profile
+      that specifies permissible operations and file accesses. The operating system can
+      then enforce rules based on the user profile. The database management system,

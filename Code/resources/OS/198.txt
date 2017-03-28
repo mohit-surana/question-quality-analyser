@@ -1,0 +1,283 @@
+Windows 7 Thread and SMP Management
+176  CHAPTER 4 / THREADS
+4.4  WINDOWS 7 THREAD AND SMP MANAGEMENT
+     Windows process design is driven by the need to provide support for a variety of OS
+     environments. Processes supported by different OS environments differ in a number
+     of ways, including the following:
+     ·  How processes are named
+     ·  Whether threads are provided within processes
+     ·  How processes are represented
+     ·  How process resources are protected
+     ·  What mechanisms are used for interprocess communication and synchronization
+     ·  How processes are related to each other
+        Accordingly, the native process structures and services provided by the
+     Windows Kernel are relatively simple and general purpose, allowing each OS
+     subsystem to emulate a particular process structure and functionality. Important
+     characteristics of Windows processes are the following:
+     ·  Windows processes are implemented as objects.
+     ·  A process can be created as new process, or as a copy of an existing process.
+     ·  An executable process may contain one or more threads.
+     ·  Both process and thread objects have built-in synchronization capabilities.
+        Figure 4.10, based on one in [RUSS11], illustrates the way in which a process
+     relates to the resources it controls or uses. Each process is assigned a security access
+                          Access
+                          token
+                                        Virtual     address   descriptors
+        Process
+        object
+                                        Available
+                  Handle table          objects
+        Handle1                         Thread      x
+        Handle2                         File     y
+        Handle3                         Section     z
+     Figure 4.10  A Windows Process and Its Resources
+
+           4.4 / WINDOWS 7 THREAD AND SMP MANAGEMENT                                   177
+token, called the primary token of the process. When a user first logs on, Windows
+creates an access token that includes the security ID for the user. Every process that
+is created by or runs on behalf of this user has a copy of this access token. Windows
+uses the token to validate the user's ability to access secured objects or to perform
+restricted functions on the system and on secured objects. The access token controls
+whether the process can change its own attributes. In this case, the process does not
+have a handle opened to its access token. If the process attempts to open such a han-
+dle, the security system determines whether this is permitted and therefore whether
+the process may change its own attributes.
+Also related to the process is a series of blocks that define the virtual address
+space currently assigned to this process. The process cannot directly modify these
+structures but must rely on the virtual memory manager, which provides a memory-
+allocation service for the process.
+Finally, the process includes an object table, with handles to other objects
+known to this process. Figure 4.10 shows a single thread. In addition, the process
+has access to a file object and to a section object that defines a section of shared
+memory.
+Process and Thread Objects
+The object-oriented structure of Windows facilitates the development of a gen-
+eral-purpose process facility. Windows makes use of two types of process-related
+objects: processes and threads. A process is an entity corresponding to a user job
+or application that owns resources, such as memory and open files. A thread is a
+dispatchable unit of work that executes sequentially and is interruptible, so that the
+processor can turn to another thread.
+Each Windows process is represented by an object whose general structure
+is shown in Figure 4.11a. Each process is defined by a number of attributes and
+encapsulates a number of actions, or services, that it may perform. A process will
+perform a service when called upon through a set of published interface methods.
+When Windows creates a new process, it uses the object class, or type, defined for
+the Windows process as a template to generate a new object instance. At the time of
+creation, attribute values are assigned. Table 4.3 gives a brief definition of each of
+the object attributes for a process object.
+A Windows process must contain at least one thread to execute. That thread
+may then create other threads. In a multiprocessor system, multiple threads from
+the same process may execute in parallel. Figure 4.11b depicts the object structure
+for a thread object, and Table 4.4 defines the thread object attributes. Note that
+some of the attributes of a thread resemble those of a process. In those cases, the
+thread attribute value is derived from the process attribute value. For example,
+the thread processor affinity is the set of processors in a multiprocessor system
+that may execute this thread; this set is equal to or a subset of the process processor
+affinity.
+Note that one of the attributes of a thread object is context, which contains the
+values of the processor registers when the thread last ran. This information enables
+threads to be suspended and resumed. Furthermore, it is possible to alter the behav-
+ior of a thread by altering its context while it is suspended.
+
+178  CHAPTER 4 / THREADS
+Object type                  Process                          Object type                   Thread
+                Process ID                                                    Thread ID
+                Security descriptor                                           Thread context
+                Base priority                                                 Dynamic priority
+Object body     Default processor affinity            Object body             Base priority
+attributes      Quota limits                                  attributes      Thread processor affinity
+                Execution time                                                Thread execution time
+                I/O counters                                                  Alert status
+                VM operation counters                                         Suspension count
+                Exception/debugging ports                                     Impersonation token
+                Exit status                                                   Termination port
+                                                                              Thread exit status
+                Create process
+                Open process                                                  Create thread
+Services        Query process information                                     Open thread
+                Set process information                                       Query thread information
+                Current process                                               Set thread information
+                Terminate process                             Services        Current thread
+                                                                              Terminate thread
+                                                                              Get context
+                     (a) Process object                                       Set context
+                                                                              Suspend
+                                                                              Resume
+                                                                              Alert thread
+                                                                              Test thread alert
+                                                                              Register termination port
+                                                                              (b) Thread object
+Figure 4.11    Windows Process and Thread Objects
+Table 4.3    Windows Process       Object Attributes
+Process ID                           A unique value that identifies the process to the operating system.
+Security descriptor                  Describes who created an object, who can gain access to or use the object, and
+                                     who is denied access to the object.
+Base priority                        A baseline execution priority for the process's threads.
+Default processor affinity           The default set of processors on which the process's threads can run.
+Quota limits                         The maximum amount of paged and nonpaged system memory, paging file
+                                     space, and processor time a user's processes can use.
+Execution time                       The total amount of time all threads in the process have executed.
+I/O counters                         Variables that record the number and type of I/O operations that the process's
+                                     threads have performed.
+VM operation counters                Variables that record the number and types of virtual memory operations that
+                                     the process's threads have performed.
+Exception/debugging ports            Interprocess communication channels to which the process manager sends a
+                                     message when one of the process's threads causes an exception. Normally,
+                                     these are connected to environment subsystem and debugger processes,
+                                     respectively.
+Exit status                          The reason for a process's termination.
+
+                           4.4 / WINDOWS 7 THREAD AND SMP MANAGEMENT                                            179
+Table 4.4  Windows Thread Object Attributes
+Thread ID                  A unique value that identifies a thread when it calls a server.
+Thread context             The set of register values and other volatile data that defines the execution state
+                           of a thread.
+Dynamic priority           The thread's execution priority at any given moment.
+Base priority              The lower limit of the thread's dynamic priority.
+Thread processor affinity  The set of processors on which the thread can run, which is a subset or all of the
+                           processor affinity of the thread's process.
+Thread execution time      The cumulative amount of time a thread has executed in user mode and in
+                           kernel mode.
+Alert status               A flag that indicates whether a waiting thread may execute an asynchronous
+                           procedure call.
+Suspension count           The number of times the thread's execution has been suspended without being
+                           resumed.
+Impersonation token        A temporary access token allowing a thread to perform operations on behalf of
+                           another process (used by subsystems).
+Termination port           An interprocess communication channel to which the process manager sends a
+                           message when the thread terminates (used by subsystems).
+Thread exit status         The reason for a thread's termination.
+           Multithreading
+           Windows supports concurrency among processes because threads in different
+           processes may execute concurrently (appear to run at the same time). Moreover, mul-
+           tiple threads within the same process may be allocated to separate processors and
+           execute simultaneously (actually run at the same time). A multithreaded process
+           achieves concurrency without the overhead of using multiple processes. Threads
+           within the same process can exchange information through their common address
+           space and have access to the shared resources of the process. Threads in different
+           processes can exchange information through shared memory that has been set up
+           between the two processes.
+                  An object-oriented multithreaded process is an efficient means of implementing
+           a server application. For example, one server process can service a number of clients
+           concurrently.
+           Thread States
+           An existing Windows thread is in one of six states (Figure 4.12):
+               ·  Ready: A ready thread may be scheduled for execution. The Kernel dispatcher
+                  keeps track of all ready threads and schedules them in priority order.
+               ·  Standby: A standby thread has been selected to run next on a particular proc-
+                  essor. The thread waits in this state until that processor is made available.
+                  If the standby thread's priority is high enough, the running thread on that
+
+180  CHAPTER 4 / THREADS
+     Runnable
+                  Pick to                      Standby
+                  run                                     Switch
+                  Ready                        Preempted           Running
+     Resource              Unblock/resume                 Block/                 Terminate
+     available             Resource available             suspend
+        Transition         Unblock             Waiting             Terminated
+                       Resource not available
+     Not runnable
+     Figure 4.12  Windows Thread States
+        processor may be preempted in favor of the standby thread. Otherwise, the
+        standby thread waits until the running thread blocks or exhausts its time slice.
+     ·  Running: Once the Kernel dispatcher performs a thread switch, the standby
+        thread enters the Running state and begins execution and continues execution
+        until it is preempted by a higher-priority thread, exhausts its time slice, blocks,
+        or terminates. In the first two cases, it goes back to the Ready state.
+     ·  Waiting: A thread enters the Waiting state when (1) it is blocked on an event
+        (e.g., I/O), (2) it voluntarily waits for synchronization purposes, or (3) an
+        environment subsystem directs the thread to suspend itself. When the waiting
+        condition is satisfied, the thread moves to the Ready state if all of its resources
+        are available.
+     ·  Transition: A thread enters this state after waiting if it is ready to run but the
+        resources are not available. For example, the thread's stack may be paged
+        out of memory. When the resources are available, the thread goes to the
+        Ready state.
+     ·  Terminated: A thread can be terminated by itself, by another thread, or when
+        its parent process terminates. Once housekeeping chores are completed, the
+        thread is removed from the system, or it may be retained by the Executive6 for
+        future reinitialization.
+     6The Windows Executive is described in Chapter 2. It contains the base operating system services, such as
+     memory management, process and thread management, security, I/O, and interprocess communication.
+
+                      4.4 / WINDOWS 7 THREAD AND SMP MANAGEMENT                        181
+Support for OS Subsystems
+The general-purpose process and thread facility must support the particular process
+and thread structures of the various OS environments. It is the responsibility of
+each OS subsystem to exploit the Windows process and thread features to emulate
+the process and thread facilities of its corresponding OS. This area of process/thread
+management is complicated, and we give only a brief overview here.
+Process creation begins with a request for a new process from an application.
+The application issues a create-process request to the corresponding protected
+subsystem, which passes the request to the Executive. The Executive creates a proc-
+ess object and returns a handle for that object to the subsystem. When Windows
+creates a process, it does not automatically create a thread. In the case of Win32, a
+new process must always be created with an initial thread. Therefore, for the Win32
+subsystem calls the Windows process manager again to create a thread for the new
+process, receiving a thread handle back from Windows. The appropriate thread and
+process information are then returned to the application. In the case of POSIX,
+threads are not supported. Therefore, the POSIX subsystem obtains a thread for
+the new process from Windows so that the process may be activated but returns only
+process information to the application. The fact that the POSIX process is imple-
+mented using both a process and a thread from the Windows Executive is not visible
+to the application.
+When a new process is created by the Executive, the new process inherits
+many of its attributes from the creating process. However, in the Win32 environ-
+ment, this process creation is done indirectly. An application client process issues
+its process creation request to the Win32 subsystem; then the subsystem in turn
+issues a process request to the Windows executive. Because the desired effect is
+that the new process inherits characteristics of the client process and not of the server
+process, Windows enables the subsystem to specify the parent of the new process.
+The new process then inherits the parent's access token, quota limits, base priority,
+and default processor affinity.
+Symmetric Multiprocessing Support
+Windows supports SMP hardware configurations. The threads of any process,
+including those of the executive, can run on any processor. In the absence of affin-
+ity restrictions, explained in the next paragraph, the kernel dispatcher assigns a
+ready thread to the next available processor. This assures that no processor is
+idle or is executing a lower-priority thread when a higher-priority thread is ready.
+Multiple threads from the same process can be executing simultaneously on
+multiple processors.
+As a default, the kernel dispatcher uses the policy of soft affinity in assign-
+ing threads to processors: The dispatcher tries to assign a ready thread to the same
+processor it last ran on. This helps reuse data still in that processor's memory caches
+from the previous execution of the thread. It is possible for an application to restrict
+its thread execution only to certain processors (hard affinity).
+
+182  CHAPTER 4 / THREADS
+4.5  SOLARIS THREAD AND SMP MANAGEMENT
+     Solaris implements multilevel thread support designed to provide considerable
+     flexibility in exploiting processor resources.
+     Multithreaded Architecture
+     Solaris makes use of four separate thread-related concepts:
+     ·  Process: This is the normal UNIX process and includes the user's address
+        space, stack, and process control block.
+     ·  User-level threads: Implemented through a threads library in the address
+        space of a process, these are invisible to the OS. A user-level thread (ULT)7 is
+        a user-created unit of execution within a process.
+     ·  Lightweight processes: A lightweight process (LWP) can be viewed as a map-
+        ping between ULTs and kernel threads. Each LWP supports ULT and maps
+        to one kernel thread. LWPs are scheduled by the kernel independently and
+        may execute in parallel on multiprocessors.
+     ·  Kernel threads: These are the fundamental entities that can be scheduled and
+        dispatched to run on one of the system processors.
+        Figure 4.13 illustrates the relationship among these four entities. Note that
+     there is always exactly one kernel thread for each LWP. An LWP is visible within a
+     process to the application. Thus, LWP data structures exist within their respective
+     process address space. At the same time, each LWP is bound to a single dispatchable
+     kernel thread, and the data structure for that kernel thread is maintained within the
+     kernel's address space.
+                                             Process
+                              User                       User
+                              thread                     thread
+                              Lightweight                Lightweight
+                              process (LWP)            process (LWP)
+        syscall()                                                        syscall()
+                              Kernel                     Kernel
+                              thread                     thread
+                                           System calls
+                                             Kernel
+                                             Hardware
+        Figure 4.13           Processes and Threads in Solaris [MCDO07]
+     7Again, the acronym ULT is unique to this book and is not found in the Solaris literature.

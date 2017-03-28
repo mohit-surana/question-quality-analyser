@@ -1,0 +1,154 @@
+B-Trees
+532  CHAPTER 12 / FILE MANAGEMENT
+      the key field, both forms of sequential file are inadequate. In some applications, the
+      flexibility of efficiently searching by various attributes is desirable.
+      To achieve this flexibility, a structure is needed that employs multiple indexes,
+      one for each type of field that may be the subject of a search. In the general indexed
+      file, the concept of sequentiality and a single key are abandoned. Records are
+      accessed only through their indexes. The result is that there is now no restriction
+      on the placement of records as long as a pointer in at least one index refers to that
+      record. Furthermore, variable-length records can be employed.
+      Two types of indexes are used. An exhaustive index contains one entry for
+      every record in the main file. The index itself is organized as a sequential file for
+      ease of searching. A partial index contains entries to records where the field of
+      interest exists. With variable-length records, some records will not contain all fields.
+      When a new record is added to the main file, all of the index files must be updated.
+      Indexed files are used mostly in applications where timeliness of information
+      is critical and where data are rarely processed exhaustively. Examples are airline
+      reservation systems and inventory control systems.
+      The Direct or Hashed File
+      The direct, or hashed, file exploits the capability found on disks to access directly any
+      block of a known address. As with sequential and indexed sequential files, a key field
+      is required in each record. However, there is no concept of sequential ordering here.
+      The direct file makes use of hashing on the key value. This function is explained
+      in Appendix F. Figure F.1b shows the type of hashing organization with an overflow
+      file that is typically used in a hash file.
+      Direct files are often used where very rapid access is required, where fixed-
+      length records are used, and where records are always accessed one at a time.
+      Examples are directories, pricing tables, schedules, and name lists.
+12.3  B-TREES
+      The preceding section referred to the use of an index file to access individual records
+      in a file or database. For a large file or database, a single sequential file of indexes on
+      the primary key does not provide for rapid access. To provide more efficient access,
+      a structured index file is typically used. The simplest such structure is a two-level
+      organization in which the original file is broken into sections and the upper level
+      consists of a sequenced set of pointers to the lower-level sections. This structure can
+      then be extended to more than two levels, resulting in a tree structure. Unless some
+      discipline is imposed on the construction of the tree index, it is likely to end up with
+      an uneven structure, with some short branches and some long branches, so that the
+      time to search the index is uneven. Therefore, a balanced tree structure, with all
+      branches of equal length, would appear to give the best average performance. Such a
+      structure is the B-tree, which has become the standard method of organizing indexes
+      for databases and is commonly used in OS file systems, including those supported by
+      Mac OS X, Windows, and several Linux file systems. The B-tree structure provides
+      for efficient searching, adding, and deleting of items.
+
+                                                                            12.3 / B-TREES              533
+                       Key1              Key2                               Keyk­1
+             Subtree1        Subtree2           Subtree3        Subtreek­1          Subtreek
+       Figure 12.4     A B-tree Node with k Children
+       Before illustrating the concept of B-tree, let us define a B-tree and its char-
+acteristics more precisely. A B-tree is a tree structure (no closed loops) with the
+following characteristics (Figure 12.4).
+1.     The tree consists of a number of nodes and leaves.
+2.     Each node contains at least one key which uniquely identifies a file record,
+       and more than one pointer to child nodes or leaves. The number of keys and
+       pointers contained in a node may vary, within limits explained below.
+3.     Each node is limited to the same number of maximum keys.
+4.     The keys in a node are stored in nondecreasing order. Each key has an
+       associated child that is the root of a subtree containing all nodes with keys
+       less than or equal to the key but greater than the preceding key. A node also
+       has an additional rightmost child that is the root for a subtree containing
+       all keys greater than any keys in the node. Thus, each node has one more
+       pointer than keys.
+       A B-tree is characterized by its minimum degree d and satisfies the following
+properties:
+1.     Every node has at most 2d ­ 1 keys and 2d children or, equivalently, 2d pointers.2
+2.     Every node, except for the root, has at least d ­ 1 keys and d pointers. As a
+       result, each internal node, except the root, is at least half full and has at least d
+       children.
+3.     The root has at least 1 key and 2 children.
+4.     All leaves appear on the same level and contain no information. This is a
+       logical construct to terminate the tree; the actual implementation may differ.
+       For example, each bottom-level node may contain keys alternating with null
+       pointers.
+5.     A nonleaf node with k pointers contains k ­ 1 keys.
+       Typically, a B-tree has a relatively large branching factor (large number of
+children) resulting in a tree of low height.
+       Figure 12.4 illustrates two levels of a B-tree. The upper level has (k ­ 1) keys
+and k pointers and satisfies the following relationship:
+                                 Key1 6 Key3 6            c  6  Keyk - 1
+2Some  treatments  require,  as  stated  here,  that  the  maximum  number  of  keys  in  a   node  is  odd
+(e.g., [CORM09]); others specify even [COME79]; still others allow odd or even [KNUT98]. The choice
+does not fundamentally affect the performance of B-trees.
+
+534  CHAPTER 12 / FILE MANAGEMENT
+         Each pointer points to a node that is the top level of a subtree of this upper-
+     level node. Each of these subtree nodes contains some number of keys and pointers,
+     unless it is a leaf node. The following relationships hold:
+     All the keys in Subtree1                                     are less than Key1
+     All the keys in Subtree2         are greater than Key1       and are less than Key2
+     All the keys in Subtree3         are greater than Key2       and are less than Key3
+         ·                                     ·                               ·
+         ·                                     ·                               ·
+         ·                                     ·                               ·
+     All the keys in Subtreek­1       are greater than Keyk­2     and are less than Keyk­1
+     All the keys in Subtreek         are greater than Keyk­1
+         To search for a key, you start at the root node. If the key you want is in the
+     node, you're done. If not, you go down one level. There are three cases:
+     1.  The key you want is less then the smallest key in this node. Take the leftmost
+         pointer down to the next level.
+     2.  The key you want is greater than the largest key in this node. Take the right-
+         most pointer down to the next level.
+     3.  The value of the key is between the values of two adjacent keys in this node.
+         Take the pointer between these keys down to the next level.
+         For example, consider the tree in Figure 12.5d and the desired key is 84. At the
+     root level, 84  51, so you take the rightmost branch down to the next level. Here, we
+     have 61  84  71, so you take the pointer between 61 and 71 down to the next level,
+     where the key 84 is found. Associated with this key is a pointer to the desired record.
+     An advantage of this tree structure over other tree structures is that it is broad and
+     shallow, so that the search terminates quickly. Furthermore, because it is balanced
+     (all branches from root to leaf are of equal length), there are no long searches com-
+     pared to other searches.
+         The rules for inserting a new key into the B-tree must maintain a balanced
+     tree. This is done as follows:
+     1.  Search the tree for the key. If the key is not in the tree, then you have reached
+         a node at the lowest level.
+     2.  If this node has fewer than 2d ­ 1 keys, then insert the key into this node in the
+         proper sequence.
+     3.  If the node is full (having 2d ­ 1 keys), then split this node around its median
+         key into two new nodes with d ­ 1 keys each and promote the median key to
+         the next higher level, as described in step 4. If the new key has a value less
+         than the median key, insert it into the left­hand new node; otherwise insert
+         it into the right­hand new node. The result is that the original node has been
+         split into two nodes, one with d ­ 1 keys and one with d keys.
+     4.  The promoted node is inserted into the parent node following the rules of step
+         3. Therefore, if the parent node is already full, it must be split and its median
+         key promoted to the next highest layer.
+     5.  If the process of promotion reaches the root node and the root node is already
+         full, then insertion again follows the rules of step 3. However, in this case the
+         median key becomes a new root node and the height of the tree increases by 1.
+
+                                                                  12.4 / FILE DIRECTORIES                               535
+                                           23         51  61  71
+         2         10      30  32  39  43  44             52  59  60    67  68                   73  85  88         96
+                                   (a) B-tree of minimum degree d = 3.
+                                           23  51         61  71
+         2   10            30  32  39  43  44             52  59  60    67  68                   73  85  88         90  96
+                           (b) Key = 90 inserted. This is a simple insertion into a node.
+                                       23  39         51  61  71
+      2  10            30  32      43  44  45             52  59  60    67  68                   73  85  88         90  96
+      (c) Key = 45 inserted. This requires splitting a node into two parts and promoting one key to the root node.
+                                                      51
+                       23  39                                               61               71  88
+      2  10            30  32  43  44  45             52  59  60  67    68                 73    84  85             90  96
+      (d) Key = 84 inserted. This requires splitting a node into two parts and promoting one key to the root node.
+                       This then requires the root node to be split and a new root created.
+      Figure 12.5      Inserting Nodes into a B-tree
+         Figure 12.5 illustrates the insertion process on a B-tree of degree d = 3. In each
+      part of the figure, the nodes affected by the insertion process are unshaded.
+12.4  FILE DIRECTORIES
+      Contents
+      Associated with any file management system and collection of files is a file directory.
+      The directory contains information about the files, including attributes, location,
+      and ownership. Much of this information, especially that concerned with storage,

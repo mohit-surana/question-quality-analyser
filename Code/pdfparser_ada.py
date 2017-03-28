@@ -13,7 +13,7 @@ CHAPTER_MODE, SECTION_MODE = 0, 1
 
 CHAPTER_PATTERN = r'(?:^|\n)[ ]*([\d.]+)?[ ]*(%s)[ ]*([\d]+)[ ]*(?:$|\n)'
 
-split_mode = SECTION_MODE
+split_mode = CHAPTER_MODE
 def get_chapters(text):
 	return [{'sno' :match[0],
 			'level' : 3 if match[0] == ''
@@ -54,13 +54,15 @@ for j, page in enumerate(pages[i:]):
 
 chapter_tree += [{'sno' : '[\d]*', 'level' : -1, 'title' : 'Exercises', 'pno' : chapter_tree[-1]['pno'] + 1}] # to ensure the last section is processed as per my current logic
 
+if split_mode == CHAPTER_MODE:
+	dirname = pdfname + '[chapters]'
 
 try:
-	os.stat('resources/' + pdfname)
+	os.stat('resources/' + dirname)
 except:
-	os.mkdir('resources/' + pdfname)
+	os.mkdir('resources/' + dirname)
 finally:
-	os.chdir('resources/' + pdfname)
+	os.chdir('resources/' + dirname)
 
 with open('__Sections.csv', 'w') as csvfile:
 	writer = csv.writer(csvfile)
@@ -89,16 +91,10 @@ for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[
 
 	section_text2 = re.sub('[\s]+', ' ', re.sub('[^a-z\s.!?\']', ' ', re.sub('-\n', '', re.sub('\n[\s]*', '\n', section_text.lower(), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL)
 
-	with open(str(cur_topic['pno']) + ' ' + cur_topic['title'] + '.txt', 'w') as f:
+	with open(str(cur_topic['pno']) + '.txt', 'w') as f:
+		f.write(cur_topic['title'] + '\n')
 		f.write(section_text)
-
-	preprocessed_sections.append(section_text2)
 
 	keywords = keywords.union(map(lambda x: x[0], unigram_rake.run(section_text2))).union(map(lambda x: x[0], bigram_rake.run(section_text2))).union(map(lambda x: x[0], trigram_rake.run(section_text2)))
 
 print >> open('__Keywords.txt', 'w'), '\n'.join(list(keywords))
-
-with open('__ADA-train.txt', 'w') as f:
-	f.write('\n'.join(preprocessed_sections))
-
-os.chdir('../..')

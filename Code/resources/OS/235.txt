@@ -1,0 +1,633 @@
+Semaphores
+                                                                              5.3 / SEMAPHORES                    213
+             ·  Starvation is possible: When a process leaves a critical section and more than
+                one process is waiting, the selection of a waiting process is arbitrary. Thus,
+                some process could indefinitely be denied access.
+             ·  Deadlock is possible: Consider the following scenario on a single-processor
+                system. Process P1 executes the special instruction (e.g., compare&swap,
+                exchange) and enters its critical section. P1 is then interrupted to give the
+                processor to P2, which has higher priority. If P2 now attempts to use the same
+                resource as P1, it will be denied access because of the mutual exclusion mecha-
+                nism. Thus, it will go into a busy waiting loop. However, P1 will never be dis-
+                patched because it is of lower priority than another ready process, P2.
+                Because of the drawbacks of both the software and hardware solutions, we
+           need to look for other mechanisms.
+5.3        SEMAPHORES
+           We now turn to OS and programming language mechanisms that are used to pro-
+           vide concurrency. Table 5.3 summarizes mechanisms in common use. We begin, in
+           this section, with semaphores. The next two sections discuss monitors and message
+           passing. The other mechanisms in Table 5.3 are discussed when treating specific
+           OS examples, in Chapters 6 and 13.
+Table 5.3  Common   Concurrency Mechanisms
+Semaphore           An integer value used for signaling among processes. Only three operations may be
+                    performed on a semaphore, all of which are atomic: initialize, decrement, and incre-
+                    ment. The decrement operation may result in the blocking of a process, and the incre-
+                    ment operation may result in the unblocking of a process. Also known as a counting
+                    semaphore or a general semaphore.
+Binary Semaphore    A semaphore that takes on only the values 0 and 1.
+Mutex               Similar to a binary semaphore. A key difference between the two is that the process that
+                    locks the mutex (sets the value to zero) must be the one to unlock it (sets the value to 1).
+Condition Variable  A data type that is used to block a process or thread until a particular condition is true.
+Monitor             A programming language construct that encapsulates variables, access procedures, and
+                    initialization code within an abstract data type. The monitor's variable may only be
+                    accessed via its access procedures and only one process may be actively accessing the
+                    monitor at any one time. The access procedures are critical sections. A monitor may
+                    have a queue of processes that are waiting to access it.
+Event Flags         A memory word used as a synchronization mechanism. Application code may associ-
+                    ate a different event with each bit in a flag. A thread can wait for either a single event
+                    or a combination of events by checking one or multiple bits in the corresponding flag.
+                    The thread is blocked until all of the required bits are set (AND) or until at least one
+                    of the bits is set (OR).
+Mailboxes/Messages  A means for two processes to exchange information and that may be used for
+                    synchronization.
+Spinlocks           Mutual exclusion mechanism in which a process executes in an infinite loop waiting for
+                    the value of a lock variable to indicate availability.
+
+214  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+         The first major advance in dealing with the problems of concurrent proc-
+     esses came in 1965 with Dijkstra's treatise [DIJK65]. Dijkstra was concerned with
+     the design of an OS as a collection of cooperating sequential processes and with
+     the development of efficient and reliable mechanisms for supporting cooperation.
+     These mechanisms can just as readily be used by user processes if the processor and
+     OS make the mechanisms available.
+         The fundamental principle is this: Two or more processes can cooperate by
+     means of simple signals, such that a process can be forced to stop at a specified place
+     until it has received a specific signal. Any complex coordination requirement can
+     be satisfied by the appropriate structure of signals. For signaling, special variables
+     called semaphores are used. To transmit a signal via semaphore s, a process exe-
+     cutes the primitive semSignal(s). To receive a signal via semaphore s, a process
+     executes the primitive semWait(s); if the corresponding signal has not yet been
+     transmitted, the process is suspended until the transmission takes place.4
+         To achieve the desired effect, we can view the semaphore as a variable that
+     has an integer value upon which only three operations are defined:
+     1.  A semaphore may be initialized to a nonnegative integer value.
+     2.  The semWait operation decrements the semaphore value. If the value
+         becomes negative, then the process executing the semWait is blocked.
+         Otherwise, the process continues execution.
+     3.  The semSignal operation increments the semaphore value. If the resulting
+         value is less than or equal to zero, then a process blocked by a semWait oper-
+         ation, if any, is unblocked.
+     Other than these three operations, there is no way to inspect or manipulate
+     semaphores.
+         We explain these operations as follows. To begin, the semaphore has a zero or
+     positive value. If the value is positive, that value equals the number of processes that
+     can issue a wait and immediately continue to execute. If the value is zero, either by
+     initialization or because a number of processes equal to the initial semaphore value
+     have issued a wait, the next process to issue a wait is blocked, and the semaphore
+     value goes negative. Each subsequent wait drives the semaphore value further into
+     minus territory. The negative value equals the number of processes waiting to be
+     unblocked. Each signal unblocks one of the waiting processes when the semaphore
+     value is negative.
+         [DOWN08] points out three interesting consequences of the semaphore
+     definition:
+     · In general, there is no way to know before a process decrements a semaphore
+         whether it will block or not.
+     4In Dijkstra's original paper and in much of the literature, the letter P is used for semWait and the letter
+     V for semSignal; these are the initials of the Dutch words for test (proberen) and increment (verhogen).
+     In some of the literature, the terms wait and signal are used. This book uses semWait and semSig-
+     nal for clarity, and to avoid confusion with similar wait and signal operations in monitors, discussed
+     subsequently
+
+                                                                   5.3 / SEMAPHORES  215
+struct  semaphore       {
+        int     count;
+        queueType       queue;
+};
+void   semWait(semaphore          s)
+{
+        s.count--;
+        if   (s.count      <  0)  {
+            /*  place      this   process     in   s.queue  */;
+            /*  block      this   process     */;
+        }
+}
+void   semSignal(semaphore            s)
+{
+        s.count++;
+        if   (s.count<=       0)  {
+            /*  remove     a  process     P   from   s.queue  */;
+            /*  place      process    P   on  ready  list   */;
+        }
+}
+Figure 5.3   A Definition of Semaphore Primitives
+    ·  After a process increments a semaphore and another process gets woken
+       up, both processes continue running concurrently. There is no way to
+       know which process, if either, will continue immediately on a uniprocessor
+       system.
+    ·  When you signal a semaphore, you don't necessarily know whether another
+       process is waiting, so the number of unblocked processes may be zero or one.
+       Figure 5.3 suggests a more formal definition of the primitives for sema-
+phores. The semWait and semSignal primitives are assumed to be atomic. A
+more restricted version, known as the binary semaphore, is defined in Figure 5.4.
+A binary semaphore may only take on the values 0 and 1 and can be defined by the
+following three operations:
+   1.  A binary semaphore may be initialized to 0 or 1.
+   2.  The semWaitB operation checks the semaphore value. If the value is zero,
+       then the process executing the semWaitB is blocked. If the value is one, then
+       the value is changed to zero and the process continues execution.
+   3.  The semSignalB operation checks to see if any processes are blocked on
+       this semaphore (semaphore value equals 0). If so, then a process blocked by a
+       semWaitB operation is unblocked. If no processes are blocked, then the value
+       of the semaphore is set to one.
+       In principle, it should be easier to implement the binary semaphore, and it
+can be shown that it has the same expressive power as the general semaphore (see
+Problem 5.16). To contrast the two types of semaphores, the nonbinary semaphore
+is often referred to as either a counting semaphore or a general semaphore.
+       A concept related to the binary semaphore is the mutex. A key difference
+between the two is that the process that locks the mutex (sets the value to zero)
+
+216  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND                               SYNCHRONIZATION
+     struct  binary_semaphore     {
+             enum  {zero,   one}  value;
+             queueType  queue;
+     };
+     void  semWaitB(binary_semaphore         s)
+     {
+             if  (s.value   ==  one)
+                   s.value  =   zero;
+             else  {
+                            /*  place     this   process  in   s.queue      */;
+                            /*  block     this   process  */;
+             }
+     }
+     void  semSignalB(semaphore       s)
+     {
+             if  (s.queue   is  empty())
+                   s.value  =   one;
+             else  {
+                            /*  remove    a  process  P   from   s.queue    */;
+                            /*  place     process  P  on  ready  list       */;
+             }
+     }
+     Figure 5.4  A Definition of Binary Semaphore Primitives
+     must be the one to unlock it (sets the value to 1). In contrast, it is possible for one
+     process to lock a binary semaphore and for another to unlock it.5
+           For both counting semaphores and binary semaphores, a queue is used to
+     hold processes waiting on the semaphore. The question arises of the order in
+     which processes are removed from such a queue. The fairest removal policy is
+     first-in-first-out (FIFO): The process that has been blocked the longest is released
+     from the queue first; a semaphore whose definition includes this policy is called
+     a strong semaphore. A semaphore that does not specify the order in which proc-
+     esses are removed from the queue is a weak semaphore. Figure 5.5, based on
+     one in [DENN84], is an example of the operation of a strong semaphore. Here
+     processes A, B, and C depend on a result from process D. Initially (1), A is run-
+     ning; B, C, and D are ready; and the semaphore count is 1, indicating that one of
+     D's results is available. When A issues a semWait instruction on semaphore s,
+     the semaphore decrements to 0, and A can continue to execute; subsequently it
+     rejoins the ready queue. Then B runs (2), eventually issues a semWait instruc-
+     tion, and is blocked, allowing D to run (3). When D completes a new result, it
+     issues a semSignal instruction, which allows B to move to the ready queue (4).
+     D rejoins the ready queue and C begins to run (5) but is blocked when it issues a
+     semWait instruction. Similarly, A and B run and are blocked on the semaphore,
+     allowing D to resume execution (6). When D has a result, it issues a semSignal,
+     which transfers C to the ready queue. Later cycles of D will release A and B from
+     the Blocked state.
+     5In some of the literature, and in some textbooks, no distinction is made between a mutex and a binary
+     semaphore. However, in practice, a number of operating systems, such as Linux, Windows, and Solaris
+     offer a mutex facility which conforms to the definition in this book.
+
+                                                 5.3 /        SEMAPHORES  217
+1                        Processor
+                         A
+                         s1                   C  D         B
+        Blocked queue    Semaphore            Ready queue
+2                        Processor
+                         B
+                         s0                   A  C         D
+        Blocked queue    Semaphore            Ready queue
+3                        Processor
+                         D
+                   B     s  1                    A         C
+        Blocked queue    Semaphore            Ready queue
+4                        Processor
+                         D
+                         s0                   B  A         C
+        Blocked queue    Semaphore            Ready queue
+5                        Processor
+                         C
+                         s0                   D  B         A
+        Blocked queue    Semaphore            Ready queue
+6                        Processor
+                         D
+             B  A  C     s  3
+        Blocked queue    Semaphore            Ready queue
+7                        Processor
+                         D
+                B  A     s  2                              C
+        Blocked queue    Semaphore            Ready queue
+Figure  5.5  Example of  Semaphore Mechanism
+
+218  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     /*  program       mutualexclusion      */
+     const     int  n   =  /*  number  of   processes   */;
+     semaphore      s   =  1;
+     void   P(int      i)
+     {
+            while      (true)  {
+                    semWait(s);
+                    /*     critical   section   */;
+                    semSignal(s);
+                    /*     remainder   */;
+            }
+     }
+     void   main()
+     {
+            parbegin       (P(1),    P(2),...,  P(n));
+     }
+     Figure 5.6     Mutual Exclusion Using Semaphores
+            For the mutual exclusion algorithm discussed in the next subsection and illus-
+     trated in Figure 5.6, strong semaphores guarantee freedom from starvation, while
+     weak semaphores do not. We will assume strong semaphores because they are more
+     convenient and because this is the form of semaphore typically provided by operat-
+     ing systems.
+     Mutual Exclusion
+     Figure 5.6 shows a straightforward solution to the mutual exclusion problem using
+     a semaphore s (compare Figure 5.1). Consider n processes, identified in the array
+     P(i), all of which need access to the same resource. Each process has a critical sec-
+     tion used to access the resource. In each process, a semWait(s) is executed just
+     before its critical section. If the value of s becomes negative, the process is blocked.
+     If the value is 1, then it is decremented to 0 and the process immediately enters its
+     critical section; because s is no longer positive, no other process will be able to enter
+     its critical section.
+            The semaphore is initialized to 1. Thus, the first process that executes a
+     semWait will be able to enter the critical section immediately, setting the value
+     of s to 0. Any other process attempting to enter the critical section will find it busy
+     and will be blocked, setting the value of s to ­1. Any number of processes may
+     attempt entry; each such unsuccessful attempt results in a further decrement of the
+     value of s. When the process that initially entered its critical section departs, s is
+     incremented and one of the blocked processes (if any) is removed from the queue of
+     blocked processes associated with the semaphore and put in a Ready state. When it
+     is next scheduled by the OS, it may enter the critical section.
+            Figure 5.7, based on one in [BACO03], shows a possible sequence for three
+     processes using the mutual exclusion discipline of Figure 5.6. In this example three
+     processes (A, B, C) access a shared resource protected by the semaphore lock.
+     Process A executes semWait(lock); because the semaphore has a value of 1 at
+     the time of the semWait operation, A can immediately enter its critical section and
+     the semaphore takes on the value 0. While A is in its critical section, both B and C
+
+                                                                 5.3      /  SEMAPHORES               219
+   Queue for       Value of
+   semaphore lock  semaphore lock    A                B       C
+                          1                                                  Critical
+                                                                             region
+                                     semWait(lock)                           Normal
+                                                                             execution
+                          0                                                  Blocked on
+                                             semWait(lock)                   semaphore
+            B             1                                                  lock
+                                                         semWait(lock)
+   C        B             2
+                                     semSignal(lock)
+            C             1
+                                             semSignal(lock)
+                          0
+                                                         semSignal(lock)
+                          1                                                  Note that normal
+                                                                             execution can
+                                                                             proceed in parallel
+                                                                             but that critical
+                                                                             regions are serialized.
+Figure 5.7     Processes  Accessing  Shared  Data Protected by a Semaphore
+perform a semWait operation and are blocked pending the availability of the sema-
+phore. When A exits its critical section and performs semSignal(lock), B, which
+was the first process in the queue, can now enter its critical section.
+   The program of Figure 5.6 can equally well handle a requirement that more
+than one process be allowed in its critical section at a time. This requirement is met
+simply by initializing the semaphore to the specified value. Thus, at any time, the
+value of s.count can be interpreted as follows:
+·  s.count  0: s.count is the number of processes that can execute semWait(s)
+   without suspension (if no semSignal(s) is executed in the meantime). Such
+   situations will allow semaphores to support synchronization as well as mutual
+   exclusion.
+·  s.count < 0: The magnitude of s.count is the number of processes suspended in
+   s.queue.
+The Producer/Consumer Problem
+We now examine one of the most common problems faced in concurrent process-
+ing: the producer/consumer problem. The general statement is this: There are one
+or more producers generating some type of data (records, characters) and placing
+
+220  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     these in a buffer. There is a single consumer that is taking items out of the buffer
+     one at a time. The system is to be constrained to prevent the overlap of buffer oper-
+     ations. That is, only one agent (producer or consumer) may access the buffer at any
+     one time. The problem is to make sure that the producer won't try to add data into
+     the buffer if it's full and that the consumer won't try to remove data from an empty
+     buffer. We will look at a number of solutions to this problem to illustrate both the
+     power and the pitfalls of semaphores.
+     To begin, let us assume that the buffer is infinite and consists of a linear array
+     of elements. In abstract terms, we can define the producer and consumer functions
+     as follows:
+     producer:                                     consumer:
+     while        (true)   {                       while       (true)                              {
+        /*        produce     item     v  */;         while                                   (in  <=  out)
+        b[in]     =  v;                                                                   /*  do   nothing     */;
+        in++;                                         w     =                             b[out];
+     }                                                out++;
+                                                      /*       consume                                item  w  */;
+                                                   }
+     Figure 5.8 illustrates the structure of buffer b. The producer can generate
+     items and store them in the buffer at its own pace. Each time, an index (in) into the
+     buffer is incremented. The consumer proceeds in a similar fashion but must make
+     sure that it does not attempt to read from an empty buffer. Hence, the consumer
+     makes sure that the producer has advanced beyond it (in> out) before proceeding.
+     Let us try to implement this system using binary semaphores. Figure 5.9 is a
+     first attempt. Rather than deal with the indices in and out, we can simply keep track
+     of the number of items in the buffer, using the integer variable n (= in ­ out). The
+     semaphore s is used to enforce mutual exclusion; the semaphore delay is used to
+     force the consumer to semWait if the buffer is empty.
+     This solution seems rather straightforward. The producer is free to add
+     to the buffer at any time. It performs semWaitB(s) before appending and
+     semSignalB(s) afterward to prevent the consumer or any other producer from
+                              0     1       2   3     4
+                           b[1]  b[2]     b[3]  b[4]  b[5]
+                                 Out                  In
+                          Note: Shaded area indicates portion of buffer that is occupied
+                          Figure 5.8      Infinite Buffer for the
+                                          Producer/Consumer Problem
+
+                                                             5.3 / SEMAPHORES              221
+/*  program  producerconsumer            */
+    int      n;
+    binary_semaphore            s     =  1,  delay  =  0;
+    void     producer()
+    {
+             while      (true)     {
+                        produce();
+                        semWaitB(s);
+                        append();
+                        n++;
+                        if  (n==1)       semSignalB(delay);
+                        semSignalB(s);
+             }
+    }
+    void     consumer()
+    {
+             semWaitB(delay);
+             while      (true)     {
+                        semWaitB(s);
+                        take();
+                        n--;
+                        semSignalB(s);
+                        consume();
+                        if  (n==0)       semWaitB(delay);
+             }
+    }
+    void     main()
+    {
+             n   =  0;
+             parbegin       (producer,       consumer);
+    }
+Figure 5.9   An Incorrect Solution to the Infinite-Buffer    Producer/Consumer Problem
+             Using Binary Semaphores
+accessing the buffer during the append operation. Also, while in the critical section,
+the producer increments the value of n. If n = 1, then the buffer was empty just prior
+to this append, so the producer performs semSignalB(delay) to alert the con-
+sumer of this fact. The consumer begins by waiting for the first item to be produced,
+using semWaitB(delay). It then takes an item and decrements n in its critical
+section. If the producer is able to stay ahead of the consumer (a common situation),
+then the consumer will rarely block on the semaphore delay because n will usually
+be positive. Hence both producer and consumer run smoothly.
+    There is, however, a flaw in this program. When the consumer has exhausted
+the buffer, it needs to reset the delay semaphore so that it will be forced to wait until
+the producer has placed more items in the buffer. This is the purpose of the state-
+ment: if     n == 0 semWaitB(delay). Consider the scenario outlined in Table 5.4.
+In line 14, the consumer fails to execute the semWaitB operation. The consumer did
+indeed exhaust the buffer and set n to 0 (line 8), but the producer has incremented n
+before the consumer can test it in line 14. The result is a semSignalB not matched
+by a prior semWaitB. The value of ­1 for n in line 20 means that the consumer has
+consumed an item from the buffer that does not exist. It would not do simply to move
+the conditional statement inside the critical section of the consumer because this
+could lead to deadlock (e.g., after line 8 of Table 5.4).
+
+222  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION                               AND  SYNCHRONIZATION
+Table 5.4  Possible Scenario for the Program of Figure 5.9
+           Producer             Consumer                                     s    n   Delay
+1                                                                            1    0   0
+2          semWaitB(s)                                                       0    0   0
+3              n++                                                           0    1   0
+4          if  (n==1)
+           (semSignalB(delay))                                               0    1   1
+5          semSignalB(s)                                                     1    1   1
+6                               semWaitB(delay)                              1    1   0
+7                               semWaitB(s)                                  0    1   0
+8                                   n--                                      0    0   0
+9                               semSignalB(s)                                1    0   0
+10         semWaitB(s)                                                       0    0   0
+11             n++                                                           0    1   0
+12         if  (n==1)
+           (semSignalB(delay))                                               0    1   1
+13         semSignalB(s)                                                     1    1   1
+14                              if  (n==0)
+                                (semWaitB(delay))                            1    1   1
+15                              semWaitB(s)                                  0    1   1
+16                                  n--                                      0    0   1
+17                              semSignalB(s)                                1    0   1
+18                              if  (n==0)
+                                (semWaitB(delay))                            1    0   0
+19                              semWaitB(s)                                  0    0   0
+20                                  n--                                      0    ­1  0
+21                              semSignalB(s)                                1    ­1  0
+Note: White areas represent the critical section controlled by semaphore s.
+           A fix for the problem is to introduce an auxiliary variable that can be set in the
+           consumer's critical section for use later on. This is shown in Figure 5.10. A careful
+           trace of the logic should convince you that deadlock can no longer occur.
+           A somewhat cleaner solution can be obtained if general semaphores (also
+           called counting semaphores) are used, as shown in Figure 5.11. The variable n
+           is now a semaphore. Its value still is equal to the number of items in the buffer.
+           Suppose now that in transcribing this program, a mistake is made and the opera-
+           tions semSignal(s) and semSignal(n) are interchanged. This would require
+           that the semSignal(n) operation be performed in the producer's critical sec-
+           tion without interruption by the consumer or another producer. Would this affect
+
+                                                             5.3 / SEMAPHORES            223
+/*  program  producerconsumer            */
+    int      n;
+    binary_semaphore            s     =  1,  delay  =  0;
+    void     producer()
+    {
+             while      (true)     {
+                    produce();
+                    semWaitB(s);
+                    append();
+                    n++;
+                    if     (n==1)        semSignalB(delay);
+                    semSignalB(s);
+             }
+    }
+    void     consumer()
+    {
+             int    m;  /*  a   local        variable  */
+             semWaitB(delay);
+             while      (true)     {
+                    semWaitB(s);
+                    take();
+                    n--;
+                    m   =   n;
+                    semSignalB(s);
+                    consume();
+                    if     (m==0)        semWaitB(delay);
+             }
+    }
+    void     main()
+    {
+             n   =  0;
+             parbegin       (producer,       consumer);
+    }
+Figure 5.10  A Correct Solution to the Infinite-Buffer       Producer/Consumer Problem Using
+             Binary Semaphores
+the program? No, because the consumer must wait on both semaphores before
+proceeding in any case.
+    Now suppose that the semWait(n) and semWait(s) operations are acci-
+dentally reversed. This produces a serious, indeed a fatal, flaw. If the consumer ever
+enters its critical section when the buffer is empty (n.count = 0), then no producer
+can ever append to the buffer and the system is deadlocked. This is a good example
+of the subtlety of semaphores and the difficulty of producing correct designs.
+    Finally, let us add a new and realistic restriction to the producer/consumer
+problem: namely, that the buffer is finite. The buffer is treated as a circular storage
+(Figure 5.12), and pointer values must be expressed modulo the size of the buffer.
+The following relationships hold:
+                                   Block on:                 Unblock on:
+             Producer: insert in full buffer                 Consumer: item inserted
+             Consumer: remove from empty buffer              Producer: item removed
+
+224  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     /*  program  producerconsumer                */
+            semaphore       n   =  0,    s     =  1;
+            void  producer()
+            {
+                  while        (true)       {
+                            produce();
+                            semWait(s);
+                            append();
+                            semSignal(s);
+                            semSignal(n);
+                  }
+            }
+            void  consumer()
+            {
+                  while        (true)       {
+                            semWait(n);
+                            semWait(s);
+                            take();
+                            semSignal(s);
+                            consume();
+                  }
+            }
+            void  main()
+            {
+                  parbegin         (producer,         consumer);
+            }
+     Figure 5.11  A Solution to the Infinite-Buffer                 Producer/Consumer  Problem     Using
+                  Semaphores
+            The producer and consumer functions can be expressed as follows (variable in
+     and out are initialized to 0 and n is the size of the buffer):
+         producer:                                                  consumer:
+         while    (true)           {                                while     (true)         {
+            /*    produce             item        v   */               while           (in   ==    out)
+            while        ((in         +   1)      %   n   ==  out)            /*       do    nothing      */;
+                     /*     do     nothing            */;              w   =  b[out];
+            b[in]        =  v;                                         out    =        (out     +  1)  %  n;
+            in    =  (in        +     1)    %     n;                   /*     consume           item   w  */;
+         }                                                          }
+            Figure 5.13 shows a solution using general semaphores. The semaphore e has
+     been added to keep track of the number of empty spaces.
+            Another instructive example in the use of semaphores is the barbershop prob-
+     lem, described in Appendix A. Appendix A also includes additional examples of
+     the problem of race conditions when using semaphores.
+     Implementation of Semaphores
+     As was mentioned earlier, it is imperative that the semWait and semSignal oper-
+     ations be implemented as atomic primitives. One obvious way is to implement them
+
+                                                                              5.3 / SEMAPHORES      225
+                     b[1]  b[2]           b[3]      b[4]  b[5]                b[n]
+                           Out                                 In
+                                                          (a)
+                     b[1]  b[2]           b[3]      b[4]  b[5]                b[n]
+                                          In                   Out
+                                                          (b)
+                Figure 5.12              Finite Circular Buffer for the
+                                         Producer/Consumer Problem
+in hardware or firmware. Failing this, a variety of schemes have been suggested. The
+essence of the problem is one of mutual exclusion: Only one process at a time may
+manipulate a semaphore with either a semWait or semSignal operation. Thus,
+any of the software schemes, such as Dekker's algorithm or Peterson's algorithm
+(Appendix A), could be used; this would entail a substantial processing overhead.
+/*  program  boundedbuffer            */
+    const       int  sizeofbuffer             =     /*  buffer     size  */;
+    semaphore        s  =  1,   n     =   0,     e  =   sizeofbuffer;
+    void     producer()
+    {
+             while      (true)     {
+                     produce();
+                     semWait(e);
+                     semWait(s);
+                     append();
+                     semSignal(s);
+                     semSignal(n);
+             }
+    }
+    void     consumer()
+    {
+             while      (true)     {
+                     semWait(n);
+                     semWait(s);
+                     take();
+                     semSignal(s);
+                     semSignal(e);
+                     consume();
+             }
+    }
+    void     main()
+    {
+                     parbegin         (producer,          consumer);
+    }
+Figure 5.13  A Solution to the Bounded-Buffer Producer/Consumer                     Problem  Using
+             Semaphores
+
+226     CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+semWait(s)                                                           semWait(s)
+{                                                                    {
+   while    (compare_and_swap(s.flag,             0  ,  1)  ==   1)     inhibit    interrupts;
+        /*  do  nothing        */;                                      s.count--;
+   s.count--;                                                           if  (s.count    <     0)  {
+   if   (s.count     <     0)  {                                            /*  place   this      process   in   s.queue  */;
+        /*   place   this      process     in  s.queue*/;                   /*  block   this      process   and   allow   inter-
+        /*   block   this      process     (must  also  set          rupts*/;
+s.flag  to   0)  */;                                                    }
+   }                                                                    else
+   s.flag    =   0;                                                         allow  interrupts;
+}                                                                    }
+semSignal(s)                                                         semSignal(s)
+{                                                                    {
+   while    (compare_and_swap(s.flag,             0  ,  1)  ==   1)     inhibit    interrupts;
+        /*  do  nothing        */;                                      s.count++;
+   s.count++;                                                           if  (s.count<=        0)  {
+   if   (s.count<=         0)  {                                            /*  remove     a  process   P   from   s.queue  */;
+        /*   remove     a  process     P   from   s.queue   */;             /*  place   process      P  on  ready  list   */;
+        /*   place   process        P  on  ready  list  */;             }
+   }                                                                    allow   interrupts;
+   s.flag    =   0;                                                  }
+}
+            (a) Compare and Swap Instruction                                               (b) Interrupts
+Figure 5.14     Two Possible Implementations of Semaphores
+          Another alternative is to use one of the hardware-supported schemes for mutual
+          exclusion. For example, Figure 5.14a shows the use of a compare&swap instruc-
+          tion. In this implementation, the semaphore is again a structure, as in Figure 5.3,
+          but now includes a new integer component, s.flag. Admittedly, this involves a form
+          of busy waiting. However, the semWait and semSignal operations are relatively
+          short, so the amount of busy waiting involved should be minor.
+                 For a single-processor system, it is possible to inhibit interrupts for the duration
+          of a semWait or semSignal operation, as suggested in Figure 5.14b. Once again, the
+          relatively short duration of these operations means that this approach is reasonable.
+   5.4    MONITORS
+          Semaphores provide a primitive yet powerful and flexible tool for enforcing mutual
+          exclusion and for coordinating processes. However, as Figure 5.9 suggests, it may be
+          difficult to produce a correct program using semaphores. The difficulty is that sem-
+          Wait and semSignal operations may be scattered throughout a program and it is
+          not easy to see the overall effect of these operations on the semaphores they affect.
+                 The monitor is a programming-language construct that provides equivalent
+          functionality to that of semaphores and that is easier to control. The concept was
+          first formally defined in [HOAR74]. The monitor construct has been implemented
+          in a number of programming languages, including Concurrent Pascal, Pascal-Plus,
+          Modula-2, Modula-3, and Java. It has also been implemented as a program library.
+          This allows programmers to put a monitor lock on any object. In particular, for

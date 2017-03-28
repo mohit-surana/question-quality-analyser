@@ -1,0 +1,186 @@
+OS Design Considerations for Multiprocessor and Multicore
+2.6 / OS DESIGN CONSIDERATIONS FOR MULTIPROCESSOR AND MULTICORE                            77
+2.6  OS DESIGN CONSIDERATIONS FOR MULTIPROCESSOR
+     AND MULTICORE
+     Symmetric Multiprocessor OS Considerations
+     In an SMP system, the kernel can execute on any processor, and typically each
+     processor does self-scheduling from the pool of available processes or threads.
+     The kernel can be constructed as multiple processes or multiple threads, allowing
+     portions of the kernel to execute in parallel. The SMP approach complicates the OS.
+     The OS designer must deal with the complexity due to sharing resources (like data
+     structures) and coordinating actions (like accessing devices) from multiple parts of
+     the OS executing at the same time. Techniques must be employed to resolve and
+     synchronize claims to resources.
+        An SMP operating system manages processor and other computer resources
+     so that the user may view the system in the same fashion as a multiprogramming
+     uniprocessor system. A user may construct applications that use multiple processes
+     or multiple threads within processes without regard to whether a single processor
+     or multiple processors will be available. Thus, a multiprocessor OS must provide all
+     the functionality of a multiprogramming system plus additional features to accom-
+     modate multiple processors. The key design issues include the following:
+     �  Simultaneous concurrent processes or threads: Kernel routines need to be
+        reentrant to allow several processors to execute the same kernel code simulta-
+        neously. With multiple processors executing the same or different parts of the
+        kernel, kernel tables and management structures must be managed properly
+        to avoid data corruption or invalid operations.
+     �  Scheduling: Any processor may perform scheduling, which complicates the
+        task of enforcing a scheduling policy and assuring that corruption of the sched-
+        uler data structures is avoided. If kernel-level multithreading is used, then the
+        opportunity exists to schedule multiple threads from the same process simul-
+        taneously on multiple processors. Multiprocessor scheduling is examined in
+        Chapter 10.
+     �  Synchronization: With multiple active processes having potential access to
+        shared address spaces or shared I/O resources, care must be taken to provide
+        effective synchronization. Synchronization is a facility that enforces mutual
+        exclusion and event ordering. A common synchronization mechanism used in
+        multiprocessor operating systems is locks, described in Chapter 5.
+     �  Memory management: Memory management on a multiprocessor must deal
+        with all of the issues found on uniprocessor computers and is discussed in Part
+        Three. In addition, the OS needs to exploit the available hardware parallelism
+        to achieve the best performance. The paging mechanisms on different proc-
+        essors must be coordinated to enforce consistency when several processors
+        share a page or segment and to decide on page replacement. The reuse of
+        physical pages is the biggest problem of concern; that is, it must be guaranteed
+        that a physical page can no longer be accessed with its old contents before the
+        page is put to a new use.
+
+78  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+    �  Reliability and fault tolerance: The OS should provide graceful degradation
+       in the face of processor failure. The scheduler and other portions of the OS
+       must recognize the loss of a processor and restructure management tables
+       accordingly.
+       Because multiprocessor OS design issues generally involve extensions to
+    solutions to multiprogramming uniprocessor design problems, we do not treat
+    multiprocessor operating systems separately. Rather, specific multiprocessor issues
+    are addressed in the proper context throughout this book.
+    Multicore OS Considerations
+    The considerations for multicore systems include all the design issues discussed so
+    far in this section for SMP systems. But additional concerns arise. The issue is one
+    of the scale of the potential parallelism. Current multicore vendors offer systems
+    with up to eight cores on a single chip. With each succeeding processor technology
+    generation, the number of cores and the amount of shared and dedicated cache
+    memory increases, so that we are now entering the era of "many-core" systems.
+       The design challenge for a many-core multicore system is to efficiently
+    harness the multicore processing power and intelligently manage the substantial
+    on-chip resources efficiently. A central concern is how to match the inherent paral-
+    lelism of a many-core system with the performance requirements of applications.
+    The potential for parallelism in fact exists at three levels in contemporary multicore
+    system. First, there is hardware parallelism within each core processor, known as
+    instruction level parallelism, which may or may not be exploited by application pro-
+    grammers and compilers. Second, there is the potential for multiprogramming and
+    multithreaded execution within each processor. Finally, there is the potential for
+    a single application to execute in concurrent processes or threads across multiple
+    cores. Without strong and effective OS support for the last two types of parallelism
+    just mentioned, hardware resources will not be efficiently used.
+       In essence, then, since the advent of multicore technology, OS designers have
+    been struggling with the problem of how best to extract parallelism from computing
+    workloads. A variety of approaches are being explored for next-generation operat-
+    ing systems. We introduce two general strategies in this section and consider some
+    details in later chapters.
+    PARALLELISM  WITHIN         APPLICATIONS  Most applications can, in principle, be
+    subdivided into multiple tasks that can execute in parallel, with these tasks then
+    being implemented as multiple processes, perhaps each with multiple threads. The
+    difficulty is that the developer must decide how to split up the application work into
+    independently executable tasks. That is, the developer must decide what pieces can
+    or should be executed asynchronously or in parallel. It is primarily the compiler and
+    the programming language features that support the parallel programming design
+    process. But, the OS can support this design process, at minimum, by efficiently
+    allocating resources among parallel tasks as defined by the developer.
+       Perhaps the most effective initiative to support developers is implemented in
+    the latest release of the UNIX-based Mac OS X operating system. Mac OS X 10.6
+    includes a multicore support capability known as Grand Central Dispatch (GCD).
+
+2.6 / OS DESIGN CONSIDERATIONS FOR MULTIPROCESSOR AND MULTICORE                          79
+GCD does not help the developer decide how to break up a task or application into
+separate concurrent parts. But once a developer has identified something that can
+be split off into a separate task, GCD makes it as easy and noninvasive as possible
+to actually do so.
+In essence, GCD is a thread pool mechanism, in which the OS maps tasks onto
+threads representing an available degree of concurrency (plus threads for block-
+ing on I/O). Windows also has a thread pool mechanism (since 2000), and thread
+pools have been heavily used in server applications for years. What is new in GCD
+is the extension to programming languages to allow anonymous functions (called
+blocks) as a way of specifying tasks. GCD is hence not a major evolutionary step.
+Nevertheless, it is a new and valuable tool for exploiting the available parallelism of
+a multicore system.
+One of Apple's slogans for GCD is "islands of serialization in a sea of concurrency."
+That captures the practical reality of adding more concurrency to run-of-the-mill
+desktop applications. Those islands are what isolate developers from the thorny
+problems of simultaneous data access, deadlock, and other pitfalls of multithreading.
+Developers are encouraged to identify functions of their applications that would be
+better executed off the main thread, even if they are made up of several sequential or
+otherwise partially interdependent tasks. GCD makes it easy to break off the entire
+unit of work while maintaining the existing order and dependencies between subtasks.
+In later chapters, we look at some of the details of GCD.
+VIRTUAL  MACHINE     APPROACH  An alternative approach is to recognize that
+with the ever-increasing number of cores on a chip, the attempt to multiprogram
+individual cores to support multiple applications may be a misplaced use of
+resources [JACK10]. If instead, we allow one or more cores to be dedicated to a
+particular process and then leave the processor alone to devote its efforts to that
+process, we avoid much of the overhead of task switching and scheduling decisions.
+The multicore OS could then act as a hypervisor that makes a high-level decision
+to allocate cores to applications but does little in the way of resource allocation
+beyond that.
+The reasoning behind this approach is as follows. In the early days of com-
+puting, one program was run on a single processor. With multiprogramming,
+each application is given the illusion that it is running on a dedicated processor.
+Multiprogramming is based on the concept of a process, which is an abstraction of
+an execution environment. To manage processes, the OS requires protected space,
+free from user and program interference. For this purpose, the distinction between
+kernel mode and user mode was developed. In effect, kernel mode and user mode
+abstracted the processor into two processors. With all these virtual processors, how-
+ever, come struggles over who gets the attention of the real processor. The overhead
+of switching between all these processors starts to grow to the point where respon-
+siveness suffers, especially when multiple cores are introduced. But with many-core
+systems, we can consider dropping the distinction between kernel and user mode.
+In this approach, the OS acts more like a hypervisor. The programs themselves take
+on many of the duties of resource management. The OS assigns an application a
+processor and some memory, and the program itself, using metadata generated by
+the compiler, would best know how to use these resources.
+
+80  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+2.7  MICROSOFT WINDOWS OVERVIEW
+     History
+     The story of Windows begins with a very different OS, developed by Microsoft for
+     the first IBM personal computer and referred to as MS-DOS. The initial version,
+     MS-DOS 1.0, was released in August 1981. It consisted of 4000 lines of assem-
+     bly language source code and ran in 8 Kbytes of memory using the Intel 8086
+     microprocessor.
+     The IBM PC was an important stage in a continuing revolution in computing
+     that has expanded computing from the data center of the 1960s, to the departmental
+     minicomputer of the 1970s, and to the desktop in the 1980s. The revolution has con-
+     tinued with computing moving into the briefcase in the 1990s, and into our pockets
+     during the most recent decade.
+     Microsoft's initial OS ran a single application at a time, using a command line
+     interface to control the system. It took a long time for Microsoft to develop a true
+     GUI interface for the PC; on their third try they succeeded. The 16-bit Windows
+     3.0 shipped in 1990 and instantly became successful, selling a million copies in six
+     months. Windows 3.0 was implemented as a layer on top of MS-DOS and suffered
+     from the limitations of that primitive system. Five years later, Microsoft shipped a
+     32-bit version, Windows 95, which was also very successful and led to the develop-
+     ment of additional versions: Windows 98 and Windows Me.
+     Meanwhile, it had become clear to Microsoft that the MS-DOS platform could
+     not sustain a truly modern OS. In 1989 Microsoft hired Dave Cutler, who had devel-
+     oped the very successful RSX-11M and VAX/VMS operating systems at Digital
+     Equipment Corporation. Cutler's charter was to develop a modern OS, which was
+     portable to architectures other than the Intel x86 family, and yet compatible with
+     the OS/2 system that Microsoft was jointly developing with IBM, as well as the port-
+     able UNIX standard, POSIX. This system was christened NT (New Technology).
+     The first version of Windows NT (3.1) was released in 1993, with the same GUI
+     as Windows 3.1, the follow-on to Windows 3.0. However, NT 3.1 was a new 32-bit
+     OS with the ability to support older DOS and Windows applications as well as pro-
+     vide OS/2 support. Several versions of NT 3.x followed with support for additional
+     hardware platforms. In 1996, Microsoft released NT 4.0 with the same user interface
+     as Windows 95. In 2000, Microsoft introduced the next major upgrade of the NT OS:
+     Windows 2000. The underlying Executive and Kernel architecture is fundamentally
+     the same as in NT 3.1, but new features have been added. The emphasis in Windows
+     2000 was the addition of services and functions to support distributed processing.
+     The central element of Windows 2000's new features was Active Directory, which
+     is a distributed directory service able to map names of arbitrary objects to any kind
+     of information about those objects. Windows 2000 also added the plug-and-play
+     and power-management facilities that were already in Windows 98, the successor to
+     Windows 95. These features are particularly important for laptop computers.
+     In 2001, a new desktop version of NT was released, known as Windows XP.
+     The goal of Windows XP was to finally replace the versions of Windows based on
+     MS-DOS with an OS based on NT. In 2007, Microsoft shipped Windows Vista for
+     the desktop and a short time later, Windows Server 2008. In 2009, they shipped

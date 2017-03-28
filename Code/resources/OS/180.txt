@@ -1,0 +1,274 @@
+Processes and Threads
+158  CHAPTER 4 / THREADS
+        The basic idea is that the several components in any complex system
+        will perform particular subfunctions that contribute to the overall
+        function.
+                                  --THE SCIENCES OF THE ARTIFICIAL, Herbert Simon
+     LEARNING OBJECTIVES
+     After studying this chapter, you should be able to:
+     ·     Understand the distinction between process and thread.
+     ·     Describe the basic design issues for threads.
+     ·     Explain the difference between user-level threads and kernel-level threads.
+     ·     Describe the thread management facility in Windows 7.
+     ·     Describe the thread management facility in Solaris.
+     ·     Describe the thread management facility in Linux.
+     This chapter examines some more advanced concepts related to process manage-
+     ment, which are found in a number of contemporary operating systems. We show
+     that the concept of process is more complex and subtle than presented so far and in
+     fact embodies two separate and potentially independent concepts: one relating to
+     resource ownership and another relating to execution. This distinction has led to the
+     development, in many operating systems, of a construct known as the thread.
+4.1  PROCESSES AND THREADS
+     The discussion so far has presented the concept of a process as embodying two
+     characteristics:
+        ·  Resource ownership: A process includes a virtual address space to hold the
+           process image; recall from Chapter 3 that the process image is the collection of
+           program, data, stack, and attributes defined in the process control block. From
+           time to time, a process may be allocated control or ownership of resources,
+           such as main memory, I/O channels, I/O devices, and files. The OS performs a
+           protection function to prevent unwanted interference between processes with
+           respect to resources.
+        ·  Scheduling/execution: The execution of a process follows an execution path
+           (trace) through one or more programs (e.g., Figure 1.5). This execution may
+           be interleaved with that of other processes. Thus, a process has an execution
+           state (Running, Ready, etc.) and a dispatching priority and is the entity that is
+           scheduled and dispatched by the OS.
+           Some thought should convince the reader that these two characteristics
+     are independent and could be treated independently by the OS. This is done in
+     a number of operating systems, particularly recently developed systems. To
+
+                                            4.1 / PROCESSES AND THREADS                                  159
+distinguish the two characteristics, the unit of dispatching is usually referred to
+as a thread or lightweight process, while the unit of resource ownership is usually
+referred to as a process or task.1
+Multithreading
+Multithreading refers to the ability of an OS to support multiple, concurrent paths
+of execution within a single process. The traditional approach of a single thread of
+execution per process, in which the concept of a thread is not recognized, is referred
+to as a single-threaded approach. The two arrangements shown in the left half of
+Figure 4.1 are single-threaded approaches. MS-DOS is an example of an OS that
+supports a single user process and a single thread. Other operating systems, such
+as some variants of UNIX, support multiple user processes but only support one
+thread per process. The right half of Figure 4.1 depicts multithreaded approaches.
+A Java run-time environment is an example of a system of one process with multi-
+ple threads. Of interest in this section is the use of multiple processes, each of which
+supports multiple threads. This approach is taken in Windows, Solaris, and many
+modern versions of UNIX, among others. In this section we give a general description
+            One process                                                           One process
+            One thread                      Multiple threads
+            Multiple processes              Multiple processes
+            One thread per process          Multiple threads per process
+= Instruction trace
+Figure 4.1  Threads and Processes [ANDE97]
+1Alas, even this degree of consistency is not maintained. In IBM's mainframe operating systems, the con-
+cepts of address space and task, respectively, correspond roughly to the concepts of process and thread
+that we describe in this section. Also, in the literature, the term lightweight process is used as either (1)
+equivalent to the term thread, (2) a particular type of thread known as a kernel-level thread, or (3) in the
+case of Solaris, an entity that maps user-level threads to kernel-level threads.
+
+160  CHAPTER 4 / THREADS
+     of multithreading; the details of the Windows, Solaris, and Linux approaches are
+     discussed later in this chapter.
+        In a multithreaded environment, a process is defined as the unit of resource
+     allocation and a unit of protection. The following are associated with processes:
+     ·  A virtual address space that holds the process image
+     ·  Protected access to processors, other processes (for interprocess communica-
+        tion), files, and I/O resources (devices and channels)
+     Within a process, there may be one or more threads, each with the following:
+     ·  A thread execution state (Running, Ready, etc.)
+     ·  A saved thread context when not running; one way to view a thread is as an
+        independent program counter operating within a process
+     ·  An execution stack
+     ·  Some per-thread static storage for local variables
+     ·  Access to the memory and resources of its process, shared with all other
+        threads in that process
+        Figure 4.2 illustrates the distinction between threads and processes from the
+     point of view of process management. In a single-threaded process model (i.e.,
+     there is no distinct concept of thread), the representation of a process includes its
+     process control block and user address space, as well as user and kernel stacks to
+     manage the call/return behavior of the execution of the process. While the process
+     is running, it controls the processor registers. The contents of these registers are
+     saved when the process is not running. In a multithreaded environment, there is
+     still a single process control block and user address space associated with the proc-
+     ess, but now there are separate stacks for each thread, as well as a separate control
+        Single-threaded                         Multithreaded
+        process model                           process model
+                                                Thread             Thread   Thread
+                 User                           Thread             Thread   Thread
+        Process  stack                          control            control  control
+        control                                 block              block    block
+        block
+        User     Kernel                Process  User               User     User
+        address  stack                 control  stack              stack    stack
+        space                          block
+                                       User     Kernel             Kernel   Kernel
+                                       address  stack              stack    stack
+                                       space
+     Figure 4.2  Single-Threaded and Multithreaded Process Models
+
+                                  4.1 / PROCESSES AND THREADS                            161
+block for each thread containing register values, priority, and other thread-related
+state information.
+    Thus, all of the threads of a process share the state and resources of that
+process. They reside in the same address space and have access to the same data.
+When one thread alters an item of data in memory, other threads see the results if
+and when they access that item. If one thread opens a file with read privileges, other
+threads in the same process can also read from that file.
+    The key benefits of threads derive from the performance implications:
+1.  It takes far less time to create a new thread in an existing process than to
+    create a brand-new process. Studies done by the Mach developers show that
+    thread creation is ten times faster than process creation in UNIX [TEVA87].
+2.  It takes less time to terminate a thread than a process.
+3.  It takes less time to switch between two threads within the same process than
+    to switch between processes.
+4.  Threads enhance efficiency in communication between different executing
+    programs. In most operating systems, communication between independent
+    processes requires the intervention of the kernel to provide protection and the
+    mechanisms needed for communication. However, because threads within the
+    same process share memory and files, they can communicate with each other
+    without invoking the kernel.
+    Thus, if there is an application or function that should be implemented as a
+set of related units of execution, it is far more efficient to do so as a collection of
+threads rather than a collection of separate processes.
+    An example of an application that could make use of threads is a file server.
+As each new file request comes in, a new thread can be spawned for the file manage-
+ment program. Because a server will handle many requests, many threads will be
+created and destroyed in a short period. If the server runs on a multiprocessor com-
+puter, then multiple threads within the same process can be executing simultaneously
+on different processors. Further, because processes or threads in a file server must
+share file data and therefore coordinate their actions, it is faster to use threads and
+shared memory than processes and message passing for this coordination.
+    The thread construct is also useful on a single processor to simplify the structure
+of a program that is logically doing several different functions.
+    [LETW88] gives four examples of the uses of threads in a single-user multi-
+processing system:
+·   Foreground and background work: For example, in a spreadsheet program,
+    one thread could display menus and read user input, while another thread
+    executes user commands and updates the spreadsheet. This arrangement often
+    increases the perceived speed of the application by allowing the program to
+    prompt for the next command before the previous command is complete.
+·   Asynchronous processing: Asynchronous elements in the program can be
+    implemented as threads. For example, as a protection against power failure,
+    one can design a word processor to write its random access memory (RAM)
+    buffer to disk once every minute. A thread can be created whose sole job is
+
+162  CHAPTER 4 / THREADS
+        periodic backup and that schedules itself directly with the OS; there is no need
+        for fancy code in the main program to provide for time checks or to coordinate
+        input and output.
+     ·  Speed of execution: A multithreaded process can compute one batch of data
+        while reading the next batch from a device. On a multiprocessor system, mul-
+        tiple threads from the same process may be able to execute simultaneously.
+        Thus, even though one thread may be blocked for an I/O operation to read in
+        a batch of data, another thread may be executing.
+     ·  Modular program structure: Programs that involve a variety of activities or a
+        variety of sources and destinations of input and output may be easier to design
+        and implement using threads.
+        In an OS that supports threads, scheduling and dispatching is done on a thread
+     basis; hence, most of the state information dealing with execution is maintained in
+     thread-level data structures. There are, however, several actions that affect all of the
+     threads in a process and that the OS must manage at the process level. For example,
+     suspension involves swapping the address space of one process out of main memory
+     to make room for the address space of another process. Because all threads in a
+     process share the same address space, all threads are suspended at the same time.
+     Similarly, termination of a process terminates all threads within that process.
+     Thread Functionality
+     Like processes, threads have execution states and may synchronize with one
+     another. We look at these two aspects of thread functionality in turn.
+     THREAD STATES    As with processes, the key states for a thread are Running, Ready,
+     and Blocked. Generally, it does not make sense to associate suspend states with
+     threads because such states are process-level concepts. In particular, if a process is
+     swapped out, all of its threads are necessarily swapped out because they all share
+     the address space of the process.
+        There are four basic thread operations associated with a change in thread
+     state [ANDE04]:
+     ·  Spawn: Typically, when a new process is spawned, a thread for that process
+        is also spawned. Subsequently, a thread within a process may spawn another
+        thread within the same process, providing an instruction pointer and argu-
+        ments for the new thread. The new thread is provided with its own register
+        context and stack space and placed on the ready queue.
+     ·  Block: When a thread needs to wait for an event, it will block (saving its user
+        registers, program counter, and stack pointers). The processor may now
+        turn to the execution of another ready thread in the same or a different
+        process.
+     ·  Unblock: When the event for which a thread is blocked occurs, the thread is
+        moved to the Ready queue.
+     ·  Finish:   When    a  thread     completes,  its  register  context   and  stacks       are
+        deallocated.
+
+                                                 4.1 / PROCESSES AND THREADS                          163
+A significant issue is whether the blocking of a thread results in the blocking
+of the entire process. In other words, if one thread in a process is blocked, does
+this prevent the running of any other thread in the same process even if that other
+thread is in a ready state? Clearly, some of the flexibility and power of threads is lost
+if the one blocked thread blocks an entire process.
+We return to this issue subsequently in our discussion of user-level versus
+kernel-level threads, but for now let us consider the performance benefits of threads
+that do not block an entire process. Figure 4.3 (based on one in [KLEI96]) shows a
+program that performs two remote procedure calls (RPCs)2 to two different hosts
+to obtain a combined result. In a single-threaded program, the results are obtained
+in sequence, so the program has to wait for a response from each server in turn.
+Rewriting the program to use a separate thread for each RPC results in a substantial
+speedup. Note that if this program operates on a uniprocessor, the requests must be
+generated sequentially and the results processed in sequence; however, the program
+waits concurrently for the two replies.
+                                   Time
+                          RPC                        RPC
+                          request                request
+            Process 1
+                                         Server                 Server
+                                   (a) RPC using single thread
+                          RPC            Server
+                          request
+Thread A (Process 1)
+Thread B (Process 1)
+                          RPC
+                          request        Server
+                          (b) RPC using one thread per server (on a uniprocessor)
+Blocked, waiting for response to RPC
+Blocked, waiting for processor, which is in use by Thread                          B
+Running
+Figure 4.3                Remote Procedure Call (RPC) Using Threads
+2An RPC is a technique by which two programs, which may execute on different machines, interact using
+procedure call/return syntax and semantics. Both the called and calling program behave as if the partner
+program were running on the same machine. RPCs are often used for client/server applications and are
+discussed in Chapter 16.
+
+164  CHAPTER 4 / THREADS
+                           Time
+                                      I/O   Request              Time quantum
+                                   request  complete                  expires
+     Thread A (Process 1)
+     Thread B (Process 1)
+     Thread C (Process 2)             Time quantum
+                                            expires
+                                                      Process
+                                                      created
+                          Blocked                    Ready                     Running
+     Figure 4.4      Multithreading Example on a Uniprocessor
+     On a uniprocessor, multiprogramming enables the interleaving of multiple
+     threads within multiple processes. In the example of Figure 4.4, three threads in
+     two processes are interleaved on the processor. Execution passes from one thread
+     to another either when the currently running thread is blocked or when its time slice
+     is exhausted.3
+     THREAD SYNCHRONIZATION        All of the threads of a process share the same address
+     space and other resources, such as open files. Any alteration of a resource by
+     one thread affects the environment of the other threads in the same process. It is
+     therefore necessary to synchronize the activities of the various threads so that they
+     do not interfere with each other or corrupt data structures. For example, if two
+     threads each try to add an element to a doubly linked list at the same time, one
+     element may be lost or the list may end up malformed.
+     The issues raised and the techniques used in the synchronization of threads
+     are, in general, the same as for the synchronization of processes. These issues and
+     techniques are the subject of Chapters 5 and 6.
+4.2  TYPES OF THREADS
+     User-Level and Kernel-Level Threads
+     There are two broad categories of thread implementation: user-level threads
+     (ULTs) and kernel-level threads (KLTs).4 The latter are also referred to in the lit-
+     erature as kernel-supported threads or lightweight processes.
+     USER-LEVEL      THREADS  In   a  pure  ULT       facility,  all  of  the           work  of  thread
+     management is done by the application and the kernel is not aware of the existence
+     of threads. Figure 4.5a illustrates the pure ULT approach. Any application can be
+     3In this example, thread C begins to run after thread A exhausts its time quantum, even though thread B
+     is also ready to run. The choice between B and C is a scheduling decision, a topic covered in Part Four.
+     4The acronyms ULT and KLT are not widely used but are introduced for conciseness.

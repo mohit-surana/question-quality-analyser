@@ -1,0 +1,254 @@
+File Organization and Access
+                             12.2 / FILE ORGANIZATION AND ACCESS                               527
+      file manipulation commands, the access method appropriate to this file structure
+      must be employed.
+         Whereas users and applications are concerned with records or fields, I/O is
+      done on a block basis. Thus, the records or fields of a file must be organized as a
+      sequence of blocks for output and unblocked after input. To support block I/O of
+      files, several functions are needed. The secondary storage must be managed. This
+      involves allocating files to free blocks on secondary storage and managing free stor-
+      age so as to know what blocks are available for new files and growth in existing files.
+      In addition, individual block I/O requests must be scheduled; this issue was dealt with
+      in Chapter 11. Both disk scheduling and file allocation are concerned with optimizing
+      performance. As might be expected, these functions therefore need to be considered
+      together. Furthermore, the optimization will depend on the structure of the files and
+      the access patterns. Accordingly, developing an optimum file management system
+      from the point of view of performance is an exceedingly complicated task.
+         Figure 12.2 suggests a division between what might be considered the con-
+      cerns of the file management system as a separate system utility and the concerns
+      of the operating system, with the point of intersection being record processing. This
+      division is arbitrary; various approaches are taken in various systems.
+         In the remainder of this chapter, we look at some of the design issues sug-
+      gested in Figure 12.2. We begin with a discussion of file organizations and access
+      methods. Although this topic is beyond the scope of what is usually considered the
+      concerns of the operating system, it is impossible to assess the other file-related
+      design issues without an appreciation of file organization and access. Next, we look
+      at the concept of file directories. These are often managed by the operating system
+      on behalf of the file management system. The remaining topics deal with the physi-
+      cal I/O aspects of file management and are properly treated as aspects of OS design.
+      One such issue is the way in which logical records are organized into physical blocks.
+      Finally, there are the related issues of file allocation on secondary storage and the
+      management of free secondary storage.
+12.2  FILE ORGANIZATION AND ACCESS
+      In this section, we use the term file organization to refer to the logical structuring
+      of the records as determined by the way in which they are accessed. The physical
+      organization of the file on secondary storage depends on the blocking strategy and
+      the file allocation strategy, issues dealt with later in this chapter.
+         In choosing a file organization, several criteria are important:
+      ·  Short access time
+      ·  Ease of update
+      ·  Economy of storage
+      ·  Simple maintenance
+      ·  Reliability
+         The relative priority of these criteria will depend on the applications that will
+      use the file. For example, if a file is only to be processed in batch mode, with all of
+
+528  CHAPTER 12 / FILE MANAGEMENT
+     the records accessed every time, then rapid access for retrieval of a single record is
+     of minimal concern. A file stored on CD-ROM will never be updated, and so ease
+     of update is not an issue.
+     These criteria may conflict. For example, for economy of storage, there should be
+     minimum redundancy in the data. On the other hand, redundancy is a primary means
+     of increasing the speed of access to data. An example of this is the use of indexes.
+     The number of alternative file organizations that have been implemented or
+     just proposed is unmanageably large, even for a book devoted to file systems. In this
+     brief survey, we will outline five fundamental organizations. Most structures used in
+     actual systems either fall into one of these categories or can be implemented with a
+     combination of these organizations. The five organizations, the first four of which
+     are depicted in Figure 12.3, are as follows:
+     Variable-length records                       Fixed-length records
+     Variable set of fields                        Fixed set of fields in fixed order
+     Chronological order                           Sequential order based on key field
+                   (a) Pile file                               (b) Sequential file
+                                                   Exhaustive  Exhaustive    Partial
+                                                   index       index         index
+            n
+     Index                       Main file
+     levels Index
+        2
+     1
+                                 Overflow
+                                  file
+                                                               Primary file
+               (c) Indexed sequential file                     (variable-length records)
+                                                               (d) Indexed file
+     Figure 12.3   Common File Organizations
+
+                                                    12.2 / FILE ORGANIZATION AND ACCESS           529
+            · The pile
+            · The sequential file
+            · The indexed sequential file
+            · The indexed file
+            · The direct, or hashed, file
+         Table 12.1 summarizes relative performance aspects of these five organizations.1
+         The Pile
+         The least-complicated form of file organization may be termed the pile. Data are
+         collected in the order in which they arrive. Each record consists of one burst of
+         data. The purpose of the pile is simply to accumulate the mass of data and save it.
+         Records may have different fields, or similar fields in different orders. Thus, each
+         field should be self-describing, including a field name as well as a value. The length
+         of each field must be implicitly indicated by delimiters, explicitly included as a sub-
+         field, or known as default for that field type.
+             Because there is no structure to the pile file, record access is by exhaustive
+         search. That is, if we wish to find a record that contains a particular field with a
+         particular value, it is necessary to examine each record in the pile until the desired
+Table 12.1  Grades of Performance for        Five Basic File Organizations [WIED87]
+                   Space                        Update                  Retrieval
+                   Attributes                Record Size
+File                                                            Single
+Method       Variable          Fixed         Equal     Greater  record  Subset          Exhaustive
+Pile         A                      B        A            E     E                    D   B
+Sequential   F                      A        D            F     F                    D   A
+Indexed      F                      B        B            D     B                    D   B
+sequential
+Indexed      B                      C        C            C     A                    B   D
+Hashed       F                      B        B            F     B                    F   E
+A  Excellent, well suited to this purpose     O(r)
+B  Good                                       O(o  r)
+C  Adequate                                   O(r log n)
+D  Requires some extra effort                 O(n)
+E  Possible with extreme effort               O(r  n)
+F  Not reasonable for this purpose            O(n 1)
+where
+      r  size of the result
+      o  number of records that overflow
+      n  number of records in file
+         1The table employs the "big-O" notation, used for characterizing the time complexity of algorithms.
+         Appendix I explains this notation.
+
+530  CHAPTER 12 / FILE MANAGEMENT
+     record is found or the entire file has been searched. If we wish to find all records
+     that contain a particular field or contain that field with a particular value, then the
+     entire file must be searched.
+     Pile files are encountered when data are collected and stored prior to process-
+     ing or when data are not easy to organize. This type of file uses space well when the
+     stored data vary in size and structure, is perfectly adequate for exhaustive searches,
+     and is easy to update. However, beyond these limited uses, this type of file is unsuit-
+     able for most applications.
+     The Sequential File
+     The most common form of file structure is the sequential file. In this type of file,
+     a fixed format is used for records. All records are of the same length, consisting of
+     the same number of fixed-length fields in a particular order. Because the length and
+     position of each field are known, only the values of fields need to be stored; the field
+     name and length for each field are attributes of the file structure.
+     One particular field, usually the first field in each record, is referred to as the
+     key field. The key field uniquely identifies the record; thus key values for different
+     records are always different. Further, the records are stored in key sequence: alpha-
+     betical order for a text key, and numerical order for a numerical key.
+     Sequential files are typically used in batch applications and are generally
+     optimum for such applications if they involve the processing of all the records (e.g.,
+     a billing or payroll application). The sequential file organization is the only one that
+     is easily stored on tape as well as disk.
+     For interactive applications that involve queries and/or updates of individual
+     records, the sequential file provides poor performance. Access requires the sequen-
+     tial search of the file for a key match. If the entire file, or a large portion of the
+     file, can be brought into main memory at one time, more efficient search techniques
+     are possible. Nevertheless, considerable processing and delay are encountered to
+     access a record in a large sequential file. Additions to the file also present problems.
+     Typically, a sequential file is stored in simple sequential ordering of the records within
+     blocks. That is, the physical organization of the file on tape or disk directly matches
+     the logical organization of the file. In this case, the usual procedure is to place new
+     records in a separate pile file, called a log file or transaction file. Periodically, a batch
+     update is performed that merges the log file with the master file to produce a new file
+     in correct key sequence.
+     An alternative is to organize the sequential file physically as a linked list. One
+     or more records are stored in each physical block. Each block on disk contains a
+     pointer to the next block. The insertion of new records involves pointer manipula-
+     tion but does not require that the new records occupy a particular physical block
+     position. Thus, some added convenience is obtained at the cost of additional
+     processing and overhead.
+     The Indexed Sequential File
+     A popular approach to overcoming the disadvantages of the sequential file is the
+     indexed sequential file. The indexed sequential file maintains the key characteristic
+     of the sequential file: Records are organized in sequence based on a key field. Two
+
+                                12.2 / FILE ORGANIZATION AND ACCESS                        531
+features are added: an index to the file to support random access, and an overflow
+file. The index provides a lookup capability to reach quickly the vicinity of a desired
+record. The overflow file is similar to the log file used with a sequential file but is
+integrated so that a record in the overflow file is located by following a pointer from
+its predecessor record.
+In the simplest indexed sequential structure, a single level of indexing is
+used. The index in this case is a simple sequential file. Each record in the index file
+consists of two fields: a key field, which is the same as the key field in the main file,
+and a pointer into the main file. To find a specific field, the index is searched to find
+the highest key value that is equal to or precedes the desired key value. The search
+continues in the main file at the location indicated by the pointer.
+To see the effectiveness of this approach, consider a sequential file with
+1 million records. To search for a particular key value will require on average one-
+half million record accesses. Now suppose that an index containing 1,000 entries
+is constructed, with the keys in the index more or less evenly distributed over
+the main file. Now it will take on average 500 accesses to the index file followed
+by 500 accesses to the main file to find the record. The average search length is
+reduced from 500,000 to 1,000.
+Additions to the file are handled in the following manner: Each record in
+the main file contains an additional field not visible to the application, which is a
+pointer to the overflow file. When a new record is to be inserted into the file, it is
+added to the overflow file. The record in the main file that immediately precedes
+the new record in logical sequence is updated to contain a pointer to the new record
+in the overflow file. If the immediately preceding record is itself in the overflow file,
+then the pointer in that record is updated. As with the sequential file, the indexed
+sequential file is occasionally merged with the overflow file in batch mode.
+The indexed sequential file greatly reduces the time required to access a single
+record, without sacrificing the sequential nature of the file. To process the entire file
+sequentially, the records of the main file are processed in sequence until a pointer
+to the overflow file is found, then accessing continues in the overflow file until a null
+pointer is encountered, at which time accessing of the main file is resumed where it
+left off.
+To provide even greater efficiency in access, multiple levels of indexing can be
+used. Thus the lowest level of index file is treated as a sequential file and a higher-
+level index file is created for that file. Consider again a file with 1 million records.
+A lower-level index with 10,000 entries is constructed. A higher-level index into
+the lower-level index of 100 entries can then be constructed. The search begins at
+the higher-level index (average length = 50 accesses) to find an entry point into the
+lower-level index. This index is then searched (average length = 50) to find an entry
+point into the main file, which is then searched (average length = 50). Thus the aver-
+age length of search has been reduced from 500,000 to 1,000 to 150.
+The Indexed File
+The indexed sequential file retains one limitation of the sequential file: Effective
+processing is limited to that which is based on a single field of the file. For example,
+when it is necessary to search for a record on the basis of some other attribute than
+
+532  CHAPTER 12 / FILE MANAGEMENT
+      the key field, both forms of sequential file are inadequate. In some applications, the
+      flexibility of efficiently searching by various attributes is desirable.
+      To achieve this flexibility, a structure is needed that employs multiple indexes,
+      one for each type of field that may be the subject of a search. In the general indexed
+      file, the concept of sequentiality and a single key are abandoned. Records are
+      accessed only through their indexes. The result is that there is now no restriction
+      on the placement of records as long as a pointer in at least one index refers to that
+      record. Furthermore, variable-length records can be employed.
+      Two types of indexes are used. An exhaustive index contains one entry for
+      every record in the main file. The index itself is organized as a sequential file for
+      ease of searching. A partial index contains entries to records where the field of
+      interest exists. With variable-length records, some records will not contain all fields.
+      When a new record is added to the main file, all of the index files must be updated.
+      Indexed files are used mostly in applications where timeliness of information
+      is critical and where data are rarely processed exhaustively. Examples are airline
+      reservation systems and inventory control systems.
+      The Direct or Hashed File
+      The direct, or hashed, file exploits the capability found on disks to access directly any
+      block of a known address. As with sequential and indexed sequential files, a key field
+      is required in each record. However, there is no concept of sequential ordering here.
+      The direct file makes use of hashing on the key value. This function is explained
+      in Appendix F. Figure F.1b shows the type of hashing organization with an overflow
+      file that is typically used in a hash file.
+      Direct files are often used where very rapid access is required, where fixed-
+      length records are used, and where records are always accessed one at a time.
+      Examples are directories, pricing tables, schedules, and name lists.
+12.3  B-TREES
+      The preceding section referred to the use of an index file to access individual records
+      in a file or database. For a large file or database, a single sequential file of indexes on
+      the primary key does not provide for rapid access. To provide more efficient access,
+      a structured index file is typically used. The simplest such structure is a two-level
+      organization in which the original file is broken into sections and the upper level
+      consists of a sequenced set of pointers to the lower-level sections. This structure can
+      then be extended to more than two levels, resulting in a tree structure. Unless some
+      discipline is imposed on the construction of the tree index, it is likely to end up with
+      an uneven structure, with some short branches and some long branches, so that the
+      time to search the index is uneven. Therefore, a balanced tree structure, with all
+      branches of equal length, would appear to give the best average performance. Such a
+      structure is the B-tree, which has become the standard method of organizing indexes
+      for databases and is commonly used in OS file systems, including those supported by
+      Mac OS X, Windows, and several Linux file systems. The B-tree structure provides
+      for efficient searching, adding, and deleting of items.

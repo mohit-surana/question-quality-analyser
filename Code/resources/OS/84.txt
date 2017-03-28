@@ -1,0 +1,427 @@
+Major Achievements
+62  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+     to a particular file. The contention for resources, such as printers and mass storage
+     devices, must be handled. These and other problems, with possible solutions, will be
+     encountered throughout this text.
+2.3  MAJOR ACHIEVEMENTS
+     Operating systems are among the most complex pieces of software ever devel-
+     oped. This reflects the challenge of trying to meet the difficult and in some cases
+     competing objectives of convenience, efficiency, and ability to evolve. [DENN80a]
+     proposes that there have been four major theoretical advances in the development
+     of operating systems:
+     ·  Processes
+     ·  Memory management
+     ·  Information protection and security
+     ·  Scheduling and resource management
+        Each advance is characterized by principles, or abstractions, developed to
+     meet difficult practical problems. Taken together, these five areas span many of
+     the key design and implementation issues of modern operating systems. The brief
+     review of these five areas in this section serves as an overview of much of the rest
+     of the text.
+     The Process
+     Central to the design of operating systems is the concept of process. This term was
+     first used by the designers of Multics in the 1960s [DALE68]. It is a somewhat
+     more general term than job. Many definitions have been given for the term process,
+     including
+     ·  A program in execution
+     ·  An instance of a program running on a computer
+     ·  The entity that can be assigned to and executed on a processor
+     ·  A unit of activity characterized by a single sequential thread of execution, a
+        current state, and an associated set of system resources
+     This concept should become clearer as we proceed.
+        Three major lines of computer system development created problems in timing
+     and synchronization that contributed to the development of the concept of the
+     process: multiprogramming batch operation, time sharing, and real-time transaction
+     systems. As we have seen, multiprogramming was designed to keep the processor
+     and I/O devices, including storage devices, simultaneously busy to achieve maxi-
+     mum efficiency. The key mechanism is this: In response to signals indicating the
+     completion of I/O transactions, the processor is switched among the various pro-
+     grams residing in main memory.
+
+                                                   2.3 / MAJOR ACHIEVEMENTS             63
+   A second line of development was general-purpose time sharing. Here, the
+key design objective is to be responsive to the needs of the individual user and yet,
+for cost reasons, be able to support many users simultaneously. These goals are
+compatible because of the relatively slow reaction time of the user. For example,
+if a typical user needs an average of 2 seconds of processing time per minute, then
+close to 30 such users should be able to share the same system without noticeable
+interference. Of course, OS overhead must be factored into such calculations.
+   A third important line of development has been real-time transaction process-
+ing systems. In this case, a number of users are entering queries or updates against a
+database. An example is an airline reservation system. The key difference between
+the transaction processing system and the time-sharing system is that the former
+is limited to one or a few applications, whereas users of a time-sharing system can
+engage in program development, job execution, and the use of various applications.
+In both cases, system response time is paramount.
+   The principal tool available to system programmers in developing the early
+multiprogramming and multiuser interactive systems was the interrupt. The activity
+of any job could be suspended by the occurrence of a defined event, such as an I/O
+completion. The processor would save some sort of context (e.g., program coun-
+ter and other registers) and branch to an interrupt-handling routine, which would
+determine the nature of the interrupt, process the interrupt, and then resume user
+processing with the interrupted job or some other job.
+   The design of the system software to coordinate these various activities turned
+out to be remarkably difficult. With many jobs in progress at any one time, each of
+which involved numerous steps to be performed in sequence, it became impossible
+to analyze all of the possible combinations of sequences of events. In the absence of
+some systematic means of coordination and cooperation among activities, program-
+mers resorted to ad hoc methods based on their understanding of the environment
+that the OS had to control. These efforts were vulnerable to subtle programming
+errors whose effects could be observed only when certain relatively rare sequences
+of actions occurred. These errors were difficult to diagnose because they needed to
+be distinguished from application software errors and hardware errors. Even when
+the error was detected, it was difficult to determine the cause, because the precise
+conditions under which the errors appeared were very hard to reproduce. In general
+terms, there are four main causes of such errors [DENN80a]:
+·  Improper synchronization: It is often the case that a routine must be sus-
+   pended awaiting an event elsewhere in the system. For example, a program
+   that initiates an I/O read must wait until the data are available in a buffer
+   before proceeding. In such cases, a signal from some other routine is required.
+   Improper design of the signaling mechanism can result in signals being lost or
+   duplicate signals being received.
+·  Failed mutual exclusion: It is often the case that more than one user or pro-
+   gram will attempt to make use of a shared resource at the same time. For
+   example, two users may attempt to edit the same file at the same time. If
+   these accesses are not controlled, an error can occur. There must be some
+   sort of mutual exclusion mechanism that permits only one routine at a time
+   to perform an update against the file. The implementation of such mutual
+
+64  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+       exclusion is difficult to verify as being correct under all possible sequences
+       of events.
+    ·  Nondeterminate program operation: The results of a particular program
+       normally should depend only on the input to that program and not on
+       the activities of other programs in a shared system. But when programs share
+       memory, and their execution is interleaved by the processor, they may inter-
+       fere with each other by overwriting common memory areas in unpredictable
+       ways. Thus, the order in which various programs are scheduled may affect the
+       outcome of any particular program.
+    ·  Deadlocks: It is possible for two or more programs to be hung up waiting for
+       each other. For example, two programs may each require two I/O devices to
+       perform some operation (e.g., disk to tape copy). One of the programs has
+       seized control of one of the devices and the other program has control of
+       the other device. Each is waiting for the other program to release the desired
+       resource. Such a deadlock may depend on the chance timing of resource
+       allocation and release.
+       What is needed to tackle these problems is a systematic way to monitor
+    and control the various programs executing on the processor. The concept of the
+    process provides the foundation. We can think of a process as consisting of three
+    components:
+    ·  An executable program
+    ·  The associated data needed by the program (variables, work space, buffers, etc.)
+    ·  The execution context of the program
+       This last element is essential. The execution context, or process state, is the
+    internal data by which the OS is able to supervise and control the process. This
+    internal information is separated from the process, because the OS has information
+    not permitted to the process. The context includes all of the information that the OS
+    needs to manage the process and that the processor needs to execute the process
+    properly. The context includes the contents of the various processor registers, such
+    as the program counter and data registers. It also includes information of use to the
+    OS, such as the priority of the process and whether the process is waiting for the
+    completion of a particular I/O event.
+       Figure 2.8 indicates a way in which processes may be managed. Two proc-
+    esses, A and B, exist in portions of main memory. That is, a block of memory is
+    allocated to each process that contains the program, data, and context information.
+    Each process is recorded in a process list built and maintained by the OS. The
+    process list contains one entry for each process, which includes a pointer to the
+    location of the block of memory that contains the process. The entry may also
+    include part or all of the execution context of the process. The remainder of the
+    execution context is stored elsewhere, perhaps with the process itself (as indicated
+    in Figure 2.8) or frequently in a separate region of memory. The process index
+    register contains the index into the process list of the process currently controlling
+    the processor. The program counter points to the next instruction in that process
+    to be executed. The base and limit registers define the region in memory occupied
+
+                           2.3 / MAJOR ACHIEVEMENTS                                      65
+                  Main                                Processor
+                  memory                              registers
+                           Process index                      i
+                                               PC
+               i
+Process                                        Base           b
+list                                           limit          h
+               j
+                           Other
+                           registers
+                  Context
+Process           Data
+A
+                  Program
+                  (code)
+               b
+                  Context
+Process     h     Data
+B
+                  Program
+                  (code)
+Figure 2.8     Typical Process Implementation
+by the process: The base register is the starting address of the region of memory
+and the limit is the size of the region (in bytes or words). The program counter and
+all data references are interpreted relative to the base register and must not exceed
+the value in the limit register. This prevents interprocess interference.
+In Figure 2.8, the process index register indicates that process B is execut-
+ing. Process A was previously executing but has been temporarily interrupted. The
+contents of all the registers at the moment of A's interruption were recorded in its
+execution context. Later, the OS can perform a process switch and resume execution
+of process A. The process switch consists of storing the context of B and restoring
+the context of A. When the program counter is loaded with a value pointing into A's
+program area, process A will automatically resume execution.
+Thus, the process is realized as a data structure. A process can either be
+executing or awaiting execution. The entire state of the process at any instant is con-
+tained in its context. This structure allows the development of powerful techniques
+for ensuring coordination and cooperation among processes. New features can be
+designed and incorporated into the OS (e.g., priority) by expanding the context to
+
+66  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+    include any new information needed to support the feature. Throughout this book,
+    we will see a number of examples where this process structure is employed to solve
+    the problems raised by multiprogramming and resource sharing.
+       A final point, which we introduce briefly here, is the concept of thread. In
+    essence, a single process, which is assigned certain resources, can be broken up into
+    multiple, concurrent threads that execute cooperatively to perform the work of the
+    process. This introduces a new level of parallel activity to be managed by the hard-
+    ware and software.
+    Memory Management
+    The needs of users can be met best by a computing environment that supports
+    modular programming and the flexible use of data. System managers need efficient
+    and orderly control of storage allocation. The OS, to satisfy these requirements, has
+    five principal storage management responsibilities:
+    ·  Process isolation: The OS must prevent independent processes from interfer-
+       ing with each other's memory, both data and instructions.
+    ·  Automatic allocation and management: Programs should be dynamically
+       allocated across the memory hierarchy as required. Allocation should be
+       transparent to the programmer. Thus, the programmer is relieved of concerns
+       relating to memory limitations, and the OS can achieve efficiency by assigning
+       memory to jobs only as needed.
+    ·  Support of modular programming: Programmers should be able to define pro-
+       gram modules, and to create, destroy, and alter the size of modules dynamically.
+    ·  Protection and access control: Sharing of memory, at any level of the memory
+       hierarchy, creates the potential for one program to address the memory space
+       of another. This is desirable when sharing is needed by particular applications.
+       At other times, it threatens the integrity of programs and even of the OS itself.
+       The OS must allow portions of memory to be accessible in various ways by
+       various users.
+    ·  Long-term storage: Many application programs require means for storing
+       information for extended periods of time, after the computer has been
+       powered down.
+       Typically, operating systems meet these requirements with virtual memory
+    and file system facilities. The file system implements a long-term store, with infor-
+    mation stored in named objects, called files. The file is a convenient concept for the
+    programmer and is a useful unit of access control and protection for the OS.
+       Virtual memory is a facility that allows programs to address memory from
+    a logical point of view, without regard to the amount of main memory physically
+    available. Virtual memory was conceived to meet the requirement of having multi-
+    ple user jobs reside in main memory concurrently, so that there would not be a hia-
+    tus between the execution of successive processes while one process was written out
+    to secondary store and the successor process was read in. Because processes vary
+    in size, if the processor switches among a number of processes it is difficult to pack
+    them compactly into main memory. Paging systems were introduced, which allow
+
+                                             2.3 / MAJOR ACHIEVEMENTS                 67
+processes to be comprised of a number of fixed-size blocks, called pages. A pro-
+gram references a word by means of a virtual address consisting of a page number
+and an offset within the page. Each page of a process may be located anywhere
+in main memory. The paging system provides for a dynamic mapping between the
+virtual address used in the program and a real address, or physical address, in main
+memory.
+With dynamic mapping hardware available, the next logical step was to
+eliminate the requirement that all pages of a process reside in main memory simul-
+taneously. All the pages of a process are maintained on disk. When a process is
+executing, some of its pages are in main memory. If reference is made to a page
+that is not in main memory, the memory management hardware detects this and
+arranges for the missing page to be loaded. Such a scheme is referred to as virtual
+memory and is depicted in Figure 2.9.
+         A.1
+              A.0  A.2
+              A.5                            0                           0
+                                             1                           1
+         B.0  B.1  B.2  B.3                  2                           2
+                                             3                           3
+                                             4                           4
+                                             5                           5
+                   A.7                       6                           6
+              A.9                            7                           User
+                                             8                           program
+                                                                         B
+                   A.8                       9
+                                             10
+                                             User
+                                             program
+                                             A
+              B.5  B.6
+         Main memory                                  Disk
+Main memory consists of a                    Secondary memory (disk) can
+number of fixed-length frames,               hold many fixed-length pages. A
+each equal to the size of a page.            user program consists of some
+For a program to execute, some               number of pages. Pages for all
+or all of its pages must be in               programs plus the operating system
+main memory.                                 are on disk, as are files.
+Figure 2.9    Virtual Memory       Concepts
+
+68  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+                                                             Real
+                                        Memory-              address
+    Processor                           management
+                 Virtual                    unit
+                 address                                              Main
+                                                                      memory
+                                                    Disk
+                                                    address
+                                                                      Secondary
+                                                                      memory
+    Figure 2.10  Virtual Memory Addressing
+    The processor hardware, together with the OS, provides the user with a
+    "virtual processor" that has access to a virtual memory. This memory may be a
+    linear address space or a collection of segments, which are variable-length blocks
+    of contiguous addresses. In either case, programming language instructions can
+    reference program and data locations in the virtual memory area. Process isolation
+    can be achieved by giving each process a unique, nonoverlapping virtual memory.
+    Memory sharing can be achieved by overlapping portions of two virtual memory
+    spaces. Files are maintained in a long-term store. Files and portions of files may be
+    copied into the virtual memory for manipulation by programs.
+    Figure 2.10 highlights the addressing concerns in a virtual memory scheme.
+    Storage consists of directly addressable (by machine instructions) main memory
+    and lower-speed auxiliary memory that is accessed indirectly by loading blocks
+    into main memory. Address translation hardware (memory management unit) is
+    interposed between the processor and memory. Programs reference locations using
+    virtual addresses, which are mapped into real main memory addresses. If a refer-
+    ence is made to a virtual address not in real memory, then a portion of the contents
+    of real memory is swapped out to auxiliary memory and the desired block of data
+    is swapped in. During this activity, the process that generated the address reference
+    must be suspended. The OS designer needs to develop an address translation mech-
+    anism that generates little overhead and a storage allocation policy that minimizes
+    the traffic between memory levels.
+    Information Protection and Security
+    The growth in the use of time-sharing systems and, more recently, computer net-
+    works has brought with it a growth in concern for the protection of information.
+    The nature of the threat that concerns an organization will vary greatly depending
+    on the circumstances. However, there are some general-purpose tools that can be
+
+                                                  2.3 / MAJOR ACHIEVEMENTS               69
+built into computers and operating systems that support a variety of protection and
+security mechanisms. In general, we are concerned with the problem of controlling
+access to computer systems and the information stored in them.
+   Much of the work in security and protection as it relates to operating systems
+can be roughly grouped into four categories:
+·  Availability: Concerned with protecting the system against interruption.
+·  Confidentiality: Assures that users cannot read data for which access is
+   unauthorized.
+·  Data integrity: Protection of data from unauthorized modification.
+·  Authenticity: Concerned with the proper verification of the identity of users
+   and the validity of messages or data.
+Scheduling and Resource Management
+A key responsibility of the OS is to manage the various resources available to it
+(main memory space, I/O devices, processors) and to schedule their use by the vari-
+ous active processes. Any resource allocation and scheduling policy must consider
+three factors:
+·  Fairness: Typically, we would like all processes that are competing for the use
+   of a particular resource to be given approximately equal and fair access to that
+   resource. This is especially so for jobs of the same class, that is, jobs of similar
+   demands.
+·  Differential responsiveness: On the other hand, the OS may need to discrimi-
+   nate among different classes of jobs with different service requirements. The
+   OS should attempt to make allocation and scheduling decisions to meet the
+   total set of requirements. The OS should also make these decisions dynami-
+   cally. For example, if a process is waiting for the use of an I/O device, the OS
+   may wish to schedule that process for execution as soon as possible to free up
+   the device for later demands from other processes.
+·  Efficiency:     The  OS  should  attempt   to  maximize  throughput,  minimize
+   response time, and, in the case of time sharing, accommodate as many users
+   as possible. These criteria conflict; finding the right balance for a particular
+   situation is an ongoing problem for OS research.
+   Scheduling and resource management are essentially operations-research
+problems and the mathematical results of that discipline can be applied. In addition,
+measurement of system activity is important to be able to monitor performance and
+make adjustments.
+   Figure 2.11 suggests the major elements of the OS involved in the scheduling
+of processes and the allocation of resources in a multiprogramming environment.
+The OS maintains a number of queues, each of which is simply a list of processes
+waiting for some resource. The short-term queue consists of processes that are in
+main memory (or at least an essential minimum portion of each is in main memory)
+and are ready to run as soon as the processor is made available. Any one of these
+processes could use the processor next. It is up to the short-term scheduler, or
+
+70  CHAPTER 2 / OPERATING SYSTEM OVERVIEW
+                      Operating system
+    Service call      Service
+    from process      call
+                      handler (code)
+    Interrupt                              Long-                      Short-        I/O
+    from process      Interrupt            term                       term        queues
+                      handler (code)       queue                      queue
+    Interrupt
+    from I/O
+                                                                      Short-term
+                                                                      scheduler
+                                                                      (code)
+                                                                      Pass control
+                                                                      to process
+    Figure 2.11       Key Elements of an Operating System for Multiprogramming
+    dispatcher, to pick one. A common strategy is to give each process in the queue
+    some time in turn; this is referred to as a round-robin technique. In effect, the
+    round-robin technique employs a circular queue. Another strategy is to assign
+    priority levels to the various processes, with the scheduler selecting processes in
+    priority order.
+    The long-term queue is a list of new jobs waiting to use the processor. The
+    OS adds jobs to the system by transferring a process from the long-term queue to
+    the short-term queue. At that time, a portion of main memory must be allocated
+    to the incoming process. Thus, the OS must be sure that it does not overcommit
+    memory or processing time by admitting too many processes to the system. There
+    is an I/O queue for each I/O device. More than one process may request the use of
+    the same I/O device. All processes waiting to use each device are lined up in that
+    device's queue. Again, the OS must determine which process to assign to an avail-
+    able I/O device.
+    The OS receives control of the processor at the interrupt handler if an inter-
+    rupt occurs. A process may specifically invoke some OS service, such as an I/O
+    device handler by means of a service call. In this case, a service call handler is the
+    entry point into the OS. In any case, once the interrupt or service call is handled, the
+    short-term scheduler is invoked to pick a process for execution.
+    The foregoing is a functional description; details and modular design of this
+    portion of the OS will differ in various systems. Much of the research and develop-
+    ment effort in operating systems has been directed at picking algorithms and data
+    structures for this function that provide fairness, differential responsiveness, and
+    efficiency.
+
+        2.4 / DEVELOPMENTS LEADING TO MODERN OPERATING SYSTEMS                               71
+2.4  DEVELOPMENTS LEADING TO MODERN OPERATING
+     SYSTEMS
+     Over the years, there has been a gradual evolution of OS structure and capabilities.
+     However, in recent years a number of new design elements have been introduced
+     into both new operating systems and new releases of existing operating systems that
+     create a major change in the nature of operating systems. These modern operating
+     systems respond to new developments in hardware, new applications, and new secu-
+     rity threats. Among the key hardware drivers are multiprocessor systems, greatly
+     increased processor speed, high-speed network attachments, and increasing size
+     and variety of memory storage devices. In the application arena, multimedia appli-
+     cations, Internet and Web access, and client/server computing have influenced OS
+     design. With respect to security, Internet access to computers has greatly increased
+     the potential threat and increasingly sophisticated attacks, such as viruses, worms,
+     and hacking techniques, have had a profound impact on OS design.
+        The rate of change in the demands on operating systems requires not just
+     modifications and enhancements to existing architectures but new ways of organ-
+     izing the OS. A wide range of different approaches and design elements has been
+     tried in both experimental and commercial operating systems, but much of the work
+     fits into the following categories:
+     ·  Microkernel architecture
+     ·  Multithreading
+     ·  Symmetric multiprocessing
+     ·  Distributed operating systems
+     ·  Object-oriented design
+        Most operating systems, until recently, featured a large monolithic kernel.
+     Most of what is thought of as OS functionality is provided in these large kernels,
+     including scheduling, file system, networking, device drivers, memory management,
+     and more. Typically, a monolithic kernel is implemented as a single process, with
+     all elements sharing the same address space. A microkernel architecture assigns
+     only a few essential functions to the kernel, including address spaces, interproc-
+     ess communication (IPC), and basic scheduling. Other OS services are provided by
+     processes, sometimes called servers, that run in user mode and are treated like any
+     other application by the microkernel. This approach decouples kernel and server
+     development. Servers may be customized to specific application or environment
+     requirements. The microkernel approach simplifies implementation, provides flex-
+     ibility, and is well suited to a distributed environment. In essence, a microkernel
+     interacts with local and remote server processes in the same way, facilitating con-
+     struction of distributed systems.
+        Multithreading is a technique in which a process, executing an application, is
+     divided into threads that can run concurrently. We can make the following distinction:
+     · Thread: A dispatchable unit of work. It includes a processor context (which
+        includes the program counter and stack pointer) and its own data area for a

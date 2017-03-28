@@ -1,0 +1,128 @@
+File System Security
+                                             12.8 / FILE SYSTEM SECURITY                        551
+      Reliability
+      Consider the following scenario:
+      1.  User A requests a file allocation to add to an existing file.
+      2.  The request is granted and the disk and file allocation tables are updated in
+          main memory but not yet on disk.
+      3.  The system crashes and subsequently restarts.
+      4.  User B requests a file allocation and is allocated space on disk that overlaps
+          the last allocation to user A.
+      5.  User A accesses the overlapped portion via a reference that is stored inside
+          A's file.
+          This difficulty arose because the system maintained a copy of the disk alloca-
+      tion table and file allocation table in main memory for efficiency. To prevent this type
+      of error, the following steps could be performed when a file allocation is requested:
+      1.  Lock the disk allocation table on disk. This prevents another user from causing
+          alterations to the table until this allocation is completed.
+      2.  Search the disk allocation table for available space. This assumes that a copy
+          of the disk allocation table is always kept in main memory. If not, it must first
+          be read in.
+      3.  Allocate space, update the disk allocation table, and update the disk. Updating
+          the disk involves writing the disk allocation table back onto disk. For chained
+          disk allocation, it also involves updating some pointers on disk.
+      4.  Update the file allocation table and update the disk.
+      5.  Unlock the disk allocation table.
+          This technique will prevent errors. However, when small portions are allo-
+      cated frequently, the impact on performance will be substantial. To reduce this
+      overhead, a batch storage allocation scheme could be used. In this case, a batch of
+      free portions on the disk is obtained for allocation. The corresponding portions on
+      disk are marked "in use." Allocation using this batch may proceed in main memory.
+      When the batch is exhausted, the disk allocation table is updated on disk and a new
+      batch may be acquired. If a system crash occurs, portions on the disk marked "in
+      use" must be cleaned up in some fashion before they can be reallocated. The tech-
+      nique for cleanup will depend on the file system's particular characteristics.
+12.8  FILE SYSTEM SECURITY
+      Following successful log-on, the user has been granted access to one or a set of
+      hosts and applications. This is generally not sufficient for a system that includes
+      sensitive data in its database. Through the user­access control procedure, a user
+      can be identified to the system. Associated with each user, there can be a profile
+      that specifies permissible operations and file accesses. The operating system can
+      then enforce rules based on the user profile. The database management system,
+
+552     CHAPTER 12 / FILE MANAGEMENT
+        however, must control access to specific records or even portions of records. For
+        example, it may be permissible for anyone in administration to obtain a list of com-
+        pany personnel, but only selected individuals may have access to salary information.
+        The issue is more than just a matter of level of detail. Whereas the operating system
+        may grant a user permission to access a file or use an application, following which
+        there are no further security checks, the database management system must make
+        a decision on each individual access attempt. That decision will depend not only on
+        the user's identity but also on the specific parts of the data being accessed and even
+        on the information already divulged to the user.
+              A general model of access control as exercised by a file or database man-
+        agement system is that of an access matrix (Figure 12.15a, based on a figure in
+        [SAND94]). The basic elements of the model are as follows:
+                 File 1  File 2                    File 3  File 4     Account 1   Account 2
+                 Own                               Own                Inquiry
+        User A   R                                 R                     credit
+                 W                                 W
+                         Own                                             Inquiry     Inquiry
+        User B   R       R                         W               R       debit     credit
+                         W
+                 R                                         Own                       Inquiry
+        User C   W       R                                         R                 debit
+                                                                   W
+                                                   (a) Access matrix
+File 1        A     B                           C          User A     File 1      File 3
+        Own                                     R                     Own         Own
+              R     R       W                                         R           R
+              W                                                       W           W
+File 2        B     C                                      User B     File 1      File 2      File 3              File 4
+        Own                                                                       Own
+              R     R                                                 R           R           W                   R
+              W                                                                   W
+File 3        A     B                                      User C     File 1      File 2      File 4
+        Own                                                           R                       Own
+              R     W                                                 W           R           R
+              W                                                                               W
+File 4        B     C                                                 (c) Capability lists for files of part (a)
+                 Own
+              R     R
+                    W
+(b) Access control lists for files of part (a)
+Figure 12.15     Example of Access Control Structures
+
+                                12.9 / UNIX FILE MANAGEMENT                                     553
+      ·  Subject: An entity capable of accessing objects. Generally, the concept of sub-
+         ject equates with that of process. Any user or application actually gains access
+         to an object by means of a process that represents that user or application.
+      ·  Object: Anything to which access is controlled. Examples include files, portions
+         of files, programs, segments of memory, and software objects (e.g., Java objects).
+      ·  Access right: The way in which an object is accessed by a subject. Examples
+         are read, write, execute, and functions in software objects.
+         One dimension of the matrix consists of identified subjects that may attempt
+      data access. Typically, this list will consist of individual users or user groups, although
+      access could be controlled for terminals, hosts, or applications instead of or in addi-
+      tion to users. The other dimension lists the objects that may be accessed. At the great-
+      est level of detail, objects may be individual data fields. More aggregate groupings,
+      such as records, files, or even the entire database, may also be objects in the matrix.
+      Each entry in the matrix indicates the access rights of that subject for that object.
+         In practice, an access matrix is usually sparse and is implemented by decom-
+      position in one of two ways. The matrix may be decomposed by columns, yielding
+      access control lists (Figure 12.15b). Thus for each object, an access control list lists
+      users and their permitted access rights. The access control list may contain a default,
+      or public, entry. This allows users that are not explicitly listed as having special rights
+      to have a default set of rights. Elements of the list may include individual users as
+      well as groups of users.
+         Decomposition by rows yields capability tickets (Figure 12.15c). A capabil-
+      ity ticket specifies authorized objects and operations for a user. Each user has a
+      number of tickets and may be authorized to loan or give them to others. Because
+      tickets may be dispersed around the system, they present a greater security problem
+      than access control lists. In particular, the ticket must be unforgeable. One way to
+      accomplish this is to have the operating system hold all tickets on behalf of users.
+      These tickets would have to be held in a region of memory inaccessible to users.
+         Network considerations for data­oriented access control parallel those for
+      user­oriented access control. If only certain users are permitted to access certain
+      items of data, then encryption may be needed to protect those items during trans-
+      mission to authorized users. Typically, data access control is decentralized, that is,
+      controlled by host­based database management systems. If a network database
+      server exists on a network, then data access control becomes a network function.
+12.9  UNIX FILE MANAGEMENT
+      In the UNIX file system, six types of files are distinguished:
+      ·  Regular, or ordinary: Contains arbitrary data in zero or more data blocks.
+         Regular files contain information entered in them by a user, an application
+         program, or a system utility program. The file system does not impose any
+         internal structure to a regular file but treats it as a stream of bytes.
+      ·  Directory: Contains a list of file names plus pointers to associated inodes (index
+         nodes), described later. Directories are hierarchically organized (Figure 12.6).
