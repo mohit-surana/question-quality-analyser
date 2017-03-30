@@ -88,7 +88,7 @@ def calc_tf_idf(documents, tok_name):
         vocabulary.extend(final_tokens)
         vocab.append(' '.join(final_tokens))
     
-    open('vocabulary_' + tok_name+'.txt', 'w').write(' ;'.join(vocabulary))
+    open('resources/vocabulary_' + tok_name+'.txt', 'w').write(' ;'.join(vocabulary))
 
     print('calculating idf for ', tok_name)
     for doc in docs:
