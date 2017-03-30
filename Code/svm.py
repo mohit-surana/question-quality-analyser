@@ -33,7 +33,8 @@ Y_know = []
 if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
     freq = dict()
     with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
-        csvreader = csv.reader(csvfile.read().splitlines()[1:])
+        all_rows = csvfile.read().splitlines()[1:]
+        csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
         for row in csvreader:
             sentence, label_cog, label_know = row
             m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
@@ -48,7 +49,8 @@ if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
             Y_know.append(mapping_know[label_know])
 
     with codecs.open('datasets/BCLs_Question_Dataset.csv', 'r', encoding="utf-8") as csvfile:
-        csvreader = csv.reader(csvfile.read().splitlines())
+        all_rows = csvfile.read().splitlines()[1:]
+        csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
         for row in csvreader:
             sentence, label_cog = row
             clean_sentence = clean(sentence)
@@ -59,6 +61,13 @@ if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
             Y_cog.append(mapping_cog[label_cog])
             # TODO: Label
             Y_know.append(1)
+            
+    domain_keywords = pickle.load(open('resources/domain.pkl', 'rb'))
+    for key in domain_keywords:
+        for word in domain_keywords[key]:
+            freq[word] = freq.get(word, 0) + 1
+            X.append([word])
+            Y_cog.append(mapping_cog[key])
 
     vocab = {word for word in freq if freq[word]> (1 if FILTERED else 0)}
 
@@ -95,6 +104,12 @@ def train(X, Y, model_name='svm_model'):
     X = tfidf.toarray()
 
     clf = svm.LinearSVC()
+    clf.fit(X,Y)
+    joblib.dump(transformer, 'models/tfidf_transformer%s.pkl' % (filtered_suffix, ))
+    joblib.dump(clf, 'models/%s%s.pkl' % (model_name, filtered_suffix, ))
+
+    '''
+    # MOHIT, don't cry when you see this, you're code is still here. :P
     clf.fit(X[:(7*len(X))//10], Y[:(7*len(X))//10])
 
     joblib.dump(transformer, 'models/tfidf_transformer%s.pkl' % (filtered_suffix, ))
@@ -119,7 +134,8 @@ def train(X, Y, model_name='svm_model'):
     # print(recall_score(targets, predictions, average="macro"))
     print(classification_report(targets, predictions))
     # print(confusion_matrix(targets, predictions))
-
+    '''
+    
 if(TRAIN_CLASSIFIER):
     train(X, Y_cog)
 
@@ -141,13 +157,52 @@ def get_cognitive_probs(question, model_name='svm_model'):
     probs = abs(1 / probs[0])
 
     label = clf.predict([vec])[0]
-
     probs = np.exp(probs) / np.sum(np.exp(probs))
 
     for i in range(label + 1, 6):
         probs[i] = 0.0
 
     return probs
+    
+def get_labels_batch(questions, model_name='svm_model'):
+    
+    labels = []
+    probabs = []
+    for question in questions:
+        clean_question = clean(question)
 
+        vec = np.zeros((vocab_size, ), dtype=np.int32)
+        for j in range(len(clean_question)):
+            word = clean_question[j]
+            if(word in vocab_list):
+                vec[vocab_list.index(word)] += 1
+
+        transformer = joblib.load('models/tfidf_transformer%s.pkl' % (filtered_suffix, ))
+        tfidf = transformer.fit_transform([vec])
+        X = tfidf.toarray()
+
+        clf = joblib.load('models/%s%s.pkl' % (model_name, filtered_suffix, ))
+        probs = clf.decision_function(X)
+        probs = abs(1 / probs[0])
+
+        label = clf.predict([vec])[0]
+        labels.append(label)
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+    
+        for i in range(label + 1, 6):
+            probs[i] = 0.0
+        
+        probabs.append(probs)
+
+    return probabs, labels
+    
+def get_prediction(labels, targets):
+    count = 0
+    result = list(zip(labels, targets))
+    for res in result:
+        if res[0] == res[1]:
+            count += 1
+    return count/len(result)
+    
 if __name__ == '__main__':
     pass
