@@ -1,0 +1,852 @@
+UNIX File Management
+                                12.9 / UNIX FILE MANAGEMENT                                     553
+      ·  Subject: An entity capable of accessing objects. Generally, the concept of sub-
+         ject equates with that of process. Any user or application actually gains access
+         to an object by means of a process that represents that user or application.
+      ·  Object: Anything to which access is controlled. Examples include files, portions
+         of files, programs, segments of memory, and software objects (e.g., Java objects).
+      ·  Access right: The way in which an object is accessed by a subject. Examples
+         are read, write, execute, and functions in software objects.
+         One dimension of the matrix consists of identified subjects that may attempt
+      data access. Typically, this list will consist of individual users or user groups, although
+      access could be controlled for terminals, hosts, or applications instead of or in addi-
+      tion to users. The other dimension lists the objects that may be accessed. At the great-
+      est level of detail, objects may be individual data fields. More aggregate groupings,
+      such as records, files, or even the entire database, may also be objects in the matrix.
+      Each entry in the matrix indicates the access rights of that subject for that object.
+         In practice, an access matrix is usually sparse and is implemented by decom-
+      position in one of two ways. The matrix may be decomposed by columns, yielding
+      access control lists (Figure 12.15b). Thus for each object, an access control list lists
+      users and their permitted access rights. The access control list may contain a default,
+      or public, entry. This allows users that are not explicitly listed as having special rights
+      to have a default set of rights. Elements of the list may include individual users as
+      well as groups of users.
+         Decomposition by rows yields capability tickets (Figure 12.15c). A capabil-
+      ity ticket specifies authorized objects and operations for a user. Each user has a
+      number of tickets and may be authorized to loan or give them to others. Because
+      tickets may be dispersed around the system, they present a greater security problem
+      than access control lists. In particular, the ticket must be unforgeable. One way to
+      accomplish this is to have the operating system hold all tickets on behalf of users.
+      These tickets would have to be held in a region of memory inaccessible to users.
+         Network considerations for data­oriented access control parallel those for
+      user­oriented access control. If only certain users are permitted to access certain
+      items of data, then encryption may be needed to protect those items during trans-
+      mission to authorized users. Typically, data access control is decentralized, that is,
+      controlled by host­based database management systems. If a network database
+      server exists on a network, then data access control becomes a network function.
+12.9  UNIX FILE MANAGEMENT
+      In the UNIX file system, six types of files are distinguished:
+      ·  Regular, or ordinary: Contains arbitrary data in zero or more data blocks.
+         Regular files contain information entered in them by a user, an application
+         program, or a system utility program. The file system does not impose any
+         internal structure to a regular file but treats it as a stream of bytes.
+      ·  Directory: Contains a list of file names plus pointers to associated inodes (index
+         nodes), described later. Directories are hierarchically organized (Figure 12.6).
+
+554  CHAPTER 12 / FILE MANAGEMENT
+        Directory files are actually ordinary files with special write protection privileges
+        so that only the file system can write into them, while read access is available to
+        user programs.
+     ·  Special: Contains no data but provides a mechanism to map physical devices
+        to file names. The file names are used to access peripheral devices, such as
+        terminals and printers. Each I/O device is associated with a special file, as
+        discussed in Section 11.8.
+     ·  Named pipes: As discussed in Section 6.7, a pipe is an interprocess communi-
+        cations facility. A pipe file buffers data received in its input so that a process
+        that reads from the pipe's output receives the data on a first-in-first-out basis.
+     ·  Links: In essence, a link is an alternative file name for an existing file.
+     ·  Symbolic links: This is a data file that contains the name of the file it is linked to.
+        In this section, we are concerned with the handling of ordinary files, which
+     correspond to what most systems treat as files.
+     Inodes
+     Modern UNIX operating systems support multiple file systems but map all of these
+     into a uniform underlying system for supporting file systems and allocating disk
+     space to files. All types of UNIX files are administered by the OS by means of
+     inodes. An inode (index node) is a control structure that contains the key informa-
+     tion needed by the operating system for a particular file. Several file names may be
+     associated with a single inode, but an active inode is associated with exactly one file,
+     and each file is controlled by exactly one inode.
+        The attributes of the file as well as its permissions and other control infor-
+     mation are stored in the inode. The exact inode structure varies from one UNIX
+     implementation to another. The FreeBSD inode structure, shown in Figure 12.16,
+     includes the following data elements:
+     ·  The type and access mode of the file
+     ·  The file's owner and group-access identifiers
+     ·  The time that the file was created, when it was most recently read and written,
+        and when its inode was most recently updated by the system
+     ·  The size of the file in bytes
+     ·  A sequence of block pointers, explained in the next subsection
+     ·  The number of physical blocks used by the file, including blocks used to hold
+        indirect pointers and attributes
+     ·  The number of directory entries that reference the file
+     ·  The kernel and user-settable flags that describe the characteristics of the file
+     ·  The generation number of the file (a randomly selected number assigned to
+        the inode each time that the latter is allocated to a new file; the generation
+        number is used to detect references to deleted files)
+     ·  The blocksize of the data blocks referenced by the inode (typically the same
+        as, but sometimes larger than, the file system blocksize)
+
+                                                      12.9 / UNIX FILE MANAGEMENT    555
+Mode                Data      Data                    Data
+Owners (2)
+                    Data
+Timestamps (4)
+                              Data                    Data                         Data
+Size
+Direct (0)          Data
+Direct (1)                                            Data                         Data
+                    Pointers
+                              Pointers                Data                         Data
+Direct (12)
+Single indirect     Pointers
+                              Pointers                                             Data
+Double indirect
+Triple indirect                                       Pointers
+Block count                                                                        Data
+Reference count
+                              Pointers                Pointers
+Flags (2)                                                                          Data
+Generation number   Pointers
+Blocksize                     Pointers                Pointers
+                                                                                   Data
+Extended attr size
+Extended                                              Pointers
+attribute                                                                          Data
+blocks
+Inode
+Figure 12.16     Structure of FreeBSD Inode and File
+· The size of the extended attribute information
+· Zero or more extended attribute entries
+              The blocksize value is typically the same as, but sometimes larger than, the file
+system blocksize. On traditional UNIX systems, a fixed blocksize of 512 bytes was
+used. FreeBSD has a minimum blocksize of 4,096 bytes (4 Kbytes); the blocksize
+can be any power of 2 greater than or equal to 4,096. For typical file systems, the
+blocksize is 8 Kbytes or 16 Kbytes. The default FreeBSD blocksize is 16 Kbytes.
+              Extended attribute entries are variable-length entries used to store auxiliary
+data that are separate from the contents of the file. The first two extended attributes
+defined for FreeBSD deal with security. The first of these support access control
+
+556  CHAPTER 12 / FILE MANAGEMENT
+        lists; this is described in Chapter 15. The second defined extended attribute sup-
+        ports the use of security labels, which are part of what is known as a mandatory
+        access control scheme, also defined in Chapter 15.
+                 On the disk, there is an inode table, or inode list, that contains the inodes of
+        all the files in the file system. When a file is opened, its inode is brought into main
+        memory and stored in a memory-resident inode table.
+        File Allocation
+        File allocation is done on a block basis. Allocation is dynamic, as needed, rather
+        than using preallocation. Hence, the blocks of a file on disk are not necessarily con-
+        tiguous. An indexed method is used to keep track of each file, with part of the index
+        stored in the inode for the file. In all UNIX implementations, the inode includes a
+        number of direct pointers and three indirect pointers (single, double, triple).
+                 The FreeBSD inode includes 120 bytes of address information that is organ-
+        ized as fifteen 64-bit addresses, or pointers. The first 12 addresses point to the first
+        12 data blocks of the file. If the file requires more than 12 data blocks, one or more
+        levels of indirection is used as follows:
+            ·    The thirteenth address in the inode points to a block on disk that contains the
+                 next portion of the index. This is referred to as the single indirect block. This
+                 block contains the pointers to succeeding blocks in the file.
+            ·    If the file contains more blocks, the fourteenth address in the inode points to
+                 a double indirect block. This block contains a list of addresses of additional
+                 single indirect blocks. Each of single indirect blocks, in turn, contains pointers
+                 to file blocks.
+            ·    If the file contains still more blocks, the fifteenth address in the inode points
+                 to a triple indirect block that is a third level of indexing. This block points to
+                 additional double indirect blocks.
+                 All of this is illustrated in Figure 12.16. The total number of data blocks
+        in a file depends on the capacity of the fixed-size blocks in the system. In
+        FreeBSD, the minimum block size is 4 Kbytes, and each block can hold a total of
+        512 block addresses. Thus, the maximum size of a file with this block size is over
+        500 GB (Table 12.4).
+                 This scheme has several advantages:
+            1.   The inode is of fixed size and relatively small and hence may be kept in main
+                 memory for long periods.
+Table 12.4  Capacity of a FreeBSD File with 4-Kbyte Block Size
+Level                             Number of Blocks              Number of Bytes
+Direct                                                12                        48K
+Single Indirect                                       512                       2M
+Double Indirect                            512 × 512  256K                      1G
+Triple Indirect                   512 × 256K  128M                              512G
+
+                                          12.9 / UNIX FILE MANAGEMENT                  557
+2.  Smaller files may be accessed with little or no indirection, reducing processing
+    and disk access time.
+3.  The theoretical maximum size of a file is large enough to satisfy virtually all
+    applications.
+Directories
+Directories are structured in a hierarchical tree. Each directory can contain files
+and/or other directories. A directory that is inside another directory is referred to
+as a subdirectory. As was mentioned, a directory is simply a file that contains a
+list of file names plus pointers to associated inodes. Figure 12.17 shows the overall
+structure. Each directory entry (dentry) contains a name for the associated file or
+subdirectory plus an integer called the i-number (index number). When the file or
+directory is accessed, its i-number is used as an index into the inode table.
+Volume Structure
+A UNIX file system resides on a single logical disk or disk partition and is laid out
+with the following elements:
+·   Boot block: Contains code required to boot the operating system
+·   Superblock: Contains attributes and information about the file system, such as
+    partition size, and inode table size
+·   Inode table: The collection of inodes for each file
+·   Data blocks: Storage space available for data files and subdirectories
+             Inode table                                     Directory
+                                                         i1  Name1
+                                                         i2  Name2
+                                                         i3  Name3
+                                                         i4  Name4
+    Figure 12.17           UNIX Directories and Inodes
+
+558  CHAPTER 12 / FILE MANAGEMENT
+     Traditional UNIX File Access Control
+     Most UNIX systems depend on, or at least are based on, the file access control
+     scheme introduced with the early versions of UNIX. Each UNIX user is assigned a
+     unique user identification number (user ID). A user is also a member of a primary
+     group, and possibly a number of other groups, each identified by a group ID. When
+     a file is created, it is designated as owned by a particular user and marked with that
+     user's ID. It also belongs to a specific group, which initially is either its creator's
+     primary group, or the group of its parent directory if that directory has SetGID
+     permission set. Associated with each file is a set of 12 protection bits. The owner ID,
+     group ID, and protection bits are part of the file's inode.
+     Nine of the protection bits specify read, write, and execute permission for the
+     owner of the file, other members of the group to which this file belongs, and all
+     other users. These form a hierarchy of owner, group, and all others, with the highest
+     relevant set of permissions being used. Figure 12.18a shows an example in which the
+     file owner has read and write access; all other members of the file's group have read
+     access, and users outside the group have no access rights to the file. When applied to
+     a directory, the read and write bits grant the right to list and to create/rename/delete
+     files in the directory.5 The execute bit grants the right to search the directory for a
+     component of a filename.
+                                                        OGOtrwhoneureprcclclalasasssss
+                                                        rw-  r--  ---
+                               user:              :rw-
+                               group: :r--
+                               other: :---
+     (a) Traditional UNIX approach (minimal access control list)
+                                                        OGOtrwhoneureprcclclalasasssss
+                                                        rw-  rw-  ---
+                               user: :rw-
+     Masked                    user:joe:rw-
+     entries                   group: :r--
+                               mask: :rw-
+                               other: :---
+                               (b) Extended access control list
+     Figure 12.18                     UNIX File Access Control
+     5Note that the permissions that apply to a directory are distinct from those that apply to any file or direc-
+     tory it contains. The fact that a user has the right to write to the directory does not give the user the right
+     to write to a file in that directory. That is governed by the permissions of the specific file. The user would,
+     however, have the right to rename the file.
+
+                                                          12.9 / UNIX FILE MANAGEMENT     559
+The remaining three bits define special additional behavior for files or direc-
+tories. Two of these are the "set user ID" (SetUID) and "set group ID" (SetGID)
+permissions. If these are set on an executable file, the operating system functions as
+follows. When a user (with execute privileges for this file) executes the file, the sys-
+tem temporarily allocates the rights of the user's ID of the file creator, or the file's
+group, respectively, to those of the user executing the file. These are known as the
+"effective user ID" and "effective group ID" and are used in addition to the "real
+user ID" and "real group ID" of the executing user when making access control
+decisions for this program. This change is only effective while the program is being
+executed. This feature enables the creation and use of privileged programs that may
+use files normally inaccessible to other users. It enables users to access certain files
+in a controlled fashion. Alternatively, when applied to a directory, the SetGID per-
+mission indicates that newly created files will inherit the group of this directory. The
+SetUID permission is ignored.
+The final permission bit is the "Sticky" bit. When set on a file, this originally
+indicated that the system should retain the file contents in memory following execu-
+tion. This is no longer used. When applied to a directory, though, it specifies that
+only the owner of any file in the directory can rename, move, or delete that file. This
+is useful for managing files in shared temporary directories.
+One particular user ID is designated as "superuser." The superuser is exempt
+from the usual file access control constraints and has systemwide access. Any
+program that is owned by, and SetUID to, the "superuser" potentially grants unre-
+stricted access to the system to any user executing that program. Hence, great care
+is needed when writing such programs.
+This access scheme is adequate when file access requirements align with users
+and a modest number of groups of users. For example, suppose a user wants to give
+read access for file X to users A and B and read access for file Y to users B and C.
+We would need at least two user groups, and user B would need to belong to both
+groups in order to access the two files. However, if there are a large number of
+different groupings of users requiring a range of access rights to different files, then
+a very large number of groups may be needed to provide this. This rapidly becomes
+unwieldy and difficult to manage, even if possible at all.6 One way to overcome this
+problem is to use access control lists, which are provided in most modern UNIX
+systems.
+A final point to note is that the traditional UNIX file access control scheme
+implements a simple protection domain structure. A domain is associated with the
+user, and switching the domain corresponds to changing the user ID temporarily.
+Access Control Lists in UNIX
+Many modern UNIX and UNIX-based operating systems support access control
+lists, including FreeBSD, OpenBSD, Linux, and Solaris. In this section, we describe
+the FreeBSD approach, but other implementations have essentially the same fea-
+tures and interface. The feature is referred to as extended access control list, while
+the traditional UNIX approach is referred to as minimal access control list.
+6Most UNIX systems impose a limit on the maximum number of groups any user may belong to, as well
+as to the total number of groups possible on the system.
+
+560  CHAPTER 12 / FILE MANAGEMENT
+           FreeBSD allows the administrator to assign a list of UNIX user IDs and
+     groups to a file by using the setfacl command. Any number of users and groups
+     can be associated with a file, each with three protection bits (read, write, execute),
+     offering a flexible mechanism for assigning access rights. A file need not have an
+     ACL but may be protected solely by the traditional UNIX file access mechanism.
+     FreeBSD files include an additional protection bit that indicates whether the file
+     has an extended ACL.
+           FreeBSD and most UNIX implementations that support extended ACLs use
+     the following strategy (e.g., Figure 12.18b):
+       1.  The owner class and other class entries in the nine-bit permission field have
+           the same meaning as in the minimal ACL case.
+       2.  The group class entry specifies the permissions for the owner group for this
+           file. These permissions represent the maximum permissions that can be
+           assigned to named users or named groups, other than the owning user. In this
+           latter role, the group class entry functions as a mask.
+       3.  Additional named users and named groups may be associated with the file,
+           each with a three-bit permission field. The permissions listed for a named
+           user or named group are compared to the mask field. Any permission
+           for the named user or named group that is not present in the mask field is
+           disallowed.
+           When a process requests access to a file system object, two steps are performed.
+     Step 1 selects the ACL entry that most closely matches the requesting process. The
+     ACL entries are looked at in the following order: owner, named users, (owning or
+     named) groups, and others. Only a single entry determines access. Step 2 checks
+     if the matching entry contains sufficient permissions. A process can be a member
+     in more than one group; so more than one group entry can match. If any of these
+     matching group entries contain the requested permissions, one that contains the
+     requested permissions is picked (the result is the same no matter which entry is
+     picked). If none of the matching group entries contains the requested permissions,
+     access will be denied no matter which entry is picked.
+12.10  LINUX VIRTUAL FILE SYSTEM
+     Linux includes a versatile and powerful file-handling facility, designed to support a
+     wide variety of file management systems and file structures. The approach taken in
+     Linux is to make use of a virtual file system (VFS), which presents a single, uniform
+     file system interface to user processes. The VFS defines a common file model that is
+     capable of representing any conceivable file system's general feature and behavior.
+     The VFS assumes that files are objects in a computer's mass storage memory that
+     share basic properties regardless of the target file system or the underlying proces-
+     sor hardware. Files have symbolic names that allow them to be uniquely identified
+     within a specific directory within the file system. A file has an owner, protection
+     against unauthorized access or modification, and a variety of other properties. A
+     file may be created, read from, written to, or deleted. For any specific file system, a
+
+                            12.10 / LINUX                 VIRTUAL  FILE  SYSTEM             561
+              User process
+                 System call
+System calls interface
+                            Virtual file
+                            system (VFS)
+                                                          Linux kernel
+IBM JFS       DOS FS          NTFS        ext2 FS
+Page cache
+Device drivers
+              I/O request
+                                                          Hardware
+Disk controller
+Figure 12.19  Linux Virtual File System Context
+mapping module is needed to transform the characteristics of the real file system to
+the characteristics expected by the virtual file system.
+Figure 12.19 indicates the key ingredients of the Linux file system strategy. A
+user process issues a file system call (e.g., read) using the VFS file scheme. The VFS
+converts this into an internal (to the kernel) file system call that is passed to a map-
+ping function for a specific file system [e.g., IBM's Journaling File System (JFS)]. In
+most cases, the mapping function is simply a mapping of file system functional calls
+from one scheme to another. In some cases, the mapping function is more complex.
+For example, some file systems use a file allocation table (FAT), which stores the
+position of each file in the directory tree. In these file systems, directories are not
+files. For such file systems, the mapping function must be able to construct dynami-
+cally, and when needed, the files corresponding to the directories. In any case, the
+original user file system call is translated into a call that is native to the target file
+system. The target file system software is then invoked to perform the requested
+function on a file or directory under its control and secondary storage. The results
+of the operation are then communicated back to the user in a similar fashion.
+Figure 12.20 indicates the role that VFS plays within the Linux kernel. When
+a process initiates a file-oriented system call (e.g., read), the kernel calls a function
+in the VFS. This function handles the file-system-independent manipulations and
+initiates a call to a function in the target file system code. This call passes through
+a mapping function that converts the call from the VFS into a call to the target file
+
+562      CHAPTER 12 / FILE MANAGEMENT
+                                                                System calls
+         System calls                  VFS                      using
+         using VFS                     system                   filesystem X             Disk I/O
+         user interface  Linux         calls   Mapping          interface                calls
+                         virtual               function                       File
+                         file                          to file                system X
+User                     system                system X
+process
+                                                                                                   Files on secondary
+                                                                                                   storage maintained
+                                                                                                   by file system X
+Figure   12.20  Linux    Virtual File  System Concept
+                system. The VFS is independent of any file system, so the implementation of a map-
+                ping function must be part of the implementation of a file system on Linux. The
+                target file system converts the file system request into device-oriented instructions
+                that are passed to a device driver by means of page cache functions.
+                         VFS is an object-oriented scheme. Because it is written in C, rather than a
+                language that supports object programming (such as C++ or Java), VFS objects are
+                implemented simply as C data structures. Each object contains both data and point-
+                ers to file-system-implemented functions that operate on data. The four primary
+                object types in VFS are as follows:
+                ·        Superblock object: Represents a specific mounted file system
+                ·        Inode object: Represents a specific file
+                ·        Dentry object: Represents a specific directory entry
+                ·        File object: Represents an open file associated with a process
+                         This scheme is based on the concepts used in UNIX file systems, as described in
+                Section 12.7. The key concepts of UNIX file system to remember are the following. A
+                file system consists of a hierarchal organization of directories. A directory is the same
+                as what is known as a folder on many non-UNIX platforms and may contain files and/
+                or other directories. Because a directory may contain other directories, a tree struc-
+                ture is formed. A path through the tree structure from the root consists of a sequence
+                of directory entries, ending in either a directory entry (dentry) or a file name. In
+                UNIX, a directory is implemented as a file that lists the files and directories contained
+                within it. Thus, file operations can be performed on either files or directories.
+                The Superblock Object
+                The superblock object stores information describing a specific file system. Typically,
+                the superblock corresponds to the file system superblock or file system control
+                block, which is stored in a special sector on disk.
+                         The superblock object consists of a number of data items. Examples include
+                the following:
+                · The device that this file system is mounted on
+                · The basic block size of the file system
+
+                                    12.10 / LINUX VIRTUAL FILE SYSTEM               563
+·  Dirty flag, to indicate that the superblock has been      changed  but not  written
+   back to disk
+·  File system type
+·  Flags, such as a read-only flag
+·  Pointer to the root of the file system directory
+·  List of open files
+·  Semaphore for controlling access to the file system
+·  List of superblock operations
+   The last item on the preceding list refers to an operations object contained
+within the superblock object. The operations object defines the object methods
+(functions) that the kernel can invoke against the superblock object. The methods
+defined for the superblock object include the following:
+·  read_inode: Read a specified inode from a mounted file system.
+·  write_inode: Write given inode to disk.
+·  put_inode: Release inode.
+·  delete_inode: Delete inode from disk.
+·  notify_change: Called when inode attributes are changed.
+·  put_super: Called by the VFS on unmount to release the given superblock.
+·  write_super: Called when the VFS decides that the superblock needs to be
+   written to disk.
+·  statfs: Obtain file system statistics.
+·  remount_fs: Called by the VFS when the file system is remounted with new
+   mount options.
+·  clear_inode: Release inode and clear any pages containing related data.
+The Inode Object
+An inode is associated with each file. The inode object holds all the information
+about a named file except its name and the actual data contents of the file. Items
+contained in an inode object include owner, group, permissions, access times for a
+file, size of data it holds, and number of links.
+   The inode object also includes an inode operations object that describes the
+file system's implemented functions that the VFS can invoke on an inode. The
+methods defined for the inode object include the following:
+·  create: Creates a new inode for a regular file associated with a dentry object
+   in some directory
+·  lookup: Searches a directory for an inode corresponding to a file name
+·  mkdir: Creates a new inode for a directory associated with a dentry object in
+   some directory
+
+564  CHAPTER 12 / FILE MANAGEMENT
+     The Dentry Object
+     A dentry (directory entry) is a specific component in a path. The component may
+     be either a directory name or a file name. Dentry objects facilitate access to files
+     and directories and are used in a dentry cache for that purpose. The dentry object
+     includes a pointer to the inode and superblock. It also includes a pointer to the
+     parent dentry and pointers to any subordinate dentrys.
+     The File Object
+     The file object is used to represent a file opened by a process. The object is created
+     in response to the open() system call and destroyed in response to the close() sys-
+     tem call. The file object consists of a number of items, including the following:
+       ·  Dentry object associated with the file
+       ·  File system containing the file
+       ·  File objects usage counter
+       ·  User's user ID
+       ·  User's group ID
+       ·  File pointer, which is the current position  in    the  file  from    which   the  next
+          operation will take place
+          The file object also includes an inode operations object that describes the file
+     system's implemented functions that the VFS can invoke on a file object. The methods
+     defined for the file object include read, write, open, release, and lock.
+12.11  WINDOWS FILE SYSTEM
+     The developers of Windows NT designed a new file system, the New Technology
+     File System (NTFS), which is intended to meet high-end requirements for worksta-
+     tions and servers. Examples of high-end applications include the following:
+       ·  Client/server applications such as file servers, compute servers, and database
+          servers
+       ·  Resource-intensive engineering and scientific applications
+       ·  Network applications for large corporate systems
+          This section provides an overview of NTFS.
+     Key Features of NTFS
+     NTFS is a flexible and powerful file system built, as we shall see, on an elegantly sim-
+     ple file system model. The most noteworthy features of NTFS include the following:
+       ·  Recoverability: High on the list of requirements for the new Windows file
+          system was the ability to recover from system crashes and disk failures. In the
+          event of such failures, NTFS is able to reconstruct disk volumes and return
+          them to a consistent state. It does this by using a transaction-processing model
+
+                                             12.11 / WINDOWS FILE SYSTEM  565
+   for changes to the file system; each significant change is treated as an atomic
+   action that is either entirely performed or not performed at all. Each transac-
+   tion that was in process at the time of a failure is subsequently backed out or
+   brought to completion. In addition, NTFS uses redundant storage for critical
+   file system data, so that failure of a disk sector does not cause the loss of data
+   describing the structure and status of the file system.
+·  Security: NTFS uses the Windows object model to enforce security. An open
+   file is implemented as a file object with a security descriptor that defines its
+   security attributes. The security descriptor is persisted as an attribute of each
+   file on disk.
+·  Large disks and large files: NTFS supports very large disks and very large files
+   more efficiently than other file systems, such as FAT.
+·  Multiple data streams: The actual contents of a file are treated as a stream of
+   bytes. In NTFS, it is possible to define multiple data streams for a single file.
+   An example of the utility of this feature is that it allows Windows to be used
+   by remote Macintosh systems to store and retrieve files. On Macintosh, each
+   file has two components: the file data and a resource fork that contains infor-
+   mation about the file. NTFS treats these two components as two data streams
+   within a single file.
+·  Journaling: NTFS keeps a log of all changes made to files on the volumes.
+   Programs, such as desktop search, can read the journal to identify what files
+   have changed.
+·  Compression and encryption: Entire directories and individual files can be
+   transparently compressed and/or encrypted.
+·  Hard and symbolic links: In order to support POSIX, Windows has always sup-
+   ported "hard links," which allow a single file to be accessible by multiple path
+   names on the same volume. Starting with Windows Vista, "symbolic links"
+   are supported which allow a file or directory to be accessible by multiple path
+   names, even if the names are on different volumes. Windows also supports
+   "mount points" which allow volumes to appear at junction points on other
+   volumes, rather than be named by driver letters, such as "D:".
+NTFS Volume and File Structure
+NTFS makes use of the following disk storage concepts:
+·  Sector: The smallest physical storage unit on the disk. The data size in bytes is
+   a power of 2 and is almost always 512 bytes.
+·  Cluster: One or more contiguous (next to each other on the disk) sectors. The
+   cluster size in sectors is a power of 2.
+·  Volume: A logical partition on a disk, consisting of one or more clusters and
+   used by a file system to allocate space. At any time, a volume consists of file
+   system information, a collection of files, and any additional unallocated space
+   remaining on the volume that can be allocated to files. A volume can be all or
+   a portion of a single disk or it can extend across multiple disks. If hardware or
+
+566  CHAPTER 12 / FILE MANAGEMENT
+Table 12.5  Windows       NTFS  Partition  and     Cluster Sizes
+Volume Size                                        Sectors per Cluster             Cluster Size
+512 Mbyte                                          1                               512 bytes
+512 Mbyte­1 Gbyte                                  2                               1K
+1 Gbyte­2 Gbyte                                    4                               2K
+2 Gbyte­4 Gbyte                                    8                               4K
+4 Gbyte­8 Gbyte                                    16                              8K
+8 Gbyte­16 Gbyte                                   32                              16K
+16 Gbyte­32 Gbyte                                  64                              32K
+>32 Gbyte                                          128                             64K
+             software RAID 5 is employed, a volume consists of stripes spanning multiple
+             disks. The maximum volume size for NTFS is 264 bytes.
+             The cluster is the fundamental unit of allocation in NTFS, which does not
+     recognize sectors. For example, suppose each sector is 512 bytes and the system is
+     configured with two sectors per cluster (one cluster  1K bytes). If a user creates
+     a file of 1,600 bytes, two clusters are allocated to the file. Later, if the user updates
+     the file to 3,200 bytes, another two clusters are allocated. The clusters allocated to a
+     file need not be contiguous; it is permissible to fragment a file on the disk. Currently,
+     the maximum file size supported by NTFS is 232 clusters, which is equivalent to a
+     maximum of 248 bytes. A cluster can have at most 216 bytes.
+             The use of clusters for allocation makes NTFS independent of physical sec-
+     tor size. This enables NTFS to support easily nonstandard disks that do not have a
+     512-byte sector size and to support efficiently very large disks and very large files
+     by using a larger cluster size. The efficiency comes from the fact that the file system
+     must keep track of each cluster allocated to each file; with larger clusters, there are
+     fewer items to manage.
+             Table 12.5 shows the default cluster sizes for NTFS. The defaults depend on
+     the size of the volume. The cluster size that is used for a particular volume is estab-
+     lished by NTFS when the user requests that a volume be formatted.
+     NTFS VOLUME LAYOUT                    NTFS uses a remarkably simple but powerful approach
+     to organizing information on a disk volume. Every element on a volume is a file,
+     and every file consists of a collection of attributes. Even the data contents of a file is
+     treated as an attribute. With this simple structure, a few general-purpose functions
+     suffice to organize and manage a file system.
+             Figure 12.21 shows the layout of an NTFS volume, which consists of four
+     regions. The first few sectors on any volume are occupied by the partition boot
+            Partition                              System
+             boot               Master file table  files                File area
+             sector
+            Figure 12.21  NTFS Volume Layout
+
+                                                          12.11 / WINDOWS FILE SYSTEM                             567
+        sector (although it is called a sector, it can be up to 16 sectors long), which contains
+        information about the volume layout and the file system structures as well as boot
+        startup information and code. This is followed by the master file table (MFT), which
+        contains information about all of the files and folders (directories) on this NTFS
+        volume. In essence, the MFT is a list of all files and their attributes on this NTFS
+        volume, organized as a set of rows in a table structure.
+                   Following the MFT is a region containing system files. Among the files in this
+        region are the following:
+                ·  MFT2: A mirror of the first few rows of the MFT, used to guarantee access to
+                   the volume in the case of a single-sector failure in the sectors storing the MFT.
+                ·  Log file: A list of transaction steps used for NTFS recoverability.
+                ·  Cluster bit map: A representation of the space on the volume, showing which
+                   clusters are in use.
+                ·  Attribute definition table: Defines the attribute types supported on this
+                   volume and indicates whether they can be indexed and whether they can be
+                   recovered during a system recovery operation.
+        MASTER FILE TABLE                The heart of the Windows file system is the MFT. The MFT
+        is organized as a table of 1,024-byte rows, called records. Each row describes a file
+        on this volume, including the MFT itself, which is treated as a file. If the contents of
+        a file are small enough, then the entire file is located in a row of the MFT. Otherwise,
+        the row for that file contains partial information and the remainder of the file spills
+        over into other available clusters on the volume, with pointers to those clusters in
+        the MFT row of that file.
+                   Each record in the MFT consists of a set of attributes that serve to define the
+        file (or folder) characteristics and the file contents. Table 12.6 lists the attributes
+        that may be found in a row, with the required attributes indicated by shading.
+Table 12.6      Windows NTFS File and Directory Attribute Types
+Attribute Type                                            Description
+Standard information  Includes access attributes (read-only, read/write, etc.); time stamps, including when the
+                      file was created or last modified; and how many directories point to the file (link count)
+Attribute list        A list of attributes that make up the file and the file reference of the MFT file record
+                      in which each attribute is located. Used when all attributes do not fit into a single
+                      MFT file record
+File name             A file or directory must have one or more names.
+Security descriptor   Specifies who owns the file and who can access it
+Data                  The contents of the file. A file has one default unnamed data attribute and may have
+                      one or more named data attributes.
+Index root            Used to implement folders
+Index allocation      Used to implement folders
+Volume information    Includes volume-related information, such as the version and name of the volume
+Bitmap                Provides a map representing records in use on the MFT or folder
+Note: Green-colored rows refer to required file attributes; the other attributes are optional.
+
+568  CHAPTER 12 / FILE MANAGEMENT
+     Recoverability
+     NTFS makes it possible to recover the file system to a consistent state following a
+     system crash or disk failure. The key elements that support recoverability are as
+     follows (Figure 12.22):
+     ·  I/O manager: Includes the NTFS driver, which handles the basic open, close,
+        read, and write functions of NTFS. In addition, the software RAID module
+        FTDISK can be configured for use.
+     ·  Log file service: Maintains a log of file system metadata changes on disk. The
+        log file is used to recover an NTFS-formatted volume in the case of a system
+        failure (i.e., without having to run the file system check utility).
+     ·  Cache manager: Responsible for caching file reads and writes to enhance
+        performance. The cache manager optimizes disk I/O.
+     ·  Virtual memory manager: The NTFS accesses cached files by mapping file refer-
+        ences to virtual memory references and reading and writing virtual memory.
+        It is important to note that the recovery procedures used by NTFS are designed
+     to recover file system metadata, not file contents. Thus, the user should never lose a
+     volume or the directory/file structure of an application because of a crash. However,
+     user data are not guaranteed by the file system. Providing full recoverability, includ-
+     ing user data, would make for a much more elaborate and resource-consuming
+     recovery facility.
+        The essence of the NTFS recovery capability is logging. Each operation that
+     alters a file system is treated as a transaction. Each suboperation of a transaction
+                                                                 I/O manager
+                                            Log the transaction
+                   Log file                                      NTFS driver     Read/write a
+                   service      Read/write                                       mirrored or
+                                  the file                       Fault-tolerant  striped volume
+        Flush the  Write the                                     driver          Read/write
+        log file   cache                                                         the disk
+                                                                 Disk driver
+                         Cache              Load data from
+                         manager            disk into
+                                            memory
+                   Access the mapped
+                   file or flush the cache
+                   Virtual memory
+                         manager
+        Figure 12.22     Windows NTFS Components
+
+                                                                12.12 / SUMMARY         569
+that alters important file system data structures is recorded in a log file before being
+recorded on the disk volume. Using the log, a partially completed transaction at the
+time of a crash can later be redone or undone when the system recovers.
+           In general terms, these are the steps taken to ensure recoverability, as
+described in [RUSS11]:
+       1.  NTFS first calls the log file system to record in the log file (in the cache) any
+           transactions that will modify the volume structure.
+       2.  NTFS modifies the volume (in the cache).
+       3.  The cache manager calls the log file system to prompt it to flush the log file to
+           disk.
+       4.  Once the log file updates are safely on disk, the cache manager flushes the
+           volume changes to disk.
+12.12  SUMMARY
+A file management system is a set of system software that provides services to users
+and applications in the use of files, including file access, directory maintenance, and
+access control. The file management system is typically viewed as a system service
+that itself is served by the operating system, rather than being part of the operating
+system itself. However, in any system, at least part of the file management function
+is performed by the operating system.
+           A file consists of a collection of records. The way in which these records may
+be accessed determines its logical organization, and to some extent its physical orga-
+nization on disk. If a file is primarily to be processed as a whole, then a sequential
+file organization is the simplest and most appropriate. If sequential access is needed
+but random access to individual file is also desired, then an indexed sequential file
+may give the best performance. If access to the file is principally at random, then an
+indexed file or hashed file may be the most appropriate.
+           Whatever file structure is chosen, a directory service is also needed. This
+allows files to be organized in a hierarchical fashion. This organization is useful to
+the user in keeping track of files and is useful to the file management system in pro-
+viding access control and other services to users.
+           File records, even when of fixed size, generally do not conform to the size of a
+physical disk block. Accordingly, some sort of blocking strategy is needed. A trade-
+off among complexity, performance, and space utilization determines the blocking
+strategy to be used.
+           A key function of any file management scheme is the management of disk
+space. Part of this function is the strategy for allocating disk blocks to a file. A vari-
+ety of methods have been employed, and a variety of data structures have been used
+to keep track of the allocation for each file. In addition, the space on disk that has
+not been allocated must be managed. This latter function primarily consists of main-
+taining a disk allocation table indicating which blocks are free.
+
+570  CHAPTER 12 / FILE MANAGEMENT
+12.13  RECOMMENDED READING
+     There are a number of good books on file structures and file management. The
+     following all focus on file management systems but also address related OS issues.
+     Perhaps the most useful is [WIED87], which takes a quantitative approach to file
+     management and deals with all of the issues raised in Figure 12.2, from disk schedul-
+     ing to file structure. [VENU09] presents an object-oriented design approach toward
+     file structure implementation. [LIVA90] emphasizes file structures, providing a
+     good and lengthy survey with comparative performance analyses. [GROS86] pro-
+     vides a balanced look at issues relating to both file I/O and file access methods. It
+     also contains general descriptions of all of the control structures needed by a file
+     system. These provide a useful checklist in assessing a file system design. [FOLK98]
+     emphasizes the processing of files, addressing such issues as maintenance, searching
+     and sorting, and sharing.
+       [COME79] provides a thorough discussion of B-trees. [CORM09] and
+     [KNUT98] also include good treatments.
+       The Linux file system is examined in detail in [LOVE10] and [BOVE06]. A
+     good overview is [RUBI97].
+       [CUST94] provides a good overview of the NT file system. [NAGA97] covers
+     the material in more detail.
+       BOVE06  Bovet, D., and Cesati, M. Understanding the Linux Kernel. Sebastopol, CA:
+       O'Reilly, 2006.
+       COME79  Comer, D. "The Ubiquitous B-Tree." Computing Surveys, June 1979.
+       CORM09  Cormen, T., et al. Introduction to Algorithms. Cambridge, MA: MIT Press,
+       2009.
+       CUST94  Custer, H. Inside the Windows NT File System. Redmond, WA: Microsoft
+       Press, 1994.
+       FOLK98  Folk, M., and Zoellick, B. File Structures: An Object-Oriented Approach with
+       C++. Reading, MA: Addison-Wesley, 1998.
+       GROS86  Grosshans, D. File Systems: Design and Implementation. Englewood Cliffs,
+       NJ: Prentice Hall, 1986.
+       KNUT98  Knuth, D. The Art of Computer Programming, Volume 3: Sorting and
+       Searching. Reading, MA: Addison-Wesley, 1998.
+       LIVA90  Livadas, P. File Structures: Theory and Practice. Englewood Cliffs, NJ:
+       Prentice Hall, 1990.
+       LOVE10  Love, R. Linux Kernel Development. Upper Saddle River, NJ: Addison-
+       Wesley, 2010.
+       NAGA97  Nagar, R. Windows NT File System Internals. Sebastopol, CA: O'Reilly,
+       1997.
+       RUBI97  Rubini, A. "The Virtual File System in Linux." Linux Journal, May 1997.
+       VENU09  Venugopal, K. Files Structures Using C++. New York: McGraw-Hill, 2009.
+       WIED87  Wiederhold, G. File Organization for Database Design. New York: McGraw-
+       Hill, 1987.
+
+                            12.14 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                  571
+12.14      KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS
+Key Terms
+access method                        file allocation                     inode
+bit table                            file allocation table               key field
+block                                file directory                      pathname
+chained file allocation              file management system              pile
+contiguous file allocation           file name                           record
+database                             hashed file                         sequential file
+disk allocation table                indexed file                        working directory
+field                                indexed file allocation
+file                                 indexed sequential file
+       Review Questions
+           12.1  What is the difference between a field and a record?
+           12.2  What is the difference between a file and a database?
+           12.3  What is a file management system?
+           12.4  What criteria are important in choosing a file organization?
+           12.5  List and briefly define five file organizations.
+           12.6  Why is the average search time to find a record in a file less for an indexed sequential
+                 file than for a sequential file?
+           12.7  What are typical operations that may be performed on a directory?
+           12.8  What is the relationship between a pathname and a working directory?
+           12.9  What are typical access rights that may be granted or denied to a particular user for
+                 a particular file?
+       12.10     List and briefly define three blocking methods.
+       12.11     List and briefly define three file allocation methods.
+       Problems
+           12.1  Define:
+                     B  block size
+                     R  record size
+                     P  size of block pointer
+                     F  blocking factor; expected number of records within a block
+                 Give a formula for F for the three blocking methods depicted in Figure 12.8.
+           12.2  One scheme to avoid the problem of preallocation versus waste or lack of contiguity
+                 is to allocate portions of increasing size as the file grows. For example, begin with a
+                 portion size of one block, and double the portion size for each allocation. Consider a
+                 file of n records with a blocking factor of F, and suppose that a simple one-level index
+                 is used as a file allocation table.
+                 a.  Give an upper limit on the number of entries in the file allocation table as a func-
+                     tion of F and n.
+                 b.  What is the maximum amount of the allocated file space that is unused at
+                     any time?
+
+572  CHAPTER 12 / FILE MANAGEMENT
+     12.3   What file organization would you choose to maximize efficiency in terms of speed of
+            access, use of storage space, and ease of updating (adding/deleting/modifying) when
+            the data are
+            a.  updated infrequently and accessed frequently in random order?
+            b.  updated frequently and accessed in its entirety relatively frequently?
+            c.  updated frequently and accessed frequently in random order?
+     12.4   For the B-tree in Figure 12.4c, show the result of inserting the key 97.
+     12.5   An alternative algorithm for insertion into a B-tree is the following: As the insertion
+            algorithm travels down the tree, each full node that is encountered is immediately
+            split, even though it may turn out that the split was unnecessary.
+            a.  What is the advantage of this technique?
+            b.  What are the disadvantages?
+     12.6   Both the search and the insertion time for a B-tree are a function of the height of the
+            tree. We would like to develop a measure of the worst-case search or insertion time.
+            Consider a B-tree of degree d that contains a total of n keys. Develop an inequality
+            that shows an upper bound on the height h of the tree as a function of d and n.
+     12.7   Ignoring overhead for directories and file descriptors, consider a file system in which
+            files are stored in blocks of 16K bytes. For each of the following file sizes, calculate
+            the percentage of wasted file space due to incomplete filling of the last block: 41,600
+            bytes; 640,000 bytes; 4.064,000 bytes.
+     12.8   What are the advantages of using directories?
+     12.9   Directories can be implemented either as "special files" that can only be accessed in
+            limited ways or as ordinary data files. What are the advantages and disadvantages of
+            each approach?
+     12.10  Some operating systems have a tree­structured file system but limit the depth of the
+            tree to some small number of levels. What effect does this limit have on users? How
+            does this simplify file system design (if it does)?
+     12.11  Consider a hierarchical file system in which free disk space is kept in a free space list.
+            a.  Suppose the pointer to free space is lost. Can the system reconstruct the free
+                space list?
+            b.  Suggest a scheme to ensure that the pointer is never lost as a result of a single
+                memory failure.
+     12.12  In UNIX System V, the length of a block is 1 Kbyte, and each block can hold a total of
+            256 block addresses. Using the inode scheme, what is the maximum size of a file?
+     12.13  Consider the organization of a UNIX file as represented by the inode (Figure 12.16).
+            Assume that there are 12 direct block pointers, and a singly, doubly, and triply indirect
+            pointer in each inode. Further, assume that the system block size and the disk sector
+            size are both 8K. If the disk block pointer is 32 bits, with 8 bits to identify the physical
+            disk and 24 bits to identify the physical block, then
+            a.  What is the maximum file size supported by this system?
+            b.  What is the maximum file system partition supported by this system?
+            c.  Assuming no information other than that the file inode is already in main memory,
+                how many disk accesses are required to access the byte in position 13,423,956?
+
+PART 6 Embedded Systems
+                                       CHAPTER
+EMBEDDED OPERATING SYSTEMS
+13.1  Embedded Systems
+13.2  Characteristics of Embedded Operating Systems
+            Adapting an Existing Commercial Operating  System
+            Purpose-Built Embedded Operating System
+13.3  eCos
+            Configurability
+            eCos Components
+            eCos Scheduler
+            eCos Thread Synchronization
+13.4  TinyOS
+            Wireless Sensor Networks
+            TinyOS Goals
+            TinyOS Components
+            TinyOS Scheduler
+            Example Configuration
+            TinyOS Resource Interface
+13.5  Recommended Reading and Web Sites
+13.6  Key Terms, Review Questions, and Problems
+                                                               573

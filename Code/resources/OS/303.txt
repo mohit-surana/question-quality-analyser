@@ -1,0 +1,213 @@
+UNIX Concurrency Mechanisms
+                                          6.7 / UNIX CONCURRENCY MECHANISMS                  281
+/*   program           diningphilosophers       */
+semaphore       fork[5]     =   {1};
+semaphore       room     =  {4};
+int   i;
+void  philosopher           (int   i)
+{
+      while     (true)      {
+                think();
+                wait     (room);
+                wait     (fork[i]);
+                wait     (fork    [(i+1)  mod   5]);
+                eat();
+                signal      (fork  [(i+1)  mod      5]);
+                signal      (fork[i]);
+                signal      (room);
+      }
+}
+void  main()
+{
+      parbegin           (philosopher     (0),  philosopher        (1),
+                philosopher        (2),   philosopher     (3),
+                philosopher        (4));
+}
+Figure 6.13  A Second Solution to the Dining Philosophers Problem
+      right forks. If either fork is unavailable, the philosopher process is queued on the
+      appropriate condition variable. This enables another philosopher process to enter
+      the monitor. The release-forks procedure is used to make two forks available.
+      Note that the structure of this solution is similar to that of the semaphore solution
+      proposed in Figure 6.12. In both cases, a philosopher seizes first the left fork and
+      then the right fork. Unlike the semaphore solution, this monitor solution does not
+      suffer from deadlock, because only one process at a time may be in the monitor. For
+      example, the first philosopher process to enter the monitor is guaranteed that it can
+      pick up the right fork after it picks up the left fork before the next philosopher to the
+      right has a chance to seize its left fork, which is this philosopher's right fork.
+6.7   UNIX CONCURRENCY MECHANISMS
+      UNIX provides a variety of mechanisms for interprocessor communication and syn-
+      chronization. Here, we look at the most important of these:
+             ·  Pipes
+             ·  Messages
+             ·  Shared memory
+             ·  Semaphores
+             ·  Signals
+
+282  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+monitor      dining_controller;
+cond    ForkReady[5];                    /*  condition     variable      for  synchronization       */
+boolean      fork[5]         =     {true};       /*  availability        status    of  each  fork   */
+void    get_forks(int                 pid)      /*   pid   is   the  philosopher       id  number   */
+{
+     int     left   =     pid;
+     int     right     =     (++pid)         %  5;
+     /*grant       the       left        fork*/
+     if      (!fork(left)
+             cwait(ForkReady[left]); /*                    queue     on   condition     variable    */
+     fork(left)           =     false;
+     /*grant       the       right       fork*/
+     if      (!fork(right)
+             cwait(ForkReady(right); /*                    queue     on   condition     variable    */
+     fork(right)             =     false:
+}
+void    release_forks(int                    pid)
+{
+     int     left   =     pid;
+     int     right     =     (++pid)         %  5;
+     /*release         the         left      fork*/
+     if      (empty(ForkReady[left])/*no                   one  is   waiting     for   this  fork   */
+             fork(left)            =     true;
+     else                                /*  awaken     a  process    waiting      on  this  fork   */
+             csignal(ForkReady[left]);
+     /*release         the         right     fork*/
+     if      (empty(ForkReady[right])/*no                  one  is    waiting    for   this  fork   */
+             fork(right)              =  true;
+     else                                /*  awaken     a  process    waiting    on    this  fork   */
+             csignal(ForkReady[right]);
+}
+void    philosopher[k=0                  to  4]      /*    the  five     philosopher       clients  */
+{
+     while    (true)            {
+        <think>;
+        get_forks(k);                    /*  client     requests     two  forks    via     monitor  */
+        <eat  spaghetti>;
+        release_forks(k); /*                    client     releases  forks    via  the     monitor  */
+     }
+}
+Figure 6.14  A Solution to the Dining Philosophers Problem Using a Monitor
+
+               6.7 / UNIX CONCURRENCY MECHANISMS                                         283
+Pipes, messages, and shared memory can be used to communicate data between
+processes, whereas semaphores and signals are used to trigger actions by other
+processes.
+Pipes
+One of the most significant contributions of UNIX to the development of operating
+systems is the pipe. Inspired by the concept of coroutines [RITC84], a pipe is a circu-
+lar buffer allowing two processes to communicate on the producer­consumer model.
+Thus, it is a first-in-first-out queue, written by one process and read by another.
+When a pipe is created, it is given a fixed size in bytes. When a process attempts
+to write into the pipe, the write request is immediately executed if there is sufficient
+room; otherwise the process is blocked. Similarly, a reading process is blocked if
+it attempts to read more bytes than are currently in the pipe; otherwise the read
+request is immediately executed. The OS enforces mutual exclusion: that is, only
+one process can access a pipe at a time.
+There are two types of pipes: named and unnamed. Only related processes
+can share unnamed pipes, while either related or unrelated processes can share
+named pipes.
+Messages
+A message is a block of bytes with an accompanying type. UNIX provides msgsnd
+and msgrcv system calls for processes to engage in message passing. Associated
+with each process is a message queue, which functions like a mailbox.
+The message sender specifies the type of message with each message sent, and
+this can be used as a selection criterion by the receiver. The receiver can either
+retrieve messages in first-in-first-out order or by type. A process will block when
+trying to send a message to a full queue. A process will also block when trying to
+read from an empty queue. If a process attempts to read a message of a certain type
+and fails because no message of that type is present, the process is not blocked.
+Shared Memory
+The fastest form of interprocess communication provided in UNIX is shared
+memory. This is a common block of virtual memory shared by multiple processes.
+Processes read and write shared memory using the same machine instructions they
+use to read and write other portions of their virtual memory space. Permission is
+read-only or read-write for a process, determined on a per-process basis. Mutual
+exclusion constraints are not part of the shared-memory facility but must be provided
+by the processes using the shared memory.
+Semaphores
+The semaphore system calls in UNIX System V are a generalization of the semWait
+and semSignal primitives defined in Chapter 5; several operations can be per-
+formed simultaneously and the increment and decrement operations can be values
+greater than 1. The kernel does all of the requested operations atomically; no other
+process may access the semaphore until all operations have completed.
+
+284  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+        A semaphore consists of the following elements:
+     ·  Current value of the semaphore
+     ·  Process ID of the last process to operate on the semaphore
+     ·  Number of processes waiting for the semaphore value to be greater          than its
+        current value
+     ·  Number of processes waiting for the semaphore value to be zero
+     Associated with the semaphore are queues of processes blocked on that semaphore.
+        Semaphores are actually created in sets, with a semaphore set consisting of
+     one or more semaphores. There is a semctl system call that allows all of the sema-
+     phore values in the set to be set at the same time. In addition, there is a sem_op
+     system call that takes as an argument a list of semaphore operations, each defined
+     on one of the semaphores in a set. When this call is made, the kernel performs the
+     indicated operations one at a time. For each operation, the actual function is speci-
+     fied by the value sem_op. The following are the possibilities:
+     ·  If sem_op is positive, the kernel increments the value of the semaphore and
+        awakens all processes waiting for the value of the semaphore to increase.
+     ·  If sem_op is 0, the kernel checks the semaphore value. If the semaphore value
+        equals 0, the kernel continues with the other operations on the list. Otherwise,
+        the kernel increments the number of processes waiting for this semaphore to be
+        0 and suspends the process to wait for the event that the value of the semaphore
+        equals 0.
+     ·  If sem_op is negative and its absolute value is less than or equal to the sema-
+        phore value, the kernel adds sem_op (a negative number) to the semaphore
+        value. If the result is 0, the kernel awakens all processes waiting for the value
+        of the semaphore to equal 0.
+     ·  If sem_op is negative and its absolute value is greater than the semaphore
+        value, the kernel suspends the process on the event that the value of the sema-
+        phore increases.
+        This generalization of the semaphore provides considerable flexibility in per-
+     forming process synchronization and coordination.
+     Signals
+     A signal is a software mechanism that informs a process of the occurrence of asyn-
+     chronous events. A signal is similar to a hardware interrupt but does not employ
+     priorities. That is, all signals are treated equally; signals that occur at the same time
+     are presented to a process one at a time, with no particular ordering.
+        Processes may send each other signals, or the kernel may send signals inter-
+     nally. A signal is delivered by updating a field in the process table for the process
+     to which the signal is being sent. Because each signal is maintained as a single bit,
+     signals of a given type cannot be queued. A signal is processed just after a process
+     wakes up to run or whenever the process is preparing to return from a system call.
+     A process may respond to a signal by performing some default action (e.g., termina-
+     tion), executing a signal-handler function, or ignoring the signal.
+        Table 6.2 lists signals defined for UNIX SVR4.
+
+                                    6.8 / LINUX KERNEL CONCURRENCY MECHANISMS                                  285
+Table 6.2  UNIX Signals
+Value      Name          Description
+01         SIGHUP        Hang up; sent to process when kernel assumes that the user of that process is doing
+                         no useful work
+02         SIGINT        Interrupt
+03         SIGQUIT       Quit; sent by user to induce halting of process and production of core dump
+04         SIGILL        Illegal instruction
+05         SIGTRAP       Trace trap; triggers the execution of code for process tracing
+06         SIGIOT        IOT instruction
+07         SIGEMT        EMT instruction
+08         SIGFPE        Floating-point exception
+09         SIGKILL       Kill; terminate process
+10         SIGBUS        Bus error
+11         SIGSEGV       Segmentation violation; process attempts to access location outside its virtual
+                         address space
+12         SIGSYS        Bad argument to system call
+13         SIGPIPE       Write on a pipe that has no readers attached to it
+14         SIGALRM       Alarm clock; issued when a process wishes to receive a signal after a period of time
+15         SIGTERM       Software termination
+16         SIGUSR1       User-defined signal 1
+17         SIGUSR2       User-defined signal 2
+18         SIGCHLD       Death of a child
+19         SIGPWR        Power failure
+6.8        LINUX KERNEL CONCURRENCY MECHANISMS
+           Linux includes all of the concurrency mechanisms found in other UNIX systems,
+           such as SVR4, including pipes, messages, shared memory, and signals. In addi-
+           tion, Linux 2.6 includes a rich set of concurrency mechanisms specifically intended
+           for use when a thread is executing in kernel mode. That is, these are mechanisms
+           used within the kernel to provide concurrency in the execution of kernel code. This
+           section examines the Linux kernel concurrency mechanisms.
+           Atomic Operations
+           Linux provides a set of operations that guarantee atomic operations on a variable.
+           These operations can be used to avoid simple race conditions. An atomic operation
+           executes without interruption and without interference. On a uniprocessor system,
+           a thread performing an atomic operation cannot be interrupted once the operation
+           has started until the operation is finished. In addition, on a multiprocessor system,

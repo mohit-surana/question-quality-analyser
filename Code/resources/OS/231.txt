@@ -1,0 +1,215 @@
+Mutual Exclusion: Hardware Support
+                 5.2 / MUTUAL EXCLUSION: HARDWARE SUPPORT                                209
+     the problems of deadlock and starvation are still present. As an example of dead-
+     lock, two processes may be blocked, each waiting for a communication from the
+     other. As an example of starvation, consider three processes, P1, P2, and P3, that
+     exhibit the following behavior. P1 is repeatedly attempting to communicate with
+     either P2 or P3, and P2 and P3 are both attempting to communicate with P1. A
+     sequence could arise in which P1 and P2 exchange information repeatedly, while P3
+     is blocked waiting for a communication from P1. There is no deadlock, because P1
+     remains active, but P3 is starved.
+     Requirements for Mutual Exclusion
+     Any facility or capability that is to provide support for mutual exclusion should
+     meet the following requirements:
+     1.  Mutual exclusion must be enforced: Only one process at a time is allowed into
+         its critical section, among all processes that have critical sections for the same
+         resource or shared object.
+     2.  A process that halts in its noncritical section must do so without interfering
+         with other processes.
+     3.  It must not be possible for a process requiring access to a critical section to be
+         delayed indefinitely: no deadlock or starvation.
+     4.  When no process is in a critical section, any process that requests entry to its
+         critical section must be permitted to enter without delay.
+     5.  No assumptions are made about relative process speeds or number of processors.
+     6.  A process remains inside its critical section for a finite time only.
+         There are a number of ways in which the requirements for mutual exclusion
+     can be satisfied. One approach is to leave the responsibility with the processes
+     that wish to execute concurrently. Processes, whether they are system programs or
+     application programs, would be required to coordinate with one another to enforce
+     mutual exclusion, with no support from the programming language or the OS. We
+     can refer to these as software approaches. Although this approach is prone to high
+     processing overhead and bugs, it is nevertheless useful to examine such approaches
+     to gain a better understanding of the complexity of concurrent processing. This
+     topic is covered in Appendix A. A second approach involves the use of special-
+     purpose machine instructions. These have the advantage of reducing overhead but
+     nevertheless will be shown to be unattractive as a general-purpose solution; they are
+     covered in Section 5.2. A third approach is to provide some level of support within
+     the OS or a programming language. Three of the most important such approaches
+     are examined in Sections 5.3 through 5.5.
+5.2  MUTUAL EXCLUSION: HARDWARE SUPPORT
+     In this section, we look at several interesting hardware approaches to mutual
+     exclusion.
+
+210  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     Interrupt Disabling
+     In a uniprocessor system, concurrent processes cannot have overlapped execution;
+     they can only be interleaved. Furthermore, a process will continue to run until it
+     invokes an OS service or until it is interrupted. Therefore, to guarantee mutual
+     exclusion, it is sufficient to prevent a process from being interrupted. This capability
+     can be provided in the form of primitives defined by the OS kernel for disabling and
+     enabling interrupts. A process can then enforce mutual exclusion in the following
+     way (compare Figure 5.1):
+     while           (true)   {
+        /*           disable     interrupts  */;
+        /*           critical    section  */;
+        /*           enable   interrupts     */;
+        /*           remainder   */;
+     }
+     Because the critical section cannot be interrupted, mutual exclusion is guar-
+     anteed. The price of this approach, however, is high. The efficiency of execution
+     could be noticeably degraded because the processor is limited in its ability to
+     interleave processes. Another problem is that this approach will not work in a
+     multiprocessor architecture. When the computer includes more than one proces-
+     sor, it is possible (and typical) for more than one process to be executing at a time.
+     In this case, disabled interrupts do not guarantee mutual exclusion.
+     Special Machine Instructions
+     In a multiprocessor configuration, several processors share access to a common
+     main memory. In this case, there is not a master/slave relationship; rather the pro-
+     cessors behave independently in a peer relationship. There is no interrupt mecha-
+     nism between processors on which mutual exclusion can be based.
+     At the hardware level, as was mentioned, access to a memory location
+     excludes any other access to that same location. With this as a foundation, proc-
+     essor designers have proposed several machine instructions that carry out two
+     actions atomically,2 such as reading and writing or reading and testing, of a single
+     memory location with one instruction fetch cycle. During execution of the instruc-
+     tion, access to the memory location is blocked for any other instruction referencing
+     that location.
+     In this section, we look at two of the most commonly implemented instruc-
+     tions. Others are described in [RAYN86] and [STON93].
+     COMPARE&SWAP INSTRUCTION         The compare&swap instruction, also called a
+     compare and exchange instruction, can be defined as follows [HERL90]:
+     2The term atomic means that the instruction is treated as a single step that cannot be interrupted.
+
+                                               5.2 / MUTUAL EXCLUSION: HARDWARE SUPPORT                                         211
+                   int        compare_and_swap                (int   *word,           int          testval,        int     newval)
+                   {
+                              int      oldval;
+                              oldval        =  *word
+                              if      (oldval   ==      testval)          *word          =     newval;
+                              return        oldval;
+                   }
+                   This version of the instruction checks a memory location (*word) against a test
+            value (testval). If the memory location's current value is testval, it is replaced with
+            newval; otherwise it is left unchanged. The old memory value is always returned;
+            thus, the memory location has been updated if the returned value is the same as
+            the test value. This atomic instruction therefore has two parts: A compare is made
+            between a memory value and a test value; if the values are the same, a swap occurs.
+            The entire compare&swap function is carried out atomically--that is, it is not sub-
+            ject to interruption.
+                   Another version of this instruction returns a Boolean value: true if the swap
+            occurred; false otherwise. Some version of this instruction is available on nearly all
+            processor families (x86, IA64, sparc, IBM z series, etc.), and most operating systems
+            use this instruction for support of concurrency.
+                   Figure 5.2a shows a mutual exclusion protocol based on the use of this instruc-
+            tion.3 A shared variable bolt is initialized to 0. The only process that may enter
+            its critical section is one that finds bolt equal to 0. All other processes attempting
+/*   program       mutualexclusion         */                        /*   program        mutualexclusion           */
+const   int    n   =   /*     number   of  processes    */;          int     const    n     =  /*     number   of  processes    */;
+int     bolt;                                                        int     bolt;
+void    P(int      i)                                                void    P(int       i)
+{                                                                    {
+     while     (true)      {                                              int   keyi        =  1;
+        while      (compare_and_swap(bolt,      0,      1)   ==  1)       while       (true)       {
+               /*  do  nothing        */;                                      do     exchange        (&keyi,      &bolt)
+        /*  critical          section  */;                                     while        (keyi     !=  0);
+        bolt   =   0;                                                          /*     critical        section      */;
+        /*  remainder         */;                                              bolt      =     0;
+     }                                                                         /*     remainder       */;
+}                                                                         }
+void    main()                                                       }
+{                                                                    void    main()
+     bolt   =  0;                                                    {
+     parbegin      (P(1),     P(2),    ...     ,P(n));                    bolt     =  0;
+                                                                          parbegin          (P(1),    P(2),    ...,     P(n));
+}                                                                    }
+            (a) Compare and swap instruction                                          (b) Exchange instruction
+Figure 5.2     Hardware Support for Mutual Exclusion
+            3The construct parbegin (P1,        P2,     ...,  Pn) means the following: suspend the execution of the main
+            program; initiate concurrent execution of procedures P1, P2, ..., Pn; when all of P1, P2, ..., Pn have ter-
+            minated, resume the main program.
+
+212  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     to enter their critical section go into a busy waiting mode. The term busy waiting,
+     or spin waiting, refers to a technique in which a process can do nothing until it gets
+     permission to enter its critical section but continues to execute an instruction or set
+     of instructions that tests the appropriate variable to gain entrance. When a process
+     leaves its critical section, it resets bolt to 0; at this point one and only one of the wait-
+     ing processes is granted access to its critical section. The choice of process depends
+     on which process happens to execute the compare&swap instruction next.
+     EXCHANGE INSTRUCTION     The exchange instruction can be defined as follows:
+        void     exchange     (int    *register,       int   *memory)
+        {
+           int   temp;
+           temp      =  *memory;
+           *memory      =  *register;
+           *register       =  temp;
+        }
+     The instruction exchanges the contents of a register with that of a memory location.
+     Both the Intel IA-32 architecture (Pentium) and the IA-64 architecture (Itanium)
+     contain an XCHG instruction.
+        Figure 5.2b shows a mutual exclusion protocol based on the use of an exchange
+     instruction. A shared variable bolt is initialized to 0. Each process uses a local vari-
+     able key that is initialized to 1. The only process that may enter its critical section
+     is one that finds bolt equal to 0. It excludes all other processes from the critical sec-
+     tion by setting bolt to 1. When a process leaves its critical section, it resets bolt to 0,
+     allowing another process to gain access to its critical section.
+        Note that the following expression always holds because of the way in which
+     the variables are initialized and because of the nature of the exchange algorithm:
+                                      bolt  +  a keyi  =  n
+                                               i
+     If bolt = 0, then no process is in its critical section. If bolt = 1, then exactly one pro-
+     cess is in its critical section, namely the process whose key value equals 0.
+     PROPERTIES  OF  THE   MACHINE-INSTRUCTION         APPROACH        The use of a special
+     machine instruction to enforce mutual exclusion has a number of advantages:
+     �  It is applicable to any number of processes on either a single processor or mul-
+        tiple processors sharing main memory.
+     �  It is simple and therefore easy to verify.
+     �  It can be used to support multiple critical sections; each critical section can be
+        defined by its own variable.
+        There are some serious disadvantages:
+     � Busy waiting is employed: Thus, while a process is waiting for access to a criti-
+        cal section, it continues to consume processor time.
+
+                                                                              5.3 / SEMAPHORES                    213
+             �  Starvation is possible: When a process leaves a critical section and more than
+                one process is waiting, the selection of a waiting process is arbitrary. Thus,
+                some process could indefinitely be denied access.
+             �  Deadlock is possible: Consider the following scenario on a single-processor
+                system. Process P1 executes the special instruction (e.g., compare&swap,
+                exchange) and enters its critical section. P1 is then interrupted to give the
+                processor to P2, which has higher priority. If P2 now attempts to use the same
+                resource as P1, it will be denied access because of the mutual exclusion mecha-
+                nism. Thus, it will go into a busy waiting loop. However, P1 will never be dis-
+                patched because it is of lower priority than another ready process, P2.
+                Because of the drawbacks of both the software and hardware solutions, we
+           need to look for other mechanisms.
+5.3        SEMAPHORES
+           We now turn to OS and programming language mechanisms that are used to pro-
+           vide concurrency. Table 5.3 summarizes mechanisms in common use. We begin, in
+           this section, with semaphores. The next two sections discuss monitors and message
+           passing. The other mechanisms in Table 5.3 are discussed when treating specific
+           OS examples, in Chapters 6 and 13.
+Table 5.3  Common   Concurrency Mechanisms
+Semaphore           An integer value used for signaling among processes. Only three operations may be
+                    performed on a semaphore, all of which are atomic: initialize, decrement, and incre-
+                    ment. The decrement operation may result in the blocking of a process, and the incre-
+                    ment operation may result in the unblocking of a process. Also known as a counting
+                    semaphore or a general semaphore.
+Binary Semaphore    A semaphore that takes on only the values 0 and 1.
+Mutex               Similar to a binary semaphore. A key difference between the two is that the process that
+                    locks the mutex (sets the value to zero) must be the one to unlock it (sets the value to 1).
+Condition Variable  A data type that is used to block a process or thread until a particular condition is true.
+Monitor             A programming language construct that encapsulates variables, access procedures, and
+                    initialization code within an abstract data type. The monitor's variable may only be
+                    accessed via its access procedures and only one process may be actively accessing the
+                    monitor at any one time. The access procedures are critical sections. A monitor may
+                    have a queue of processes that are waiting to access it.
+Event Flags         A memory word used as a synchronization mechanism. Application code may associ-
+                    ate a different event with each bit in a flag. A thread can wait for either a single event
+                    or a combination of events by checking one or multiple bits in the corresponding flag.
+                    The thread is blocked until all of the required bits are set (AND) or until at least one
+                    of the bits is set (OR).
+Mailboxes/Messages  A means for two processes to exchange information and that may be used for
+                    synchronization.
+Spinlocks           Mutual exclusion mechanism in which a process executes in an infinite loop waiting for
+                    the value of a lock variable to indicate availability.

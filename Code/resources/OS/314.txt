@@ -1,0 +1,595 @@
+Solaris Thread Synchronization Primitives
+292  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+        The barrier() operation is a lighter-weight version of the mb() operation,
+     in that it only controls the compiler's behavior. This would be useful if it is known
+     that the processor will not perform undesirable reorderings. For example, the Intel
+     x86 processors do not reorder writes.
+        The smp_rmb, smp_wmb, and smp_mb operations provide an optimization for
+     code that may be compiled on either a uniprocessor (UP) or a symmetric multiproc-
+     essor (SMP). These instructions are defined as the usual memory barriers for an
+     SMP, but for a UP, they are all treated only as compiler barriers. The smp_ opera-
+     tions are useful in situations in which the data dependencies of concern will only
+     arise in an SMP context.
+6.9  SOLARIS THREAD SYNCHRONIZATION PRIMITIVES
+     In addition to the concurrency mechanisms of UNIX SVR4, Solaris supports four
+     thread synchronization primitives:
+     ·  Mutual exclusion (mutex) locks
+     ·  Semaphores
+     ·  Multiple readers, single writer (readers/writer) locks
+     ·  Condition variables
+        Solaris implements these primitives within the kernel for kernel threads; they
+     are also provided in the threads library for user-level threads. Figure 6.15 shows
+     the data structures for these primitives. The initialization functions for the primi-
+     tives fill in some of the data members. Once a synchronization object is created,
+     there are essentially only two operations that can be performed: enter (acquire
+     lock) and release (unlock). There are no mechanisms in the kernel or the threads
+     library to enforce mutual exclusion or to prevent deadlock. If a thread attempts to
+     access a piece of data or code that is supposed to be protected but does not use the
+     appropriate synchronization primitive, then such access occurs. If a thread locks
+     an object and then fails to unlock it, no kernel action is taken.
+        All of the synchronization primitives require the existence of a hardware
+     instruction that allows an object to be tested and set in one atomic operation.
+     Mutual Exclusion Lock
+     A mutex is used to ensure that only one thread at a time can access the resource
+     protected by the mutex. The thread that locks the mutex must be the one that
+     unlocks it. A thread attempts to acquire a mutex lock by executing the mutex_
+     enter primitive. If mutex_enter cannot set the lock (because it is already set
+     by another thread), the blocking action depends on type-specific information
+     stored in the mutex object. The default blocking policy is a spinlock: A blocked
+     thread polls the status of the lock while executing in a busy waiting loop.
+     An interrupt-based blocking mechanism is optional. In this latter case, the
+     mutex includes a turnstile          id that identifies a queue of threads sleeping on
+     this lock.
+
+                                6.9 / SOLARIS  THREAD  SYNCHRONIZATION PRIMITIVES           293
+                                                        Type (1 octet)
+Owner (3 octets)                                        wlock (1 octet)
+Lock (1 octet)                                          Waiters (2 octets)
+Waiters (2 octets)                                      Union (4 octets)
+                                                        (statistic pointer or
+Type-specific info (4 octets)                           number of write requests)
+(possibly a turnstile id,
+             lock type filler,
+or statistics pointer)
+                                                        Thread owner (4 octets)
+(a) MUTEX lock
+                                                        (c) Reader/writer lock
+Type (1 octet)
+wlock (1 octet)
+Waiters (2 octets)                                      Waiters (2 octets)
+                                                        (d) Condition variable
+Count (4 octets)
+(b) Semaphore
+Figure 6.15  Solaris Synchronization Data Structures
+             The operations on a mutex lock are:
+             mutex_enter()              Acquires the lock, potentially blocking if it is already
+                                               held
+             mutex_exit()               Releases the lock, potentially unblocking a waiter
+             mutex_tryenter()           Acquires the lock if it is not already held
+The mutex_tryenter() primitive provides a nonblocking way of performing
+the mutual exclusion function. This enables the programmer to use a busy-wait
+approach for user-level threads, which avoids blocking the entire process because
+one thread is blocked.
+Semaphores
+Solaris provides classic counting semaphores, with the following primitives:
+             sema_p()           Decrements the semaphore, potentially blocking the thread
+             sema_v()           Increments the semaphore, potentially unblocking a waiting
+                                thread
+             sema_tryp()        Decrements the semaphore if blocking is not required
+Again, the sema_tryp() primitive permits busy waiting.
+
+294  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     Readers/Writer Lock
+     The readers/writer lock allows multiple threads to have simultaneous read-only
+     access to an object protected by the lock. It also allows a single thread to access the
+     object for writing at one time, while excluding all readers. When the lock is acquired
+     for writing it takes on the status of write  lock: All threads attempting access
+     for reading or writing must wait. If one or more readers have acquired the lock, its
+     status is read  lock. The primitives are as follows:
+     rw_enter()            Attempts to acquire a lock as reader or writer.
+     rw_exit()             Releases a lock as reader or writer.
+     rw_tryenter()         Acquires the lock if blocking is not required.
+     rw_downgrade()        A thread that has acquired a write lock converts it to a
+                           read lock. Any waiting writer remains waiting until this
+                           thread releases the lock. If there are no waiting writers,
+                           the primitive wakes up any pending readers.
+     rw_tryupgrade()       Attempts to convert a reader lock into a writer lock.
+     Condition Variables
+     A condition variable is used to wait until a particular condition is true. Condition
+     variables must be used in conjunction with a mutex lock. This implements a monitor
+     of the type illustrated in Figure 6.14. The primitives are as follows:
+     cv_wait()             Blocks until the condition is signaled
+     cv_signal()           Wakes up one of the threads blocked in cv_wait()
+     cv_broadcast()        Wakes up all of the threads blocked in cv_wait()
+     cv_wait() releases the associated mutex before blocking and reacquires
+     it before returning. Because reacquisition of the mutex may be blocked by other
+     threads waiting for the mutex, the condition that caused the wait must be retested.
+     Thus, typical usage is as follows:
+     mutex_enter(&m)
+     *       *
+     while           (some_condition)    {
+             cv_wait(&cv,  &m);
+     }
+     *       *
+     mutex_exit(&m);
+     This allows the condition to be a complex expression, because it is protected by the
+     mutex.
+6.10 WINDOWS 7 CONCURRENCY MECHANISMS
+     Windows provides synchronization among threads as part of the object architecture.
+     The most important methods of synchronization are Executive dispatcher objects,
+     user­mode critical sections, slim reader­writer locks, condition variables, and lock-free
+
+                                6.10 / WINDOWS 7 CONCURRENCY MECHANISMS                                    295
+           operations. Dispatcher objects make use of wait functions. We first describe wait func-
+           tions and then look at the synchronization methods.
+           Wait Functions
+           The wait functions allow a thread to block its own execution. The wait functions
+           do not return until the specified criteria have been met. The type of wait func-
+           tion determines the set of criteria used. When a wait function is called, it checks
+           whether the wait criteria have been met. If the criteria have not been met, the
+           calling thread enters the wait state. It uses no processor time while waiting for the
+           criteria to be met.
+                 The most straightforward type of wait function is one that waits on a single
+           object. The WaitForSingleObject function requires a handle to one synchroni-
+           zation object. The function returns when one of the following occurs:
+              ·  The specified object is in the signaled state.
+              ·  The time-out interval elapses. The time-out interval can be set to INFINITE
+                 to specify that the wait will not time out.
+           Dispatcher Objects
+           The mechanism used by the Windows Executive to implement synchronization
+           facilities is the family of dispatcher objects, which are listed with brief descriptions
+           in Table 6.7.
+Table 6.7  Windows Synchronization Objects
+                                                        Set to Signaled State                Effect on Waiting
+Object Type      Definition                             When                                 Threads
+Notification     An announcement that a                 Thread sets the event                All released
+event            system event has occurred
+Synchronization  An announcement that a                 Thread sets the event                One thread released
+event            system event has occurred.
+Mutex            A mechanism that provides              Owning thread or other               One thread released
+                 mutual exclusion capabilities;         thread releases the
+                 equivalent to a binary semaphore       mutex
+Semaphore        A counter that regulates the number    Semaphore count drops                All released
+                 of threads that can use a resource     to zero
+Waitable timer   A counter that records the passage     Set time arrives or time             All released
+                 of time                                interval expires
+File             An instance of an opened file or       I/O operation completes              All released
+                 I/O device
+Process          A program invocation, including        Last thread terminates               All released
+                 the address space and resources
+                 required to run the program
+Thread           An executable entity within a process  Thread terminates                    All released
+Note: Shaded rows correspond to objects that exist for the sole purpose of synchronization.
+
+296  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     The first five object types in the table are specifically designed to support
+     synchronization. The remaining object types have other uses but also may be used
+     for synchronization.
+     Each dispatcher object instance can be in either a signaled or unsignaled
+     state. A thread can be blocked on an object in an unsignaled state; the thread
+     is released when the object enters the signaled state. The mechanism is straight-
+     forward: A thread issues a wait request to the Windows Executive, using the
+     handle of the synchronization object. When an object enters the signaled state, the
+     Windows Executive releases one or all of the thread objects that are waiting on
+     that dispatcher object.
+     The event object is useful in sending a signal to a thread indicating that a par-
+     ticular event has occurred. For example, in overlapped input and output, the system
+     sets a specified event object to the signaled state when the overlapped operation
+     has been completed. The mutex object is used to enforce mutually exclusive access
+     to a resource, allowing only one thread object at a time to gain access. It there-
+     fore functions as a binary semaphore. When the mutex object enters the signaled
+     state, only one of the threads waiting on the mutex is released. Mutexes can be used
+     to synchronize threads running in different processes. Like mutexes, semaphore
+     objects may be shared by threads in multiple processes. The Windows semaphore is
+     a counting semaphore. In essence, the waitable timer object signals at a certain time
+     and/or at regular intervals.
+     Critical Sections
+     Critical sections provide a synchronization mechanism similar to that provided by
+     mutex objects, except that critical sections can be used only by the threads of a
+     single process. Event, mutex, and semaphore objects can also be used in a single-
+     process application, but critical sections provide a much faster, more efficient mech-
+     anism for mutual-exclusion synchronization.
+     The process is responsible for allocating the memory used by a critical section.
+     Typically, this is done by simply declaring a variable of type CRITICAL_SECTION.
+     Before the threads of the process can use it, initialize the critical section by using the
+     InitializeCriticalSection function.
+     A thread uses the EnterCriticalSection or TryEnterCriticalSection
+     function to request ownership of a critical section. It uses the LeaveCriticalSection
+     function to release ownership of a critical section. If the critical section is currently
+     owned by another thread, EnterCriticalSection waits indefinitely for owner-
+     ship. In contrast, when a mutex object is used for mutual exclusion, the wait functions
+     accept a specified time-out interval. The TryEnterCriticalSection function
+     attempts to enter a critical section without blocking the calling thread.
+     Critical sections use a sophisticated algorithm when trying to acquire the
+     mutex. If the system is a multiprocessor, the code will attempt to acquire a spinlock.
+     This works well in situations where the critical section is acquired for only a short
+     time. Effectively the spinlock optimizes for the case where the thread that currently
+     owns the critical section is executing on another processor. If the spinlock cannot
+     be acquired within a reasonable number of iterations, a dispatcher object is used to
+     block the thread so that the Kernel can dispatch another thread onto the processor.
+
+                        6.10 / WINDOWS 7 CONCURRENCY MECHANISMS                        297
+The dispatcher object is only allocated as a last resort. Most critical sections are
+needed for correctness, but in practice are rarely contended. By lazily allocating the
+dispatcher object the system saves significant amounts of kernel virtual memory.
+Slim Read-Writer Locks and Condition Variables
+Windows Vista added a user mode reader­writer. Like critical sections, the reader­
+writer lock enters the kernel to block only after attempting to use a spinlock. It is
+slim in the sense that it normally only requires allocation of a single pointer-sized
+piece of memory.
+    To use an SRW lock, a process declares a variable of type SRWLOCK and a calls
+InitializeSRWLock to initialize it. Threads call AcquireSRWLockExclusive or
+AcquireSRWLockShared to acquire the lock and ReleaseSRWLockExclusive
+or ReleaseSRWLockShared to release it.
+    Windows       also  has  condition  variables.       The  process  must  declare    a
+CONDITION_VARIABLE           and        initialize   it  in   some  thread   by  calling
+InitializeConditionVariable. Condition variables can be used with either crit-
+ical sections or SRW locks, so there are two methods, SleepConditionVariableCS
+and SleepConditionVariableSRW, which sleep on the specified condition and
+releases the specified lock as an atomic operation.
+    There are two wake methods, WakeConditionVariable and Wake
+AllConditionVariable, which wake one or all of the sleeping threads, respec-
+tively. Condition variables are used as follows:
+1.  Acquire exclusive lock
+2.  While (predicate() == FALSE) SleepConditionVariable()
+3.  Perform the protected operation
+4.  Release the lock
+Lock-free Synchronization
+Windows also relies heavily on interlocked operations for synchronization.
+Interlocked operations use hardware facilities to guarantee that memory locations
+can be read, modified, and written in a single atomic operation. Examples include
+InterlockedIncrement and InterlockedCompareExchange; the latter
+allows a memory location to be updated only if it hasn't changed values since
+being read.
+    Many of the synchronization primitives use interlocked operations within
+their implementation, but these operations are also available to programmers for
+situations where they want to synchronize without taking a software lock. These
+so-called lock-free synchronization primitives have the advantage that a thread can
+never be switched away from a processor, say at the end of its timeslice, while still
+holding a lock. Thus they cannot block another thread from running.
+    More complex lock-free primitives can be built out of the interlocked oper-
+ations, most notably Windows SLists, which provide a lock-free LIFO queue.
+SLists are managed using functions like InterlockedPushEntrySList and
+InterlockedPopEntrySList.
+
+298  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+6.11 SUMMARY
+     Deadlock is the blocking of a set of processes that either compete for system
+     resources or communicate with each other. The blockage is permanent unless the
+     OS takes some extraordinary action, such as killing one or more processes or forcing
+     one or more processes to backtrack. Deadlock may involve reusable resources or
+     consumable resources. A reusable resource is one that is not depleted or destroyed
+     by use, such as an I/O channel or a region of memory. A consumable resource is one
+     that is destroyed when it is acquired by a process; examples include messages and
+     information in I/O buffers.
+     There are three general approaches to dealing with deadlock: prevention,
+     detection, and avoidance. Deadlock prevention guarantees that deadlock will not
+     occur, by assuring that one of the necessary conditions for deadlock is not met.
+     Deadlock detection is needed if the OS is always willing to grant resource requests;
+     periodically, the OS must check for deadlock and take action to break the deadlock.
+     Deadlock avoidance involves the analysis of each new resource request to deter-
+     mine if it could lead to deadlock, and granting it only if deadlock is not possible.
+6.12 RECOMMENDED READING
+     The classic paper on deadlocks, [HOLT72], is still well worth a read, as is [COFF71].
+     Another good survey is [ISLO80]. [CORB96] is a thorough treatment of deadlock
+     detection. [DIMI98] is a nice overview of deadlocks. Two papers by Levine [LEVI03a,
+     LEVI03b] clarify some of the concepts used in discussions of deadlock. [SHUB03] is
+     a useful overview of deadlock. [ABRA06] describes a deadlock detection package.
+     The concurrency mechanisms in UNIX SVR4, Linux, and Solaris 2 are well covered
+     in [GRAY97], [LOVE10], and [MCDO07], respectively. [HALL10] is a thorough treat-
+     ment of UNIX concurrency and interprocess communication mechanisms.
+     ABRA06  Abramson, T. "Detecting Potential Deadlocks." Dr. Dobb's Journal,
+     January 2006.
+     COFF71  Coffman, E., Elphick, M., and Shoshani, A. "System Deadlocks." Computing
+     Surveys, June 1971.
+     CORB96  Corbett, J. "Evaluating Deadlock Detection Methods for Concurrent
+     Software." IEEE Transactions on Software Engineering, March 1996.
+     DIMI98  Dimitoglou, G. "Deadlocks and Methods for Their Detection, Prevention, and
+     Recovery in Modern Operating Systems." Operating Systems Review, July 1998.
+     GRAY97  Gray, J. Interprocess Communications in UNIX: The Nooks and Crannies.
+     Upper Saddle River, NJ: Prentice Hall, 1997.
+     HALL10  Hall, B. Beej's Guide to Unix IPC. 2010. Document available in premium
+     content section for this book.
+     HOLT72  Holt, R. "Some Deadlock Properties of Computer Systems." Computing
+     Surveys, September 1972.
+
+                     6.13 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                            299
+          ISLO80    Isloor, S., and Marsland, T. "The Deadlock Problem: An Overview."
+               Computer, September 1980.
+          LEVI03a    Levine, G. "Defining Deadlock." Operating Systems Review, January 2003.
+          LEVI03b    Levine, G. "Defining Deadlock with Fungible Resources." Operating
+               Systems Review, July 2003.
+          LOVE10     Love, R. Linux Kernel Development. Upper Saddle River, NJ: Addison-
+               Wesley, 2010.
+          MCDO07     McDougall, R., and Mauro, J. Solaris Internals: Solaris 10 and OpenSolaris
+               Kernel Architecture. Palo Alto, CA: Sun Microsystems Press, 2007.
+          SHUB03     Shub, C. "A Unified Treatment of Deadlock." Journal of Computing in
+               Small Colleges, October 2003. Available through the ACM digital library.
+6.13 KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS
+Key Terms
+banker's algorithm            deadlock prevention                  pipe
+circular wait                 hold and wait                        preemption
+consumable resource           joint progress diagram               resource allocation graph
+deadlock                      memory barrier                       reusable resource
+deadlock avoidance            message                              spinlock
+deadlock detection            mutual exclusion                     starvation
+Review Questions
+          6.1  Give examples of reusable and consumable resources.
+          6.2  What are the three conditions that must be present for deadlock to be possible?
+          6.3  What are the four conditions that create deadlock?
+          6.4  How can the hold-and-wait condition be prevented?
+          6.5  List two ways in which the no-preemption condition can be prevented.
+          6.6  How can the circular wait condition be prevented?
+          6.7  What is the difference among deadlock avoidance, detection, and prevention?
+Problems
+          6.1  Show that the four conditions of deadlock apply to Figure 6.1a.
+          6.2  Show how each of the techniques of prevention, avoidance, and detection can be
+               applied to Figure 6.1.
+          6.3  For Figure 6.3, provide a narrative description of each of the six depicted paths, simi-
+               lar to the description of the paths of Figure 6.2 provided in Section 6.1.
+          6.4  It was stated that deadlock cannot occur for the situation reflected in Figure 6.3.
+               Justify that statement.
+
+300   CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+          6.5  Given the following state for the Banker's Algorithm.
+               6 processes P0 through P5
+               4 resource types: A (15 instances); B (6 instances)
+               C (9 instances); D (10 instances)
+               Snapshot at time T0:
+                                                     Available
+                                   A              B             C            D
+                                     6            3             5            4
+                                Current allocation          Maximum demand
+                   Process      A       B   C        D      A       B     C     D
+                       P0       2       0   2        1      9       5     5      5
+                       P1       0       1   1        1      2       2     3      3
+                       P2       4       1   0        2      7       5     4      4
+                       P3       1       0   0        1      3       3     3      2
+                       P4       1       1   0        0      5       2     2      1
+                       P5       1       0   1        1      4       4     4      4
+               a.  Verify that the Available array has been calculated correctly.
+               b.  Calculate the Need matrix.
+               c.  Show that the current state is safe, that is, show a safe sequence of processes. In
+                   addition, to the sequence show how the Available (working array) changes as each
+                   process terminates.
+               d.  Given the request (3,2,3,3) from Process P5. Should this request be granted? Why
+                   or why not?
+          6.6  In the code below, three processes are competing for six resources labeled A to F.
+               a.  Using a resource allocation graph (Figures 6.5 and 6.6), show the possibility of a
+                   deadlock in this implementation.
+               b.  Modify the order of some of the get requests to prevent the possibility of any
+                   deadlock. You cannot move requests across procedures, only change the order
+                   inside each procedure. Use a resource allocation graph to justify your answer.
+void  P0()                      void       P1()                        void     P2()
+{                               {                                      {
+   while  (true)    {                while  (true)      {                 while     (true)    {
+      get(A);                           get(D);                              get(C);
+      get(B);                           get(E);                              get(F);
+      get(C);                           get(B);                              get(D);
+      //  critical     region:          //  critical        region:          //     critical     region:
+      //  use  A,  B,  C                //  use   D,    E,  B                //     use  C,  F,  D
+      release(A);                       release(D);                          release(C);
+      release(B);                       release(E);                          release(F);
+      release(C);                       release(B);                          release(D);
+   }                                 }                                    }
+}                               }                                      }
+          6.7  A spooling system (Figure 6.16) consists of an input process I, a user process P,
+               and an output process O connected by two buffers. The processes exchange data in
+
+                      6.13 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                        301
+       I              Input                  P              Output                         O
+                      buffer                                buffer
+       Figure 6.16    A Spooling System
+       blocks of equal size. These blocks are buffered on a disk using a floating boundary
+       between the input and the output buffers, depending on the speed of the processes.
+       The communication primitives used ensure that the following resource constraint
+       is satisfied:
+                                             i + o ... max
+where
+           max = maximum number of blocks on disk
+           i = number of input blocks on disk
+           o = number of output blocks on disk
+The following is known about the processes:
+       1.  As long as the environment supplies data, process I will eventually input it to the
+           disk (provided disk space becomes available).
+       2.  As long as input is available on the disk, process P will eventually consume it and
+           output a finite amount of data on the disk for each block input (provided disk
+           space becomes available).
+       3.  As long as output is available on the disk, process O will eventually consume it.
+       Show that this system can become deadlocked.
+6.8    Suggest an additional resource constraint that will prevent the deadlock in Problem
+       6.7 but still permit the boundary between input and output buffers to vary in accor-
+       dance with the present needs of the processes.
+6.9    In the THE multiprogramming system [DIJK68], a drum (precursor to the disk for
+       secondary storage) is divided into input buffers, processing areas, and output buffers,
+       with floating boundaries, depending on the speed of the processes involved.The current
+       state of the drum can be characterized by the following parameters:
+           max = maximum number of pages on drum
+           i = number of input pages on drum
+           p = number of processing pages on drum
+           o = number of output pages on drum
+           reso = minimum number of pages reserved for output
+           resp = minimum number of pages reserved for processing
+       Formulate the necessary resource constraints that guarantee that the drum capacity
+       is not exceeded and that a minimum number of pages is reserved permanently for
+       output and processing.
+6.10   In the THE multiprogramming system, a page can make the following state transitions:
+       1.  empty : input buffer                 (input production)
+       2.  input buffer : processing area       (input consumption)
+       3.  processing area : output buffer      (output production)
+       4.  output buffer : empty                (output consumption)
+       5.  empty : processing area              (procedure call)
+       6.  processing area : empty              (procedure return)
+       a.  Define the effect of these transitions in terms of the quantities i, o, and p.
+       b.  Can any of them lead to a deadlock if the assumptions made in Problem 6.6 about
+           input processes, user processes, and output processes hold?
+
+302  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+     6.11  Consider a system with a total of 150 units of memory, allocated to three processes as
+           shown:
+                                  Process     Max     Hold
+                                     1           70      45
+                                     2           60      40
+                                     3           60      15
+           Apply the banker's algorithm to determine whether it would be safe to grant each of
+           the following requests. If yes, indicate a sequence of terminations that could be guar-
+           anteed possible. If no, show the reduction of the resulting allocation table.
+           a.  A fourth process arrives, with a maximum memory need of 60 and an initial need
+               of 25 units.
+           b.  A fourth process arrives, with a maximum memory need of 60 and an initial need
+               of 35 units.
+     6.12  Evaluate the banker's algorithm for its usefulness in an OS.
+     6.13  A pipeline algorithm is implemented so that a stream of data elements of type T pro-
+           duced by a process P0 passes through a sequence of processes P1, P2, ..., Pn ­ 1, which
+           operates on the elements in that order.
+           a.  Define a generalized message buffer that contains all the partially consumed data
+               elements and write an algorithm for process Pi (0  i  n ­ 1), of the form
+               repeat
+               receive from predecessor;
+               consume element;
+               send to successor:
+               forever
+                   Assume P0 receives input elements sent by Pn ­ 1. The algorithm should enable
+               the processes to operate directly on messages stored in the buffer so that copying
+               is unnecessary.
+           b.  Show that the processes cannot be deadlocked with respect to the common buffer.
+     6.14  Suppose the following two processes, foo and bar are executed concurrently and
+           share the semaphore variables S and R (each initialized to 1) and the integer variable
+           x (initialized to 0).
+                        void         foo(  )  {       void   bar(        )  {
+                                  do    {             do  {
+                                     semWait(S);             semWait(R);
+                                     semWait(R);             semWait(S);
+                                     x++;                    x--;
+                                     semSignal(S);           semSignal(S;
+                                     SemSignal(R);           SemSignal(R);
+                                  }   while   (1);    }   while    (1);
+                        }                             }
+           a.  Can the concurrent execution of these two processes result in one or both being
+               blocked forever? If yes, give an execution sequence in which one or both are
+               blocked forever.
+           b.  Can the concurrent execution of these two processes result in the indefinite
+               postponement of one of them? If yes, give an execution sequence in which one is
+               indefinitely postponed.
+     6.15  Consider a system consisting of four processes and a single resource. The current state
+           of the claim and allocation matrices are:
+
+                 6.13 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                                303
+                                              3            1
+                                       C  =  §2¥  A    =   §1¥
+                                              9            3
+                                              7            2
+      What is the minimum number of units of the resource needed to be available for this
+      state to be safe?
+6.16  Consider the following ways of handling deadlock: (1) banker's algorithm, (2) detect
+      deadlock and kill thread, releasing all resources, (3) reserve all resources in advance,
+      (4) restart thread and release all resources if thread needs to wait, (5) resource order-
+      ing, and (6) detect deadlock and roll back thread's actions.
+      a.  One criterion to use in evaluating different approaches to deadlock is which
+          approach permits the greatest concurrency. In other words, which approach allows
+          the most threads to make progress without waiting when there is no deadlock?
+          Give a rank order from 1 to 6 for each of the ways of handling deadlock just listed,
+          where 1 allows the greatest degree of concurrency. Comment on your ordering.
+      b.  Another criterion is efficiency; in other words, which requires the least processor
+          overhead. Rank order the approaches from 1 to 6, with 1 being the most efficient,
+          assuming that deadlock is a very rare event. Comment on your ordering. Does
+          your ordering change if deadlocks occur frequently?
+6.17  Comment on the following solution to the dining philosophers problem. A hungry phi-
+      losopher first picks up his left fork; if his right fork is also available, he picks up his right
+      fork and starts eating; otherwise he puts down his left fork again and repeats the cycle.
+6.18  Suppose that there are two types of philosophers. One type always picks up his left
+      fork first (a "lefty"), and the other type always picks up his right fork first (a "righty").
+      The behavior of a lefty is defined in Figure 6.12. The behavior of a righty is as follows:
+          begin
+          repeat
+                       think;
+                       wait  (  fork[  (i+1)      mod  5]  );
+                       wait  (  fork[i]   );
+                       eat;
+                       signal   (  fork[i]    );
+                       signal   (  fork[  (i+1)   mod      5]  );
+          forever
+          end;
+      Prove the following:
+      a.  Any seating arrangement of lefties and righties with at least one of each avoids
+          deadlock.
+      b.  Any seating arrangement of lefties and righties with at least one of each prevents
+          starvation.
+6.19  Figure 6.17 shows another solution to the dining philosophers problem using moni-
+      tors. Compare to Figure 6.14 and report your conclusions.
+6.20  In Table 6.3, some of the Linux atomic operations do not involve two accesses to a
+      variable, such as atomic_read(atomic_t           *v). A simple read operation is obvi-
+      ously atomic in any architecture. Therefore, why is this operation added to the reper-
+      toire of atomic operations?
+6.21  Consider the following fragment of code on a Linux system.
+          read_lock(&mr_rwlock);
+          write_lock(&mr_rwlock);
+      Where mr_rwlock is a reader­writer lock. What is the effect of this code?
+
+304  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+monitor      dining_controller;
+enum    states     {thinking,      hungry,      eating}        state[5];
+cond    needFork[5]                                                        /*    condition         variable      */
+void    get_forks(int        pid)                /*    pid     is     the  philosopher        id   number        */
+{
+     state[pid]    =      hungry;                                 /*   announce       that    I'm  hungry        */
+     if  (state[(pid+1)      %  5]     ==  eating      ||  (state[(pid-1)             %   5]  ==   eating)
+     cwait(needFork[pid]);                      /*   wait      if     either     neighbor     is   eating        */
+     state[pid]    =     eating;           /*   proceed        if  neither       neighbor     is         eating  */
+}
+void    release_forks(int          pid)
+{
+     state[pid]    =      thinking;
+     /*  give      right     (higher)   neighbor       a   chance         to     eat  */
+     if  (state[(pid+1)      %     5]   ==     hungry)     &&     (state[(pid+2)
+     %   5])   !=  eating)
+     csignal(needFork[pid+1]);
+     /*  give      left   (lower)   neighbor        a  chance         to   eat   */
+     else     if   (state[(pid­1)       %   5]  ==     hungry)        &&   (state[(pid­2)
+     %   5])   !=  eating)
+     csignal(needFork[pid­1]);
+}
+void    philosopher[k=0      to     4]                  /*     the     five      philosopher       clients       */
+{
+     while     (true)     {
+        <think>;
+        get_forks(k);                    /*    client      requests        two   forks        via  monitor       */
+        <eat   spaghetti>;
+        release_forks(k);                /*    client      releases        forks      via     the  monitor       */
+     }
+}
+Figure 6.17   Another Solution to the Dining Philosophers Problem Using a Monitor
+         6.22     The two variables a and b have       initial values of      1  and  2,  respectively.  The  following
+                  code is for a Linux system:
+                                       Thread 1                Thread 2
+                                a   =   3;                 --
+                                mb();                      --
+                                b   =   4;                 c   =   b;
+                                --                         rmb();
+                                --                         d   =   a;
+                  What possible errors are avoided by the use of the memory barriers?
+
+PART 3 Memory
+                              CHAPTER
+MEMORY MANAGEMENT
+7.1  Memory Management Requirements
+     Relocation
+     Protection
+     Sharing
+     Logical Organization
+     Physical Organization
+7.2  Memory Partitioning
+     Fixed Partitioning
+     Dynamic Partitioning
+     Buddy System
+     Relocation
+7.3  Paging
+7.4  Segmentation
+7.5  Security Issues
+     Buffer Overflow Attacks
+     Defending against Buffer Overflows
+7.6  Summary
+7.7  Recommended Reading
+7.8  Key Terms, Review Questions, and Problems
+APPENDIX 7A           Loading and Linking
+                                                305

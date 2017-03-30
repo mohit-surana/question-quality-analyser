@@ -1,0 +1,262 @@
+Windows 7 Security
+                                                    15.6 / WINDOWS 7 SECURITY                   667
+      ADDRESS SPACE RANDOMIZATION       Another run-time technique that can be used
+      to thwart attacks involves manipulation of the location of key data structures in a
+      processes address space. In particular, recall that in order to implement the classic
+      stack overflow attack, the attacker needs to be able to predict the approximate
+      location of the targeted buffer. The attacker uses this predicted address to determine
+      a suitable return address to use in the attack to transfer control to the shellcode. One
+      technique to greatly increase the difficulty of this prediction is to change the address
+      at which the stack is located in a random manner for each process. The range of
+      addresses available on modern processors is large (32 bits), and most programs only
+      need a small fraction of that. Therefore, moving the stack memory region around by
+      a megabyte or so has minimal impact on most programs but makes predicting the
+      targeted buffer's address almost impossible.
+      Another target of attack is the location of standard library routines. In an
+      attempt to bypass protections such as nonexecutable stacks, some buffer overflow
+      variants exploit existing code in standard libraries. These are typically loaded at
+      the same address by the same program. To counter this form of attack, we can use
+      a security extension that randomizes the order of loading standard libraries by a
+      program and their virtual memory address locations. This makes the address of any
+      specific function sufficiently unpredictable as to render the chance of a given attack
+      correctly predicting its address very low.
+      The OpenBSD system includes versions of these extensions in its technologi-
+      cal support for a secure system.
+      GUARD PAGES     A final run-time technique that can be used places guard pages
+      between critical regions of memory in a processes address space. Again, this
+      exploits the fact that a process has much more virtual memory available than
+      it typically needs. Gaps are placed between the ranges of addresses used for
+      each of the components of the address space. These gaps, or guard pages, are
+      flagged in the MMU as illegal addresses, and any attempt to access them results
+      in the process being aborted. This can prevent buffer overflow attacks, typically
+      of global data, which attempt to overwrite adjacent regions in the processes
+      address space.
+      A further extension places guard pages between stack frames or between dif-
+      ferent allocations on the heap. This can provide further protection against stack and
+      heap overflow attacks, but at cost in execution time supporting the large number of
+      page mappings necessary.
+15.6  WINDOWS 7 SECURITY
+      A good example of the access control concepts we have been discussing is the
+      Windows access control facility, which exploits object-oriented concepts to provide
+      a powerful and flexible access control capability.
+      Windows provides a uniform access control facility that applies to processes,
+      threads, files, semaphores, windows, and other objects. Access control is governed
+      by two entities: an access token associated with each process and a security descrip-
+      tor associated with each object for which interprocess access is possible.
+
+668  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     Access Control Scheme
+     When a user logs on to a Windows system, Windows uses a name/password scheme
+     to authenticate the user. If the logon is accepted, a process is created for the user and
+     an access token is associated with that process object. The access token, whose details
+     are described later, include a security ID (SID), which is the identifier by which this
+     user is known to the system for purposes of security. The token also contains SIDs
+     for the security groups to which the user belongs. If the initial user process spawns a
+     new process, the new process object inherits the same access token.
+         The access token serves two purposes:
+     1.  It keeps all necessary security information together to speed access validation.
+         When any process associated with a user attempts access, the security subsys-
+         tem can make use of the token associated with that process to determine the
+         user's access privileges.
+     2.  It allows each process to modify its security characteristics in limited ways
+         without affecting other processes running on behalf of the user.
+         The chief significance of the second point has to do with privileges that may be
+     associated with a user. The access token indicates which privileges a user may have.
+     Generally, the token is initialized with each of these privileges in a disabled state.
+     Subsequently, if one of the user's processes needs to perform a privileged opera-
+     tion, the process may enable the appropriate privilege and attempt access. It would
+     be undesirable to share the same token among all of the user's processes, because in
+     that case enabling a privilege for one process enables it for all of them.
+         Associated with each object for which interprocess access is possible is a security
+     descriptor. The chief component of the security descriptor is an access control list that
+     specifies access rights for various users and user groups for this object. When a process
+     attempts to access this object, the SIDs in the process token are matched against the
+     access control list of the object to determine if access will be allowed or denied.
+         When an application opens a reference to a securable object, Windows veri-
+     fies that the object's security descriptor grants the process the requested access. If
+     the check succeeds, Windows caches the resulting granted access rights.
+         An important aspect of Windows security is the concept of impersonation,
+     which simplifies the use of security in a client/server environment. If client and
+     server talk through a RPC connection, the server can temporarily assume the iden-
+     tity of the client so that it can evaluate a request for access relative to that client's
+     rights. After the access, the server reverts to its own identity.
+     Access Token
+     Figure 15.11a shows the general structure of an access token, which includes the
+     following parameters:
+     ·   Security ID: Identifies a user uniquely across all of the machines on the net-
+         work. This generally corresponds to a user's logon name. Special user SIDs
+         were added in Windows 7 for use by processes and services. These specially
+         managed SIDs are designed for secure management; they do not use the ordi-
+         nary password polices human accounts do.
+
+                                               15.6   /  WINDOWS  7 SECURITY        669
+   Security ID (SID)         Flags                                ACL header
+   Group SIDS                Owner                                ACE header
+   Privileges                System access                        Access mask
+   Default owner             control list                         SID
+   Default ACL               Discretionary                        ACE header
+                             access
+                             control list                         Access mask
+                                                                  SID
+   (a) Access token          (b) Security descriptor     (c) Access control list
+   Figure 15.11   Windows Security Structures
+·  Group SIDs: A list of the groups to which this user belongs. A group is simply
+   a set of user IDs that are identified as a group for purposes of access control.
+   Each group has a unique group SID. Access to an object can be defined on the
+   basis of group SIDs, individual SIDs, or a combination. There is also a SID
+   which reflects the process integrity level (low, medium, high, or system).
+·  Privileges: A list of security-sensitive system services that this user may call,
+   for example CreateToken. Another example is the SeBackupPrivilege; users
+   with this privilege are allowed to use a backup tool to back up files that they
+   normally would not be able to read.
+·  Default owner: If this process creates another object, this field specifies the
+   owner of the new object. Generally, the owner of a new object is the same
+   as the owner of the spawning process. However, a user may specify that the
+   default owner of any processes spawned by this process is a group SID to
+   which this user belongs.
+·  Default ACL: This is an initial list of protections applied to the objects that
+   the user creates. The user may subsequently alter the ACL for any object that
+   it owns or that one of its groups owns.
+Security Descriptors
+Figure 15.11b shows the general structure of a security descriptor, which includes
+the following parameters:
+·  Flags: Define the type and contents of a security descriptor. The flags indicate
+   whether or not the SACL and DACL are present, whether or not they were
+   placed on the object by a defaulting mechanism, and whether the pointers
+   in the descriptor use absolute or relative addressing. Relative descriptors are
+   required for objects that are transmitted over a network, such as information
+   transmitted in a RPC.
+
+670  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+     ·  Owner: The owner of the object can generally perform any action on the secu-
+        rity descriptor. The owner can be an individual or a group SID. The owner has
+        the authority to change the contents of the DACL.
+     ·  System access control list (SACL): Specifies what kinds of operations on the
+        object should generate audit messages. An application must have the corre-
+        sponding privilege in its access token to read or write the SACL of any object.
+        This is to prevent unauthorized applications from reading SACLs (thereby
+        learning what not to do to avoid generating audits) or writing them (to gener-
+        ate many audits to cause an illicit operation to go unnoticed). The SACL also
+        specifies the object integrity level. Processes cannot modify an object unless
+        the process integrity level meets or exceeds the level on the object.
+     ·  Discretionary access control list (DACL): Determines which users and groups
+        can access this object for which operations. It consists of a list of access control
+        entries (ACEs).
+        When an object is created, the creating process can assign as owner its own
+     SID or any group SID in its access token. The creating process cannot assign an
+     owner that is not in the current access token. Subsequently, any process that has
+     been granted the right to change the owner of an object may do so, but again with
+     the same restriction. The reason for the restriction is to prevent a user from cover-
+     ing his or her tracks after attempting some unauthorized action.
+        Let us look in more detail at the structure of access control lists, because
+     these are at the heart of the Windows access control facility (Figure 15.11c). Each
+     list consists of an overall header and a variable number of access control entries.
+     Each entry specifies an individual or group SID and an access mask that defines
+     the rights to be granted to this SID. When a process attempts to access an object,
+     the object manager in the Windows Executive reads the SID and group SIDs from
+     the access token along with the integrity level SID. If the access requested includes
+     modifying the object, the integrity level is checked against the object integrity level
+     in the SACL. If that test passes, the object manager then scans down the object's
+     DACL. If a match is found--that is, if an ACE is found with a SID that matches
+     one of the SIDs from the access token--then the process can have the access rights
+     specified by the access mask in that ACE. This also may include denying access, in
+     which case the access request fails. The first matching ACE determines the result
+     of the access check.
+        Figure 15.12 shows the contents of the access mask. The least significant 16 bits
+     specify access rights that apply to a particular type of object. For example, bit
+     0 for a file object is FILE_READ_DATA access and bit 0 for an event object is
+     EVENT_QUERY_STATE access.
+        The most significant 16 bits of the mask contains bits that apply to all types of
+     objects. Five of these are referred to as standard access types:
+     ·  Synchronize: Gives permission to synchronize execution with some event asso-
+        ciated with this object. In particular, this object can be used in a wait function.
+     ·  Write_owner: Allows a program to modify the owner of the object. This is
+        useful because the owner of an object can always change the protection on the
+        object. (The owner may not be denied Write DAC access.)
+
+                                                        15.6 / WINDOWS 7 SECURITY       671
+              Delete
+              Read control
+              Write DAC
+              Write owner
+   Generic    Synchronize
+access types
+                                Standard                Specific access types
+                                access types
+                                Access system security
+                                Maximum allowed
+              Generic all
+              Generic execute
+              Generic write
+              Generic read
+Figure 15.12  Access Mask
+·  Write_DAC: Allows the application to modify the DACL and hence the
+   protection on this object.
+·  Read_control: Allows the application to query the owner and DACL fields of
+   the security descriptor of this object.
+·  Delete: Allows the application to delete this object.
+   The high-order half of the access mask also contains the four generic access
+types. These bits provide a convenient way to set specific access types in a number
+of different object types. For example, suppose an application wishes to create sev-
+eral types of objects and ensure that users have read access to the objects, even
+though read has a somewhat different meaning for each object type. To protect
+each object of each type without the generic access bits, the application would have
+to construct a different ACE for each type of object and be careful to pass the cor-
+rect ACE when creating each object. It is more convenient to create a single ACE
+that expresses the generic concept "allow read," and simply apply this ACE to each
+object that is created, and have the right thing happen. That is the purpose of the
+generic access bits, which are
+·  Generic_all: Allow all access
+·  Generic_execute: Allow execution if executable
+·  Generic_write: Allow write access
+·  Generic_read: Allow read-only access
+   The generic bits also affect the standard access types. For example, for
+a file object, the Generic_Read bit maps to the standard bits Read_Control and
+Synchronize and to the object-specific bits File_Read_Data, File_Read_Attributes,
+and File_Read_EA. Placing an ACE on a file object that grants some SID Generic_
+Read grants those five access rights as if they had been specified individually in the
+access mask.
+
+672  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+         The remaining two bits in the access mask have special meanings. The Access_
+     System_Security bit allows modifying audit and alarm control for this object.
+     However, not only must this bit be set in the ACE for a SID but the access token for
+     the process with that SID must have the corresponding privilege enabled.
+         Finally, the Maximum_Allowed bit is not really an access bit, but a bit that
+     modifies the algorithm for scanning the DACL for this SID. Normally, Windows
+     will scan through the DACL until it reaches an ACE that specifically grants (bit
+     set) or denies (bit not set) the access requested by the requesting process or until it
+     reaches the end of the DACL, in which latter case access is denied. The Maximum_
+     Allowed bit allows the object's owner to define a set of access rights that is the
+     maximum that will be allowed to a given user. With this in mind, suppose that an
+     application does not know all of the operations that it is going to be asked to per-
+     form on an object during a session. There are three options for requesting access:
+     1.  Attempt to open the object for all possible accesses. The disadvantage of this
+         approach is that the access may be denied even though the application may
+         have all of the access rights actually required for this session.
+     2.  Only open the object when a specific access is requested, and open a new han-
+         dle to the object for each different type of request. This is generally the pre-
+         ferred method because it will not unnecessarily deny access, nor will it allow
+         more access than necessary. In many cases the object itself does not need to
+         be referenced a second time, but the DuplicateHandle function can be used to
+         make a copy of the handle with a lower level of access.
+     3.  Attempt to open the object for as much access as the object will allow this
+         SID. The advantage is that the user will not be artificially denied access, but
+         the application may have more access than it needs. This latter situation may
+         mask bugs in the application.
+         An important feature of Windows security is that applications can make
+     use of the Windows security framework for user-defined objects. For example, a
+     database server might create its own security descriptors and attach them to por-
+     tions of a database. In addition to normal read/write access constraints, the server
+     could secure database-specific operations, such as scrolling within a result set or
+     performing a join. It would be the server's responsibility to define the meaning of
+     special rights and perform access checks. But the checks would occur in a stand-
+     ard context, using systemwide user/group accounts and audit logs. The extensible
+     security model should also prove useful to implementers of non-Microsoft file
+     systems.
+15.7 RECOMMENDED READING AND WEB SITES
+     The topics in this chapter are covered in more detail in [STAL08].
+         [OGOR03] is the paper to read for an authoritative survey of user authenti-
+     cation. [BURR04] is also a worthwhile survey. [SAND94] is an excellent overview
+     of access control. [SAND96] is a comprehensive overview of RBAC. [SAUN01]
+     compares RBAC and DAC. [SCAR07] is a detailed and worthwhile treatment

@@ -1,0 +1,136 @@
+Windows Scheduling
+466  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+      The result is that threads whose sleep time exceeds their run time score in the
+      lower half of the range of interactivity scores, and threads whose run time exceeds
+      their sleep time score in the upper half of the range.
+      THREAD MIGRATION  In general, it is desirable to schedule a Ready thread onto the
+      last processor that it ran on; this is called processor affinity. The alternative is to allow
+      a thread to migrate to another processor for its next execution time slice. Processor
+      affinity is significant because of local caches dedicated to a single processor. When
+      a thread is run, it may still have data in the cache of its last processor. Changing to
+      another processor means that the necessary data must be loaded into caches in the
+      new processor and cache lines from the preceding processor must be invalidated.
+      On the other hand, processor migration may allow a better load balancing and may
+      prevent idle periods on some processors while other processor have more work
+      than they can handle in a timely fashion.
+      The FreeBSD scheduler supports two mechanisms for thread migration to bal-
+      ance load: pull and push. With the pull mechanism, and idle processor steals a thread
+      from a nonidle processor. When a processor has no work to do, it sets a bit in a global
+      bit-mask indicating that it is idle. When an active processor is about to add work to
+      its own run queue, it first checks for such idle bits and if a set idle bit is found, passes
+      the thread to the idle processor. It is primarily useful when there is a light or sporadic
+      load, or in situations where processes are starting and exiting very frequently.
+      The pull mechanism is effective in preventing the waste of a processor due
+      to idleness. But it is not effective, or indeed relevant, in a situation in which every
+      processor has work to do but the load has developed in an uneven fashion. With
+      the push mechanism, a periodic scheduler task evaluates the current load situation
+      and evens it out. Twice per second, this task picks the most-loaded and least-loaded
+      processors in the system and equalizes their run queues. Push migration ensures
+      fairness among the runnable threads.
+10.6  WINDOWS SCHEDULING
+      Windows is designed to be as responsive as possible to the needs of a single user in
+      a highly interactive environment or in the role of a server. Windows implements a
+      preemptive scheduler with a flexible system of priority levels that includes round-
+      robin scheduling within each level and, for some levels, dynamic priority variation
+      on the basis of their current thread activity. Threads are the unit of scheduling in
+      Windows rather than processes.
+      Process and Thread Priorities
+      Priorities in Windows are organized into two bands, or classes: real time and vari-
+      able. Each of these bands consists of 16 priority levels. Threads requiring immediate
+      attention are in the real-time class, which includes functions such as communica-
+      tions and real-time tasks.
+      Overall, because Windows makes use of a priority-driven preemptive scheduler,
+      threads with real-time priorities have precedence over other threads. When a thread
+
+                        10.6 / WINDOWS SCHEDULING                                         467
+becomes ready whose priority is higher than the currently executing thread, the lower-
+priority thread is preempted and the processor given to the higher-priority thread.
+Priorities are handled somewhat differently in the two classes (Figure 10.14).
+In the real-time priority class, all threads have a fixed priority that never changes.
+All of the active threads at a given priority level are in a round-robin queue. In the
+variable priority class, a thread's priority begins an initial priority value and then
+may be temporarily boosted (raised) during the thread's lifetime. There is a FIFO
+queue at each priority level; a thread will change queues among the variable priority
+classes as its own priority changes. However, a thread at priority level 15 or below is
+never boosted to level 16 or any other level in the real-time class.
+The initial priority of a thread in the variable priority class is determined by two
+quantities: process base priority and thread base priority. The process base priority
+is an attribute of the process object, and can take on any value from 1 through 15
+(priority 0 is reserved for the Executive's per-processor idle threads). Each thread
+object associated with a process object has a thread base priority attribute that
+indicates the thread's base priority relative to that of the process. The thread's base
+priority can be equal to that of its process or within two levels above or below that of
+the process. So, for example, if a process has a base priority of 4 and one of its threads
+has a base priority of -1, then the initial priority of that thread is 3.
+Once a thread in the variable priority class has been created, its actual prior-
+ity, referred to as the thread's current priority, may fluctuate within given bounda-
+ries. The current priority may never fall below the thread's base priority and it may
+never exceed 15. Figure 10.15 gives an example. The process object has a base prior-
+ity attribute of 4. Each thread object associated with this process object must have
+an initial priority of between 2 and 6. Suppose the base priority for thread is 4. Then
+the current priority for that thread may fluctuate in the range from 4 through 15
+depending on what boosts it has been given. If a thread is interrupted to wait on an
+I/O event, the kernel boosts its priority. If a boosted thread is interrupted because
+15
+14
+13
+12
+11
+10
+9
+8
+7
+6                       Highest
+5                       Above normal
+4   Base priority       Normal
+3                       Below normal
+2                       Lowest
+1
+0
+              Process   Thread's base  Thread's dynamic
+              priority  priority       priority
+Figure 10.15  Example of Windows Priority Relationship
+
+468  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+      it has used up its current time quantum, the kernel lowers its priority. Thus, proces-
+      sor-bound threads tend toward lower priorities and I/O-bound threads tend toward
+      higher priorities. In the case of I/O-bound threads, the kernel boosts the priority
+      more for interactive waits (e.g., wait on keyboard or mouse) than for other types
+      of I/O (e.g., disk I/O). Thus, interactive threads tend to have the highest priorities
+      within the variable priority class.
+      Multiprocessor Scheduling
+      When Windows is run on a single processor, the highest-priority thread is always
+      active unless it is waiting on an event. If there is more than one thread that has
+      the same highest priority, then the processor is shared, round robin, among all the
+      threads at that priority level. In a multiprocessor system with N processors, the ker-
+      nel tries to give the N processors to the N highest-priority threads that are ready
+      to run. The remaining, lower priority, threads must wait until the other threads
+      block or have their priority decay. Lower-priority threads may also have their pri-
+      ority boosted to 15 for a very short time if they are being starved, solely to correct
+      instances of priority inversion.
+      The foregoing scheduling discipline is affected by the processor affinity
+      attribute of a thread. If a thread is ready to execute but the only available processors
+      are not in its processor affinity set, then that thread is forced to wait, and the kernel
+      schedules the next available thread.
+10.7  LINUX VIRTUAL MACHINE PROCESS SCHEDULING
+      The Linux VServer virtual machine facility, introduced in Chapter 2, provides a
+      way of controlling VM use of processor time. VServer overlays a token bucket filter
+      (TBF) on top of the standard Linux schedule. The purpose of the TBF is to deter-
+      mine how much of the processor execution time (single processor, multiprocessor,
+      or multicore) is allocated to each VM. If only the underlying Linux scheduler is
+      used to globally schedule processes across all VMs, then resource hunger processes
+      in one VM crowd out processes in other VMs.
+      Figure 10.16 illustrates the TBF concept. For each VM, a bucket is defined
+      with a capacity of S tokens. Tokens are added to the bucket at a rate of R tokens
+      during every time interval of length T. When the bucket is full, additional incoming
+      tokens are simply discarded. When a process is executing on this VM, it consumes
+      one token for each timer clock tick. If the bucket empties, the process is put on
+      hold and cannot be restarted until the bucket is refilled to a minimum threshold
+      value of M tokens. At that point, the process is rescheduled. A significant conse-
+      quence of the TBF approach is that a VM may accumulate tokens during a period of
+      quiescence, and then later use the tokens in a burst when required.
+      Adjusting the values of R and T allows for regulating the percentage of capac-
+      ity that a VM can claim. For a single processor, we can define capacity allocation
+      as follows:
+                   R  = Fraction of processor allocation
+                   T

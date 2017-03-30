@@ -1,0 +1,2776 @@
+Concurrency: Mutual Exclusion and Synchronization
+                                     CHAPTER
+CONCURRENCY:
+MUTUAL EXCLUSION AND
+SYNCHRONIZATION
+     5.1  Principles of Concurrency
+          A Simple Example
+          Race Condition
+          Operating System Concerns
+          Process Interaction
+          Requirements for Mutual Exclusion
+     5.2  Mutual Exclusion: Hardware Support
+          Interrupt Disabling
+          Special Machine Instructions
+     5.3  Semaphores
+          Mutual Exclusion
+          The Producer/Consumer Problem
+          Implementation of Semaphores
+     5.4  Monitors
+          Monitor with Signal
+          Alternate Model of Monitors with Notify and Broadcast
+     5.5  Message Passing
+          Synchronization
+          Addressing
+          Message Format
+          Queueing Discipline
+          Mutual Exclusion
+     5.6  Readers/Writers Problem
+          Readers Have Priority
+          Writers Have Priority
+     5.7  Summary
+     5.8  Recommended Reading
+     5.9  Key Terms, Review Questions, and Problems
+198
+
+CHAPTER  5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION                       199
+         Designing correct routines for controlling concurrent activities proved
+         to be one of the most difficult aspects of systems programming. The
+         ad hoc techniques used by programmers of early multiprogramming
+         and real-time systems were always vulnerable to subtle programming
+         errors whose effects could be observed only when certain relatively
+         rare sequences of actions occurred.The errors are particularly difficult
+         to locate, since the precise conditions under which they appear are very
+         hard to reproduce.
+            --THE COMPUTER SCIENCE AND ENGINEERING RESEARCH STUDY, MIT Press, 1980
+LEARNING OBJECTIVES
+After studying this chapter, you should be able to:
+·           Discuss basic concepts related to concurrency, such as race conditions,
+            OS concerns, and mutual exclusion requirements.
+·           Understand hardware approaches to supporting mutual exclusion.
+·           Define and explain semaphores.
+·           Define and explain monitors.
+·           Define and explain monitors.
+·           Explain the readers/writers problem.
+The central themes of operating system design are all concerned with the manage-
+ment of processes and threads:
+         ·  Multiprogramming: The management of multiple processes within a unipro-
+            cessor system
+         ·  Multiprocessing: The management of multiple processes within a multiprocessor
+         ·  Distributed processing: The management of multiple processes executing on
+            multiple, distributed computer systems. The recent proliferation of clusters is
+            a prime example of this type of system.
+Fundamental to all of these areas, and fundamental to OS design, is concurrency.
+Concurrency encompasses a host of design issues, including communication among pro-
+cesses, sharing of and competing for resources (such as memory, files, and I/O access),
+synchronization of the activities of multiple processes, and allocation of processor time
+to processes. We shall see that these issues arise not just in multiprocessing and distrib-
+uted processing environments but even in single-processor multiprogramming systems.
+            Concurrency arises in three different contexts:
+         ·  Multiple applications: Multiprogramming was invented to allow processing
+            time to be dynamically shared among a number of active applications.
+         ·  Structured applications: As an extension of the principles of modular design
+            and structured programming, some applications can be effectively programmed
+            as a set of concurrent processes.
+
+200  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+            ·     Operating system structure: The same structuring advantages apply to systems
+                  programs, and we have seen that operating systems are themselves often im-
+                  plemented as a set of processes or threads.
+                  Because of the importance of this topic, four chapters and an appendix focus
+           on concurrency-related issues. Chapters 5 and 6 deal with concurrency in multipro-
+           gramming and multiprocessing systems. Chapters 16 and 18 examine concurrency
+           issues related to distributed processing.
+                  This chapter begins with an introduction to the concept of concurrency and the
+           implications of the execution of multiple concurrent processes.1 We find that the basic
+           requirement for support of concurrent processes is the ability to enforce mutual exclu-
+           sion; that is, the ability to exclude all other processes from a course of action while one
+           process is granted that ability. Next, we examine some hardware mechanisms that can
+           support mutual exclusion. Then we look at solutions that do not involve busy waiting
+           and that can be supported either by the OS or enforced by language compilers. We
+           examine three approaches: semaphores, monitors, and message passing.
+                  Two classic problems in concurrency are used to illustrate the concepts and
+           compare the approaches presented in this chapter. The producer/consumer prob-
+           lem is introduced in Section 5.3 and used as a running example. The chapter closes
+           with the readers/writers problem.
+                  Our discussion of concurrency continues in Chapter 6, and we defer a discus-
+           sion of the concurrency mechanisms of our example systems until the end of that
+           chapter. Appendix A covers additional topics on concurrency. Table 5.1 lists some
+           key terms related to concurrency. A set of animations that illustrate concepts in this
+           chapter is available online. Click on the rotating globe at this book's Web site at
+           WilliamStallings.com/OS/OS7e.html for access.
+Table 5.1   Some Key Terms Related to Concurrency
+atomic operation  A function or action implemented as a sequence of one or more instructions that appears
+                  to be indivisible; that is, no other process can see an intermediate state or interrupt the
+                  operation. The sequence of instruction is guaranteed to execute as a group, or not execute
+                  at all, having no visible effect on system state. Atomicity guarantees isolation from
+                  concurrent processes.
+critical section  A section of code within a process that requires access to shared resources and that must
+                  not be executed while another process is in a corresponding section of code.
+deadlock          A situation in which two or more processes are unable to proceed because each is waiting
+                  for one of the others to do something.
+livelock          A situation in which two or more processes continuously change their states in response
+                  to changes in the other process(es) without doing any useful work.
+mutual exclusion  The requirement that when one process is in a critical section that accesses shared resources,
+                  no other process may be in a critical section that accesses any of those shared resources.
+race condition    A situation in which multiple threads or processes read and write a shared data item and
+                  the final result depends on the relative timing of their execution.
+starvation        A situation in which a runnable process is overlooked indefinitely by the scheduler;
+                  although it is able to proceed, it is never chosen.
+           1For simplicity, we generally refer to the concurrent execution of processes. In fact, as we have seen in the
+           preceding chapter, in some systems the fundamental unit of concurrency is a thread rather than a process.
+
+                                        5.1 / PRINCIPLES OF CONCURRENCY                        201
+5.1  PRINCIPLES OF CONCURRENCY
+     In a single-processor multiprogramming system, processes are interleaved in time
+     to yield the appearance of simultaneous execution (Figure 2.12a). Even though
+     actual parallel processing is not achieved, and even though there is a certain amount
+     of overhead involved in switching back and forth between processes, interleaved
+     execution provides major benefits in processing efficiency and in program structuring.
+     In a multiple-processor system, it is possible not only to interleave the execution of
+     multiple processes but also to overlap them (Figure 2.12b).
+         At first glance, it may seem that interleaving and overlapping represent funda-
+     mentally different modes of execution and present different problems. In fact, both
+     techniques can be viewed as examples of concurrent processing, and both present
+     the same problems. In the case of a uniprocessor, the problems stem from a basic
+     characteristic of multiprogramming systems: The relative speed of execution of
+     processes cannot be predicted. It depends on the activities of other processes, the
+     way in which the OS handles interrupts, and the scheduling policies of the OS. The
+     following difficulties arise:
+     1.  The sharing of global resources is fraught with peril. For example, if two processes
+         both make use of the same global variable and both perform reads and writes on
+         that variable, then the order in which the various reads and writes are executed
+         is critical. An example of this problem is shown in the following subsection.
+     2.  It is difficult for the OS to manage the allocation of resources optimally. For
+         example, process A may request use of, and be granted control of, a particular
+         I/O channel and then be suspended before using that channel. It may be unde-
+         sirable for the OS simply to lock the channel and prevent its use by other pro-
+         cesses; indeed this may lead to a deadlock condition, as described in Chapter 6.
+     3.  It becomes very difficult to locate a programming error because results are
+         typically not deterministic and reproducible (e.g., see [LEBL87, CARR89,
+         SHEN02] for a discussion of this point).
+         All of the foregoing difficulties present themselves in a multiprocessor system
+     as well, because here too the relative speed of execution of processes is unpredictable.
+     A multiprocessor system must also deal with problems arising from the simultaneous
+     execution of multiple processes. Fundamentally, however, the problems are the same
+     as those for uniprocessor systems. This should become clear as the discussion proceeds.
+     A Simple Example
+     Consider the following procedure:
+         void  echo()
+         {
+            chin   =     getchar();
+            chout     =  chin;
+            putchar(chout);
+         }
+
+202  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     This procedure shows the essential elements of a program that will provide a char-
+     acter echo procedure; input is obtained from a keyboard one keystroke at a time.
+     Each input character is stored in variable chin. It is then transferred to variable
+     chout and sent to the display. Any program can call this procedure repeatedly to
+     accept user input and display it on the user's screen.
+         Now consider that we have a single-processor multiprogramming system
+     supporting a single user. The user can jump from one application to another,
+     and each application uses the same keyboard for input and the same screen for
+     output. Because each application needs to use the procedure echo, it makes
+     sense for it to be a shared procedure that is loaded into a portion of memory
+     global to all applications. Thus, only a single copy of the echo procedure is used,
+     saving space.
+         The sharing of main memory among processes is useful to permit efficient and
+     close interaction among processes. However, such sharing can lead to problems.
+     Consider the following sequence:
+     1.  Process P1 invokes the echo procedure and is interrupted immediately after
+         getchar returns its value and stores it in chin. At this point, the most recently
+         entered character, x, is stored in variable chin.
+     2.  Process P2 is activated and invokes the echo procedure, which runs to conclu-
+         sion, inputting and then displaying a single character, y, on the screen.
+     3.  Process P1 is resumed. By this time, the value x has been overwritten in chin
+         and therefore lost. Instead, chin contains y, which is transferred to chout
+         and displayed.
+         Thus, the first character is lost and the second character is displayed twice.
+     The essence of this problem is the shared global variable, chin. Multiple processes
+     have access to this variable. If one process updates the global variable and then is
+     interrupted, another process may alter the variable before the first process can use
+     its value. Suppose, however, that we permit only one process at a time to be in that
+     procedure. Then the foregoing sequence would result in the following:
+     1.  Process P1 invokes the echo procedure and is interrupted immediately after
+         the conclusion of the input function. At this point, the most recently entered
+         character, x, is stored in variable chin.
+     2.  Process P2 is activated and invokes the echo procedure. However, because P1
+         is still inside the echo procedure, although currently suspended, P2 is blocked
+         from entering the procedure. Therefore, P2 is suspended awaiting the avail-
+         ability of the echo procedure.
+     3.  At some later time, process P1 is resumed and completes execution of echo.
+         The proper character, x, is displayed.
+     4.  When P1 exits echo, this removes the block on P2. When P2 is later resumed,
+         the echo procedure is successfully invoked.
+         This example shows that it is necessary to protect shared global variables
+     (and other shared global resources) and that the only way to do that is to control
+     the code that accesses the variable. If we impose the discipline that only one
+
+                                     5.1 / PRINCIPLES OF CONCURRENCY                203
+process at a time may enter echo and that once in echo the procedure must run
+to completion before it is available for another process, then the type of error
+just discussed will not occur. How that discipline may be imposed is a major topic
+of this chapter.
+    This problem was stated with the assumption that there was a single-processor,
+multiprogramming OS. The example demonstrates that the problems of concur-
+rency occur even when there is a single processor. In a multiprocessor system, the
+same problems of protected shared resources arise, and the same solution works.
+First, suppose that there is no mechanism for controlling access to the shared global
+variable:
+1.  Processes P1 and P2 are both executing, each on a separate processor. Both
+    processes invoke the echo procedure.
+2.  The following events occur; events on the same line take place in parallel:
+           Process  P1                    Process    P2
+    ·                                ·
+    chin   =      getchar();         ·
+    ·                                chin   =        getchar();
+    chout     =   chin;              chout        =  chin;
+    putchar(chout);                  ·
+    ·                                putchar(chout);
+    ·                                ·
+    The result is that the character input to P1 is lost before being displayed, and
+the character input to P2 is displayed by both P1 and P2. Again, let us add the capa-
+bility of enforcing the discipline that only one process at a time may be in echo.
+Then the following sequence occurs:
+1.  Processes P1 and P2 are both executing, each on a separate processor. P1
+    invokes the echo procedure.
+2.  While P1 is inside the echo procedure, P2 invokes echo. Because P1 is still
+    inside the echo procedure (whether P1 is suspended or executing), P2 is
+    blocked from entering the procedure. Therefore, P2 is suspended awaiting the
+    availability of the echo procedure.
+3.  At a later time, process P1 completes execution of echo, exits that procedure,
+    and continues executing. Immediately upon the exit of P1 from echo, P2 is
+    resumed and begins executing echo.
+    In the case of a uniprocessor system, the reason we have a problem is that an
+interrupt can stop instruction execution anywhere in a process. In the case of a mul-
+tiprocessor system, we have that same condition and, in addition, a problem can be
+caused because two processes may be executing simultaneously and both trying to
+access the same global variable. However, the solution to both types of problem is
+the same: control access to the shared resource.
+
+204  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     Race Condition
+     A race condition occurs when multiple processes or threads read and write data
+     items so that the final result depends on the order of execution of instructions in the
+     multiple processes. Let us consider two simple examples.
+         As a first example, suppose that two processes, P1 and P2, share the global
+     variable a. At some point in its execution, P1 updates a to the value 1, and at some
+     point in its execution, P2 updates a to the value 2. Thus, the two tasks are in a race
+     to write variable a. In this example, the "loser" of the race (the process that updates
+     last) determines the final value of a.
+         For our second example, consider two process, P3 and P4, that share global
+     variables b and c, with initial values b      =  1 and c  =  2. At some point in its execu-
+     tion, P3 executes the assignment b        =   b  +  c, and at some point in its execution,
+     P4 executes the assignment c  =      b    +  c. Note that the two processes update differ-
+     ent variables. However, the final values of the two variables depend on the order in
+     which the two processes execute these two assignments. If P3 executes its assignment
+     statement first, then the final values are b     =  3 and c  =  5. If P4 executes its assign-
+     ment statement first, then the final values are b   =     4 and c  =  3.
+         Appendix A includes a discussion of race conditions using semaphores as an
+     example.
+     Operating System Concerns
+     What design and management issues are raised by the existence of concurrency?
+     We can list the following concerns:
+     1.  The OS must be able to keep track of the various processes. This is done with
+         the use of process control blocks and was described in Chapter 4.
+     2.  The OS must allocate and deallocate various resources for each active process.
+         At times, multiple processes want access to the same resource. These resources
+         include
+         ·  Processor time: This is the scheduling function, discussed in Part Four.
+         ·  Memory: Most operating systems use a virtual memory scheme. The topic
+            is addressed in Part Three.
+         ·  Files: Discussed in Chapter 12.
+         ·  I/O devices: Discussed in Chapter 11.
+     3.  The OS must protect the data and physical resources of each process against
+         unintended interference by other processes. This involves techniques that
+         relate to memory, files, and I/O devices. A general treatment of protection is
+         found in Part Seven.
+     4.  The functioning of a process, and the output it produces, must be independent
+         of the speed at which its execution is carried out relative to the speed of other
+         concurrent processes. This is the subject of this chapter.
+         To understand how the issue of speed independence can be addressed, we
+     need to look at the ways in which processes can interact.
+
+                                                  5.1 / PRINCIPLES OF CONCURRENCY                  205
+           Process Interaction
+           We can classify the ways in which processes interact on the basis of the degree to
+           which they are aware of each other's existence. Table 5.2 lists three possible degrees
+           of awareness plus the consequences of each:
+            ·  Processes unaware of each other: These are independent processes that are not
+               intended to work together. The best example of this situation is the multipro-
+               gramming of multiple independent processes. These can either be batch jobs
+               or interactive sessions or a mixture. Although the processes are not working
+               together, the OS needs to be concerned about competition for resources. For
+               example, two independent applications may both want to access the same disk
+               or file or printer. The OS must regulate these accesses.
+            ·  Processes indirectly aware of each other: These are processes that are not nec-
+               essarily aware of each other by their respective process IDs but that share
+               access to some object, such as an I/O buffer. Such processes exhibit cooperation
+               in sharing the common object.
+            ·  Processes directly aware of each other: These are processes that are able to
+               communicate with each other by process ID and that are designed to work
+               jointly on some activity. Again, such processes exhibit cooperation.
+               Conditions will not always be as clear-cut as suggested in Table 5.2. Rather,
+           several processes may exhibit aspects of both competition and cooperation.
+           Nevertheless, it is productive to examine each of the three items in the preceding
+           list separately and determine their implications for the OS.
+Table 5.2   Process Interaction
+Degree of Awareness              Relationship     Influence that One         Potential Control
+                                                  Process Has on the         Problems
+                                                  Other
+Processes unaware of      Competition             ·  Results of one process  ·  Mutual exclusion
+each other                                           independent of the      ·  Deadlock (renewable
+                                                     action of others           resource)
+                                                  ·  Timing of process may   ·  Starvation
+                                                     be affected
+Processes indirectly      Cooperation by sharing  ·  Results of one process  ·  Mutual exclusion
+aware of each other                                  may depend on infor-    ·  Deadlock (renewable
+(e.g., shared object)                                mation obtained from       resource)
+                                                     others                  ·  Starvation
+                                                  ·  Timing of process may   ·  Data coherence
+                                                     be affected
+Processes directly aware  Cooperation by commu-   ·  Results of one process  ·  Deadlock (consum-
+of each other (have       nication                   may depend on infor-       able resource)
+communication                                        mation obtained from    ·  Starvation
+primitives available                                 others
+to them)                                          ·  Timing of process may
+                                                     be affected
+
+206  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     COMPETITION  AMONG  PROCESSES   FOR  RESOURCES       Concurrent processes come
+     into conflict with each other when they are competing for the use of the same
+     resource. In its pure form, we can describe the situation as follows. Two or more
+     processes need to access a resource during the course of their execution. Each
+     process is unaware of the existence of other processes, and each is to be unaffected
+     by the execution of the other processes. It follows from this that each process should
+     leave the state of any resource that it uses unaffected. Examples of resources include
+     I/O devices, memory, processor time, and the clock.
+     There is no exchange of information between the competing processes.
+     However, the execution of one process may affect the behavior of competing
+     processes. In particular, if two processes both wish access to a single resource, then
+     one process will be allocated that resource by the OS, and the other will have to wait.
+     Therefore, the process that is denied access will be slowed down. In an extreme case,
+     the blocked process may never get access to the resource and hence will never termi-
+     nate successfully.
+     In the case of competing processes three control problems must be faced.
+     First is the need for mutual exclusion. Suppose two or more processes require
+     access to a single nonsharable resource, such as a printer. During the course of
+     execution, each process will be sending commands to the I/O device, receiving
+     status information, sending data, and/or receiving data. We will refer to such a
+     resource as a critical resource, and the portion of the program that uses it as a
+     critical section of the program. It is important that only one program at a time be
+     allowed in its critical section. We cannot simply rely on the OS to understand and
+     enforce this restriction because the detailed requirements may not be obvious. In
+     the case of the printer, for example, we want any individual process to have con-
+     trol of the printer while it prints an entire file. Otherwise, lines from competing
+     processes will be interleaved.
+     The enforcement of mutual exclusion creates two additional control problems.
+     One is that of deadlock. For example, consider two processes, P1 and P2, and two
+     resources, R1 and R2. Suppose that each process needs access to both resources to
+     perform part of its function. Then it is possible to have the following situation: the OS
+     assigns R1 to P2, and R2 to P1. Each process is waiting for one of the two resources.
+     Neither will release the resource that it already owns until it has acquired the other
+     resource and performed the function requiring both resources. The two processes are
+     deadlocked.
+     A final control problem is starvation. Suppose that three processes (P1, P2,
+     P3) each require periodic access to resource R. Consider the situation in which
+     P1 is in possession of the resource, and both P2 and P3 are delayed, waiting for
+     that resource. When P1 exits its critical section, either P2 or P3 should be allowed
+     access to R. Assume that the OS grants access to P3 and that P1 again requires
+     access before P3 completes its critical section. If the OS grants access to P1 after
+     P3 has finished, and subsequently alternately grants access to P1 and P3, then P2
+     may indefinitely be denied access to the resource, even though there is no deadlock
+     situation.
+     Control of competition inevitably involves the OS because it is the OS that
+     allocates resources. In addition, the processes themselves will need to be able to
+
+                                                              5.1 / PRINCIPLES  OF CONCURRENCY                  207
+          /*  PROCESS    1  */                 /*  PROCESS    2  */                       /*  PROCESS    n  */
+void      P1                         void      P2                               void      Pn
+{                                    {                                          {
+   while      (true)  {                 while      (true)  {                       while      (true)  {
+      /*  preceding      code   */;        /*  preceding      code   */;  ···         /*  preceding      code   */;
+      entercritical      (Ra);             entercritical      (Ra);                   entercritical      (Ra);
+      /*  critical    section   */;        /*  critical    section   */;              /*  critical    section   */;
+      exitcritical       (Ra);             exitcritical       (Ra);                   exitcritical       (Ra);
+      /*  following      code   */;        /*  following      code   */;              /*  following      code   */;
+   }                                    }                                          }
+}                                    }                                          }
+Figure 5.1    Illustration of Mutual Exclusion
+              express the requirement for mutual exclusion in some fashion, such as locking a
+              resource prior to its use. Any solution will involve some support from the OS, such
+              as the provision of the locking facility. Figure 5.1 illustrates the mutual exclusion
+              mechanism in abstract terms. There are n processes to be executed concurrently.
+              Each process includes (1) a critical section that operates on some resource Ra, and
+              (2) additional code preceding and following the critical section that does not involve
+              access to Ra. Because all processes access the same resource Ra, it is desired that
+              only one process at a time be in its critical section. To enforce mutual exclusion, two
+              functions are provided: entercritical and exitcritical. Each function takes
+              as an argument the name of the resource that is the subject of competition. Any
+              process that attempts to enter its critical section while another process is in its critical
+              section, for the same resource, is made to wait.
+              It remains to examine specific mechanisms for providing the functions
+              entercritical and exitcritical. For the moment, we defer this issue while
+              we consider the other cases of process interaction.
+              COOPERATION AMONG PROCESSES BY SHARING                      The case of cooperation by sharing
+              covers processes that interact with other processes without being explicitly aware
+              of them. For example, multiple processes may have access to shared variables or
+              to shared files or databases. Processes may use and update the shared data without
+              reference to other processes but know that other processes may have access to the
+              same data. Thus the processes must cooperate to ensure that the data they share
+              are properly managed. The control mechanisms must ensure the integrity of the
+              shared data.
+              Because data are held on resources (devices, memory), the control problems
+              of mutual exclusion, deadlock, and starvation are again present. The only difference
+              is that data items may be accessed in two different modes, reading and writing, and
+              only writing operations must be mutually exclusive.
+              However, over and above these problems, a new requirement is introduced:
+              that of data coherence. As a simple example, consider a bookkeeping application in
+              which various data items may be updated. Suppose two items of data a and b are to
+              be maintained in the relationship a = b. That is, any program that updates one value
+
+208  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     must also update the other to maintain the relationship. Now consider the following
+     two processes:
+     P1:
+                     a  =   a  +  1;
+                     b  =   b  +  1;
+     P2:
+                     b  =   2  *  b;
+                     a  =   2  *  a;
+     If the state is initially consistent, each process taken separately will leave the
+     shared data in a consistent state. Now consider the following concurrent execution
+     sequence, in which the two processes respect mutual exclusion on each individual
+     data item (a and b):
+     a  =  a         +  1;
+     b  =  2         *  b;
+     b  =  b         +  1;
+     a  =  2         *  a;
+     At the end of this execution sequence, the condition a = b no longer holds. For
+     example, if we start with a = b = 1, at the end of this execution sequence we have
+     a = 4 and b = 3. The problem can be avoided by declaring the entire sequence in each
+     process to be a critical section.
+     Thus, we see that the concept of critical section is important in the case of
+     cooperation by sharing. The same abstract functions of entercritical and
+     exitcritical discussed earlier (Figure 5.1) can be used here. In this case, the
+     argument for the functions could be a variable, a file, or any other shared object.
+     Furthermore, if critical sections are used to provide data integrity, then there may
+     be no specific resource or variable that can be identified as an argument. In that
+     case, we can think of the argument as being an identifier that is shared among con-
+     current processes to identify critical sections that must be mutually exclusive.
+     COOPERATION        AMONG  PROCESSES  BY  COMMUNICATION  In the first two cases
+     that we have discussed, each process has its own isolated environment that does
+     not include the other processes. The interactions among processes are indirect. In
+     both cases, there is a sharing. In the case of competition, they are sharing resources
+     without being aware of the other processes. In the second case, they are sharing
+     values, and although each process is not explicitly aware of the other processes,
+     it is aware of the need to maintain data integrity. When processes cooperate by
+     communication, however, the various processes participate in a common effort that
+     links all of the processes. The communication provides a way to synchronize, or
+     coordinate, the various activities.
+     Typically, communication can be characterized as consisting of messages of
+     some sort. Primitives for sending and receiving messages may be provided as part of
+     the programming language or provided by the OS kernel.
+     Because nothing is shared between processes in the act of passing messages,
+     mutual exclusion is not a control requirement for this sort of cooperation. However,
+
+                 5.2 / MUTUAL EXCLUSION: HARDWARE SUPPORT                                209
+     the problems of deadlock and starvation are still present. As an example of dead-
+     lock, two processes may be blocked, each waiting for a communication from the
+     other. As an example of starvation, consider three processes, P1, P2, and P3, that
+     exhibit the following behavior. P1 is repeatedly attempting to communicate with
+     either P2 or P3, and P2 and P3 are both attempting to communicate with P1. A
+     sequence could arise in which P1 and P2 exchange information repeatedly, while P3
+     is blocked waiting for a communication from P1. There is no deadlock, because P1
+     remains active, but P3 is starved.
+     Requirements for Mutual Exclusion
+     Any facility or capability that is to provide support for mutual exclusion should
+     meet the following requirements:
+     1.  Mutual exclusion must be enforced: Only one process at a time is allowed into
+         its critical section, among all processes that have critical sections for the same
+         resource or shared object.
+     2.  A process that halts in its noncritical section must do so without interfering
+         with other processes.
+     3.  It must not be possible for a process requiring access to a critical section to be
+         delayed indefinitely: no deadlock or starvation.
+     4.  When no process is in a critical section, any process that requests entry to its
+         critical section must be permitted to enter without delay.
+     5.  No assumptions are made about relative process speeds or number of processors.
+     6.  A process remains inside its critical section for a finite time only.
+         There are a number of ways in which the requirements for mutual exclusion
+     can be satisfied. One approach is to leave the responsibility with the processes
+     that wish to execute concurrently. Processes, whether they are system programs or
+     application programs, would be required to coordinate with one another to enforce
+     mutual exclusion, with no support from the programming language or the OS. We
+     can refer to these as software approaches. Although this approach is prone to high
+     processing overhead and bugs, it is nevertheless useful to examine such approaches
+     to gain a better understanding of the complexity of concurrent processing. This
+     topic is covered in Appendix A. A second approach involves the use of special-
+     purpose machine instructions. These have the advantage of reducing overhead but
+     nevertheless will be shown to be unattractive as a general-purpose solution; they are
+     covered in Section 5.2. A third approach is to provide some level of support within
+     the OS or a programming language. Three of the most important such approaches
+     are examined in Sections 5.3 through 5.5.
+5.2  MUTUAL EXCLUSION: HARDWARE SUPPORT
+     In this section, we look at several interesting hardware approaches to mutual
+     exclusion.
+
+210  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     Interrupt Disabling
+     In a uniprocessor system, concurrent processes cannot have overlapped execution;
+     they can only be interleaved. Furthermore, a process will continue to run until it
+     invokes an OS service or until it is interrupted. Therefore, to guarantee mutual
+     exclusion, it is sufficient to prevent a process from being interrupted. This capability
+     can be provided in the form of primitives defined by the OS kernel for disabling and
+     enabling interrupts. A process can then enforce mutual exclusion in the following
+     way (compare Figure 5.1):
+     while           (true)   {
+        /*           disable     interrupts  */;
+        /*           critical    section  */;
+        /*           enable   interrupts     */;
+        /*           remainder   */;
+     }
+     Because the critical section cannot be interrupted, mutual exclusion is guar-
+     anteed. The price of this approach, however, is high. The efficiency of execution
+     could be noticeably degraded because the processor is limited in its ability to
+     interleave processes. Another problem is that this approach will not work in a
+     multiprocessor architecture. When the computer includes more than one proces-
+     sor, it is possible (and typical) for more than one process to be executing at a time.
+     In this case, disabled interrupts do not guarantee mutual exclusion.
+     Special Machine Instructions
+     In a multiprocessor configuration, several processors share access to a common
+     main memory. In this case, there is not a master/slave relationship; rather the pro-
+     cessors behave independently in a peer relationship. There is no interrupt mecha-
+     nism between processors on which mutual exclusion can be based.
+     At the hardware level, as was mentioned, access to a memory location
+     excludes any other access to that same location. With this as a foundation, proc-
+     essor designers have proposed several machine instructions that carry out two
+     actions atomically,2 such as reading and writing or reading and testing, of a single
+     memory location with one instruction fetch cycle. During execution of the instruc-
+     tion, access to the memory location is blocked for any other instruction referencing
+     that location.
+     In this section, we look at two of the most commonly implemented instruc-
+     tions. Others are described in [RAYN86] and [STON93].
+     COMPARE&SWAP INSTRUCTION         The compare&swap instruction, also called a
+     compare and exchange instruction, can be defined as follows [HERL90]:
+     2The term atomic means that the instruction is treated as a single step that cannot be interrupted.
+
+                                               5.2 / MUTUAL EXCLUSION: HARDWARE SUPPORT                                         211
+                   int        compare_and_swap                (int   *word,           int          testval,        int     newval)
+                   {
+                              int      oldval;
+                              oldval        =  *word
+                              if      (oldval   ==      testval)          *word          =     newval;
+                              return        oldval;
+                   }
+                   This version of the instruction checks a memory location (*word) against a test
+            value (testval). If the memory location's current value is testval, it is replaced with
+            newval; otherwise it is left unchanged. The old memory value is always returned;
+            thus, the memory location has been updated if the returned value is the same as
+            the test value. This atomic instruction therefore has two parts: A compare is made
+            between a memory value and a test value; if the values are the same, a swap occurs.
+            The entire compare&swap function is carried out atomically--that is, it is not sub-
+            ject to interruption.
+                   Another version of this instruction returns a Boolean value: true if the swap
+            occurred; false otherwise. Some version of this instruction is available on nearly all
+            processor families (x86, IA64, sparc, IBM z series, etc.), and most operating systems
+            use this instruction for support of concurrency.
+                   Figure 5.2a shows a mutual exclusion protocol based on the use of this instruc-
+            tion.3 A shared variable bolt is initialized to 0. The only process that may enter
+            its critical section is one that finds bolt equal to 0. All other processes attempting
+/*   program       mutualexclusion         */                        /*   program        mutualexclusion           */
+const   int    n   =   /*     number   of  processes    */;          int     const    n     =  /*     number   of  processes    */;
+int     bolt;                                                        int     bolt;
+void    P(int      i)                                                void    P(int       i)
+{                                                                    {
+     while     (true)      {                                              int   keyi        =  1;
+        while      (compare_and_swap(bolt,      0,      1)   ==  1)       while       (true)       {
+               /*  do  nothing        */;                                      do     exchange        (&keyi,      &bolt)
+        /*  critical          section  */;                                     while        (keyi     !=  0);
+        bolt   =   0;                                                          /*     critical        section      */;
+        /*  remainder         */;                                              bolt      =     0;
+     }                                                                         /*     remainder       */;
+}                                                                         }
+void    main()                                                       }
+{                                                                    void    main()
+     bolt   =  0;                                                    {
+     parbegin      (P(1),     P(2),    ...     ,P(n));                    bolt     =  0;
+                                                                          parbegin          (P(1),    P(2),    ...,     P(n));
+}                                                                    }
+            (a) Compare and swap instruction                                          (b) Exchange instruction
+Figure 5.2     Hardware Support for Mutual Exclusion
+            3The construct parbegin (P1,        P2,     ...,  Pn) means the following: suspend the execution of the main
+            program; initiate concurrent execution of procedures P1, P2, ..., Pn; when all of P1, P2, ..., Pn have ter-
+            minated, resume the main program.
+
+212  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     to enter their critical section go into a busy waiting mode. The term busy waiting,
+     or spin waiting, refers to a technique in which a process can do nothing until it gets
+     permission to enter its critical section but continues to execute an instruction or set
+     of instructions that tests the appropriate variable to gain entrance. When a process
+     leaves its critical section, it resets bolt to 0; at this point one and only one of the wait-
+     ing processes is granted access to its critical section. The choice of process depends
+     on which process happens to execute the compare&swap instruction next.
+     EXCHANGE INSTRUCTION     The exchange instruction can be defined as follows:
+        void     exchange     (int    *register,       int   *memory)
+        {
+           int   temp;
+           temp      =  *memory;
+           *memory      =  *register;
+           *register       =  temp;
+        }
+     The instruction exchanges the contents of a register with that of a memory location.
+     Both the Intel IA-32 architecture (Pentium) and the IA-64 architecture (Itanium)
+     contain an XCHG instruction.
+        Figure 5.2b shows a mutual exclusion protocol based on the use of an exchange
+     instruction. A shared variable bolt is initialized to 0. Each process uses a local vari-
+     able key that is initialized to 1. The only process that may enter its critical section
+     is one that finds bolt equal to 0. It excludes all other processes from the critical sec-
+     tion by setting bolt to 1. When a process leaves its critical section, it resets bolt to 0,
+     allowing another process to gain access to its critical section.
+        Note that the following expression always holds because of the way in which
+     the variables are initialized and because of the nature of the exchange algorithm:
+                                      bolt  +  a keyi  =  n
+                                               i
+     If bolt = 0, then no process is in its critical section. If bolt = 1, then exactly one pro-
+     cess is in its critical section, namely the process whose key value equals 0.
+     PROPERTIES  OF  THE   MACHINE-INSTRUCTION         APPROACH        The use of a special
+     machine instruction to enforce mutual exclusion has a number of advantages:
+     ·  It is applicable to any number of processes on either a single processor or mul-
+        tiple processors sharing main memory.
+     ·  It is simple and therefore easy to verify.
+     ·  It can be used to support multiple critical sections; each critical section can be
+        defined by its own variable.
+        There are some serious disadvantages:
+     · Busy waiting is employed: Thus, while a process is waiting for access to a criti-
+        cal section, it continues to consume processor time.
+
+                                                                              5.3 / SEMAPHORES                    213
+             ·  Starvation is possible: When a process leaves a critical section and more than
+                one process is waiting, the selection of a waiting process is arbitrary. Thus,
+                some process could indefinitely be denied access.
+             ·  Deadlock is possible: Consider the following scenario on a single-processor
+                system. Process P1 executes the special instruction (e.g., compare&swap,
+                exchange) and enters its critical section. P1 is then interrupted to give the
+                processor to P2, which has higher priority. If P2 now attempts to use the same
+                resource as P1, it will be denied access because of the mutual exclusion mecha-
+                nism. Thus, it will go into a busy waiting loop. However, P1 will never be dis-
+                patched because it is of lower priority than another ready process, P2.
+                Because of the drawbacks of both the software and hardware solutions, we
+           need to look for other mechanisms.
+5.3        SEMAPHORES
+           We now turn to OS and programming language mechanisms that are used to pro-
+           vide concurrency. Table 5.3 summarizes mechanisms in common use. We begin, in
+           this section, with semaphores. The next two sections discuss monitors and message
+           passing. The other mechanisms in Table 5.3 are discussed when treating specific
+           OS examples, in Chapters 6 and 13.
+Table 5.3  Common   Concurrency Mechanisms
+Semaphore           An integer value used for signaling among processes. Only three operations may be
+                    performed on a semaphore, all of which are atomic: initialize, decrement, and incre-
+                    ment. The decrement operation may result in the blocking of a process, and the incre-
+                    ment operation may result in the unblocking of a process. Also known as a counting
+                    semaphore or a general semaphore.
+Binary Semaphore    A semaphore that takes on only the values 0 and 1.
+Mutex               Similar to a binary semaphore. A key difference between the two is that the process that
+                    locks the mutex (sets the value to zero) must be the one to unlock it (sets the value to 1).
+Condition Variable  A data type that is used to block a process or thread until a particular condition is true.
+Monitor             A programming language construct that encapsulates variables, access procedures, and
+                    initialization code within an abstract data type. The monitor's variable may only be
+                    accessed via its access procedures and only one process may be actively accessing the
+                    monitor at any one time. The access procedures are critical sections. A monitor may
+                    have a queue of processes that are waiting to access it.
+Event Flags         A memory word used as a synchronization mechanism. Application code may associ-
+                    ate a different event with each bit in a flag. A thread can wait for either a single event
+                    or a combination of events by checking one or multiple bits in the corresponding flag.
+                    The thread is blocked until all of the required bits are set (AND) or until at least one
+                    of the bits is set (OR).
+Mailboxes/Messages  A means for two processes to exchange information and that may be used for
+                    synchronization.
+Spinlocks           Mutual exclusion mechanism in which a process executes in an infinite loop waiting for
+                    the value of a lock variable to indicate availability.
+
+214  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+         The first major advance in dealing with the problems of concurrent proc-
+     esses came in 1965 with Dijkstra's treatise [DIJK65]. Dijkstra was concerned with
+     the design of an OS as a collection of cooperating sequential processes and with
+     the development of efficient and reliable mechanisms for supporting cooperation.
+     These mechanisms can just as readily be used by user processes if the processor and
+     OS make the mechanisms available.
+         The fundamental principle is this: Two or more processes can cooperate by
+     means of simple signals, such that a process can be forced to stop at a specified place
+     until it has received a specific signal. Any complex coordination requirement can
+     be satisfied by the appropriate structure of signals. For signaling, special variables
+     called semaphores are used. To transmit a signal via semaphore s, a process exe-
+     cutes the primitive semSignal(s). To receive a signal via semaphore s, a process
+     executes the primitive semWait(s); if the corresponding signal has not yet been
+     transmitted, the process is suspended until the transmission takes place.4
+         To achieve the desired effect, we can view the semaphore as a variable that
+     has an integer value upon which only three operations are defined:
+     1.  A semaphore may be initialized to a nonnegative integer value.
+     2.  The semWait operation decrements the semaphore value. If the value
+         becomes negative, then the process executing the semWait is blocked.
+         Otherwise, the process continues execution.
+     3.  The semSignal operation increments the semaphore value. If the resulting
+         value is less than or equal to zero, then a process blocked by a semWait oper-
+         ation, if any, is unblocked.
+     Other than these three operations, there is no way to inspect or manipulate
+     semaphores.
+         We explain these operations as follows. To begin, the semaphore has a zero or
+     positive value. If the value is positive, that value equals the number of processes that
+     can issue a wait and immediately continue to execute. If the value is zero, either by
+     initialization or because a number of processes equal to the initial semaphore value
+     have issued a wait, the next process to issue a wait is blocked, and the semaphore
+     value goes negative. Each subsequent wait drives the semaphore value further into
+     minus territory. The negative value equals the number of processes waiting to be
+     unblocked. Each signal unblocks one of the waiting processes when the semaphore
+     value is negative.
+         [DOWN08] points out three interesting consequences of the semaphore
+     definition:
+     · In general, there is no way to know before a process decrements a semaphore
+         whether it will block or not.
+     4In Dijkstra's original paper and in much of the literature, the letter P is used for semWait and the letter
+     V for semSignal; these are the initials of the Dutch words for test (proberen) and increment (verhogen).
+     In some of the literature, the terms wait and signal are used. This book uses semWait and semSig-
+     nal for clarity, and to avoid confusion with similar wait and signal operations in monitors, discussed
+     subsequently
+
+                                                                   5.3 / SEMAPHORES  215
+struct  semaphore       {
+        int     count;
+        queueType       queue;
+};
+void   semWait(semaphore          s)
+{
+        s.count--;
+        if   (s.count      <  0)  {
+            /*  place      this   process     in   s.queue  */;
+            /*  block      this   process     */;
+        }
+}
+void   semSignal(semaphore            s)
+{
+        s.count++;
+        if   (s.count<=       0)  {
+            /*  remove     a  process     P   from   s.queue  */;
+            /*  place      process    P   on  ready  list   */;
+        }
+}
+Figure 5.3   A Definition of Semaphore Primitives
+    ·  After a process increments a semaphore and another process gets woken
+       up, both processes continue running concurrently. There is no way to
+       know which process, if either, will continue immediately on a uniprocessor
+       system.
+    ·  When you signal a semaphore, you don't necessarily know whether another
+       process is waiting, so the number of unblocked processes may be zero or one.
+       Figure 5.3 suggests a more formal definition of the primitives for sema-
+phores. The semWait and semSignal primitives are assumed to be atomic. A
+more restricted version, known as the binary semaphore, is defined in Figure 5.4.
+A binary semaphore may only take on the values 0 and 1 and can be defined by the
+following three operations:
+   1.  A binary semaphore may be initialized to 0 or 1.
+   2.  The semWaitB operation checks the semaphore value. If the value is zero,
+       then the process executing the semWaitB is blocked. If the value is one, then
+       the value is changed to zero and the process continues execution.
+   3.  The semSignalB operation checks to see if any processes are blocked on
+       this semaphore (semaphore value equals 0). If so, then a process blocked by a
+       semWaitB operation is unblocked. If no processes are blocked, then the value
+       of the semaphore is set to one.
+       In principle, it should be easier to implement the binary semaphore, and it
+can be shown that it has the same expressive power as the general semaphore (see
+Problem 5.16). To contrast the two types of semaphores, the nonbinary semaphore
+is often referred to as either a counting semaphore or a general semaphore.
+       A concept related to the binary semaphore is the mutex. A key difference
+between the two is that the process that locks the mutex (sets the value to zero)
+
+216  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND                               SYNCHRONIZATION
+     struct  binary_semaphore     {
+             enum  {zero,   one}  value;
+             queueType  queue;
+     };
+     void  semWaitB(binary_semaphore         s)
+     {
+             if  (s.value   ==  one)
+                   s.value  =   zero;
+             else  {
+                            /*  place     this   process  in   s.queue      */;
+                            /*  block     this   process  */;
+             }
+     }
+     void  semSignalB(semaphore       s)
+     {
+             if  (s.queue   is  empty())
+                   s.value  =   one;
+             else  {
+                            /*  remove    a  process  P   from   s.queue    */;
+                            /*  place     process  P  on  ready  list       */;
+             }
+     }
+     Figure 5.4  A Definition of Binary Semaphore Primitives
+     must be the one to unlock it (sets the value to 1). In contrast, it is possible for one
+     process to lock a binary semaphore and for another to unlock it.5
+           For both counting semaphores and binary semaphores, a queue is used to
+     hold processes waiting on the semaphore. The question arises of the order in
+     which processes are removed from such a queue. The fairest removal policy is
+     first-in-first-out (FIFO): The process that has been blocked the longest is released
+     from the queue first; a semaphore whose definition includes this policy is called
+     a strong semaphore. A semaphore that does not specify the order in which proc-
+     esses are removed from the queue is a weak semaphore. Figure 5.5, based on
+     one in [DENN84], is an example of the operation of a strong semaphore. Here
+     processes A, B, and C depend on a result from process D. Initially (1), A is run-
+     ning; B, C, and D are ready; and the semaphore count is 1, indicating that one of
+     D's results is available. When A issues a semWait instruction on semaphore s,
+     the semaphore decrements to 0, and A can continue to execute; subsequently it
+     rejoins the ready queue. Then B runs (2), eventually issues a semWait instruc-
+     tion, and is blocked, allowing D to run (3). When D completes a new result, it
+     issues a semSignal instruction, which allows B to move to the ready queue (4).
+     D rejoins the ready queue and C begins to run (5) but is blocked when it issues a
+     semWait instruction. Similarly, A and B run and are blocked on the semaphore,
+     allowing D to resume execution (6). When D has a result, it issues a semSignal,
+     which transfers C to the ready queue. Later cycles of D will release A and B from
+     the Blocked state.
+     5In some of the literature, and in some textbooks, no distinction is made between a mutex and a binary
+     semaphore. However, in practice, a number of operating systems, such as Linux, Windows, and Solaris
+     offer a mutex facility which conforms to the definition in this book.
+
+                                                 5.3 /        SEMAPHORES  217
+1                        Processor
+                         A
+                         s1                   C  D         B
+        Blocked queue    Semaphore            Ready queue
+2                        Processor
+                         B
+                         s0                   A  C         D
+        Blocked queue    Semaphore            Ready queue
+3                        Processor
+                         D
+                   B     s  1                    A         C
+        Blocked queue    Semaphore            Ready queue
+4                        Processor
+                         D
+                         s0                   B  A         C
+        Blocked queue    Semaphore            Ready queue
+5                        Processor
+                         C
+                         s0                   D  B         A
+        Blocked queue    Semaphore            Ready queue
+6                        Processor
+                         D
+             B  A  C     s  3
+        Blocked queue    Semaphore            Ready queue
+7                        Processor
+                         D
+                B  A     s  2                              C
+        Blocked queue    Semaphore            Ready queue
+Figure  5.5  Example of  Semaphore Mechanism
+
+218  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     /*  program       mutualexclusion      */
+     const     int  n   =  /*  number  of   processes   */;
+     semaphore      s   =  1;
+     void   P(int      i)
+     {
+            while      (true)  {
+                    semWait(s);
+                    /*     critical   section   */;
+                    semSignal(s);
+                    /*     remainder   */;
+            }
+     }
+     void   main()
+     {
+            parbegin       (P(1),    P(2),...,  P(n));
+     }
+     Figure 5.6     Mutual Exclusion Using Semaphores
+            For the mutual exclusion algorithm discussed in the next subsection and illus-
+     trated in Figure 5.6, strong semaphores guarantee freedom from starvation, while
+     weak semaphores do not. We will assume strong semaphores because they are more
+     convenient and because this is the form of semaphore typically provided by operat-
+     ing systems.
+     Mutual Exclusion
+     Figure 5.6 shows a straightforward solution to the mutual exclusion problem using
+     a semaphore s (compare Figure 5.1). Consider n processes, identified in the array
+     P(i), all of which need access to the same resource. Each process has a critical sec-
+     tion used to access the resource. In each process, a semWait(s) is executed just
+     before its critical section. If the value of s becomes negative, the process is blocked.
+     If the value is 1, then it is decremented to 0 and the process immediately enters its
+     critical section; because s is no longer positive, no other process will be able to enter
+     its critical section.
+            The semaphore is initialized to 1. Thus, the first process that executes a
+     semWait will be able to enter the critical section immediately, setting the value
+     of s to 0. Any other process attempting to enter the critical section will find it busy
+     and will be blocked, setting the value of s to ­1. Any number of processes may
+     attempt entry; each such unsuccessful attempt results in a further decrement of the
+     value of s. When the process that initially entered its critical section departs, s is
+     incremented and one of the blocked processes (if any) is removed from the queue of
+     blocked processes associated with the semaphore and put in a Ready state. When it
+     is next scheduled by the OS, it may enter the critical section.
+            Figure 5.7, based on one in [BACO03], shows a possible sequence for three
+     processes using the mutual exclusion discipline of Figure 5.6. In this example three
+     processes (A, B, C) access a shared resource protected by the semaphore lock.
+     Process A executes semWait(lock); because the semaphore has a value of 1 at
+     the time of the semWait operation, A can immediately enter its critical section and
+     the semaphore takes on the value 0. While A is in its critical section, both B and C
+
+                                                                 5.3      /  SEMAPHORES               219
+   Queue for       Value of
+   semaphore lock  semaphore lock    A                B       C
+                          1                                                  Critical
+                                                                             region
+                                     semWait(lock)                           Normal
+                                                                             execution
+                          0                                                  Blocked on
+                                             semWait(lock)                   semaphore
+            B             1                                                  lock
+                                                         semWait(lock)
+   C        B             2
+                                     semSignal(lock)
+            C             1
+                                             semSignal(lock)
+                          0
+                                                         semSignal(lock)
+                          1                                                  Note that normal
+                                                                             execution can
+                                                                             proceed in parallel
+                                                                             but that critical
+                                                                             regions are serialized.
+Figure 5.7     Processes  Accessing  Shared  Data Protected by a Semaphore
+perform a semWait operation and are blocked pending the availability of the sema-
+phore. When A exits its critical section and performs semSignal(lock), B, which
+was the first process in the queue, can now enter its critical section.
+   The program of Figure 5.6 can equally well handle a requirement that more
+than one process be allowed in its critical section at a time. This requirement is met
+simply by initializing the semaphore to the specified value. Thus, at any time, the
+value of s.count can be interpreted as follows:
+·  s.count  0: s.count is the number of processes that can execute semWait(s)
+   without suspension (if no semSignal(s) is executed in the meantime). Such
+   situations will allow semaphores to support synchronization as well as mutual
+   exclusion.
+·  s.count < 0: The magnitude of s.count is the number of processes suspended in
+   s.queue.
+The Producer/Consumer Problem
+We now examine one of the most common problems faced in concurrent process-
+ing: the producer/consumer problem. The general statement is this: There are one
+or more producers generating some type of data (records, characters) and placing
+
+220  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     these in a buffer. There is a single consumer that is taking items out of the buffer
+     one at a time. The system is to be constrained to prevent the overlap of buffer oper-
+     ations. That is, only one agent (producer or consumer) may access the buffer at any
+     one time. The problem is to make sure that the producer won't try to add data into
+     the buffer if it's full and that the consumer won't try to remove data from an empty
+     buffer. We will look at a number of solutions to this problem to illustrate both the
+     power and the pitfalls of semaphores.
+     To begin, let us assume that the buffer is infinite and consists of a linear array
+     of elements. In abstract terms, we can define the producer and consumer functions
+     as follows:
+     producer:                                     consumer:
+     while        (true)   {                       while       (true)                              {
+        /*        produce     item     v  */;         while                                   (in  <=  out)
+        b[in]     =  v;                                                                   /*  do   nothing     */;
+        in++;                                         w     =                             b[out];
+     }                                                out++;
+                                                      /*       consume                                item  w  */;
+                                                   }
+     Figure 5.8 illustrates the structure of buffer b. The producer can generate
+     items and store them in the buffer at its own pace. Each time, an index (in) into the
+     buffer is incremented. The consumer proceeds in a similar fashion but must make
+     sure that it does not attempt to read from an empty buffer. Hence, the consumer
+     makes sure that the producer has advanced beyond it (in> out) before proceeding.
+     Let us try to implement this system using binary semaphores. Figure 5.9 is a
+     first attempt. Rather than deal with the indices in and out, we can simply keep track
+     of the number of items in the buffer, using the integer variable n (= in ­ out). The
+     semaphore s is used to enforce mutual exclusion; the semaphore delay is used to
+     force the consumer to semWait if the buffer is empty.
+     This solution seems rather straightforward. The producer is free to add
+     to the buffer at any time. It performs semWaitB(s) before appending and
+     semSignalB(s) afterward to prevent the consumer or any other producer from
+                              0     1       2   3     4
+                           b[1]  b[2]     b[3]  b[4]  b[5]
+                                 Out                  In
+                          Note: Shaded area indicates portion of buffer that is occupied
+                          Figure 5.8      Infinite Buffer for the
+                                          Producer/Consumer Problem
+
+                                                             5.3 / SEMAPHORES              221
+/*  program  producerconsumer            */
+    int      n;
+    binary_semaphore            s     =  1,  delay  =  0;
+    void     producer()
+    {
+             while      (true)     {
+                        produce();
+                        semWaitB(s);
+                        append();
+                        n++;
+                        if  (n==1)       semSignalB(delay);
+                        semSignalB(s);
+             }
+    }
+    void     consumer()
+    {
+             semWaitB(delay);
+             while      (true)     {
+                        semWaitB(s);
+                        take();
+                        n--;
+                        semSignalB(s);
+                        consume();
+                        if  (n==0)       semWaitB(delay);
+             }
+    }
+    void     main()
+    {
+             n   =  0;
+             parbegin       (producer,       consumer);
+    }
+Figure 5.9   An Incorrect Solution to the Infinite-Buffer    Producer/Consumer Problem
+             Using Binary Semaphores
+accessing the buffer during the append operation. Also, while in the critical section,
+the producer increments the value of n. If n = 1, then the buffer was empty just prior
+to this append, so the producer performs semSignalB(delay) to alert the con-
+sumer of this fact. The consumer begins by waiting for the first item to be produced,
+using semWaitB(delay). It then takes an item and decrements n in its critical
+section. If the producer is able to stay ahead of the consumer (a common situation),
+then the consumer will rarely block on the semaphore delay because n will usually
+be positive. Hence both producer and consumer run smoothly.
+    There is, however, a flaw in this program. When the consumer has exhausted
+the buffer, it needs to reset the delay semaphore so that it will be forced to wait until
+the producer has placed more items in the buffer. This is the purpose of the state-
+ment: if     n == 0 semWaitB(delay). Consider the scenario outlined in Table 5.4.
+In line 14, the consumer fails to execute the semWaitB operation. The consumer did
+indeed exhaust the buffer and set n to 0 (line 8), but the producer has incremented n
+before the consumer can test it in line 14. The result is a semSignalB not matched
+by a prior semWaitB. The value of ­1 for n in line 20 means that the consumer has
+consumed an item from the buffer that does not exist. It would not do simply to move
+the conditional statement inside the critical section of the consumer because this
+could lead to deadlock (e.g., after line 8 of Table 5.4).
+
+222  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION                               AND  SYNCHRONIZATION
+Table 5.4  Possible Scenario for the Program of Figure 5.9
+           Producer             Consumer                                     s    n   Delay
+1                                                                            1    0   0
+2          semWaitB(s)                                                       0    0   0
+3              n++                                                           0    1   0
+4          if  (n==1)
+           (semSignalB(delay))                                               0    1   1
+5          semSignalB(s)                                                     1    1   1
+6                               semWaitB(delay)                              1    1   0
+7                               semWaitB(s)                                  0    1   0
+8                                   n--                                      0    0   0
+9                               semSignalB(s)                                1    0   0
+10         semWaitB(s)                                                       0    0   0
+11             n++                                                           0    1   0
+12         if  (n==1)
+           (semSignalB(delay))                                               0    1   1
+13         semSignalB(s)                                                     1    1   1
+14                              if  (n==0)
+                                (semWaitB(delay))                            1    1   1
+15                              semWaitB(s)                                  0    1   1
+16                                  n--                                      0    0   1
+17                              semSignalB(s)                                1    0   1
+18                              if  (n==0)
+                                (semWaitB(delay))                            1    0   0
+19                              semWaitB(s)                                  0    0   0
+20                                  n--                                      0    ­1  0
+21                              semSignalB(s)                                1    ­1  0
+Note: White areas represent the critical section controlled by semaphore s.
+           A fix for the problem is to introduce an auxiliary variable that can be set in the
+           consumer's critical section for use later on. This is shown in Figure 5.10. A careful
+           trace of the logic should convince you that deadlock can no longer occur.
+           A somewhat cleaner solution can be obtained if general semaphores (also
+           called counting semaphores) are used, as shown in Figure 5.11. The variable n
+           is now a semaphore. Its value still is equal to the number of items in the buffer.
+           Suppose now that in transcribing this program, a mistake is made and the opera-
+           tions semSignal(s) and semSignal(n) are interchanged. This would require
+           that the semSignal(n) operation be performed in the producer's critical sec-
+           tion without interruption by the consumer or another producer. Would this affect
+
+                                                             5.3 / SEMAPHORES            223
+/*  program  producerconsumer            */
+    int      n;
+    binary_semaphore            s     =  1,  delay  =  0;
+    void     producer()
+    {
+             while      (true)     {
+                    produce();
+                    semWaitB(s);
+                    append();
+                    n++;
+                    if     (n==1)        semSignalB(delay);
+                    semSignalB(s);
+             }
+    }
+    void     consumer()
+    {
+             int    m;  /*  a   local        variable  */
+             semWaitB(delay);
+             while      (true)     {
+                    semWaitB(s);
+                    take();
+                    n--;
+                    m   =   n;
+                    semSignalB(s);
+                    consume();
+                    if     (m==0)        semWaitB(delay);
+             }
+    }
+    void     main()
+    {
+             n   =  0;
+             parbegin       (producer,       consumer);
+    }
+Figure 5.10  A Correct Solution to the Infinite-Buffer       Producer/Consumer Problem Using
+             Binary Semaphores
+the program? No, because the consumer must wait on both semaphores before
+proceeding in any case.
+    Now suppose that the semWait(n) and semWait(s) operations are acci-
+dentally reversed. This produces a serious, indeed a fatal, flaw. If the consumer ever
+enters its critical section when the buffer is empty (n.count = 0), then no producer
+can ever append to the buffer and the system is deadlocked. This is a good example
+of the subtlety of semaphores and the difficulty of producing correct designs.
+    Finally, let us add a new and realistic restriction to the producer/consumer
+problem: namely, that the buffer is finite. The buffer is treated as a circular storage
+(Figure 5.12), and pointer values must be expressed modulo the size of the buffer.
+The following relationships hold:
+                                   Block on:                 Unblock on:
+             Producer: insert in full buffer                 Consumer: item inserted
+             Consumer: remove from empty buffer              Producer: item removed
+
+224  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     /*  program  producerconsumer                */
+            semaphore       n   =  0,    s     =  1;
+            void  producer()
+            {
+                  while        (true)       {
+                            produce();
+                            semWait(s);
+                            append();
+                            semSignal(s);
+                            semSignal(n);
+                  }
+            }
+            void  consumer()
+            {
+                  while        (true)       {
+                            semWait(n);
+                            semWait(s);
+                            take();
+                            semSignal(s);
+                            consume();
+                  }
+            }
+            void  main()
+            {
+                  parbegin         (producer,         consumer);
+            }
+     Figure 5.11  A Solution to the Infinite-Buffer                 Producer/Consumer  Problem     Using
+                  Semaphores
+            The producer and consumer functions can be expressed as follows (variable in
+     and out are initialized to 0 and n is the size of the buffer):
+         producer:                                                  consumer:
+         while    (true)           {                                while     (true)         {
+            /*    produce             item        v   */               while           (in   ==    out)
+            while        ((in         +   1)      %   n   ==  out)            /*       do    nothing      */;
+                     /*     do     nothing            */;              w   =  b[out];
+            b[in]        =  v;                                         out    =        (out     +  1)  %  n;
+            in    =  (in        +     1)    %     n;                   /*     consume           item   w  */;
+         }                                                          }
+            Figure 5.13 shows a solution using general semaphores. The semaphore e has
+     been added to keep track of the number of empty spaces.
+            Another instructive example in the use of semaphores is the barbershop prob-
+     lem, described in Appendix A. Appendix A also includes additional examples of
+     the problem of race conditions when using semaphores.
+     Implementation of Semaphores
+     As was mentioned earlier, it is imperative that the semWait and semSignal oper-
+     ations be implemented as atomic primitives. One obvious way is to implement them
+
+                                                                              5.3 / SEMAPHORES      225
+                     b[1]  b[2]           b[3]      b[4]  b[5]                b[n]
+                           Out                                 In
+                                                          (a)
+                     b[1]  b[2]           b[3]      b[4]  b[5]                b[n]
+                                          In                   Out
+                                                          (b)
+                Figure 5.12              Finite Circular Buffer for the
+                                         Producer/Consumer Problem
+in hardware or firmware. Failing this, a variety of schemes have been suggested. The
+essence of the problem is one of mutual exclusion: Only one process at a time may
+manipulate a semaphore with either a semWait or semSignal operation. Thus,
+any of the software schemes, such as Dekker's algorithm or Peterson's algorithm
+(Appendix A), could be used; this would entail a substantial processing overhead.
+/*  program  boundedbuffer            */
+    const       int  sizeofbuffer             =     /*  buffer     size  */;
+    semaphore        s  =  1,   n     =   0,     e  =   sizeofbuffer;
+    void     producer()
+    {
+             while      (true)     {
+                     produce();
+                     semWait(e);
+                     semWait(s);
+                     append();
+                     semSignal(s);
+                     semSignal(n);
+             }
+    }
+    void     consumer()
+    {
+             while      (true)     {
+                     semWait(n);
+                     semWait(s);
+                     take();
+                     semSignal(s);
+                     semSignal(e);
+                     consume();
+             }
+    }
+    void     main()
+    {
+                     parbegin         (producer,          consumer);
+    }
+Figure 5.13  A Solution to the Bounded-Buffer Producer/Consumer                     Problem  Using
+             Semaphores
+
+226     CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+semWait(s)                                                           semWait(s)
+{                                                                    {
+   while    (compare_and_swap(s.flag,             0  ,  1)  ==   1)     inhibit    interrupts;
+        /*  do  nothing        */;                                      s.count--;
+   s.count--;                                                           if  (s.count    <     0)  {
+   if   (s.count     <     0)  {                                            /*  place   this      process   in   s.queue  */;
+        /*   place   this      process     in  s.queue*/;                   /*  block   this      process   and   allow   inter-
+        /*   block   this      process     (must  also  set          rupts*/;
+s.flag  to   0)  */;                                                    }
+   }                                                                    else
+   s.flag    =   0;                                                         allow  interrupts;
+}                                                                    }
+semSignal(s)                                                         semSignal(s)
+{                                                                    {
+   while    (compare_and_swap(s.flag,             0  ,  1)  ==   1)     inhibit    interrupts;
+        /*  do  nothing        */;                                      s.count++;
+   s.count++;                                                           if  (s.count<=        0)  {
+   if   (s.count<=         0)  {                                            /*  remove     a  process   P   from   s.queue  */;
+        /*   remove     a  process     P   from   s.queue   */;             /*  place   process      P  on  ready  list   */;
+        /*   place   process        P  on  ready  list  */;             }
+   }                                                                    allow   interrupts;
+   s.flag    =   0;                                                  }
+}
+            (a) Compare and Swap Instruction                                               (b) Interrupts
+Figure 5.14     Two Possible Implementations of Semaphores
+          Another alternative is to use one of the hardware-supported schemes for mutual
+          exclusion. For example, Figure 5.14a shows the use of a compare&swap instruc-
+          tion. In this implementation, the semaphore is again a structure, as in Figure 5.3,
+          but now includes a new integer component, s.flag. Admittedly, this involves a form
+          of busy waiting. However, the semWait and semSignal operations are relatively
+          short, so the amount of busy waiting involved should be minor.
+                 For a single-processor system, it is possible to inhibit interrupts for the duration
+          of a semWait or semSignal operation, as suggested in Figure 5.14b. Once again, the
+          relatively short duration of these operations means that this approach is reasonable.
+   5.4    MONITORS
+          Semaphores provide a primitive yet powerful and flexible tool for enforcing mutual
+          exclusion and for coordinating processes. However, as Figure 5.9 suggests, it may be
+          difficult to produce a correct program using semaphores. The difficulty is that sem-
+          Wait and semSignal operations may be scattered throughout a program and it is
+          not easy to see the overall effect of these operations on the semaphores they affect.
+                 The monitor is a programming-language construct that provides equivalent
+          functionality to that of semaphores and that is easier to control. The concept was
+          first formally defined in [HOAR74]. The monitor construct has been implemented
+          in a number of programming languages, including Concurrent Pascal, Pascal-Plus,
+          Modula-2, Modula-3, and Java. It has also been implemented as a program library.
+          This allows programmers to put a monitor lock on any object. In particular, for
+
+                                                                5.4 / MONITORS         227
+something like a linked list, you may want to lock all linked lists with one lock, or
+have one lock for each list, or have one lock for each element of each list.
+    We begin with a look at Hoare's version and then examine a refinement.
+Monitor with Signal
+A monitor is a software module consisting of one or more procedures, an initial-
+ization sequence, and local data. The chief characteristics of a monitor are the
+following:
+1.  The local data variables are accessible only by the monitor's procedures and
+    not by any external procedure.
+2.  A process enters the monitor by invoking one of its procedures.
+3.  Only one process may be executing in the monitor at a time; any other pro-
+    cesses that have invoked the monitor are blocked, waiting for the monitor to
+    become available.
+The first two characteristics are reminiscent of those for objects in object-oriented
+software. Indeed, an object-oriented OS or programming language can readily
+implement a monitor as an object with special characteristics.
+    By enforcing the discipline of one process at a time, the monitor is able to pro-
+vide a mutual exclusion facility. The data variables in the monitor can be accessed
+by only one process at a time. Thus, a shared data structure can be protected by
+placing it in a monitor. If the data in a monitor represent some resource, then the
+monitor provides a mutual exclusion facility for accessing the resource.
+    To be useful for concurrent processing, the monitor must include synchroni-
+zation tools. For example, suppose a process invokes the monitor and, while in the
+monitor, must be blocked until some condition is satisfied. A facility is needed by
+which the process is not only blocked but releases the monitor so that some other
+process may enter it. Later, when the condition is satisfied and the monitor is again
+available, the process needs to be resumed and allowed to reenter the monitor at
+the point of its suspension.
+    A monitor supports synchronization by the use of condition variables that are
+contained within the monitor and accessible only within the monitor. Condition var-
+iables are a special data type in monitors, which are operated on by two functions:
+·   cwait(c): Suspend execution of the calling process on condition c. The mon-
+    itor is now available for use by another process.
+·   csignal(c): Resume execution of some process blocked after a cwait on
+    the same condition. If there are several such processes, choose one of them; if
+    there is no such process, do nothing.
+    Note that monitor wait and signal operations are different from those for the
+semaphore. If a process in a monitor signals and no task is waiting on the condition
+variable, the signal is lost.
+    Figure 5.15 illustrates the structure of a monitor. Although a process can enter
+the monitor by invoking any of its procedures, we can think of the monitor as hav-
+ing a single entry point that is guarded so that only one process may be in the moni-
+tor at a time. Other processes that attempt to enter the monitor join a queue of
+
+228  CHAPTER  5  /  CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+                                                                     Queue of
+                                                                     entering
+                                                                     processes
+                    Monitor waiting area       Entrance
+                                               MONITOR
+                                 Condition c1            Local data
+                                 cwait(c1)
+                                               Condition variables
+                                               Procedure 1
+                                 Condition cn
+                                 cwait(cn)     Procedure k
+                                 Urgent queue
+                                 csignal                 Initialization code
+                                                         Exit
+                    Figure 5.15  Structure of a Monitor
+     processes blocked waiting for monitor availability. Once a process is in the monitor,
+     it may temporarily block itself on condition x by issuing cwait(x); it is then placed
+     in a queue of processes waiting to reenter the monitor when the condition changes,
+     and resume execution at the point in its program following the cwait(x) call.
+     If a process that is executing in the monitor detects a change in the condition
+     variable x, it issues csignal(x), which alerts the corresponding condition queue
+     that the condition has changed.
+     As an example of the use of a monitor, let us return to the bounded-buffer
+     producer/consumer problem. Figure 5.16 shows a solution using a monitor. The
+     monitor module, boundedbuffer, controls the buffer used to store and retrieve
+     characters. The monitor includes two condition variables (declared with the con-
+     struct cond): notfull is true when there is room to add at least one character to the
+     buffer, and notempty is true when there is at least one character in the buffer.
+
+                                                                                           5.4 / MONITORS                  229
+/*   program   producerconsumer               */
+monitor   boundedbuffer;
+char  buffer      [N];                                                                     /*   space  for      N  items   */
+int   nextin,     nextout;                                                                     /*  buffer   pointers       */
+int   count;                                                                   /*  number      of  items    in     buffer  */
+cond  notfull,        notempty;                             /*  condition  variables       for     synchronization         */
+void  append      (char      x)
+{
+      if     (count      ==  N)     cwait(notfull);                    /*  buffer      is  full;   avoid    overflow       */
+      buffer[nextin]             =  x;
+      nextin       =     (nextin    +   1)    %   N;
+      count++;
+      /*     one   more      item   in     buffer     */
+      csignal         (nonempty);                                          /*resume        any     waiting  consumer       */
+}
+void  take    (char      x)
+{
+      if     (count      ==  0)     cwait(notempty);               /*  buffer      is  empty;      avoid    underflow      */
+      x   =   buffer[nextout];
+      nextout         =  (nextout       +     1)  %   N);
+      count--;                                                                 /*  one     fewer   item     in     buffer  */
+      csignal         (notfull);                                           /*  resume      any     waiting  producer       */
+}
+{                                                                                                  /*  monitor     body    */
+      nextin       =     0;  nextout       =  0;     count  =  0;                  /*  buffer      initially       empty   */
+}
+void  producer()
+{
+      char     x;
+      while       (true)     {
+      produce(x);
+      append(x);
+      }
+}
+void  consumer()
+{
+      char     x;
+      while       (true)     {
+      take(x);
+      consume(x);
+      }
+}
+void  main()
+{
+      parbegin           (producer,        consumer);
+}
+Figure 5.16    A Solution to the Bounded-Buffer Producer/Consumer Problem Using a
+               Monitor
+      A producer can add characters to the buffer only by means of the procedure
+append inside the monitor; the producer does not have direct access to buffer. The
+procedure first checks the condition notfull to determine if there is space available
+in the buffer. If not, the process executing the monitor is blocked on that condition.
+Some other process (producer or consumer) may now enter the monitor. Later,
+when the buffer is no longer full, the blocked process may be removed from the
+queue, reactivated, and resume processing. After placing a character in the buffer,
+
+230  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     the process signals the notempty condition. A similar description can be made of the
+     consumer function.
+         This example points out the division of responsibility with monitors compared
+     to semaphores. In the case of monitors, the monitor construct itself enforces mutual
+     exclusion: It is not possible for both a producer and a consumer simultaneously to
+     access the buffer. However, the programmer must place the appropriate cwait and
+     csignal primitives inside the monitor to prevent processes from depositing items in
+     a full buffer or removing them from an empty one. In the case of semaphores, both
+     mutual exclusion and synchronization are the responsibility of the programmer.
+         Note that in Figure 5.16, a process exits the monitor immediately after executing
+     the csignal function. If the csignal does not occur at the end of the procedure,
+     then, in Hoare's proposal, the process issuing the signal is blocked to make the moni-
+     tor available and placed in a queue until the monitor is free. One possibility at this
+     point would be to place the blocked process in the entrance queue, so that it would
+     have to compete for access with other processes that had not yet entered the monitor.
+     However, because a process blocked on a csignal function has already partially
+     performed its task in the monitor, it makes sense to give this process precedence over
+     newly entering processes by setting up a separate urgent queue (Figure 5.15). One
+     language that uses monitors, Concurrent Pascal, requires that csignal only appear
+     as the last operation executed by a monitor procedure.
+         If there are no processes waiting on condition x, then the execution of
+     csignal(x) has no effect.
+         As with semaphores, it is possible to make mistakes in the synchroniza-
+     tion function of monitors. For example, if either of the csignal functions in the
+     boundedbuffer monitor are omitted, then processes entering the corresponding
+     condition queue are permanently hung up. The advantage that monitors have over
+     semaphores is that all of the synchronization functions are confined to the monitor.
+     Therefore, it is easier to verify that the synchronization has been done correctly and
+     to detect bugs. Furthermore, once a monitor is correctly programmed, access to the
+     protected resource is correct for access from all processes. In contrast, with sema-
+     phores, resource access is correct only if all of the processes that access the resource
+     are programmed correctly.
+     Alternate Model of Monitors with Notify and Broadcast
+     Hoare's definition of monitors [HOAR74] requires that if there is at least one pro-
+     cess in a condition queue, a process from that queue runs immediately when another
+     process issues a csignal for that condition. Thus, the process issuing the csignal
+     must either immediately exit the monitor or be blocked on the monitor.
+         There are two drawbacks to this approach:
+     1.  If the process issuing the csignal has not finished with the monitor, then two
+         additional process switches are required: one to block this process and another
+         to resume it when the monitor becomes available.
+     2.  Process scheduling associated with a signal must be perfectly reliable. When
+         a csignal is issued, a process from the corresponding condition queue must
+         be activated immediately and the scheduler must ensure that no other process
+
+                                                                               5.4 / MONITORS            231
+      enters the monitor before activation. Otherwise, the condition under which
+      the process was activated could change. For example, in Figure 5.16, when a
+      csignal(notempty) is issued, a process from the notempty queue must
+      be activated before a new consumer enters the monitor. Another example:
+      a producer process may append a character to an empty buffer and then fail
+      before signaling; any processes in the notempty queue would be permanently
+      hung up.
+      Lampson and Redell developed a different definition of monitors for the lan-
+guage Mesa [LAMP80]. Their approach overcomes the problems just listed and
+supports several useful extensions. The Mesa monitor structure is also used in the
+Modula-3 systems programming language [NELS91]. In Mesa, the csignal prim-
+itive is replaced by cnotify, with the following interpretation: When a process
+executing in a monitor executes cnotify(x), it causes the x condition queue to be
+notified, but the signaling process continues to execute. The result of the notifica-
+tion is that the process at the head of the condition queue will be resumed at some
+convenient future time when the monitor is available. However, because there is
+no guarantee that some other process will not enter the monitor before the waiting
+process, the waiting process must recheck the condition. For example, the proce-
+dures in the boundedbuffer monitor would now have the code of Figure 5.17.
+      The if statements are replaced by while loops. Thus, this arrangement results
+in at least one extra evaluation of the condition variable. In return, however, there
+are no extra process switches, and no constraints on when the waiting process must
+run after a cnotify.
+      One useful refinement that can be associated with the cnotify primitive is
+a watchdog timer associated with each condition primitive. A process that has been
+waiting for the maximum timeout interval will be placed in a Ready state regard-
+less of whether the condition has been notified. When activated, the process checks
+the condition and continues if the condition is satisfied. The timeout prevents the
+indefinite starvation of a process in the event that some other process fails before
+signaling a condition.
+void  append  (char      x)
+{
+      while   (count     ==     N)  cwait(notfull);       /*  buffer      is   full;  avoid  overflow    */
+      buffer[nextin]         =  x;
+      nextin   =     (nextin    +   1)  %   N;
+      count++;                                                    /*      one  more   item   in  buffer  */
+      cnotify(notempty);                                      /*  notify       any  waiting  consumer    */
+}
+void  take   (char   x)
+{
+      while   (count     ==     0)  cwait(notempty);  /*  buffer      is  empty;      avoid  underflow   */
+      x  =   buffer[nextout];
+      nextout     =  (nextout       +   1)  %   N);
+      count--;                                                    /*  one      fewer  item   in  buffer  */
+      cnotify(notfull);                                       /*  notify       any  waiting  producer    */
+}
+Figure 5.17   Bounded-Buffer Monitor Code for Mesa Monitor
+
+232  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+         With the rule that a process is notified rather than forcibly reactivated, it is
+     possible to add a cbroadcast primitive to the repertoire. The broadcast causes all
+     processes waiting on a condition to be placed in a Ready state. This is convenient
+     in situations where a process does not know how many other processes should be
+     reactivated. For example, in the producer/consumer program, suppose that both
+     the append and the take functions can apply to variable length blocks of charac-
+     ters. In that case, if a producer adds a block of characters to the buffer, it need not
+     know how many characters each waiting consumer is prepared to consume. It sim-
+     ply issues a cbroadcast and all waiting processes are alerted to try again.
+         In addition, a broadcast can be used when a process would have difficulty fig-
+     uring out precisely which other process to reactivate. A good example is a memory
+     manager. The manager has j bytes free; a process frees up an additional k bytes, but it
+     does not know which waiting process can proceed with a total of k + j bytes. Hence it
+     uses broadcast, and all processes check for themselves if there is enough memory free.
+         An advantage of Lampson/Redell monitors over Hoare monitors is that the
+     Lampson/Redell approach is less prone to error. In the Lampson/Redell approach,
+     because each procedure checks the monitor variable after being signaled, with the
+     use of the while construct, a process can signal or broadcast incorrectly without
+     causing an error in the signaled program. The signaled program will check the rel-
+     evant variable and, if the desired condition is not met, continue to wait.
+         Another advantage of the Lampson/Redell monitor is that it lends itself to a
+     more modular approach to program construction. For example, consider the imple-
+     mentation of a buffer allocator. There are two levels of conditions to be satisfied for
+     cooperating sequential processes:
+     1.  Consistent data structures. Thus, the monitor enforces mutual exclusion and
+         completes an input or output operation before allowing another operation on
+         the buffer.
+     2.  Level 1, plus enough memory for this process to complete its allocation request.
+         In the Hoare monitor, each signal conveys the level 1 condition but also car-
+     ries the implicit message, "I have freed enough bytes for your particular allocate call
+     to work now." Thus, the signal implicitly carries the level 2 condition. If the pro-
+     grammer later changes the definition of the level 2 condition, it will be necessary to
+     reprogram all signaling processes. If the programmer changes the assumptions made
+     by any particular waiting process (i.e., waiting for a slightly different level 2 invari-
+     ant), it may be necessary to reprogram all signaling processes. This is unmodular and
+     likely to cause synchronization errors (e.g., wake up by mistake) when the code is
+     modified. The programmer has to remember to modify all procedures in the monitor
+     every time a small change is made to the level 2 condition. With a Lampson/Redell
+     monitor, a broadcast ensures the level 1 condition and carries a hint that level 2 might
+     hold; each process should check the level 2 condition itself. If a change is made in
+     the level 2 condition in either a waiter or a signaler, there is no possibility of errone-
+     ous wakeup because each procedure checks its own level 2 condition. Therefore, the
+     level 2 condition can be hidden within each procedure. With the Hoare monitor,
+     the level 2 condition must be carried from the waiter into the code of every signaling
+     process, which violates data abstraction and interprocedural modularity principles.
+
+                                                                   5.5 / MESSAGE PASSING      233
+5.5        MESSAGE PASSING
+           When processes interact with one another, two fundamental requirements must
+           be satisfied: synchronization and communication. Processes need to be synchro-
+           nized to enforce mutual exclusion; cooperating processes may need to exchange
+           information. One approach to providing both of these functions is message passing.
+           Message passing has the further advantage that it lends itself to implementation in
+           distributed systems as well as in shared-memory multiprocessor and uniprocessor
+           systems.
+                   Message-passing systems come in many forms. In this section, we provide a
+           general introduction that discusses features typically found in such systems. The
+           actual function of message passing is normally provided in the form of a pair of
+           primitives:
+                   send      (destination,  message)
+                   receive   (source,   message)
+                   This is the minimum set of operations needed for processes to engage in mes-
+           sage passing. A process sends information in the form of a message to another proc-
+           ess designated by a destination. A process receives information by executing the
+           receive primitive, indicating the source and the message.
+                   A number of design issues relating to message-passing systems are listed in
+           Table 5.5, and examined in the remainder of this section.
+Table 5.5   Design Characteristics  of  Message  Systems for Interprocess  Communication
+            and Synchronization
+Synchronization                                  Format
+Send                                              Content
+           blocking                               Length
+           nonblocking                                   fixed
+Receive                                                  variable
+           blocking
+           nonblocking                           Queueing Discipline
+           test for arrival                       FIFO
+                                                  Priority
+Addressing
+Direct
+           send
+           receive
+                 explicit
+                 implicit
+Indirect
+           static
+           dynamic
+           ownership
+
+234  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     Synchronization
+     The communication of a message between two processes implies some level of syn-
+     chronization between the two: The receiver cannot receive a message until it has
+     been sent by another process. In addition, we need to specify what happens to a
+     process after it issues a send or receive primitive.
+         Consider the send primitive first. When a send primitive is executed in a
+     process, there are two possibilities: Either the sending process is blocked until the
+     message is received, or it is not. Similarly, when a process issues a receive primi-
+     tive, there are two possibilities:
+     1.  If a message has previously been sent, the message is received and execution
+         continues.
+     2.  If there is no waiting message, then either (a) the process is blocked until
+         a message arrives, or (b) the process continues to execute, abandoning the
+         attempt to receive.
+         Thus, both the sender and receiver can be blocking or nonblocking. Three
+     combinations are common, although any particular system will usually have only
+     one or two combinations implemented:
+     ·   Blocking send, blocking receive: Both the sender and receiver are blocked un-
+         til the message is delivered; this is sometimes referred to as a rendezvous. This
+         combination allows for tight synchronization between processes.
+     ·   Nonblocking send, blocking receive: Although the sender may continue on,
+         the receiver is blocked until the requested message arrives. This is probably
+         the most useful combination. It allows a process to send one or more messages
+         to a variety of destinations as quickly as possible. A process that must receive
+         a message before it can do useful work needs to be blocked until such a mes-
+         sage arrives. An example is a server process that exists to provide a service or
+         resource to other processes.
+     ·   Nonblocking send, nonblocking receive: Neither party is required to wait.
+         The nonblocking send is more natural for many concurrent programming
+     tasks. For example, if it is used to request an output operation, such as printing, it
+     allows the requesting process to issue the request in the form of a message and then
+     carry on. One potential danger of the nonblocking send is that an error could lead
+     to a situation in which a process repeatedly generates messages. Because there is no
+     blocking to discipline the process, these messages could consume system resources,
+     including processor time and buffer space, to the detriment of other processes and
+     the OS. Also, the nonblocking send places the burden on the programmer to deter-
+     mine that a message has been received: Processes must employ reply messages to
+     acknowledge receipt of a message.
+         For the receive primitive, the blocking version appears to be more natural
+     for many concurrent programming tasks. Generally, a process that requests a mes-
+     sage will need the expected information before proceeding. However, if a message
+     is lost, which can happen in a distributed system, or if a process fails before it sends
+     an anticipated message, a receiving process could be blocked indefinitely. This
+
+                                                  5.5 / MESSAGE PASSING                 235
+problem can be solved by the use of the nonblocking receive. However, the dan-
+ger of this approach is that if a message is sent after a process has already executed
+a matching receive, the message will be lost. Other possible approaches are to
+allow a process to test whether a message is waiting before issuing a receive and
+allow a process to specify more than one source in a receive primitive. The latter
+approach is useful if a process is waiting for messages from more than one source
+and can proceed if any of these messages arrive.
+Addressing
+Clearly, it is necessary to have a way of specifying in the send primitive which pro-
+cess is to receive the message. Similarly, most implementations allow a receiving
+process to indicate the source of a message to be received.
+The various schemes for specifying processes in send and receive primi-
+tives fall into two categories: direct addressing and indirect addressing. With direct
+addressing, the send primitive includes a specific identifier of the destination proc-
+ess. The receive primitive can be handled in one of two ways. One possibility is
+to require that the process explicitly designate a sending process. Thus, the proc-
+ess must know ahead of time from which process a message is expected. This will
+often be effective for cooperating concurrent processes. In other cases, however,
+it is impossible to specify the anticipated source process. An example is a printer-
+server process, which will accept a print request message from any other process.
+For such applications, a more effective approach is the use of implicit addressing. In
+this case, the source parameter of the receive primitive possesses a value returned
+when the receive operation has been performed.
+The other general approach is indirect addressing. In this case, messages are
+not sent directly from sender to receiver but rather are sent to a shared data struc-
+ture consisting of queues that can temporarily hold messages. Such queues are gen-
+erally referred to as mailboxes. Thus, for two processes to communicate, one proc-
+ess sends a message to the appropriate mailbox and the other process picks up the
+message from the mailbox.
+A strength of the use of indirect addressing is that, by decoupling the sender
+and receiver, it allows for greater flexibility in the use of messages. The relationship
+between senders and receivers can be one to one, many to one, one to many, or
+many to many (Figure 5.18). A one-to-one relationship allows a private communi-
+cations link to be set up between two processes. This insulates their interaction from
+erroneous interference from other processes. A many-to-one relationship is use-
+ful for client/server interaction; one process provides service to a number of other
+processes. In this case, the mailbox is often referred to as a port. A one-to-many
+relationship allows for one sender and multiple receivers; it is useful for applications
+where a message or some information is to be broadcast to a set of processes. A
+many-to-many relationship allows multiple server processes to provide concurrent
+service to multiple clients.
+The association of processes to mailboxes can be either static or dynamic.
+Ports are often statically associated with a particular process; that is, the port is
+created and assigned to the process permanently. Similarly, a one-to-one relation-
+ship is typically defined statically and permanently. When there are many senders,
+
+236      CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+                                             S1
+     S1      Mailbox          R1                                  Port                             R1
+                                             Sn
+             (a) One to one                                       (b) Many to one
+                              R1             S1                                                    R1
+     S1      Mailbox                                              Mailbox
+                              Rn             Sn                                                    Rn
+             (c) One to many                                      (d) Many to many
+Figure 5.18  Indirect Process Communication
+         the association of a sender to a mailbox may occur dynamically. Primitives such as
+         connect and disconnect may be used for this purpose.
+             A related issue has to do with the ownership of a mailbox. In the case of a port,
+         it is typically owned by and created by the receiving process. Thus, when the process is
+         destroyed, the port is also destroyed. For the general mailbox case, the OS may offer
+         a create-mailbox service. Such mailboxes can be viewed either as being owned by the
+         creating process, in which case they terminate with the process, or as being owned by
+         the OS, in which case an explicit command will be required to destroy the mailbox.
+         Message Format
+         The format of the message depends on the objectives of the messaging facility and
+         whether the facility runs on a single computer or on a distributed system. For some
+         operating systems, designers have preferred short, fixed-length messages to mini-
+         mize processing and storage overhead. If a large amount of data is to be passed, the
+         data can be placed in a file and the message then simply references that file. A more
+         flexible approach is to allow variable-length messages.
+             Figure 5.19 shows a typical message format for operating systems that support
+         variable-length messages. The message is divided into two parts: a header, which
+         contains information about the message, and a body, which contains the actual con-
+         tents of the message. The header may contain an identification of the source and
+         intended destination of the message, a length field, and a type field to discriminate
+         among various types of messages. There may also be additional control information,
+
+                                                                              5.5  /  MESSAGE  PASSING  237
+                                                         Message type
+                                                         Destination ID
+                                           Header        Source ID
+                                                         Message length
+                                                         Control information
+                                               Body      Message contents
+                                           Figure 5.19   General Message
+                                                         Format
+such as a pointer field so that a linked list of messages can be created; a sequence
+number, to keep track of the number and order of messages passed between source
+and destination; and a priority field.
+Queueing Discipline
+The simplest queueing discipline is first-in-first-out, but this may not be sufficient
+if some messages are more urgent than others. An alternative is to allow the speci-
+fying of message priority, on the basis of message type or by designation by the
+sender. Another alternative is to allow the receiver to inspect the message queue
+and select which message to receive next.
+Mutual Exclusion
+Figure 5.20 shows one way in which message passing can be used to enforce mutual
+exclusion (compare Figures 5.1, 5.2, and 5.6). We assume the use of the blocking
+receive primitive and the nonblocking send primitive. A set of concurrent pro-
+cesses share a mailbox, box, which can be used by all processes to send and receive.
+/*  program      mutualexclusion           */
+const  int    n  =   /*  number  of        process   */
+void   P(int     i)
+{
+       message       msg;
+       while     (true)      {
+             receive     (box,   msg);
+             /*  critical       section        */;
+             send    (box,      msg);
+             /*  remainder      */;
+       }
+}
+void   main()
+{
+      create     mailbox     (box);
+      send   (box,   null);
+      parbegin       (P(1),     P(2),...,  P(n));
+Figure 5.20      Mutual Exclusion Using              Messages
+
+238  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     The mailbox is initialized to contain a single message with null content. A process
+     wishing to enter its critical section first attempts to receive a message. If the mailbox
+     is empty, then the process is blocked. Once a process has acquired the message,
+     it performs its critical section and then places the message back into the mailbox.
+     Thus, the message functions as a token that is passed from process to process.
+            The preceding solution assumes that if more than one process performs the
+     receive operation concurrently, then:
+        ·   If there is a message, it is delivered to only one process and the others are
+            blocked, or
+        ·   If the message queue is empty, all processes are blocked; when a message is
+            available, only one blocked process is activated and given the message.
+     These assumptions are true of virtually all message-passing facilities.
+            As an example of the use of message passing, Figure 5.21 is a solution to the
+     bounded-buffer producer/consumer problem. Using the basic mutual-exclusion
+     power of message passing, the problem could have been solved with an algorithmic
+     structure similar to that of Figure 5.13. Instead, the program of Figure 5.21 takes
+     advantage of the ability of message passing to be used to pass data in addition to
+     signals. Two mailboxes are used. As the producer generates data, it is sent as mes-
+     sages to the mailbox mayconsume. As long as there is at least one message in that
+     mailbox, the consumer can consume. Hence mayconsume serves as the buffer; the
+     data in the buffer are organized as a queue of messages. The "size" of the buffer is
+     const     int
+           capacity           =  /*     buffering  capacity  */  ;
+           null     =     /*     empty  message    */  ;
+     int   i;
+     void     producer()
+     {     message        pmsg;
+           while       (true)        {
+              receive         (mayproduce,pmsg);
+              pmsg     =  produce();
+              send     (mayconsume,pmsg);
+           }
+     }
+     void     consumer()
+     {     message        cmsg;
+           while       (true)        {
+              receive         (mayconsume,cmsg);
+              consume         (cmsg);
+              send     (mayproduce,null);
+           }
+     }
+     void     main()
+     {
+           create_mailbox               (mayproduce);
+           create_mailbox               (mayconsume);
+           for   (int         i  =   1;i<=  capacity;i++)    send   (mayproduce,null);
+           parbegin           (producer,consumer);
+     }
+     Figure 5.21          A Solution to the Bounded-Buffer Producer/Consumer            Problem  Using  Messages
+
+                           5.6 / READERS/WRITERS PROBLEM                                    239
+     determined by the global variable capacity. Initially, the mailbox mayproduce
+     is filled with a number of null messages equal to the capacity of the buffer. The
+     number of messages in mayproduce shrinks with each production and grows with
+     each consumption.
+         This approach is quite flexible. There may be multiple producers and consum-
+     ers, as long as all have access to both mailboxes. The system may even be distrib-
+     uted, with all producer processes and the mayproduce mailbox at one site and all
+     the consumer processes and the mayconsume mailbox at another.
+5.6  READERS/WRITERS PROBLEM
+     In dealing with the design of synchronization and concurrency mechanisms, it is
+     useful to be able to relate the problem at hand to known problems and to be able
+     to test any solution in terms of its ability to solve these known problems. In the
+     literature, several problems have assumed importance and appear frequently, both
+     because they are examples of common design problems and because of their edu-
+     cational value. One such problem is the producer/consumer problem, which has
+     already been explored. In this section, we look at another classic problem: the read-
+     ers/writers problem.
+         The readers/writers problem is defined as follows: There is a data area shared
+     among a number of processes. The data area could be a file, a block of main mem-
+     ory, or even a bank of processor registers. There are a number of processes that
+     only read the data area (readers) and a number that only write to the data area
+     (writers). The conditions that must be satisfied are as follows:
+     1.  Any number of readers may simultaneously read the file.
+     2.  Only one writer at a time may write to the file.
+     3.  If a writer is writing to the file, no reader may read it.
+         Thus, readers are processes that are not required to exclude one another and
+     writers are processes that are required to exclude all other processes, readers and
+     writers alike.
+         Before proceeding, let us distinguish this problem from two others: the general
+     mutual exclusion problem and the producer/consumer problem. In the readers/writ-
+     ers problem readers do not also write to the data area, nor do writers read the data
+     area while writing. A more general case, which includes this case, is to allow any of
+     the processes to read or write the data area. In that case, we can declare any por-
+     tion of a process that accesses the data area to be a critical section and impose the
+     general mutual exclusion solution. The reason for being concerned with the more
+     restricted case is that more efficient solutions are possible for this case and that the
+     less efficient solutions to the general problem are unacceptably slow. For example,
+     suppose that the shared area is a library catalog. Ordinary users of the library read
+     the catalog to locate a book. One or more librarians are able to update the catalog.
+     In the general solution, every access to the catalog would be treated as a critical sec-
+     tion, and users would be forced to read the catalog one at a time. This would clearly
+     impose intolerable delays. At the same time, it is important to prevent writers from
+
+240  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     interfering with each other and it is also required to prevent reading while writing is
+     in progress to prevent the access of inconsistent information.
+           Can the producer/consumer problem be considered simply a special case of
+     the readers/writers problem with a single writer (the producer) and a single reader
+     (the consumer)? The answer is no. The producer is not just a writer. It must read
+     queue pointers to determine where to write the next item, and it must determine if
+     the buffer is full. Similarly, the consumer is not just a reader, because it must adjust
+     the queue pointers to show that it has removed a unit from the buffer.
+           We now examine two solutions to the problem.
+     Readers Have Priority
+     Figure 5.22 is a solution using semaphores, showing one instance each of a reader
+     and a writer; the solution does not change for multiple readers and writers. The
+     writer process is simple. The semaphore wsem is used to enforce mutual exclusion.
+     As long as one writer is accessing the shared data area, no other writers and no
+     readers may access it. The reader process also makes use of wsem to enforce mutual
+     exclusion. However, to allow multiple readers, we require that, when there are no
+     readers reading, the first reader that attempts to read should wait on wsem. When
+     /*   program     readersandwriters      */
+     int   readcount;
+     semaphore     x   =  1,wsem     =   1;
+     void     reader()
+     {
+           while   (true){
+              semWait     (x);
+              readcount++;
+              if(readcount       ==  1)
+                  semWait       (wsem);
+              semSignal      (x);
+              READUNIT();
+              semWait     (x);
+              readcount;
+              if(readcount       ==  0)
+                  semSignal        (wsem);
+              semSignal      (x);
+           }
+     }
+     void     writer()
+     {
+           while   (true){
+              semWait     (wsem);
+              WRITEUNIT();
+              semSignal      (wsem);
+           }
+     }
+     void     main()
+     {
+           readcount      =  0;
+           parbegin       (reader,writer);
+     }
+     Figure 5.22      A Solution to the Readers/Writers  Problem  Using  Semaphore:  Readers  Have
+                      Priority
+
+                                                              5.6 / READERS/WRITERS PROBLEM           241
+there is already at least one reader reading, subsequent readers need not wait before
+entering. The global variable readcount is used to keep track of the number of
+readers, and the semaphore x is used to assure that readcount is updated properly.
+Writers Have Priority
+In the previous solution, readers have priority. Once a single reader has begun to
+access the data area, it is possible for readers to retain control of the data area as
+long as there is at least one reader in the act of reading. Therefore, writers are sub-
+ject to starvation.
+      Figure 5.23 shows a solution that guarantees that no new readers are allowed
+access to the data area once at least one writer has declared a desire to write. For
+/*   program     readersandwriters          */
+int   readcount,writecount;
+void     reader()
+{
+      while   (true){
+         semWait      (z);
+              semWait       (rsem);
+                      semWait      (x);
+                               readcount++;
+                               if  (readcount         ==  1)
+                                     semWait        (wsem);
+                               semSignal        (x);
+                      semSignal      (rsem);
+              semSignal        (z);
+              READUNIT();
+              semWait       (x);
+                      readcount--;
+                      if  (readcount        ==  0)    semSignal  (wsem);
+              semSignal        (x);
+      }
+}
+void     writer   ()
+{
+      while   (true){
+         semWait      (y);
+              writecount++;
+              if   (writecount       ==     1)
+                      semWait      (rsem);
+         semSignal       (y);
+         semWait      (wsem);
+         WRITEUNIT();
+         semSignal       (wsem);
+         semWait      (y);
+              writecount;
+              if   (writecount       ==     0)  semSignal     (rsem);
+         semSignal       (y);
+      }
+}
+void     main()
+{
+      readcount       =  writecount      =  0;
+      parbegin     (reader,       writer);
+}
+Figure 5.23      A Solution to the Readers/Writers Problem                Using  Semaphore:  Writers  Have
+                 Priority
+
+242  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+Table 5.6  State of the Process Queues     for  Program  of  Figure 5.23
+Readers only in the system                                   ·  wsem set
+                                                             ·  no queues
+Writers only in the system                                   ·  wsem and rsem set
+                                                             ·  writers queue on wsem
+Both readers and writers with read first                     ·  wsem set by reader
+                                                             ·  rsem set by writer
+                                                             ·  all writers queue on wsem
+                                                             ·  one reader queues on rsem
+                                                             ·  other readers queue on z
+Both readers and writers with write first                    ·  wsem set by writer
+                                                             ·  rsem set by writer
+                                                             ·  writers queue on wsem
+                                                             ·  one reader queues on rsem
+                                                             ·  other readers queue on z
+           writers, the following semaphores and variables are added to the ones already
+           defined:
+           ·  A semaphore rsem that inhibits all readers while there is at                 least one writer
+              desiring access to the data area
+           ·  A variable writecount that controls the setting of rsem
+           ·  A semaphore y that controls the updating of writecount
+              For readers, one additional semaphore is needed. A long queue must not
+           be allowed to build up on rsem; otherwise writers will not be able to jump the
+           queue. Therefore, only one reader is allowed to queue on rsem, with any additional
+           readers queueing on semaphore z, immediately before waiting on rsem. Table 5.6
+           summarizes the possibilities.
+              An alternative solution, which gives writers priority and which is implemented
+           using message passing, is shown in Figure 5.24. In this case, there is a controller
+           process that has access to the shared data area. Other processes wishing to access
+           the data area send a request message to the controller, are granted access with an
+           "OK" reply message, and indicate completion of access with a "finished" message.
+           The controller is equipped with three mailboxes, one for each type of message that
+           it may receive.
+              The controller process services write request messages before read request
+           messages to give writers priority. In addition, mutual exclusion must be enforced.
+           To do this the variable count is used, which is initialized to some number greater
+           than the maximum possible number of readers. In this example, we use a value of
+           100. The action of the controller can be summarized as follows:
+           ·  If count > 0, then no writer is waiting and there may or may not be read-
+              ers active. Service all "finished" messages first to clear active readers. Then
+              service write requests and then read requests.
+           ·  If count = 0, then the only request outstanding is a write request. Allow the
+              writer to proceed and wait for a "finished" message.
+
+                                                                                    5.7 / SUMMARY               243
+void    reader(int       i)                       void  controller()
+{                                                 {
+   message     rmsg;                                 while  (true)
+        while     (true)     {                       {
+           rmsg   =   i;                                if  (count     >   0)    {
+           send   (readrequest,         rmsg);              if  (!empty      (finished))           {
+           receive       (mbox[i],  rmsg);                      receive      (finished,         msg);
+           READUNIT       ();                                   count++;
+           rmsg   =   i;                                    }
+           send   (finished,    rmsg);                      else   if  (!empty         (writerequest))          {
+        }                                                       receive      (writerequest,           msg);
+}                                                               writer_id        =     msg.id;
+void    writer(int       j)                                     count     =  count        ­  100;
+{                                                           }
+   message     rmsg;                                        else   if  (!empty         (readrequest))        {
+   while(true)        {                                         receive      (readrequest,            msg);
+        rmsg   =  j;                                            count--;
+        send   (writerequest,       rmsg);                      send   (msg.id,           "OK");
+        receive   (mbox[j],     rmsg);                      }
+        WRITEUNIT     ();                               }
+        rmsg   =  j;                                    if  (count     ==    0)     {
+        send   (finished,       rmsg);                      send   (writer_id,            "OK");
+   }                                                        receive    (finished,            msg);
+}                                                           count   =  100;
+                                                        }
+                                                        while   (count       <   0)    {
+                                                            receive    (finished,            msg);
+                                                            count++;
+                                                        }
+                                                     }
+                                                  }
+Figure 5.24    A Solution to the Readers/Writers  Problem Using Message Passing
+               ·  If count < 0, then a writer has made a request and is being made to wait
+                  to clear all active readers. Therefore, only "finished" messages should be
+                  serviced.
+   5.7     SUMMARY
+           The central themes of modern operating systems are multiprogramming, multipro-
+           cessing, and distributed processing. Fundamental to these themes, and fundamen-
+           tal to the technology of OS design, is concurrency. When multiple processes are
+           executing concurrently, either actually in the case of a multiprocessor system or vir-
+           tually in the case of a single-processor multiprogramming system, issues of conflict
+           resolution and cooperation arise.
+                  Concurrent processes may interact in a number of ways. Processes that are
+           unaware of each other may nevertheless compete for resources, such as processor
+           time or access to I/O devices. Processes may be indirectly aware of one another
+           because they share access to a common object, such as a block of main memory or
+           a file. Finally, processes may be directly aware of each other and cooperate by the
+           exchange of information. The key issues that arise in these interactions are mutual
+           exclusion and deadlock.
+
+244  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     Mutual exclusion is a condition in which there is a set of concurrent processes,
+     only one of which is able to access a given resource or perform a given function
+     at any time. Mutual exclusion techniques can be used to resolve conflicts, such as
+     competition for resources, and to synchronize processes so that they can coop-
+     erate. An example of the latter is the producer/consumer model, in which one
+     process is putting data into a buffer and one or more processes are extracting data
+     from that buffer.
+     One approach to supporting mutual exclusion involves the use of special-pur-
+     pose machine instructions. This approach reduces overhead but is still inefficient
+     because it uses busy waiting.
+     Another approach to supporting mutual exclusion is to provide features within
+     the OS. Two of the most common techniques are semaphores and message facili-
+     ties. Semaphores are used for signaling among processes and can be readily used to
+     enforce a mutual-exclusion discipline. Messages are useful for the enforcement of
+     mutual exclusion and also provide an effective means of interprocess communication.
+5.8  RECOMMENDED READING
+     The misnamed Little Book of Semaphores (291 pages) [DOWN08] provides numer-
+     ous examples of the uses of semaphores; available free online.
+     [ANDR83] surveys many of the mechanisms described in this chapter.
+     [BEN82] provides a very clear and even entertaining discussion of concurrency,
+     mutual exclusion, semaphores, and other related topics. A more formal treatment,
+     expanded to include distributed systems, is contained in [BEN06]. [AXFO88]
+     is another readable and useful treatment; it also contains a number of problems
+     with worked-out solutions. [RAYN86] is a comprehensive and lucid collection of
+     algorithms for mutual exclusion, covering software (e.g., Dekker) and hardware
+     approaches, as well as semaphores and messages. [HOAR85] is a very readable
+     classic that presents a formal approach to defining sequential processes and concur-
+     rency. [LAMP86] is a lengthy formal treatment of mutual exclusion. [RUDO90] is
+     a useful aid in understanding concurrency. [BACO03] is a well-organized treatment
+     of concurrency. [BIRR89] provides a good practical introduction to programming
+     using concurrency. [BUHR95] is an exhaustive survey of monitors. [KANG98] is
+     an instructive analysis of 12 different scheduling policies for the readers/writers
+     problem.
+     ANDR83    Andrews, G., and Schneider, F. "Concepts and Notations for Concurrent
+     Programming." Computing Surveys, March 1983.
+     AXFO88    Axford, T. Concurrent Programming: Fundamental Techniques for Real-
+     Time and Parallel Software Design. New York: Wiley, 1988.
+     BACO03    Bacon, J., and Harris, T. Operating Systems: Concurrent and Distributed
+     Software Design. Reading, MA: Addison-Wesley, 2003.
+     BEN82     Ben-Ari, M. Principles of Concurrent Programming. Englewood Cliffs, NJ:
+     Prentice Hall, 1982.
+
+                              5.9 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                       245
+           BEN06   Ben-Ari, M. Principles of Concurrent and Distributed Programming. Harlow,
+                England: Addison-Wesley, 2006.
+           BIRR89     Birrell, A. An Introduction to Programming with Threads. SRC Research
+                Report 35, Compaq Systems Research Center, Palo Alto, CA, January 1989.
+                Available at http://www.research.compaq.com/SRC
+           BUHR95      Buhr, P., and Fortier, M. "Monitor Classification." ACM Computing
+                Surveys, March 1995.
+           DOWN08      Downey, A. The Little Book of Semaphores. www.greenteapress.com
+                /semaphores/
+           HOAR85      Hoare, C. Communicating Sequential Processes. Englewood Cliffs, NJ:
+                Prentice-Hall, 1985.
+           KANG98      Kang, S., and Lee, J. "Analysis and Solution of Non-Preemptive Policies for
+                Scheduling Readers and Writers." Operating Systems Review, July 1998.
+           LAMP86      Lamport, L. "The Mutual Exclusion Problem." Journal of the ACM, April
+                1986.
+           RAYN86      Raynal, M. Algorithms for Mutual Exclusion. Cambridge, MA: MIT Press,
+                1986.
+           RUDO90      Rudolph,       B.  "Self-Assessment   Procedure  XXI:      Concurrency."
+                Communications of the ACM, May 1990.
+5.9     KEY TERMS,          REVIEW QUESTIONS,                AND PROBLEMS
+Key Terms
+atomic                           critical resource                nonblocking
+binary semaphore                 critical section                 race condition
+blocking                         deadlock                         semaphore
+busy waiting                     general semaphore                spin waiting
+concurrency                      message passing                  starvation
+concurrent processes             monitor                          strong semaphore
+coroutine                        mutual exclusion                 weak semaphore
+counting semaphore               mutex
+        Review Questions
+           5.1  List four design issues for which the concept of concurrency is relevant.
+           5.2  What are three contexts in which concurrency arises?
+           5.3  What is the basic requirement for the execution of concurrent processes?
+           5.4  List three degrees of awareness between processes and briefly define each.
+           5.5  What is the distinction between competing processes and cooperating processes?
+           5.6  List the three control problems associated with competing processes and briefly     de-
+                fine each.
+           5.7  List the requirements for mutual exclusion.
+           5.8  What operations can be performed on a semaphore?
+
+246  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     5.9   What is the difference between binary and general semaphores?
+     5.10  What is the difference between strong and weak semaphores?
+     5.11  What is a monitor?
+     5.12  What is the distinction between blocking and nonblocking with respect to messages?
+     5.13  What conditions are generally associated with the readers/writers problem?
+     Problems
+     5.1   At the beginning of Section 5.1, it is stated that multiprogramming and multiprocess-
+           ing present the same problems, with respect to concurrency. This is true as far as it
+           goes. However, cite two differences in terms of concurrency between multiprogram-
+           ming and multiprocessing.
+     5.2   Processes and threads provide a powerful structuring tool for implementing programs
+           that would be much more complex as simple sequential programs. An earlier con-
+           struct that is instructive to examine is the coroutine. The purpose of this problem is to
+           introduce coroutines and compare them to processes. Consider this simple problem
+           from [CONW63]:
+               Read 80-column cards and print them on 125-character lines, with the following
+               changes. After every card image an extra blank is inserted, and every adjacent
+               pair of asterisks (**) on a card is replaced by the character.
+           a.  Develop a solution to this problem as an ordinary sequential program. You
+               will find that the program is tricky to write. The interactions among the various
+               elements of the program are uneven because of the conversion from a length of
+               80 to 125; furthermore, the length of the card image, after conversion, will vary
+               depending on the number of double asterisk occurrences. One way to improve
+               clarity, and to minimize the potential for bugs, is to write the application as three
+               separate procedures. The first procedure reads in card images, pads each image
+               with a blank, and writes a stream of characters to a temporary file. After all of
+               the cards have been read, the second procedure reads the temporary file, does the
+               character substitution, and writes out a second temporary file.The third procedure
+               reads the stream of characters from the second temporary file and prints lines of
+               125 characters each.
+           b.  The sequential solution is unattractive because of the overhead of I/O and tempo-
+               rary files. Conway proposed a new form of program structure, the coroutine, that
+               allows the application to be written as three programs connected by one-character
+               buffers (Figure 5.25). In a traditional procedure, there is a master/slave relation-
+               ship between the called and calling procedure. The calling procedure may execute
+               a call from any point in the procedure; the called procedure is begun at its entry
+               point and returns to the calling procedure at the point of call. The coroutine exhib-
+               its a more symmetric relationship. As each call is made, execution takes up from
+               the last active point in the called procedure. Because there is no sense in which
+               a calling procedure is "higher" than the called, there is no return. Rather, any co-
+               routine can pass control to any other coroutine with a resume command. The first
+               time a coroutine is invoked, it is "resumed" at its entry point. Subsequently, the co-
+               routine is reactivated at the point of its own last resume command. Note that only
+               one coroutine in a program can be in execution at one time and that the transition
+               points are explicitly defined in the code, so this is not an example of concurrent
+               processing. Explain the operation of the program in Figure 5.25.
+           c.  The program does not address the termination condition. Assume that the I/O
+               routine READCARD returns the value true if it has placed an 80-character image
+               in inbuf; otherwise it returns false. Modify the program to include this contingency.
+               Note that the last printed line may therefore contain less than 125 characters.
+           d.  Rewrite the solution as a set of three processes using semaphores.
+
+                                             5.9 / KEY TERMS,            REVIEW QUESTIONS, AND                        PROBLEMS          247
+char  rs,     sp;                                                        void    squash()
+char  inbuf[80],             outbuf[125]        ;                        {
+void  read()                                                                 while      (true)     {
+{                                                                                if     (rs  !=    "*")    {
+   while   (true)         {                                                              sp     =  rs;
+      READCARD         (inbuf);                                                          RESUME        print;
+      for     (int     i=0;     i    <  80;   i++){                              }
+              rs    =     inbuf      [i];                                        else{
+              RESUME            squash                                               RESUME        read;
+      }                                                                              if  (rs       ==  "*")   {
+      rs   =  "    ";                                                                    sp     =  "   ";
+      RESUME       squash;                                                               RESUME        print;
+   }                                                                                 }
+}                                                                                    else    {
+void  print()                                                                            sp     =  "*";
+{                                                                                        RESUME        print;
+   while   (true)         {                                                              sp     =  rs;
+      for     (int     j     =  0;   j  <  125;       j++){                              RESUME        print;
+              outbuf            [j]  =  sp;                                          }
+              RESUME            squash                                           }
+      }                                                                          RESUME      read;
+      OUTPUT       (outbuf);                                                 }
+   }                                                                     }
+}
+Figure 5.25   An Application of Coroutines
+              5.3      Consider the following program:
+                                           P1:     {                                                  P2:{
+                                 shared            int      x;                               shared           int     x;
+                                 x      =  10;                                               x     =   10;
+                                 while          (1)      {                                   while         (  1    )  {
+                                           x    =     x  -   1;                                        x   =  x    -  1;
+                                           x    =     x  +   1;                                        x   =  x    +  1;
+                                           if      (x    !=     10)                                    if     (x!=10)
+                                                printf("x            is  %d",x)                            printf("x         is  %d",x)
+                                           }                                                           }
+                                        }                                                          }
+                                 }                                                           }
+                       Note that the scheduler in a uniprocessor system would implement pseudo-parallel
+                       execution of these two concurrent processes by interleaving their instructions, without
+                       restriction on the order of the interleaving.
+                       a.       Show a sequence (i.e., trace the sequence of interleavings of statements) such that
+                                the statement "x is 10" is printed.
+                       b.       Show a sequence such that the statement "x is 8" is printed. You should remember
+                                that the increment/decrements at the source language level are not done atomi-
+                                cally, that is, the assembly language code:
+                                 LD             R0,X         /*  load    R0  from        memory           location        x  */
+                                 INCR           R0           /*  increment       R0      */
+                                 STO            R0,X         /*  store   the     incremented                  value       back   in  X  */
+                       implements the single C increment instruction (x = x + 1).
+
+248  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     5.4  Consider the following program:
+              const                 int     n   =  50;
+              int             tally;
+              void               total()
+              {
+                           int         count;
+                           for         (count      =   1;     count<=      n;  count++){
+                                    tally++;
+                           }
+              }
+              void               main()
+              {
+                           tally         =     0;
+                           parbegin             (total        (),  total       ());
+                           write         (tally);
+              }
+          a.  Determine the proper lower bound and upper bound on the final value of the
+              shared variable tally output by this concurrent program. Assume processes can
+              execute at any relative speed and that a value can only be incremented after it has
+              been loaded into a register by a separate machine instruction.
+          b.  Suppose that an arbitrary number of these processes are permitted to execute in
+              parallel under the assumptions of part (a). What effect will this modification have
+              on the range of final values of tally?
+     5.5  Is busy waiting always less efficient (in terms of using processor time) than a blocking
+          wait? Explain.
+     5.6  Consider the following program:
+              boolean                  blocked         [2];
+              int             turn;
+              void               P     (int     id)
+              {
+                        while          (true)      {
+                              blocked[id]              =   true;
+                              while         (turn      !=     id)  {
+                                       while       (blocked[1-id])
+                                            /*     do  nothing        */;
+                                       turn     =  id;
+                              }
+                              /*       critical        section        */
+                              blocked[id]              =   false;
+                              /*       remainder          */
+                        }
+              }
+              void               main()
+              {
+                        blocked[0]              =  false;
+                        blocked[1]              =  false;
+                        turn        =  0;
+                        parbegin            (P(0),        P(1));
+              }
+          This software solution to the mutual exclusion problem for two processes is proposed
+          in [HYMA66]. Find a counterexample that demonstrates that this solution is incor-
+          rect. It is interesting to note that even the Communications of the ACM was fooled
+          on this one.
+
+                     5.9 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                                           249
+5.7  A software approach to mutual exclusion is Lamport's bakery algorithm [LAMP74],
+     so called because it is based on the practice in bakeries and other shops in which every
+     customer receives a numbered ticket on arrival, allowing each to be served in turn.
+     The algorithm is as follows:
+     boolean       choosing[n];
+     int     number[n];
+     while       (true)     {
+          choosing[i]             =     true;
+          number[i]         =     1     +  getmax(number[],            n);
+          choosing[i]             =     false;
+          for     (int   j     =     0;    j    <  n;     j++){
+              while     (choosing[j])                  {   };
+              while     ((number[j]                !=     0)   &&  (number[j],j)    <    (number[i],i))     {  };
+          }
+          /*     critical         section          */;
+          number     [i]       =     0;
+          /*     remainder           */;
+     }
+     The arrays choosing and number are initialized to false and 0, respectively. The ith
+     element of each array may be read and written by process i but only read by other
+     processes. The notation (a, b) < (c, d) is defined as:
+                   (a < c) or (a = c and b < d)
+     a.   Describe the algorithm in words.
+     b.   Show that this algorithm avoids deadlock.
+     c.   Show that it enforces mutual exclusion.
+5.8  Now consider a version of the bakery algorithm                             without  the  variable  choosing.
+     Then we have
+     1   int     number[n];
+     2   while     (true)         {
+     3        number[i]           =     1  +    getmax(number[],           n);
+     4        for  (int        j     =     0;   j  <   n;     j++){
+     5            while     ((number[j]                !=     0)   &&  (number[j],j)     <  (number[i],i))     {  };
+     6        }
+     7        /*   critical             section        */;
+     8        number     [i]         =     0;
+     9        /*   remainder               */;
+     10   }
+     Does this version violate mutual exclusion? Explain why or why not.
+5.9  Consider the following program which provides a software approach                                  to  mutual
+     exclusion:
+              integer array control [1 :N]; integer k
+              where 1  k  N, and each element of "control" is either 0, 1,
+              or 2. All elements of "control" are initially zero; the initial value
+              of k is immaterial.
+     The program of the ith process (1  i  N) is
+              begin      integer               j;
+              L0:  control                 [i]     :=     l;
+              LI:  for         j:=k        step        l   until       N,  l  step  l    until  k  do
+                     begin
+                               if       j  =    i     then     goto    L2;
+
+250  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+                              if     control       [j]         0     then       goto  L1
+                          end;
+               L2:  control             [i]    :=  2;
+                    for       j     :=  1    step     1     until       N   do
+                          if     j      i    and   control           [j]    =   2  then   goto     L0;
+               L3:  if    control            [k]         0   and     k      i   then  goto   L0;
+               L4:  k     :=     i;
+                    critical            section;
+               L5:  for       j     :=  k    step     1     until       N,  1   step  1     until     k  do
+                    if    j          k  and      control       [j]          0   then
+                          begin
+                              k     :=  j;
+                                    goto     L6
+                          end;
+               L6:  control             [i]    :=  0;
+               L7:  remainder              of    cycle;
+                    goto         L0;
+               end
+           This is referred to as the Eisenberg-McGuire algorithm. Explain its operation and its
+           key features.
+     5.10  Consider the first instance of the statement bolt                    =  0 in Figure 5.2b.
+           a.  Achieve the same result using the exchange instruction.
+           b.  Which method is preferable?
+     5.11  When a special machine instruction is used to provide mutual exclusion in the fash-
+           ion of Figure 5.2, there is no control over how long a process must wait before being
+           granted access to its critical section. Devise an algorithm that uses the compare&swap
+           instruction but that guarantees that any process waiting to enter its critical section will
+           do so within n ­ 1 turns, where n is the number of processes that may require access
+           to the critical section and a "turn" is an event consisting of one process leaving the
+           critical section and another process being granted access.
+     5.12  Consider the following definition of semaphores:
+                    void      semWait(s)
+                    {
+                          if        (s.count          >  0)    {
+                                 s.count--;
+                          }
+                          else          {
+                                 place       this        process        in  s.queue;
+                                 block;
+                          }
+                    }
+                    void      semSignal            (s)
+                    {
+                          if        (there       is      at  least         one     process   blocked     on
+                                     semaphore           s)    {
+                                     remove        a     process        P   from   s.queue;
+                                     place       process          P  on     ready     list;
+                          }
+                          else
+                                     s.count++;
+                    }
+
+                     5.9 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                                                               251
+      Compare this set of definitions with that of Figure 5.3. Note one difference: With
+      the preceding definition, a semaphore can never take on a negative value. Is there
+      any difference in the effect of the two sets of definitions when used in programs?
+      That is, could you substitute one set for the other without altering the meaning of the
+      program?
+5.13  Consider a sharable resource with the following characteristics: (1) As long as there
+      are fewer than three processes using the resource, new processes can start using it
+      right away. (2) Once there are three process using the resource, all three must leave
+      before any new processes can begin using it. We realize that counters are needed to
+      keep track of how many processes are waiting and active, and that these counters are
+      themselves shared resources that must be protected with mutual exclusion. So we
+      might create the following solution:
+      1   semaphore      mutex          =     1,     block     =   0;              /*   share     variables:        semaphores,       */
+      2   int  active       =  0,       waiting             =  0;                                          /*   counters,      and    */
+      3   boolean    must_wait                =     false;                                            /*   state    information       */
+      4
+      5   semWait(mutex);                                                              /*  Enter      the  mutual      exclusion      */
+      6   if(must_wait)           {                                            /*  If      there  are      (or  were)      3,  then   */
+      7        ++waiting;                                                      /*  we   must     wait,     but  we   must      leave  */
+      8        semSignal(mutex);                                                       /*  the    mutual   exclusion           first  */
+      9        semWait(block);                                         /*  Wait    for     all   current   users       to  depart     */
+      10       SemWait(mutex);                                                     /*   Reenter       the  mutual      exclusion      */
+      11       --waiting;                                                          /*   and     update     the  waiting        count  */
+      12  }
+      13  ++active;                                                        /*  Update      active     count,      and  remember       */
+      14  must_wait      =     active            ==     3;                                   /*   if  the  count       reached     3  */
+      15  semSignal(mutex);                                                            /*  Leave      the  mutual      exclusion      */
+      16
+      17  /*   critical        section              */
+      18
+      19  semWait(mutex);                                                                    /*   Enter    mutual      exclusion      */
+      20  --active;                                                                /*      and   update    the    active       count  */
+      21  if(active      ==    0)       {                                                         /*      Last  one    to  leave?     */
+      22       int   n;
+      23       if   (waiting            <     3)     n  =      waiting;
+      24       else  n      =  3;                                                            /*   If  so,  unblock         up  to  3  */
+      25       while(       n  >     0     )     {                                                    /*   waiting     processes      */
+      26            semSignal(block);
+      27            --n;
+      28       }
+      29  must_wait      =     false;                                          /*  All     active     processes        have    left   */
+      30  }
+      31  semSignal(mutex);                                                            /*  Leave      the  mutual      exclusion      */
+      The solution appears to do everything right: All accesses to the shared variables are
+      protected by mutual exclusion, processes do not block themselves while in the mutual
+      exclusion, new processes are prevented from using the resource if there are (or
+      were) three active users, and the last process to depart unblocks up to three waiting
+      processes.
+      a.  The program is nevertheless incorrect. Explain why.
+      b.  Suppose we change the if in line 6 to a while. Does this solve any problem in the
+          program? Do any difficulties remain?
+
+252  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     5.14  Now consider this correct solution to the preceding problem:
+           1      semaphore        mutex           =     1,    block         =  0;                /*     share     variables:         semaphores,        */
+           2      int  active         =  0,        waiting            =  0;                                                  /*   counters,       and    */
+           3      boolean      must_wait                 =     false;                                                  /*   state     information        */
+           4
+           5      semWait(mutex);                                                                     /*     Enter     the   mutual       exclusion      */
+           6      if(must_wait)              {                                               /*      If   there     are     (or   were)       3,  then   */
+           7           ++waiting;                                                            /*   we     must     wait,     but   we   must       leave  */
+           8           semSignal(mutex);                                                              /*     the   mutual       exclusion         first  */
+           9           semWait(block);                                              /*  Wait      for     all     current       users     to  depart     */
+           10     }   else  {
+           11          ++active;                                                                          /*   Update       active     count,     and    */
+           12          must_wait             =     active          ==    3;                  /*   remember         if   the     count     reached     3  */
+           13          semSignal(mutex);                                                                      /*   Leave     mutual       exclusion      */
+           14     }
+           15
+           16     /*   critical          section               */
+           17
+           18     semWait(mutex);                                                                             /*   Enter     mutual       exclusion      */
+           19     --active;                                                                          /*   and     update     the     active       count  */
+           20     if(active        ==    0)        {                                                                /*     Last   one     to  leave?     */
+           21          int     n;
+           22          if   (waiting               <     3)    n   =     waiting;
+           23          else    n      =  3;                                     /*  If  so,  see      how     many     processes       to     unblock    */
+           24          waiting           -=     n;                                  /*  Deduct       this     number       from   waiting         count  */
+           25          active         =  n;                                                      /*   and     set   active       to   this    number     */
+           26          while(         n  >      0     )     {                                            /*   Now   unblock       the     processes      */
+           27                  semSignal(block);                                                                                  /*   one    by  one    */
+           28                  --n;
+           29          }
+           30          must_wait             =     active          ==    3;                           /*     Remember       if   the   count      is  3  */
+           31     }
+           32     semSignal(mutex);                                                                   /*     Leave     the   mutual       exclusion      */
+           a.  Explain how this program works and why it is correct.
+           b.  This solution does not completely prevent newly arriving processes from cutting
+               in line but it does make it less likely. Give an example of cutting in line.
+           c.  This program is an example of a general design pattern that is a uniform way to
+               implement solutions to many concurrency problems using semaphores. It has been
+               referred to as the I'll Do It For You pattern. Describe the pattern.
+     5.15  Now consider another correct solution to the preceding problem:
+           1   semaphore       mutex            =     1,       block     =      0;                /*     share     variables:         semaphores,        */
+           2   int     active      =     0,     waiting            =     0;                                                  /*   counters,       and    */
+           3   boolean      must_wait                 =     false;                                                     /*   state     information        */
+           4
+           5   semWait(mutex);                                                                        /*     Enter     the   mutual       exclusion      */
+           6   if(must_wait)             {                                                   /*      If   there     are     (or   were)       3,  then   */
+           7           ++waiting;                                                            /*   we     must     wait,     but   we   must       leave  */
+           8           semSignal(mutex);                                                              /*     the   mutual       exclusion         first  */
+           9           semWait(block);                                              /*  Wait      for     all     current       users     to  depart     */
+           10          --waiting;                                     /*     We've      got  the     mutual       exclusion;         update       count  */
+           11  }
+           12  ++active;                                                                /*   Update          active     count,       and   remember      */
+           13  must_wait       =      active             ==    3;                                             /*   if   the     count     reached     3  */
+
+                     5.9 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                                     253
+      14  if(waiting    >   0     &&  !must_wait)                /*  If      there   are   others        waiting  */
+      15         semSignal(block);;                         /*  and  we      don't   yet   have      3   active,  */
+      16                                                             /*  unblock        a  waiting       process  */
+      17  else   semSignal(mutex);                 /*  otherwise         open     the      mutual    exclusion    */
+      18
+      19  /*  critical     section    */
+      20
+      21  semWait(mutex);                                                /*      Enter     mutual    exclusion    */
+      22  --active;                                              /*  and     update        the  active   count    */
+      23  if(active    ==   0)                                               /*  If  last       one  to  leave?   */
+      24         must_wait     =  false;               /*   set  up      to  let     new   processes     enter    */
+      25  if(waiting    ==     0  &&  !must_wait)                /*  If      there   are   others        waiting  */
+      26         semSignal(block);;                              /*  and     we   don't    have      3   active,  */
+      27                                                             /*  unblock        a  waiting       process  */
+      28  else   semSignal(mutex);                 /*  otherwise         open     the      mutual    exclusion    */
+      a.  Explain how this program works and why it is correct.
+      b.  Does this solution differ from the preceding one in terms of the number of pro-
+          cesses that can be unblocked at a time? Explain.
+      c.  This program is an example of a general design pattern that is a uniform way to
+          implement solutions to many concurrency problems using semaphores. It has been
+          referred to as the Pass The Baton pattern. Describe the pattern.
+5.16  It should be possible to implement general semaphores using binary semaphores. We
+      can use the operations semWaitB and semSignalB and two binary semaphores,
+      delay and mutex. Consider the following:
+              void     semWait(semaphore           s)
+              {
+                    semWaitB(mutex);
+                    s--;
+                    if  (s        <   0)  {
+                            semSignalB(mutex);
+                            semWaitB(delay);
+                    }
+                    else       SemsignalB(mutex);
+              }
+              void     semSignal(semaphore             s);
+              {
+                    semWaitB(mutex);
+                    s++;
+                    if  (s        <=  0)
+                            semSignalB(delay);
+                    semSignalB(mutex);
+              }
+      Initially, s is set to the desired semaphore value. Each semWait operation decrements
+      s, and each semSignal operation increments s. The binary semaphore mutex, which
+      is initialized to 1, assures that there is mutual exclusion for the updating of s. The bi-
+      nary semaphore delay, which is initialized to 0, is used to block processes.
+              There is a flaw in the preceding program. Demonstrate the flaw and propose a
+      change that will fix it. Hint: Suppose two processes each call semWait(s) when s is
+      initially 0, and after the first has just performed semSignalB(mutex) but not per-
+      formed semWaitB(delay), the second call to semWait(s) proceeds to the same
+      point. All that you need to do is move a single line of the program.
+5.17  In 1978, Dijkstra put forward the conjecture that there was no solution to the mutual
+      exclusion problem avoiding starvation, applicable to an unknown but finite number
+      of processes, using a finite number of weak semaphores. In 1979, J. M. Morris refuted
+
+254  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+           this conjecture by publishing an algorithm using three weak semaphores. The behavior
+           of the algorithm can be described as follows: If one or several process are waiting in a
+           semWait(S) operation and another process is executing semSignal(S), the value
+           of the semaphore S is not modified and one of the waiting processes is unblocked inde-
+           pendently of semWait(S). Apart from the three semaphores, the algorithm uses two
+           nonnegative integer variables as counters of the number of processes in certain sections
+           of the algorithm. Thus, semaphores A and B are initialized to 1, while semaphore M
+           and counters NA and NM are initialized to 0. The mutual exclusion semaphore B pro-
+           tects access to the shared variable NA. A process attempting to enter its critical section
+           must cross two barriers represented by semaphores A and M. Counters NA and NM,
+           respectively, contain the number of processes ready to cross barrier A and those having
+           already crossed barrier A but not yet barrier M. In the second part of the protocol, the
+           NM processes blocked at M will enter their critical sections one by one, using a cascade
+           technique similar to that used in the first part. Define an algorithm that conforms to this
+           description.
+     5.18  The following problem was once used on an exam:
+           Jurassic Park consists of a dinosaur museum and a park for safari riding. There
+           are m passengers and n single-passenger cars. Passengers wander around the
+           museum for a while, then line up to take a ride in a safari car. When a car is
+           available, it loads the one passenger it can hold and rides around the park for a
+           random amount of time. If the n cars are all out riding passengers around, then
+           a passenger who wants to ride waits; if a car is ready to load but there are no
+           waiting passengers, then the car waits. Use semaphores to synchronize the m
+           passenger processes and the n car processes.
+           The following skeleton code was found on a scrap of paper on the floor of the exam
+           room. Grade it for correctness. Ignore syntax and missing variable declarations.
+           Remember that P and V correspond to semWait and semSignal.
+           resource Jurassic_Park()
+           sem car_avail := 0, car_taken := 0, car_filled := 0, passenger_released := 0
+           process passenger(i := 1 to num_passengers)
+           do true -> nap(int(random(1000*wander_time)))
+           P(car_avail); V(car_taken); P(car_filled)
+           P(passenger_released)
+           od
+           end passenger
+           process car(j := 1 to num_cars)
+           do true -> V(car_avail); P(car_taken); V(car_filled)
+           nap(int(random(1000*ride_time)))
+           V(passenger_released)
+           od
+           end car
+           end Jurassic_Park
+     5.19  In the commentary on Figure 5.9 and Table 5.4, it was stated that "it would not do
+           simply to move the conditional statement inside the critical section (controlled by s)
+           of the consumer because this could lead to deadlock." Demonstrate this with a table
+           similar to Table 5.4.
+     5.20  Consider the solution to the infinite-buffer producer/consumer problem defined in
+           Figure 5.10. Suppose we have the (common) case in which the producer and consumer
+           are running at roughly the same speed. The scenario could be:
+           Producer: append; semSignal; produce; ... ; append; semSignal; produce; ...
+           Consumer: consume; ... ; take; semWait; consume; ... ; take; semWait; ...
+
+                     5.9 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                             255
+          The producer always manages to append a new element to the buffer and signal
+          during the consumption of the previous element by the consumer. The producer is
+          always appending to an empty buffer and the consumer is always taking the sole item
+          in the buffer.Although the consumer never blocks on the semaphore, a large number
+          of calls to the semaphore mechanism is made, creating considerable overhead.
+      Construct a new program that will be more efficient under these circumstances. Hints:
+      Allow n to have the value ­1, which is to mean that not only is the buffer empty but
+      that the consumer has detected this fact and is going to block until the producer sup-
+      plies fresh data. The solution does not require the use of the local variable m found
+      in Figure 5.10.
+5.21  Consider Figure 5.13. Would the meaning of the program change if the following were
+      interchanged?
+      a.  semWait(e); semWait(s)
+      b.  semSignal(s); semSignal(n)
+      c.  semWait(n); semWait(s)
+      d.  semSignal(s); semSignal(e)
+5.22  The following pseudocode is a correct implementation of the producer/consumer
+      problem with a bounded buffer:
+          item[3]      buffer;     //  initially   empty
+          semaphore    empty;      //  initialized          to      +3
+          semaphore    full;       //  initialized         to    0
+          binary_semaphore         mutex;      //  initialized          to     1
+          void       producer()                    void          consumer()
+          {                                        {
+                ...                                         ...
+                while  (true)      {                        while       (true)    {
+                       item     =  produce();      c1:              wait(full);
+          p1:          wait(empty);                      /          wait(mutex);
+             /         wait(mutex);                c2:              item    =  take();
+          p2:          append(item);                     \          signal(mutex);
+             \         signal(mutex);              c3:              signal(empty);
+          p3:          signal(full);                                consume(item);
+                }                                           }
+          }                                        }
+      Labels p1, p2, p3 and c1, c2, c3 refer to the lines of code shown above (p2 and c2 each
+      cover three lines of code). Semaphores empty and full are linear semaphores that can
+      take unbounded negative and positive values. There are multiple producer processes,
+      referred to as Pa, Pb, Pc, etc., and multiple consumer processes, referred to as Ca, Cb,
+      Cc, etc. Each semaphore maintains a FIFO (first-in-first-out) queue of blocked pro-
+      cesses. In the scheduling chart below, each line represents the state of the buffer and
+      semaphores after the scheduled execution has occurred. To simplify, we assume that
+      scheduling is such that processes are never interrupted while executing a given por-
+      tion of code p1, or p2, ..., or c3. Your task is to complete the following chart.
+                Scheduled              full's State and                           empty's State
+             Step of Execution         Queue                        Buffer        and Queue
+                Initialization         full = 0                     OOO           empty = +3
+             Ca executes c1            full = ­1 (Ca)               OOO           empty = +3
+             Cb executes c1            full = ­2 (Ca, Cb)           OOO           empty = +3
+
+256  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+               Scheduled                 full's State and            empty's State
+               Step of Execution                 Queue       Buffer  and Queue
+               Pa executes p1            full = ­2 (Ca, Cb)  OOO     empty = +2
+               Pa executes p2            full = ­2 (Ca, Cb)  X OO    empty = +2
+               Pa executes p3            full = ­1 (Cb) Ca   X OO    empty = +2
+               Ca executes c2            full = ­1 (Cb)      OOO     empty = +2
+               Ca executes c3            full = ­1 (Cb)      OOO     empty = +3
+               Pb executes p1                    full =              empty =
+               Pa executes p1                    full =              empty =
+               Pa executes __                    full =              empty =
+               Pb executes __                    full =              empty =
+               Pb executes __                    full =              empty =
+               Pc executes p1                    full =              empty =
+               Cb executes __                    full =              empty =
+               Pc executes __                    full =              empty =
+               Cb executes __                    full =              empty =
+               Pa executes __                    full =              empty =
+               Pb executes p1-p3                 full =              empty =
+               Pc executes __                    full =              empty =
+               Pa executes p1                    full =              empty =
+               Pd executes p1                    full =              empty =
+               Ca executes c1-c3                 full =              empty =
+               Pa executes __                    full =              empty =
+               Cc executes c1-c2                 full =              empty =
+               Pa executes __                    full =              empty =
+               Cc executes c3                    full =              empty =
+               Pd executes p2-p3                 full =              empty =
+     5.23  This problem demonstrates the use of semaphores to coordinate three types of pro-
+           cesses.6 Santa Claus sleeps in his shop at the North Pole and can only be wakened by
+           either (1) all nine reindeer being back from their vacation in the South Pacific, or (2)
+           some of the elves having difficulties making toys; to allow Santa to get some sleep,
+           the elves can only wake him when three of them have problems. When three elves
+           are having their problems solved, any other elves wishing to visit Santa must wait for
+           those elves to return. If Santa wakes up to find three elves waiting at his shop's door,
+           along with the last reindeer having come back from the tropics, Santa has decided that
+           the elves can wait until after Christmas, because it is more important to get his sleigh
+           ready. (It is assumed that the reindeer do not want to leave the tropics, and therefore
+           they stay there until the last possible moment.) The last reindeer to arrive must get
+           Santa while the others wait in a warming hut before being harnessed to the sleigh.
+           Solve this problem using semaphores.
+     5.24  Show that message passing and semaphores have equivalent functionality by
+           a.  Implementing message passing using semaphores. Hint: Make use of a shared
+               buffer area to hold mailboxes, each one consisting of an array of message slots.
+           b.  Implementing a semaphore using message passing. Hint: Introduce a separate
+               synchronization process.
+     6I am grateful to John Trono of St. Michael's College in Vermont for supplying this problem.
+
+                5.9 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                              257
+5.25  Explain what is the problem with   this  implementation of the one-writer many-readers
+      problem?
+      int       readcount;                     //  shared   and  initialized     to  0
+      Semaphore          mutex,  wrt;          //  shared   and  initialized     to  1;
+      //        Writer   :                     //  Readers  :
+                                               semWait(mutex);
+                                               readcount    :=   readcount    +  1;
+      semWait(wrt);                            if  readcount     ==  1  then  semWait(wrt);
+      /*        Writing     performed*/        semSignal(mutex);
+      semSignal(wrt);                          /*reading    performed*/
+                                               semWait(mutex);
+                                               readcount    :=   readcount    -  1;
+                                               if  readcount     ==  0  then  Up(wrt);
+                                               semSignal(mutex);
+
+                                        CHAPTER
+CONCURRENCY: DEADLOCK
+AND STARVATION
+     6.1   Principles of Deadlock
+           Reusable Resources
+           Consumable Resources
+           Resource Allocation Graphs
+           The Conditions for Deadlock
+     6.2   Deadlock Prevention
+           Mutual Exclusion
+           Hold and Wait
+           No Preemption
+           Circular Wait
+     6.3   Deadlock Avoidance
+           Process Initiation Denial
+           Resource Allocation Denial
+     6.4   Deadlock Detection
+           Deadlock Detection Algorithm
+           Recovery
+     6.5   An Integrated Deadlock Strategy
+     6.6   Dining Philosophers Problem
+           Solution Using Semaphores
+           Solution Using a Monitor
+     6.7   UNIX Concurrency Mechanisms
+     6.8   Linux Kernel Concurrency Mechanisms
+     6.9   Solaris Thread Synchronization Primitives
+     6.10  Windows 7 Concurrency Mechanisms
+     6.11  Summary
+     6.12  Recommended Reading
+     6.13  Key Terms, Review Questions, and Problems
+258

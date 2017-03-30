@@ -1,0 +1,365 @@
+Monitors
+226     CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+semWait(s)                                                           semWait(s)
+{                                                                    {
+   while    (compare_and_swap(s.flag,             0  ,  1)  ==   1)     inhibit    interrupts;
+        /*  do  nothing        */;                                      s.count--;
+   s.count--;                                                           if  (s.count    <     0)  {
+   if   (s.count     <     0)  {                                            /*  place   this      process   in   s.queue  */;
+        /*   place   this      process     in  s.queue*/;                   /*  block   this      process   and   allow   inter-
+        /*   block   this      process     (must  also  set          rupts*/;
+s.flag  to   0)  */;                                                    }
+   }                                                                    else
+   s.flag    =   0;                                                         allow  interrupts;
+}                                                                    }
+semSignal(s)                                                         semSignal(s)
+{                                                                    {
+   while    (compare_and_swap(s.flag,             0  ,  1)  ==   1)     inhibit    interrupts;
+        /*  do  nothing        */;                                      s.count++;
+   s.count++;                                                           if  (s.count<=        0)  {
+   if   (s.count<=         0)  {                                            /*  remove     a  process   P   from   s.queue  */;
+        /*   remove     a  process     P   from   s.queue   */;             /*  place   process      P  on  ready  list   */;
+        /*   place   process        P  on  ready  list  */;             }
+   }                                                                    allow   interrupts;
+   s.flag    =   0;                                                  }
+}
+            (a) Compare and Swap Instruction                                               (b) Interrupts
+Figure 5.14     Two Possible Implementations of Semaphores
+          Another alternative is to use one of the hardware-supported schemes for mutual
+          exclusion. For example, Figure 5.14a shows the use of a compare&swap instruc-
+          tion. In this implementation, the semaphore is again a structure, as in Figure 5.3,
+          but now includes a new integer component, s.flag. Admittedly, this involves a form
+          of busy waiting. However, the semWait and semSignal operations are relatively
+          short, so the amount of busy waiting involved should be minor.
+                 For a single-processor system, it is possible to inhibit interrupts for the duration
+          of a semWait or semSignal operation, as suggested in Figure 5.14b. Once again, the
+          relatively short duration of these operations means that this approach is reasonable.
+   5.4    MONITORS
+          Semaphores provide a primitive yet powerful and flexible tool for enforcing mutual
+          exclusion and for coordinating processes. However, as Figure 5.9 suggests, it may be
+          difficult to produce a correct program using semaphores. The difficulty is that sem-
+          Wait and semSignal operations may be scattered throughout a program and it is
+          not easy to see the overall effect of these operations on the semaphores they affect.
+                 The monitor is a programming-language construct that provides equivalent
+          functionality to that of semaphores and that is easier to control. The concept was
+          first formally defined in [HOAR74]. The monitor construct has been implemented
+          in a number of programming languages, including Concurrent Pascal, Pascal-Plus,
+          Modula-2, Modula-3, and Java. It has also been implemented as a program library.
+          This allows programmers to put a monitor lock on any object. In particular, for
+
+                                                                5.4 / MONITORS         227
+something like a linked list, you may want to lock all linked lists with one lock, or
+have one lock for each list, or have one lock for each element of each list.
+    We begin with a look at Hoare's version and then examine a refinement.
+Monitor with Signal
+A monitor is a software module consisting of one or more procedures, an initial-
+ization sequence, and local data. The chief characteristics of a monitor are the
+following:
+1.  The local data variables are accessible only by the monitor's procedures and
+    not by any external procedure.
+2.  A process enters the monitor by invoking one of its procedures.
+3.  Only one process may be executing in the monitor at a time; any other pro-
+    cesses that have invoked the monitor are blocked, waiting for the monitor to
+    become available.
+The first two characteristics are reminiscent of those for objects in object-oriented
+software. Indeed, an object-oriented OS or programming language can readily
+implement a monitor as an object with special characteristics.
+    By enforcing the discipline of one process at a time, the monitor is able to pro-
+vide a mutual exclusion facility. The data variables in the monitor can be accessed
+by only one process at a time. Thus, a shared data structure can be protected by
+placing it in a monitor. If the data in a monitor represent some resource, then the
+monitor provides a mutual exclusion facility for accessing the resource.
+    To be useful for concurrent processing, the monitor must include synchroni-
+zation tools. For example, suppose a process invokes the monitor and, while in the
+monitor, must be blocked until some condition is satisfied. A facility is needed by
+which the process is not only blocked but releases the monitor so that some other
+process may enter it. Later, when the condition is satisfied and the monitor is again
+available, the process needs to be resumed and allowed to reenter the monitor at
+the point of its suspension.
+    A monitor supports synchronization by the use of condition variables that are
+contained within the monitor and accessible only within the monitor. Condition var-
+iables are a special data type in monitors, which are operated on by two functions:
+·   cwait(c): Suspend execution of the calling process on condition c. The mon-
+    itor is now available for use by another process.
+·   csignal(c): Resume execution of some process blocked after a cwait on
+    the same condition. If there are several such processes, choose one of them; if
+    there is no such process, do nothing.
+    Note that monitor wait and signal operations are different from those for the
+semaphore. If a process in a monitor signals and no task is waiting on the condition
+variable, the signal is lost.
+    Figure 5.15 illustrates the structure of a monitor. Although a process can enter
+the monitor by invoking any of its procedures, we can think of the monitor as hav-
+ing a single entry point that is guarded so that only one process may be in the moni-
+tor at a time. Other processes that attempt to enter the monitor join a queue of
+
+228  CHAPTER  5  /  CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+                                                                     Queue of
+                                                                     entering
+                                                                     processes
+                    Monitor waiting area       Entrance
+                                               MONITOR
+                                 Condition c1            Local data
+                                 cwait(c1)
+                                               Condition variables
+                                               Procedure 1
+                                 Condition cn
+                                 cwait(cn)     Procedure k
+                                 Urgent queue
+                                 csignal                 Initialization code
+                                                         Exit
+                    Figure 5.15  Structure of a Monitor
+     processes blocked waiting for monitor availability. Once a process is in the monitor,
+     it may temporarily block itself on condition x by issuing cwait(x); it is then placed
+     in a queue of processes waiting to reenter the monitor when the condition changes,
+     and resume execution at the point in its program following the cwait(x) call.
+     If a process that is executing in the monitor detects a change in the condition
+     variable x, it issues csignal(x), which alerts the corresponding condition queue
+     that the condition has changed.
+     As an example of the use of a monitor, let us return to the bounded-buffer
+     producer/consumer problem. Figure 5.16 shows a solution using a monitor. The
+     monitor module, boundedbuffer, controls the buffer used to store and retrieve
+     characters. The monitor includes two condition variables (declared with the con-
+     struct cond): notfull is true when there is room to add at least one character to the
+     buffer, and notempty is true when there is at least one character in the buffer.
+
+                                                                                           5.4 / MONITORS                  229
+/*   program   producerconsumer               */
+monitor   boundedbuffer;
+char  buffer      [N];                                                                     /*   space  for      N  items   */
+int   nextin,     nextout;                                                                     /*  buffer   pointers       */
+int   count;                                                                   /*  number      of  items    in     buffer  */
+cond  notfull,        notempty;                             /*  condition  variables       for     synchronization         */
+void  append      (char      x)
+{
+      if     (count      ==  N)     cwait(notfull);                    /*  buffer      is  full;   avoid    overflow       */
+      buffer[nextin]             =  x;
+      nextin       =     (nextin    +   1)    %   N;
+      count++;
+      /*     one   more      item   in     buffer     */
+      csignal         (nonempty);                                          /*resume        any     waiting  consumer       */
+}
+void  take    (char      x)
+{
+      if     (count      ==  0)     cwait(notempty);               /*  buffer      is  empty;      avoid    underflow      */
+      x   =   buffer[nextout];
+      nextout         =  (nextout       +     1)  %   N);
+      count--;                                                                 /*  one     fewer   item     in     buffer  */
+      csignal         (notfull);                                           /*  resume      any     waiting  producer       */
+}
+{                                                                                                  /*  monitor     body    */
+      nextin       =     0;  nextout       =  0;     count  =  0;                  /*  buffer      initially       empty   */
+}
+void  producer()
+{
+      char     x;
+      while       (true)     {
+      produce(x);
+      append(x);
+      }
+}
+void  consumer()
+{
+      char     x;
+      while       (true)     {
+      take(x);
+      consume(x);
+      }
+}
+void  main()
+{
+      parbegin           (producer,        consumer);
+}
+Figure 5.16    A Solution to the Bounded-Buffer Producer/Consumer Problem Using a
+               Monitor
+      A producer can add characters to the buffer only by means of the procedure
+append inside the monitor; the producer does not have direct access to buffer. The
+procedure first checks the condition notfull to determine if there is space available
+in the buffer. If not, the process executing the monitor is blocked on that condition.
+Some other process (producer or consumer) may now enter the monitor. Later,
+when the buffer is no longer full, the blocked process may be removed from the
+queue, reactivated, and resume processing. After placing a character in the buffer,
+
+230  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     the process signals the notempty condition. A similar description can be made of the
+     consumer function.
+         This example points out the division of responsibility with monitors compared
+     to semaphores. In the case of monitors, the monitor construct itself enforces mutual
+     exclusion: It is not possible for both a producer and a consumer simultaneously to
+     access the buffer. However, the programmer must place the appropriate cwait and
+     csignal primitives inside the monitor to prevent processes from depositing items in
+     a full buffer or removing them from an empty one. In the case of semaphores, both
+     mutual exclusion and synchronization are the responsibility of the programmer.
+         Note that in Figure 5.16, a process exits the monitor immediately after executing
+     the csignal function. If the csignal does not occur at the end of the procedure,
+     then, in Hoare's proposal, the process issuing the signal is blocked to make the moni-
+     tor available and placed in a queue until the monitor is free. One possibility at this
+     point would be to place the blocked process in the entrance queue, so that it would
+     have to compete for access with other processes that had not yet entered the monitor.
+     However, because a process blocked on a csignal function has already partially
+     performed its task in the monitor, it makes sense to give this process precedence over
+     newly entering processes by setting up a separate urgent queue (Figure 5.15). One
+     language that uses monitors, Concurrent Pascal, requires that csignal only appear
+     as the last operation executed by a monitor procedure.
+         If there are no processes waiting on condition x, then the execution of
+     csignal(x) has no effect.
+         As with semaphores, it is possible to make mistakes in the synchroniza-
+     tion function of monitors. For example, if either of the csignal functions in the
+     boundedbuffer monitor are omitted, then processes entering the corresponding
+     condition queue are permanently hung up. The advantage that monitors have over
+     semaphores is that all of the synchronization functions are confined to the monitor.
+     Therefore, it is easier to verify that the synchronization has been done correctly and
+     to detect bugs. Furthermore, once a monitor is correctly programmed, access to the
+     protected resource is correct for access from all processes. In contrast, with sema-
+     phores, resource access is correct only if all of the processes that access the resource
+     are programmed correctly.
+     Alternate Model of Monitors with Notify and Broadcast
+     Hoare's definition of monitors [HOAR74] requires that if there is at least one pro-
+     cess in a condition queue, a process from that queue runs immediately when another
+     process issues a csignal for that condition. Thus, the process issuing the csignal
+     must either immediately exit the monitor or be blocked on the monitor.
+         There are two drawbacks to this approach:
+     1.  If the process issuing the csignal has not finished with the monitor, then two
+         additional process switches are required: one to block this process and another
+         to resume it when the monitor becomes available.
+     2.  Process scheduling associated with a signal must be perfectly reliable. When
+         a csignal is issued, a process from the corresponding condition queue must
+         be activated immediately and the scheduler must ensure that no other process
+
+                                                                               5.4 / MONITORS            231
+      enters the monitor before activation. Otherwise, the condition under which
+      the process was activated could change. For example, in Figure 5.16, when a
+      csignal(notempty) is issued, a process from the notempty queue must
+      be activated before a new consumer enters the monitor. Another example:
+      a producer process may append a character to an empty buffer and then fail
+      before signaling; any processes in the notempty queue would be permanently
+      hung up.
+      Lampson and Redell developed a different definition of monitors for the lan-
+guage Mesa [LAMP80]. Their approach overcomes the problems just listed and
+supports several useful extensions. The Mesa monitor structure is also used in the
+Modula-3 systems programming language [NELS91]. In Mesa, the csignal prim-
+itive is replaced by cnotify, with the following interpretation: When a process
+executing in a monitor executes cnotify(x), it causes the x condition queue to be
+notified, but the signaling process continues to execute. The result of the notifica-
+tion is that the process at the head of the condition queue will be resumed at some
+convenient future time when the monitor is available. However, because there is
+no guarantee that some other process will not enter the monitor before the waiting
+process, the waiting process must recheck the condition. For example, the proce-
+dures in the boundedbuffer monitor would now have the code of Figure 5.17.
+      The if statements are replaced by while loops. Thus, this arrangement results
+in at least one extra evaluation of the condition variable. In return, however, there
+are no extra process switches, and no constraints on when the waiting process must
+run after a cnotify.
+      One useful refinement that can be associated with the cnotify primitive is
+a watchdog timer associated with each condition primitive. A process that has been
+waiting for the maximum timeout interval will be placed in a Ready state regard-
+less of whether the condition has been notified. When activated, the process checks
+the condition and continues if the condition is satisfied. The timeout prevents the
+indefinite starvation of a process in the event that some other process fails before
+signaling a condition.
+void  append  (char      x)
+{
+      while   (count     ==     N)  cwait(notfull);       /*  buffer      is   full;  avoid  overflow    */
+      buffer[nextin]         =  x;
+      nextin   =     (nextin    +   1)  %   N;
+      count++;                                                    /*      one  more   item   in  buffer  */
+      cnotify(notempty);                                      /*  notify       any  waiting  consumer    */
+}
+void  take   (char   x)
+{
+      while   (count     ==     0)  cwait(notempty);  /*  buffer      is  empty;      avoid  underflow   */
+      x  =   buffer[nextout];
+      nextout     =  (nextout       +   1)  %   N);
+      count--;                                                    /*  one      fewer  item   in  buffer  */
+      cnotify(notfull);                                       /*  notify       any  waiting  producer    */
+}
+Figure 5.17   Bounded-Buffer Monitor Code for Mesa Monitor
+
+232  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+         With the rule that a process is notified rather than forcibly reactivated, it is
+     possible to add a cbroadcast primitive to the repertoire. The broadcast causes all
+     processes waiting on a condition to be placed in a Ready state. This is convenient
+     in situations where a process does not know how many other processes should be
+     reactivated. For example, in the producer/consumer program, suppose that both
+     the append and the take functions can apply to variable length blocks of charac-
+     ters. In that case, if a producer adds a block of characters to the buffer, it need not
+     know how many characters each waiting consumer is prepared to consume. It sim-
+     ply issues a cbroadcast and all waiting processes are alerted to try again.
+         In addition, a broadcast can be used when a process would have difficulty fig-
+     uring out precisely which other process to reactivate. A good example is a memory
+     manager. The manager has j bytes free; a process frees up an additional k bytes, but it
+     does not know which waiting process can proceed with a total of k + j bytes. Hence it
+     uses broadcast, and all processes check for themselves if there is enough memory free.
+         An advantage of Lampson/Redell monitors over Hoare monitors is that the
+     Lampson/Redell approach is less prone to error. In the Lampson/Redell approach,
+     because each procedure checks the monitor variable after being signaled, with the
+     use of the while construct, a process can signal or broadcast incorrectly without
+     causing an error in the signaled program. The signaled program will check the rel-
+     evant variable and, if the desired condition is not met, continue to wait.
+         Another advantage of the Lampson/Redell monitor is that it lends itself to a
+     more modular approach to program construction. For example, consider the imple-
+     mentation of a buffer allocator. There are two levels of conditions to be satisfied for
+     cooperating sequential processes:
+     1.  Consistent data structures. Thus, the monitor enforces mutual exclusion and
+         completes an input or output operation before allowing another operation on
+         the buffer.
+     2.  Level 1, plus enough memory for this process to complete its allocation request.
+         In the Hoare monitor, each signal conveys the level 1 condition but also car-
+     ries the implicit message, "I have freed enough bytes for your particular allocate call
+     to work now." Thus, the signal implicitly carries the level 2 condition. If the pro-
+     grammer later changes the definition of the level 2 condition, it will be necessary to
+     reprogram all signaling processes. If the programmer changes the assumptions made
+     by any particular waiting process (i.e., waiting for a slightly different level 2 invari-
+     ant), it may be necessary to reprogram all signaling processes. This is unmodular and
+     likely to cause synchronization errors (e.g., wake up by mistake) when the code is
+     modified. The programmer has to remember to modify all procedures in the monitor
+     every time a small change is made to the level 2 condition. With a Lampson/Redell
+     monitor, a broadcast ensures the level 1 condition and carries a hint that level 2 might
+     hold; each process should check the level 2 condition itself. If a change is made in
+     the level 2 condition in either a waiter or a signaler, there is no possibility of errone-
+     ous wakeup because each procedure checks its own level 2 condition. Therefore, the
+     level 2 condition can be hidden within each procedure. With the Hoare monitor,
+     the level 2 condition must be carried from the waiter into the code of every signaling
+     process, which violates data abstraction and interprocedural modularity principles.
+
+                                                                   5.5 / MESSAGE PASSING      233
+5.5        MESSAGE PASSING
+           When processes interact with one another, two fundamental requirements must
+           be satisfied: synchronization and communication. Processes need to be synchro-
+           nized to enforce mutual exclusion; cooperating processes may need to exchange
+           information. One approach to providing both of these functions is message passing.
+           Message passing has the further advantage that it lends itself to implementation in
+           distributed systems as well as in shared-memory multiprocessor and uniprocessor
+           systems.
+                   Message-passing systems come in many forms. In this section, we provide a
+           general introduction that discusses features typically found in such systems. The
+           actual function of message passing is normally provided in the form of a pair of
+           primitives:
+                   send      (destination,  message)
+                   receive   (source,   message)
+                   This is the minimum set of operations needed for processes to engage in mes-
+           sage passing. A process sends information in the form of a message to another proc-
+           ess designated by a destination. A process receives information by executing the
+           receive primitive, indicating the source and the message.
+                   A number of design issues relating to message-passing systems are listed in
+           Table 5.5, and examined in the remainder of this section.
+Table 5.5   Design Characteristics  of  Message  Systems for Interprocess  Communication
+            and Synchronization
+Synchronization                                  Format
+Send                                              Content
+           blocking                               Length
+           nonblocking                                   fixed
+Receive                                                  variable
+           blocking
+           nonblocking                           Queueing Discipline
+           test for arrival                       FIFO
+                                                  Priority
+Addressing
+Direct
+           send
+           receive
+                 explicit
+                 implicit
+Indirect
+           static
+           dynamic
+           ownership

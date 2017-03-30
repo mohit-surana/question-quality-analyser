@@ -1,0 +1,196 @@
+Disk Cache
+502  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     terms [ X1(i)  X1(i)]. Because the exclusive-OR of any quantity with itself is 0,
+     this does not affect the equation. However, it is a convenience that is used to create
+     the third line, by reordering. Finally, Equation (11.1) is used to replace the first
+     four terms by X4(i).
+     To calculate the new parity, the array management software must read the old
+     user strip and the old parity strip. Then it can update these two strips with the new
+     data and the newly calculated parity. Thus, each strip write involves two reads and
+     two writes.
+     In the case of a larger size I/O write that involves strips on all disk drives, parity
+     is easily computed by calculation using only the new data bits. Thus, the parity drive
+     can be updated in parallel with the data drives and there are no extra reads or writes.
+     In any case, every write operation must involve the parity disk, which therefore
+     can become a bottleneck.
+     RAID Level 5
+     RAID 5 is organized in a similar fashion to RAID 4. The difference is that RAID
+     5 distributes the parity strips across all disks. A typical allocation is a round-robin
+     scheme, as illustrated in Figure 11.8f. For an n-disk array, the parity strip is on a
+     different disk for the first n stripes, and the pattern then repeats.
+     The distribution of parity strips across all drives avoids the potential I/O
+     bottleneck of the single parity disk found in RAID 4. Further, RAID 5 has the
+     characteristic that the loss of any one disk does not result in data loss.
+     RAID Level 6
+     RAID 6 was introduced in a subsequent paper by the Berkeley researchers
+     [KATZ89]. In the RAID 6 scheme, two different parity calculations are carried out
+     and stored in separate blocks on different disks. Thus, a RAID 6 array whose user
+     data require N disks consists of N + 2 disks.
+     Figure 11.8g illustrates the scheme. P and Q are two different data check algo-
+     rithms. One of the two is the exclusive-OR calculation used in RAID 4 and 5. But
+     the other is an independent data check algorithm. This makes it possible to regener-
+     ate data even if two disks containing user data fail.
+     The advantage of RAID 6 is that it provides extremely high data availability.
+     Three disks would have to fail within the MTTR (mean time to repair) interval to
+     cause data to be lost. On the other hand, RAID 6 incurs a substantial write penalty,
+     because each write affects two parity blocks. Performance benchmarks [EISC07]
+     show that a RAID 6 controller can suffer more than a 30% drop in overall write
+     performance compared with a RAID 5 implementation. RAID 5 and RAID 6 read
+     performance is comparable.
+11.7 DISK CACHE
+     In Section 1.6 and Appendix 1A, we summarized the principles of cache memory.
+     The term cache memory is usually used to apply to a memory that is smaller and
+     faster than main memory and that is interposed between main memory and the
+
+                                11.7 / DISK CACHE                                        503
+processor. Such a cache memory reduces average memory access time by exploiting
+the principle of locality.
+The same principle can be applied to disk memory. Specifically, a disk cache
+is a buffer in main memory for disk sectors. The cache contains a copy of some of
+the sectors on the disk. When an I/O request is made for a particular sector, a check
+is made to determine if the sector is in the disk cache. If so, the request is satisfied
+via the cache. If not, the requested sector is read into the disk cache from the disk.
+Because of the phenomenon of locality of reference, when a block of data is fetched
+into the cache to satisfy a single I/O request, it is likely that there will be future
+references to that same block.
+Design Considerations
+Several design issues are of interest. First, when an I/O request is satisfied from the
+disk cache, the data in the disk cache must be delivered to the requesting process. This
+can be done either by transferring the block of data within main memory from the disk
+cache to memory assigned to the user process, or simply by using a shared memory
+capability and passing a pointer to the appropriate slot in the disk cache. The latter
+approach saves the time of a memory-to-memory transfer and also allows shared
+access by other processes using the readers/writers model described in Chapter 5.
+A second design issue has to do with the replacement strategy. When a new
+sector is brought into the disk cache, one of the existing blocks must be replaced.
+This is the identical problem presented in Chapter 8; there the requirement was
+for a page replacement algorithm. A number of algorithms have been tried. The
+most commonly used algorithm is least recently used (LRU): Replace that block
+that has been in the cache longest with no reference to it. Logically, the cache
+consists of a stack of blocks, with the most recently referenced block on the top
+of the stack. When a block in the cache is referenced, it is moved from its exist-
+ing position on the stack to the top of the stack. When a block is brought in from
+secondary memory, remove the block that is on the bottom of the stack and push
+the incoming block onto the top of the stack. Naturally, it is not necessary actually
+to move these blocks around in main memory; a stack of pointers can be associ-
+ated with the cache.
+Another possibility is least frequently used (LFU): Replace that block in the
+set that has experienced the fewest references. LFU could be implemented by asso-
+ciating a counter with each block. When a block is brought in, it is assigned a count
+of 1; with each reference to the block, its count is incremented by 1. When replace-
+ment is required, the block with the smallest count is selected. Intuitively, it might
+seem that LFU is more appropriate than LRU because LFU makes use of more
+pertinent information about each block in the selection process.
+A simple LFU algorithm has the following problem. It may be that certain
+blocks are referenced relatively infrequently overall, but when they are referenced,
+there are short intervals of repeated references due to locality, thus building up
+high reference counts. After such an interval is over, the reference count may be
+misleading and not reflect the probability that the block will soon be referenced
+again. Thus, the effect of locality may actually cause the LFU algorithm to make
+poor replacement choices.
+
+504  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+         To overcome this difficulty with LFU, a technique known as frequency-based
+     replacement is proposed in [ROBI90]. For clarity, let us first consider a simplified
+     version, illustrated in Figure 11.9a. The blocks are logically organized in a stack, as
+     with the LRU algorithm. A certain portion of the top part of the stack is designated
+     the new section. When there is a cache hit, the referenced block is moved to the top
+     of the stack. If the block was already in the new section, its reference count is not
+     incremented; otherwise it is incremented by 1. Given a sufficiently large new sec-
+     tion, this results in the reference counts for blocks that are repeatedly re-referenced
+     within a short interval remaining unchanged. On a miss, the block with the smallest
+     reference count that is not in the new section is chosen for replacement; the least
+     recently used such block is chosen in the event of a tie.
+         The authors report that this strategy achieved only slight improvement over
+     LRU. The problem is the following:
+     1.  On a cache miss, a new block is brought into the new section, with a count of 1.
+     2.  The count remains at 1 as long as the block remains in the new section.
+     3.  Eventually the block ages out of the new section, with its count still at 1.
+     4.  If the block is not now re-referenced fairly quickly, it is very likely to be
+         replaced because it necessarily has the smallest reference count of those blocks
+         that are not in the new section. In other words, there does not seem to be a
+         sufficiently long interval for blocks aging out of the new section to build up
+         their reference counts even if they were relatively frequently referenced.
+         A further refinement addresses this problem: Divide the stack into three
+     sections: new, middle, and old (Figure 11.9b). As before, reference counts are not
+     incremented on blocks in the new section. However, only blocks in the old section
+     are eligible for replacement. Assuming a sufficiently large middle section, this allows
+                      New section                                 Old section
+         MRU                                                                   LRU
+                      Re-reference;
+                      count unchanged      Re-reference;
+                                           count : count 1
+              Miss (new block brought in)
+                      count : 1
+                                           (a) FIFO
+                      New section          Middle section         Old section
+         MRU                                                                   LRU
+                                       (b) Use of three sections
+         Figure 11.9  Frequency-Based Replacement
+
+                                                                                    11.7 / DISK CACHE              505
+                          relatively frequently referenced blocks a chance to build up their reference counts
+                          before becoming eligible for replacement. Simulation studies by the authors indicate
+                          that this refined policy is significantly better than simple LRU or LFU.
+                                 Regardless of the particular replacement strategy, the replacement can take
+                          place on demand or preplanned. In the former case, a sector is replaced only when
+                          the slot is needed. In the latter case, a number of slots are released at a time. The
+                          reason for this latter approach is related to the need to write back sectors. If a sector
+                          is brought into the cache and only read, then when it is replaced, it is not necessary
+                          to write it back out to the disk. However, if the sector has been updated, then it is
+                          necessary to write it back out before replacing it. In this latter case, it makes sense
+                          to cluster the writing and to order the writing to minimize seek time.
+                          Performance Considerations
+                          The same performance considerations discussed in Appendix 1A apply here. The
+                          issue of cache performance reduces itself to a question of whether a given miss ratio
+                          can be achieved. This will depend on the locality behavior of the disk references,
+                          the replacement algorithm, and other design factors. Principally, however, the miss
+                          ratio is a function of the size of the disk cache. Figure 11.10 summarizes results from
+                          several studies using LRU, one for a UNIX system running on a VAX [OUST85]
+                          and one for IBM mainframe operating systems [SMIT85]. Figure 11.11 shows results
+                          for simulation studies of the frequency-based replacement algorithm. A comparison
+                          of the two figures points out one of the risks of this sort of performance assessment.
+                          60
+                          50         VAX UNIX
+Disk cache miss rate (%)  40
+                          30
+                          20
+                                                                                    IBM MVS
+                          10
+                                                          IBM SVS
+                          0
+                              0      5         10     15                      20             25        30
+                                                      Cache size (megabytes)
+Figure                        11.10  Some Disk Cache Performance Results Using LRU
+
+506  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+                               70
+                               60
+                               50
+     Disk cache miss rate (%)                                                                           IBM VM
+                               40
+                               30
+                                                              IBM MVS
+                               20
+                                                    VAX UNIX
+                               10
+                               0
+                                   0             5  10        15                          20    25      30
+                                                              Cache size (megabytes)
+     Figure 11.11                     Disk Cache Performance Using Frequency-Based Replacement
+                               The figures appear to show that LRU outperforms the frequency-based replace-
+                               ment algorithm. However, when identical reference patterns using the same cache
+                               structure are compared, the frequency-based replacement algorithm is superior.
+                               Thus, the exact sequence of reference patterns, plus related design issues such as
+                               block size, will have a profound influence on the performance achieved.
+11.8                           UNIX SVR4 I/O
+                               In UNIX, each individual I/O device is associated with a special file. These are man-
+                               aged by the file system and are read and written in the same manner as user data
+                               files. This provides a clean, uniform interface to users and processes. To read from
+                               or write to a device, read and write requests are made for the special file associated
+                               with the device.
+                                      Figure 11.12 illustrates the logical structure of the I/O facility. The file subsys-
+                               tem manages files on secondary storage devices. In addition, it serves as the process
+                               interface to devices, because these are treated as files.
+                                      There are two types of I/O in UNIX: buffered and unbuffered. Buffered I/O
+                               passes through system buffers, whereas unbuffered I/O typically involves the DMA

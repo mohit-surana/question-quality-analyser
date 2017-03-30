@@ -1,0 +1,121 @@
+Linux Memory Management
+384  CHAPTER 8 / VIRTUAL MEMORY
+     Initial value of Di is 0
+     After an operation, the value of Di is updated as follows
+     (I) if the next operation is a block allocate request:
+        if there is any free block, select one to allocate
+                  if the selected block is locally free
+                      then Di : Di  2
+                      else Di : Di  1
+        otherwise
+                  first get two blocks by splitting a larger one into two (recursive operation)
+                  allocate one and mark the other locally free
+                  Di remains unchanged (but D may change for other block sizes because
+                               of the recursive call)
+     (II) if the next operation is a block free request
+        Case Di  2
+              mark it locally free and free it locally
+              Di  2
+        Case Di  1
+              mark it globally free and free it globally; coalesce if possible
+              Di  0
+        Case Di  0
+              mark it globally free and free it globally; coalesce if possible
+              select one locally free block of size 2i and free it globally; coalesce  if  possible
+              Di : 0
+     Figure 8.24  Lazy Buddy System Algorithm
+8.4  LINUX MEMORY MANAGEMENT
+     Linux shares many of the characteristics of the memory management schemes of
+     other UNIX implementations but has its own unique features. Overall, the Linux
+     memory management scheme is quite complex [DUBE98]. In this section, we give
+     a brief overview of the two main aspects of Linux memory management: process
+     virtual memory and kernel memory allocation.
+     Linux Virtual Memory
+     VIRTUAL      MEMORY  ADDRESSING   Linux makes use of a three-level page table
+     structure, consisting of the following types of tables (each individual table is the size
+     of one page):
+     ·  Page directory: An active process has a single page directory that is the size
+        of one page. Each entry in the page directory points to one page of the page
+        middle directory. The page directory must be in main memory for an active
+        process.
+
+                                               8.4 / LINUX MEMORY MANAGEMENT              385
+·  Page middle directory: The page middle directory may span multiple pages.
+   Each entry in the page middle directory points to one page in the page table.
+·  Page table: The page table may also span multiple pages. Each page table
+   entry refers to one virtual page of the process.
+   To use this three-level page table structure, a virtual address in Linux is viewed
+as consisting of four fields (Figure 8.25). The leftmost (most significant) field is used
+as an index into the page directory. The next field serves as an index into the page
+middle directory. The third field serves as an index into the page table. The fourth
+field gives the offset within the selected page of memory.
+   The Linux page table structure is platform independent and was designed to
+accommodate the 64-bit Alpha processor, which provides hardware support for
+three levels of paging. With 64-bit addresses, the use of only two levels of pages on
+the Alpha would result in very large page tables and directories. The 32-bit Pentium/
+x86 architecture has a two-level hardware paging mechanism. The Linux software
+accommodates the two-level scheme by defining the size of the page middle direc-
+tory as one. Note that all references to an extra level of indirection are optimized
+away at compile time, not at run time. Therefore, there is no performance overhead
+for using generic three-level design on platforms which support only two levels in
+hardware.
+PAGE ALLOCATION        To enhance the efficiency of reading in and writing out pages
+to and from main memory, Linux defines a mechanism for dealing with contiguous
+blocks of pages mapped into contiguous blocks of page frames. For this purpose,
+the buddy system is used. The kernel maintains a list of contiguous page frame
+groups of fixed size; a group may consist of 1, 2, 4, 8, 16, or 32 page frames. As pages
+                                        Virtual address
+     Global directory        Middle directory            Page table              Offset
+                                                                                 
+                                                                     Page table
+                                        Page middle                                      Page frame
+                                        directory                                        in physical
+                                                                                         memory
+                       Page
+                       directory
+                                  
+cr3          
+register
+Figure 8.25    Address Translation  in  Linux Virtual Memory Scheme
+
+386  CHAPTER 8 / VIRTUAL MEMORY
+     are allocated and deallocated in main memory, the available groups are split and
+     merged using the buddy algorithm.
+     PAGE  REPLACEMENT        ALGORITHM  The Linux page replacement algorithm is
+     based on the clock algorithm described in Section 8.2 (see Figure 8.16). In the
+     simple clock algorithm, a use bit and a modify bit are associated with each page
+     in main memory. In the Linux scheme, the use bit is replaced with an 8-bit age
+     variable. Each time that a page is accessed, the age variable is incremented. In
+     the background, Linux periodically sweeps through the global page pool and
+     decrements the age variable for each page as it rotates through all the pages
+     in main memory. A page with an age of 0 is an "old" page that has not been
+     referenced in some time and is the best candidate for replacement. The larger
+     the value of age, the more frequently a page has been used in recent times and
+     the less eligible it is for replacement. Thus, the Linux algorithm is a form of least
+     frequently used policy.
+     Kernel Memory Allocation
+     The Linux kernel memory capability manages physical main memory page frames.
+     Its primary function is to allocate and deallocate frames for particular uses. Possible
+     owners of a frame include user-space processes (i.e., the frame is part of the virtual
+     memory of a process that is currently resident in real memory), dynamically allo-
+     cated kernel data, static kernel code, and the page cache.7
+           The foundation of kernel memory allocation for Linux is the page allocation
+     mechanism used for user virtual memory management. As in the virtual memory
+     scheme, a buddy algorithm is used so that memory for the kernel can be allocated
+     and deallocated in units of one or more pages. Because the minimum amount of
+     memory that can be allocated in this fashion is one page, the page allocator alone
+     would be inefficient because the kernel requires small short-term memory chunks
+     in odd sizes. To accommodate these small chunks, Linux uses a scheme known as
+     slab allocation [BONW94] within an allocated page. On a Pentium/x86 machine, the
+     page size is 4 Kbytes, and chunks within a page may be allocated of sizes 32, 64, 128,
+     252, 508, 2,040, and 4,080 bytes.
+           The slab allocator is relatively complex and is not examined in detail here; a
+     good description can be found in [VAHA96]. In essence, Linux maintains a set of
+     linked lists, one for each size of chunk. Chunks may be split and aggregated in a
+     manner similar to the buddy algorithm and moved between lists accordingly.
+8.5  WINDOWS MEMORY MANAGEMENT
+     The Windows virtual memory manager controls how memory is allocated and how
+     paging is performed. The memory manager is designed to operate over a vari-
+     ety of platforms and to use page sizes ranging from 4 Kbytes to 64 Kbytes. Intel
+     7The page cache has properties similar to a disk buffer, described in this chapter, as well as a disk cache,
+     described in Chapter 11. We defer a discussion of the Linux page cache to Chapter 11.

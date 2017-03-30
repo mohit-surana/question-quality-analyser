@@ -1,0 +1,212 @@
+Security Issues
+326  CHAPTER 7 / MEMORY MANAGEMENT
+     · The desired physical address is the sum of the starting physical address of the
+     segment plus the offset.
+     In our example, we have the logical address 0001001011110000, which is
+     segment number 1, offset 752. Suppose that this segment is residing in main mem-
+     ory starting at physical address 0010000000100000. Then the physical address is
+     0010000000100000 + 001011110000  0010001100010000 (Figure 7.12b).
+     To summarize, with simple segmentation, a process is divided into a number
+     of segments that need not be of equal size. When a process is brought in, all of its
+     segments are loaded into available regions of memory, and a segment table is set up.
+7.5  SECURITY ISSUES
+     Main memory and virtual memory are system resources subject to security threats
+     and for which security countermeasures need to be taken. The most obvious secu-
+     rity requirement is the prevention of unauthorized access to the memory contents
+     of processes. If a process has not declared a portion of its memory to be sharable,
+     then no other process should have access to the contents of that portion of memory.
+     If a process declares that a portion of memory may be shared by other designated
+     processes, then the security service of the OS must ensure that only the designated
+     processes have access. The security threats and countermeasures discussed in
+     Chapter 3 are relevant to this type of memory protection.
+     In this section, we summarize another threat that involves memory protection.
+     Part Seven provides more detail.
+     Buffer Overflow Attacks
+     One serious security threat related to memory management remains to be intro-
+     duced: buffer overflow, also known as a buffer overrun, which is defined in the NIST
+     (National Institute of Standards and Technology) Glossary of Key Information
+     Security Terms as follows:
+     buffer overrun: A condition at an interface under which more input can be
+     placed into a buffer or data-holding area than the capacity allocated, overwrit-
+     ing other information. Attackers exploit such a condition to crash a system or to
+     insert specially crafted code that allows them to gain control of the system.
+     A buffer overflow can occur as a result of a programming error when a process
+     attempts to store data beyond the limits of a fixed-sized buffer and consequently
+     overwrites adjacent memory locations. These locations could hold other program
+     variables or parameters or program control flow data such as return addresses
+     and pointers to previous stack frames. The buffer could be located on the stack,
+     in the heap, or in the data section of the process. The consequences of this error
+     include corruption of data used by the program, unexpected transfer of control in
+     the program, possibly memory access violations, and very likely eventual program
+
+                                                                         7.5 / SECURITY ISSUES                  327
+       termination. When done deliberately as part of an attack on a system, the transfer
+       of control could be to code of the attacker's choosing, resulting in the ability to
+       execute arbitrary code with the privileges of the attacked process. Buffer overflow
+       attacks are one of the most prevalent and dangerous types of security attacks.
+             To illustrate the basic operation of a common type of buffer overflow,
+       known as stack overflow, consider the C main function given in Figure 7.13a. This
+       contains three variables (valid, str1, and str2),2 whose values will typically
+       be saved in adjacent memory locations. Their order and location depends on the
+       type of variable (local or global), the language and compiler used, and the target
+       machine architecture. For this example, we assume that they are saved in consecu-
+       tive memory locations, from highest to lowest, as shown in Figure 7.14.3 This is
+       typically the case for local variables in a C function on common processor archi-
+       tectures such as the Intel Pentium family. The purpose of the code fragment is to
+       call the function next_tag(str1) to copy into str1 some expected tag value.
+int    main(int     argc,  char  *argv[])         {
+       int   valid  =  FALSE;
+       char  str1[8];
+       char  str2[8];
+       next_tag(str1);
+       gets(str2);
+       if    (strncmp(str1,    str2,      8)  ==     0)
+             valid  =  TRUE;
+       printf("buffer1: str1(%s), str2(%s),              valid(%d)\n",             str1,  str2,  valid);
+}
+                                 (a) Basic buffer overflow C code
+$  cc  -g    -o  buffer1   buffer1.c
+$  ./buffer1
+START
+buffer1:     str1(START),      str2(START),          valid(1)
+$  ./buffer1
+EVILINPUTVALUE
+buffer1:     str1(TVALUE),       str2(EVILINPUTVALUE),                   valid(0)
+$  ./buffer1
+BADINPUTBADINPUT
+buffer1:     str1(BADINPUT),     str2(BADINPUTBADINPUT),                 valid(1)
+                               (b) Basic buffer overflow example runs
+Figure 7.13  Basic Buffer Overflow Example
+       2In this example, the flag variable is saved as an integer rather than a Boolean. This is done both because
+       it is the classic C style and to avoid issues of word alignment in its storage. The buffers are deliberately
+       small to accentuate the buffer overflow issue being illustrated.
+       3Address and data values are specified in hexadecimal in this and related figures. Data values are also
+       shown in ASCII where appropriate.
+
+328  CHAPTER 7 / MEMORY MANAGEMENT
+     Memory       Before                              After                    Contains
+     Address      gets             (str2)             gets             (str2)  Value      of
+     ....         ....                                ....
+     bffffbf4     34fcffbf                            34fcffbf                            argv
+                  4...                                3...
+     bffffbf0     01000000                            01000000                            argc
+                  ....                                ....
+     bffffbec     c6bd0340                            c6bd0340                 return     addr
+                  ...@                                ...@
+     bffffbe8     08fcffbf                            08fcffbf                 old  base  ptr
+                  ....                                ....
+     bffffbe4     00000000                            01000000                         valid
+                  ....                                ....
+     bffffbe0     80640140                            00640140
+                  .d.@                                .d.@
+     bffffbdc     54001540                            4e505554                      str1[4-7]
+                  T..@                                NPUT
+     bffffbd8     53544152                            42414449                      str1[0-3]
+                  STAR                                BADI
+     bffffbd4     00850408                            4e505554                      str2[4-7]
+                  ....                                NPUT
+     bffffbd0     30561540                            42414449                      str2[0-3]
+                  0v.@                                BADI
+     ....         ....                                ....
+     Figure 7.14  Basic Buffer Overflow Stack Values
+     Let's assume this will be the string START. It then reads the next line from the
+     standard input for the program using the C library gets() function, and then
+     compares the string read with the expected tag. If the next line did indeed contain
+     just the string START, this comparison would succeed, and the variable valid would
+     be set to TRUE.4 This case is shown in the first of the three example program runs
+     in Figure 7.13b. Any other input tag would leave it with the value FALSE. Such a
+     code fragment might be used to parse some structured network protocol interac-
+     tion or formatted text file.
+     The problem with this code exists because the traditional C library gets()
+     function does not include any checking on the amount of data copied. It reads the
+     next line of text from the program's standard input up until the first newline5 char-
+     acter occurs and copies it into the supplied buffer followed by the NULL terminator
+     4In C the logical values FALSE and TRUE are simply integers with the values 0 and 1 (or indeed any
+     nonzero value), respectively. Symbolic defines are often used to map these symbolic names to their
+     underlying value, as was done in this program.
+     5The newline (NL) or linefeed (LF) character is the standard end of line terminator for UNIX systems,
+     and hence for C, and is the character with the ASCII value 0x0a.
+
+                                                    7.5 / SECURITY ISSUES                329
+used with C strings.6 If more than seven characters are present on the input line,
+when read in they will (along with the terminating NULL character) require more
+room than is available in the str2 buffer. Consequently, the extra characters will
+overwrite the values of the adjacent variable, str1 in this case. For example, if the
+input line contained EVILINPUTVALUE, the result will be that str1 will be over-
+written with the characters TVALUE, and str2 will use not only the eight characters
+allocated to it but seven more from str1 as well. This can be seen in the second
+example run in Figure 7.13b. The overflow has resulted in corruption of a variable
+not directly used to save the input. Because these strings are not equal, valid also
+retains the value FALSE. Further, if 16 or more characters were input, additional
+memory locations would be overwritten.
+    The preceding example illustrates the basic behavior of a buffer overflow. At
+its simplest, any unchecked copying of data into a buffer could result in corruption
+of adjacent memory locations, which may be other variables, or possibly program
+control addresses and data. Even this simple example could be taken further.
+Knowing the structure of the code processing it, an attacker could arrange for the
+overwritten value to set the value in str1 equal to the value placed in str2, result-
+ing in the subsequent comparison succeeding. For example, the input line could
+be the string BADINPUTBADINPUT. This results in the comparison succeeding, as
+shown in the third of the three example program runs in Figure 7.13b, and illus-
+trated in Figure 7.14, with the values of the local variables before and after the call
+to gets(). Note also that the terminating NULL for the input string was written to
+the memory location following str1. This means the flow of control in the program
+will continue as if the expected tag was found, when in fact the tag read was some-
+thing completely different. This will almost certainly result in program behavior
+that was not intended. How serious this is depends very much on the logic in the
+attacked program. One dangerous possibility occurs if instead of being a tag, the
+values in these buffers were an expected and supplied password needed to access
+privileged features. If so, the buffer overflow provides the attacker with a means of
+accessing these features without actually knowing the correct password.
+    To exploit any type of buffer overflow, such as those we have illustrated here,
+the attacker needs:
+1.  To identify a buffer overflow vulnerability in some program that can be trig-
+    gered using externally sourced data under the attackers control, and
+2.  To understand how that buffer will be stored in the processes memory, and
+    hence the potential for corrupting adjacent memory locations and potentially
+    altering the flow of execution of the program.
+    Identifying vulnerable programs may be done by inspection of program source,
+tracing the execution of programs as they process oversized input, or using tools
+such as fuzzing, which we discuss in Part Seven, to automatically identify potentially
+6Strings in C are stored in an array of characters and terminated with the NULL character, which has the
+ASCII value 0x00. Any remaining locations in the array are undefined, and typically contain whatever
+value was previously saved in that area of memory. This can be clearly seen in the value in the variable
+str2 in the "Before" column of Figure 7.14.
+
+330  CHAPTER 7 / MEMORY MANAGEMENT
+     vulnerable programs. What the attacker     does with the resulting corruption             of
+     memory varies considerably, depending on   what values are being overwritten.
+     Defending against Buffer Overflows
+     Finding and exploiting a stack buffer overflow is not that difficult. The large num-
+     ber of exploits over the previous couple of decades clearly illustrates this. There
+     is consequently a need to defend systems against such attacks by either prevent-
+     ing them or at least detecting and aborting such attacks. Countermeasures can be
+     broadly classified into two categories:
+     ·  Compile-time defenses, which aim to harden programs to resist attacks in new
+        programs
+     ·  Run-time defenses, which aim to detect and abort attacks in existing programs
+        While suitable defenses have been known for a couple of decades, the very
+     large existing base of vulnerable software and systems hinders their deployment.
+     Hence the interest in run-time defenses, which can be deployed in operating
+     systems and updates and can provide some protection for existing vulnerable
+     programs.
+7.6  SUMMARY
+     One of the most important and complex tasks of an operating system is memory
+     management. Memory management involves treating main memory as a resource
+     to be allocated to and shared among a number of active processes. To use the pro-
+     cessor and the I/O facilities efficiently, it is desirable to maintain as many processes
+     in main memory as possible. In addition, it is desirable to free programmers from
+     size restrictions in program development.
+        The basic tools of memory management are paging and segmentation. With
+     paging, each process is divided into relatively small, fixed-size pages. Segmentation
+     provides for the use of pieces of varying size. It is also possible to combine segmen-
+     tation and paging in a single memory management scheme.
+7.7  RECOMMENDED READING
+     Because partitioning has been supplanted by virtual memory techniques, most OS
+     books offer only cursory coverage. One of the more complete and interesting treat-
+     ments is in [MILE92]. A thorough discussion of partitioning strategies is found in
+     [KNUT97].
+        The topics of linking and loading are covered in many books on program
+     development, computer architecture, and operating systems. A particularly detailed
+     treatment is [BECK97]. [CLAR98] also contains a good discussion. A thorough
+     practical discussion of this topic, with numerous OS examples, is [LEVI00].

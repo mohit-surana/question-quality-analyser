@@ -1,0 +1,864 @@
+Operating System Software
+360  CHAPTER 8 / VIRTUAL MEMORY
+         More sophisticated mechanisms can also be provided. A common scheme
+     is to use a ring-protection structure, of the type we referred to in Chapter 3
+     (Figure 3.18). In this scheme, lower-numbered, or inner, rings enjoy greater
+     privilege than higher-numbered, or outer, rings. Typically, ring 0 is reserved
+     for kernel functions of the OS, with applications at a higher level. Some utili-
+     ties or OS services may occupy an intermediate ring. Basic principles of the ring
+     system are as follows:
+     1.  A program may access only data that reside on the same ring or a less privi-
+         leged ring.
+     2.  A program may call services residing on the same or a more privileged ring.
+8.2  OPERATING SYSTEM SOFTWARE
+     The design of the memory management portion of an OS depends on three funda-
+     mental areas of choice:
+     ·   Whether or not to use virtual memory techniques
+     ·   The use of paging or segmentation or both
+     ·   The algorithms employed for various aspects of memory management
+     The choices made in the first two areas depend on the hardware platform available.
+     Thus, earlier UNIX implementations did not provide virtual memory because the
+     processors on which the system ran did not support paging or segmentation. Neither
+     of these techniques is practical without hardware support for address translation
+     and other basic functions.
+         Two additional comments about the first two items in the preceding list: First,
+     with the exception of operating systems for some of the older personal computers,
+     such as MS-DOS, and specialized systems, all important operating systems provide
+     virtual memory. Second, pure segmentation systems are becoming increasingly
+     rare. When segmentation is combined with paging, most of the memory manage-
+     ment issues confronting the OS designer are in the area of paging.4 Thus, we can
+     concentrate in this section on the issues associated with paging.
+         The choices related to the third item are the domain of operating system
+     software and are the subject of this section. Table 8.4 lists the key design elements
+     that we examine. In each case, the key issue is one of performance: We would like to
+     minimize the rate at which page faults occur, because page faults cause considerable
+     software overhead. At a minimum, the overhead includes deciding which resident
+     page or pages to replace, and the I/O of exchanging pages. Also, the OS must schedule
+     another process to run during the page I/O, causing a process switch. Accordingly,
+     we would like to arrange matters so that, during the time that a process is execut-
+     ing, the probability of referencing a word on a missing page is minimized. In all of
+     the areas referred to in Table 8.4, there is no definitive policy that works best.
+     4Protection and sharing are usually dealt with at the segment level in a combined segmentation/paging
+     system. We will deal with these issues in later chapters.
+
+                                         8.2 / OPERATING SYSTEM SOFTWARE                361
+Table 8.4            Operating System Policies for Virtual Memory
+Fetch Policy                             Resident Set Management
+Demand paging                            Resident set size
+Prepaging                                Fixed
+                                         Variable
+Placement Policy                         Replacement Scope
+                                         Global
+Replacement Policy                       Local
+Basic Algorithms
+              Optimal                    Cleaning Policy
+              Least recently used (LRU)  Demand
+              First-in-first-out (FIFO)  Precleaning
+              Clock
+Page Buffering                           Load Control
+                                         Degree of multiprogramming
+As we shall see, the task of memory management in a paging environment is fiend-
+ishly complex. Furthermore, the performance of any particular set of policies depends
+on main memory size, the relative speed of main and secondary memory, the size and
+number of processes competing for resources, and the execution behavior of indi-
+vidual programs. This latter characteristic depends on the nature of the application,
+the programming language and compiler employed, the style of the programmer who
+wrote it, and, for an interactive program, the dynamic behavior of the user. Thus, the
+reader must expect no final answers here or anywhere. For smaller systems, the OS
+designer should attempt to choose a set of policies that seems "good" over a wide
+range of conditions, based on the current state of knowledge. For larger systems, par-
+ticularly mainframes, the operating system should be equipped with monitoring and
+control tools that allow the site manager to tune the operating system to get "good"
+results based on site conditions.
+Fetch Policy
+The fetch policy determines when a page should be brought into main memory. The
+two common alternatives are demand paging and prepaging. With demand paging,
+a page is brought into main memory only when a reference is made to a location
+on that page. If the other elements of memory management policy are good, the
+following should happen. When a process is first started, there will be a flurry of
+page faults. As more and more pages are brought in, the principle of locality suggests
+that most future references will be to pages that have recently been brought in.
+Thus, after a time, matters should settle down and the number of page faults should
+drop to a very low level.
+With prepaging, pages other than the one demanded by a page fault are
+brought in. Prepaging exploits the characteristics of most secondary memory
+devices, such as disks, which have seek times and rotational latency. If the pages of
+a process are stored contiguously in secondary memory, then it is more efficient to
+bring in a number of contiguous pages at one time rather than bringing them in one
+at a time over an extended period. Of course, this policy is ineffective if most of the
+extra pages that are brought in are not referenced.
+
+362  CHAPTER 8 / VIRTUAL MEMORY
+        The prepaging policy could be employed either when a process first starts up,
+     in which case the programmer would somehow have to designate desired pages, or
+     every time a page fault occurs. This latter course would seem preferable because
+     it is invisible to the programmer. However, the utility of prepaging has not been
+     established [MAEK87].
+        Prepaging should not be confused with swapping. When a process is swapped
+     out of memory and put in a suspended state, all of its resident pages are moved out.
+     When the process is resumed, all of the pages that were previously in main memory
+     are returned to main memory.
+     Placement Policy
+     The placement policy determines where in real memory a process piece is to reside.
+     In a pure segmentation system, the placement policy is an important design issue;
+     policies such as best-fit, first-fit, and so on, which were discussed in Chapter 7, are
+     possible alternatives. However, for a system that uses either pure paging or paging
+     combined with segmentation, placement is usually irrelevant because the address
+     translation hardware and the main memory access hardware can perform their
+     functions for any page-frame combination with equal efficiency.
+        There is one area in which placement does become a concern, and this is a
+     subject of research and development. On a so-called nonuniform memory access
+     (NUMA) multiprocessor, the distributed, shared memory of the machine can be
+     referenced by any processor on the machine, but the time for accessing a particular
+     physical location varies with the distance between the processor and the memory
+     module. Thus, performance depends heavily on the extent to which data reside
+     close to the processors that use them [LARO92, BOLO89, COX89]. For NUMA
+     systems, an automatic placement strategy is desirable to assign pages to the memory
+     module that provides the best performance.
+     Replacement Policy
+     In most operating system texts, the treatment of memory management includes a
+     section entitled "replacement policy," which deals with the selection of a page in
+     main memory to be replaced when a new page must be brought in. This topic is
+     sometimes difficult to explain because several interrelated concepts are involved:
+     ·  How many page frames are to be allocated to each active process
+     ·  Whether the set of pages to be considered for replacement should be limited
+        to those of the process that caused the page fault or encompass all the page
+        frames in main memory
+     ·  Among the set of pages considered, which particular page should be selected
+        for replacement
+     We shall refer to the first two concepts as resident set management, which is dealt
+     with in the next subsection, and reserve the term replacement policy for the third
+     concept, which is discussed in this subsection.
+        The area of replacement policy is probably the most studied of any area of
+     memory management. When all of the frames in main memory are occupied and
+     it is necessary to bring in a new page to satisfy a page fault, the replacement policy
+
+                                       8.2 / OPERATING SYSTEM SOFTWARE                  363
+determines which page currently in memory is to be replaced. All of the policies
+have as their objective that the page that is removed should be the page least likely
+to be referenced in the near future. Because of the principle of locality, there is
+often a high correlation between recent referencing history and near-future refer-
+encing patterns. Thus, most policies try to predict future behavior on the basis of
+past behavior. One trade-off that must be considered is that the more elaborate and
+sophisticated the replacement policy, the greater will be the hardware and software
+overhead to implement it.
+FRAME LOCKING     One restriction on replacement policy needs to be mentioned
+before looking at various algorithms: Some of the frames in main memory may be
+locked. When a frame is locked, the page currently stored in that frame may not be
+replaced. Much of the kernel of the OS, as well as key control structures, are held in
+locked frames. In addition, I/O buffers and other time-critical areas may be locked
+into main memory frames. Locking is achieved by associating a lock bit with each
+frame. This bit may be kept in a frame table as well as being included in the current
+page table.
+BASIC ALGORITHMS        Regardless of the resident set management strategy (discussed
+in the next subsection), there are certain basic algorithms that are used for the
+selection of a page to replace. Replacement algorithms that have been discussed in
+the literature include
+·  Optimal
+·  Least recently used (LRU)
+·  First-in-first-out (FIFO)
+·  Clock
+   The optimal policy selects for replacement that page for which the time to the
+next reference is the longest. It can be shown that this policy results in the fewest
+number of page faults [BELA66]. Clearly, this policy is impossible to implement,
+because it would require the OS to have perfect knowledge of future events. However,
+it does serve as a standard against which to judge real-world algorithms.
+   Figure 8.15 gives an example of the optimal policy. The example assumes a
+fixed frame allocation (fixed resident set size) for this process of three frames. The
+execution of the process requires reference to five distinct pages. The page address
+stream formed by executing the program is
+                        2  3  2  1  5  2   4  5  3  2  5  2
+which means that the first page referenced is 2, the second page referenced is 3, and
+so on. The optimal policy produces three page faults after the frame allocation has
+been filled.
+   The least recently used (LRU) policy replaces the page in memory that has
+not been referenced for the longest time. By the principle of locality, this should
+be the page least likely to be referenced in the near future. And, in fact, the LRU
+policy does nearly as well as the optimal policy. The problem with this approach is
+the difficulty in implementation. One approach would be to tag each page with the
+
+364  CHAPTER 8 / VIRTUAL MEMORY
+Page address
+     stream   2    3   2   1     5             2            4   5                           3   2   5   2
+     OPT      2    2   2   2     2             2            4   4                           4   2   2   2
+                   3   3   3     3             3            3   3                           3   3   3   3
+                           1     5             5            5   5                           5   5   5   5
+                                 F                          F                                   F
+     LRU      2    2   2   2     2             2            2   2                           3   3   3   3
+                   3   3   3     5             5            5   5                           5   5   5   5
+                           1     1             1            4   4                           4   2   2   2
+                                 F                          F                               F   F
+     FIFO     2    2   2   2     5             5            5   5                           3   3   3   3
+                   3   3   3     3             2            2   2                           2   2   5   5
+                           1     1             1            4   4                           4   4   4   2
+                                 F             F            F                               F       F   F
+     CLOCK    2*   2*  2*  2*    5*            5*           5*  5*                          3*  3*  3*  3*
+                   3*  3*  3*    3             2*           2*  2*                          2   2*  2   2*
+                           1*    1             1            4*  4*                          4   4   5*  5*
+                                 F             F            F                               F       F
+                   F = page fault occurring after the frame allocation is initially filled
+Figure 8.15   Behavior of Four Page Replacement Algorithms
+     time of its last reference; this would have to be done at each memory reference,
+     both instruction and data. Even if the hardware would support such a scheme, the
+     overhead would be tremendous. Alternatively, one could maintain a stack of page
+     references, again an expensive prospect.
+              Figure 8.15 shows an example of the behavior of LRU, using the same page
+     address stream as for the optimal policy example. In this example, there are four
+     page faults.
+              The first-in-first-out (FIFO) policy treats the page frames allocated to a proc-
+     ess as a circular buffer, and pages are removed in round-robin style. All that is
+     required is a pointer that circles through the page frames of the process. This is
+     therefore one of the simplest page replacement policies to implement. The logic
+     behind this choice, other than its simplicity, is that one is replacing the page that
+     has been in memory the longest: A page fetched into memory a long time ago may
+     have now fallen out of use. This reasoning will often be wrong, because there will
+     often be regions of program or data that are heavily used throughout the life of a
+     program. Those pages will be repeatedly paged in and out by the FIFO algorithm.
+              Continuing our example in Figure 8.15, the FIFO policy results in six page
+     faults. Note that LRU recognizes that pages 2 and 5 are referenced more frequently
+     than other pages, whereas FIFO does not.
+              Although the LRU policy does nearly as well as an optimal policy, it is dif-
+     ficult to implement and imposes significant overhead. On the other hand, the FIFO
+
+                                  8.2 / OPERATING SYSTEM SOFTWARE                        365
+policy is very simple to implement but performs relatively poorly. Over the years,
+OS designers have tried a number of other algorithms to approximate the perform-
+ance of LRU while imposing little overhead. Many of these algorithms are variants
+of a scheme referred to as the clock policy.
+The simplest form of clock policy requires the association of an additional
+bit with each frame, referred to as the use bit. When a page is first loaded into
+a frame in memory, the use bit for that frame is set to 1. Whenever the page is
+subsequently referenced (after the reference that generated the page fault), its
+use bit is set to 1. For the page replacement algorithm, the set of frames that are
+candidates for replacement (this process: local scope; all of main memory: global
+scope5) is considered to be a circular buffer, with which a pointer is associated.
+When a page is replaced, the pointer is set to indicate the next frame in the buffer
+after the one just updated. When it comes time to replace a page, the OS scans
+the buffer to find a frame with a use bit set to 0. Each time it encounters a frame
+with a use bit of 1, it resets that bit to 0 and continues on. If any of the frames in
+the buffer have a use bit of 0 at the beginning of this process, the first such frame
+encountered is chosen for replacement. If all of the frames have a use bit of 1,
+then the pointer will make one complete cycle through the buffer, setting all the
+use bits to 0, and stop at its original position, replacing the page in that frame.
+We can see that this policy is similar to FIFO, except that, in the clock policy, any
+frame with a use bit of 1 is passed over by the algorithm. The policy is referred
+to as a clock policy because we can visualize the page frames as laid out in a circle.
+A number of operating systems have employed some variation of this simple clock
+policy (e.g., Multics [CORB68]).
+Figure 8.16 provides an example of the simple clock policy mechanism. A cir-
+cular buffer of n main memory frames is available for page replacement. Just prior
+to the replacement of a page from the buffer with incoming page 727, the next frame
+pointer points at frame 2, which contains page 45. The clock policy is now executed.
+Because the use bit for page 45 in frame 2 is equal to 1, this page is not replaced.
+Instead, the use bit is set to 0 and the pointer advances. Similarly, page 191 in frame
+3 is not replaced; its use bit is set to 0 and the pointer advances. In the next frame,
+frame 4, the use bit is set to 0. Therefore, page 556 is replaced with page 727. The
+use bit is set to 1 for this frame and the pointer advances to frame 5, completing the
+page replacement procedure.
+The behavior of the clock policy is illustrated in Figure 8.15. The presence
+of an asterisk indicates that the corresponding use bit is equal to 1, and the arrow
+indicates the current position of the pointer. Note that the clock policy is adept at
+protecting frames 2 and 5 from replacement.
+Figure 8.17 shows the results of an experiment reported in [BAER80], which
+compares the four algorithms that we have been discussing; it is assumed that the
+number of page frames assigned to a process is fixed. The results are based on the
+execution of 0.25 × 106 references in a FORTRAN program, using a page size of 256
+words. Baer ran the experiment with frame allocations of 6, 8, 10, 12, and 14 frames.
+The differences among the four policies are most striking at small allocations, with
+5The concept of scope is discussed in the subsection "Replacement Scope," subsequently.
+
+366  CHAPTER  8  /  VIRTUAL MEMORY
+                                                                     First frame in
+                                                                     circular buffer of
+                                   n1                0               frames that are
+                                                                     candidates for replacement
+                                   Page 9   Page 19               1
+                                   Use  1   Use  1
+                                                        Page 1
+                                                        Use  1
+                                            Next frame  Page 45               2
+                                            pointer     Use  1
+                       Page 222                         Page 191
+                    8  Use  0                           Use  1                3
+                          Page 33                       Page 556
+                          Use  1                        Use  0
+                       7           Page 67  Page 13               4
+                                   Use  1   Use  0
+                                   6                 5
+                       (a) State of buffer just prior to a page replacement
+                                   n1                0
+                                   Page 9   Page 19               1
+                                   Use  1   Use  1
+                                                        Page 1
+                                                        Use  1
+                                                        Page 45               2
+                                                        Use  0
+                       Page 222                         Page 191
+                    8  Use  0                           Use  0                3
+                          Page 33                       Page 727
+                          Use  1                        Use  1
+                       7           Page 67  Page 13               4
+                                   Use  1   Use  0
+                                   6                 5
+                    (b) State of buffer just after the next page replacement
+                    Figure 8.16  Example of Clock Policy Operation
+     FIFO being over a factor of 2 worse than optimal. All four curves have the same shape
+     as the idealized behavior shown in Figure 8.11b. In order to run efficiently, we would
+     like to be to the right of the knee of the curve (with a small page fault rate) while
+     keeping a small frame allocation (to the left of the knee of the curve). These two con-
+     straints indicate that a desirable mode of operation would be at the knee of the curve.
+     Almost identical results have been reported in [FINK88], again showing a max-
+     imum spread of about a factor of 2. Finkel's approach was to simulate the effects of
+     various policies on a synthesized page-reference string of 10,000 references selected
+
+                                                              8.2 / OPERATING SYSTEM SOFTWARE         367
+                                           40
+          Page faults per 1000 references  35        FIFO
+                                           30  CLOCK
+                                           25        LRU
+                                           20
+                                           15        OPT
+                                           10
+                                           5
+                                           0               6  8              10             12    14
+                                                              Number of frames allocated
+          Figure                               8.17  Comparison of Fixed-Allocation, Local  Page
+                                                     Replacement Algorithms
+from a virtual space of 100 pages. To approximate the effects of the principle of
+locality, an exponential distribution for the probability of referencing a particular
+page was imposed. Finkel observes that some might be led to conclude that there
+is little point in elaborate page replacement algorithms when only a factor of 2 is at
+stake. But he notes that this difference will have a noticeable effect either on main
+memory requirements (to avoid degrading operating system performance) or oper-
+ating system performance (to avoid enlarging main memory).
+    The clock algorithm has also been compared to these other algorithms when
+a variable allocation and either global or local replacement scope (see the follow-
+ing discussion of replacement policy) is used [CARR81, CARR84]. The clock algo-
+rithm was found to approximate closely the performance of LRU.
+    The clock algorithm can be made more powerful by increasing the number
+of bits that it employs.6 In all processors that support paging, a modify bit is associ-
+ated with every page in main memory and hence with every frame of main memory.
+This bit is needed so that, when a page has been modified, it is not replaced until it
+has been written back into secondary memory. We can exploit this bit in the clock
+algorithm in the following way. If we take the use and modify bits into account, each
+frame falls into one of four categories:
+·   Not accessed recently, not modified (u  0; m  0)
+·   Accessed recently, not modified (u  1; m  0)
+·   Not accessed recently, modified (u  0; m  1)
+·   Accessed recently, modified (u  1; m  1)
+    With this classification, the clock algorithm performs as follows:
+1.  Beginning at the current position of the pointer, scan the frame buffer. During
+    this scan, make no changes to the use bit. The first frame encountered with
+    (u  0; m  0) is selected for replacement.
+6On the other hand, if we reduce the number of bits employed to zero, the clock algorithm degenerates
+to FIFO.
+
+368  CHAPTER 8 / VIRTUAL MEMORY
+     2.  If step 1 fails, scan again, looking for the frame with (u  0; m  1). The first
+         such frame encountered is selected for replacement. During this scan, set the
+         use bit to 0 on each frame that is bypassed.
+     3.  If step 2 fails, the pointer should have returned to its original position and all
+         of the frames in the set will have a use bit of 0. Repeat step 1 and, if necessary,
+         step 2. This time, a frame will be found for the replacement.
+         In summary, the page replacement algorithm cycles through all of the pages
+     in the buffer looking for one that has not been modified since being brought in and
+     has not been accessed recently. Such a page is a good bet for replacement and has
+     the advantage that, because it is unmodified, it does not need to be written back
+     out to secondary memory. If no candidate page is found in the first sweep, the algo-
+     rithm cycles through the buffer again, looking for a modified page that has not been
+     accessed recently. Even though such a page must be written out to be replaced,
+     because of the principle of locality, it may not be needed again anytime soon. If
+     this second pass fails, all of the frames in the buffer are marked as having not been
+     accessed recently and a third sweep is performed.
+         This strategy was used on an earlier version of the Macintosh virtual memory
+     scheme [GOLD89], illustrated in Figure 8.18. The advantage of this algorithm over
+                                                         First frame in
+                                                         circular buffer
+                                                         for this process
+                                        n1                          0
+                                           Page 7        Page 9
+                                           not accessed  not accessed                1
+                                           recently;     recently;
+                                           modified      modified      Page 94
+                                                                       not accessed
+                                                                       recently;
+                                                                       not modified
+           9      Page 13                                                  Page 95            2
+                  not accessed                                             accessed
+                  recently;                                                recently;
+                  not modified                                             not modified
+                  Page 47                                                       Page 96
+                  not accessed                                                  accessed
+                  recently;                                                     recently;     3  Last
+           8      not modified                                                  not modified     replaced
+     Next
+     replaced                Page 46                                   Page 97
+                             not accessed                              not accessed
+                             recently;                   Page 45       recently;
+                             modified      Page 121      accessed      modified
+                                           accessed      recently;                   4
+                  7                        recently;     not modified
+                                           not modified
+                                           6                        5
+     Figure 8.18  The Clock Page Replacement Algorithm [GOLD89]
+
+                             8.2 / OPERATING SYSTEM SOFTWARE                             369
+the simple clock algorithm is that pages that are unchanged are given preference
+for replacement. Because a page that has been modified must be written out before
+being replaced, there is an immediate saving of time.
+PAGE BUFFERING     Although LRU and the clock policies are superior to FIFO,
+they both involve complexity and overhead not suffered with FIFO. In addition,
+there is the related issue that the cost of replacing a page that has been modified is
+greater than for one that has not, because the former must be written back out to
+secondary memory.
+An interesting strategy that can improve paging performance and allow
+the use of a simpler page replacement policy is page buffering. The VAX VMS
+approach is representative. The page replacement algorithm is simple FIFO. To
+improve performance, a replaced page is not lost but rather is assigned to one of
+two lists: the free page list if the page has not been modified, or the modified page
+list if it has. Note that the page is not physically moved about in main memory;
+instead, the entry in the page table for this page is removed and placed in either the
+free or modified page list.
+The free page list is a list of page frames available for reading in pages. VMS
+tries to keep some small number of frames free at all times. When a page is to be
+read in, the page frame at the head of the list is used, destroying the page that was
+there. When an unmodified page is to be replaced, it remains in memory and its
+page frame is added to the tail of the free page list. Similarly, when a modified page
+is to be written out and replaced, its page frame is added to the tail of the modified
+page list.
+The important aspect of these maneuvers is that the page to be replaced
+remains in memory. Thus if the process references that page, it is returned to the
+resident set of that process at little cost. In effect, the free and modified page lists act
+as a cache of pages. The modified page list serves another useful function: Modified
+pages are written out in clusters rather than one at a time. This significantly reduces
+the number of I/O operations and therefore the amount of disk access time.
+A simpler version of page buffering is implemented in the Mach operat-
+ing system [RASH88]. In this case, no distinction is made between modified and
+unmodified pages.
+REPLACEMENT POLICY AND CACHE SIZE  As discussed earlier, main memory size
+is getting larger and the locality of applications is decreasing. In compensation,
+cache sizes have been increasing. Large cache sizes, even multimegabyte ones, are
+now feasible design alternatives [BORG90]. With a large cache, the replacement of
+virtual memory pages can have a performance impact. If the page frame selected
+for replacement is in the cache, then that cache block is lost as well as the page that
+it holds.
+In systems that use some form of page buffering, it is possible to improve
+cache performance by supplementing the page replacement policy with a policy for
+page placement in the page buffer. Most operating systems place pages by selecting
+an arbitrary page frame from the page buffer; typically a first-in-first-out discipline
+is used. A study reported in [KESS92] shows that a careful page placement strategy
+can result in 10­20% fewer cache misses than naive placement.
+
+370  CHAPTER 8 / VIRTUAL MEMORY
+        Several page placement algorithms are examined in [KESS92]. The details
+     are beyond the scope of this book, as they depend on the details of cache structure
+     and policies. The essence of these strategies is to bring consecutive pages into main
+     memory in such a way as to minimize the number of page frames that are mapped
+     into the same cache slots.
+     Resident Set Management
+     RESIDENT SET SIZE  With paged virtual memory, it is not necessary and indeed
+     may not be possible to bring all of the pages of a process into main memory to
+     prepare it for execution. Thus, the OS must decide how many pages to bring in, that
+     is, how much main memory to allocate to a particular process. Several factors come
+     into play:
+     ·  The smaller the amount of memory allocated to a process, the more processes
+        that can reside in main memory at any one time. This increases the probability
+        that the OS will find at least one ready process at any given time and hence
+        reduces the time lost due to swapping.
+     ·  If a relatively small number of pages of a process are in main memory, then,
+        despite the principle of locality, the rate of page faults will be rather high (see
+        Figure 8.11b).
+     ·  Beyond a certain size, additional allocation of main memory to a particular
+        process will have no noticeable effect on the page fault rate for that process
+        because of the principle of locality.
+        With these factors in mind, two sorts of policies are to be found in contempo-
+     rary operating systems. A fixed-allocation policy gives a process a fixed number of
+     frames in main memory within which to execute. That number is decided at initial
+     load time (process creation time) and may be determined based on the type of proc-
+     ess (interactive, batch, type of application) or may be based on guidance from the
+     programmer or system manager. With a fixed-allocation policy, whenever a page
+     fault occurs in the execution of a process, one of the pages of that process must be
+     replaced by the needed page.
+        A variable-allocation policy allows the number of page frames allocated to a
+     process to be varied over the lifetime of the process. Ideally, a process that is suf-
+     fering persistently high levels of page faults, indicating that the principle of local-
+     ity only holds in a weak form for that process, will be given additional page frames
+     to reduce the page fault rate; whereas a process with an exceptionally low page
+     fault rate, indicating that the process is quite well behaved from a locality point of
+     view, will be given a reduced allocation, with the hope that this will not noticeably
+     increase the page fault rate. The use of a variable-allocation policy relates to the
+     concept of replacement scope, as explained in the next subsection.
+        The variable-allocation policy would appear to be the more powerful one.
+     However, the difficulty with this approach is that it requires the OS to assess
+     the behavior of active processes. This inevitably requires software overhead in
+     the OS and is dependent on hardware mechanisms provided by the processor
+     platform.
+
+                                            8.2 / OPERATING SYSTEM SOFTWARE                                 371
+           REPLACEMENT SCOPE        The scope of a replacement strategy can be categorized as
+           global or local. Both types of policies are activated by a page fault when there are no
+           free page frames. A local replacement policy chooses only among the resident pages
+           of the process that generated the page fault in selecting a page to replace. A global
+           replacement policy considers all unlocked pages in main memory as candidates for
+           replacement, regardless of which process owns a particular page. While it happens
+           that local policies are easier to analyze, there is no convincing evidence that they
+           perform better than global policies, which are attractive because of their simplicity
+           of implementation and minimal overhead [CARR84, MAEK87].
+           There is a correlation between replacement scope and resident set size
+           (Table 8.5). A fixed resident set implies a local replacement policy: To hold the size
+           of a resident set fixed, a page that is removed from main memory must be replaced
+           by another page from the same process. A variable-allocation policy can clearly
+           employ a global replacement policy: The replacement of a page from one process in
+           main memory with that of another causes the allocation of one process to grow by
+           one page and that of the other to shrink by one page. We shall also see that variable
+           allocation and local replacement is a valid combination. We now examine these
+           three combinations.
+           FIXED ALLOCATION, LOCAL SCOPE    For this case, we have a process that is running
+           in main memory with a fixed number of frames. When a page fault occurs, the OS
+           must choose which page from among the currently resident pages for this process
+           is to be replaced. Replacement algorithms such as those discussed in the preceding
+           subsection can be used.
+           With a fixed-allocation policy, it is necessary to decide ahead of time the amount
+           of allocation to give to a process. This could be decided on the basis of the type
+           of application and the amount requested by the program. The drawback to this
+           approach is twofold: If allocations tend to be too small, then there will be a high page
+           fault rate, causing the entire multiprogramming system to run slowly. If allocations
+           tend to be unnecessarily large, then there will be too few programs in main memory
+           and there will be either considerable processor idle time or considerable time spent
+           in swapping.
+Table 8.5  Resident  Set Management
+                         Local Replacement                        Global Replacement
+Fixed Allocation         · Number of frames allocated to a        · Not possible.
+                         process is fixed.
+                         · Page to be replaced is chosen from
+                         among the frames allocated to that
+                         process.
+Variable Allocation      · The number of frames allocated to a    · Page to be replaced is chosen from all
+                         process may be changed from time to      available frames in main memory; this
+                         time to maintain the working set of the  causes the size of the resident set of
+                         process.                                 processes to vary.
+                         · Page to be replaced is chosen from
+                         among the frames allocated to that
+                         process.
+
+372  CHAPTER 8 / VIRTUAL MEMORY
+     VARIABLE ALLOCATION, GLOBAL SCOPE               This combination is perhaps the easiest
+     to implement and has been adopted in a number of operating systems. At any given
+     time, there are a number of processes in main memory, each with a certain number
+     of frames allocated to it. Typically, the OS also maintains a list of free frames. When
+     a page fault occurs, a free frame is added to the resident set of a process and the
+     page is brought in. Thus, a process experiencing page faults will gradually grow in
+     size, which should help reduce overall page faults in the system.
+         The difficulty with this approach is in the replacement choice. When there
+     are no free frames available, the OS must choose a page currently in memory to
+     replace. The selection is made from among all of the frames in memory, except
+     for locked frames such as those of the kernel. Using any of the policies discussed
+     in the preceding subsection, the page selected for replacement can belong to any
+     of the resident processes; there is no discipline to determine which process should
+     lose a page from its resident set. Therefore, the process that suffers the reduction in
+     resident set size may not be optimum.
+         One way to counter the potential performance problems of a variable-allocation,
+     global-scope policy is to use page buffering. In this way, the choice of which page to
+     replace becomes less significant, because the page may be reclaimed if it is referenced
+     before the next time that a block of pages are overwritten.
+     VARIABLE  ALLOCATION,   LOCAL  SCOPE            The variable-allocation, local-scope
+     strategy attempts to overcome the problems with a global-scope strategy. It can be
+     summarized as follows:
+     1.  When a new process is loaded into main memory, allocate to it a certain
+         number of page frames as its resident set, based on application type, program
+         request, or other criteria. Use either prepaging or demand paging to fill up the
+         allocation.
+     2.  When a page fault occurs, select the page to replace from among the resident
+         set of the process that suffers the fault.
+     3.  From time to time, reevaluate the allocation provided to the process, and
+         increase or decrease it to improve overall performance.
+         With this strategy, the decision to increase or decrease a resident set size is a
+     deliberate one and is based on an assessment of the likely future demands of active
+     processes. Because of this evaluation, such a strategy is more complex than a simple
+     global replacement policy. However, it may yield better performance.
+         The key elements of the variable-allocation, local-scope strategy are the cri-
+     teria used to determine resident set size and the timing of changes. One specific
+     strategy that has received much attention in the literature is known as the working
+     set strategy. Although a true working set strategy would be difficult to implement, it
+     is useful to examine it as a baseline for comparison.
+         The working set is a concept introduced and popularized by Denning
+     [DENN68, DENN70, DENN80b]; it has had a profound impact on virtual memory
+     management design. The working set with parameter  for a process at virtual
+     time t, which we designate as W(t, ), is the set of pages of that process that have
+     been referenced in the last  virtual time units.
+
+                             8.2 / OPERATING SYSTEM SOFTWARE                              373
+Sequence of
+Page
+References                      Window Size, 
+W                        2   3                                 4            5
+24                       24  24                                24           24
+15           24 15           24 15                             24 15        24 15
+18           15 18           24 15 18                          24 15 18     24 15 18
+23           18 23           15 18 23                          24 15 18 23  24 15 18 23
+24           23 24           18 23 24                          ·            ·
+17           24 17           23 24 17                          18 23 24 17  15 18 23 24 17
+18           17 18           24 17 18                          ·            18 23 24 17
+24           18 24           ·                                 24 17 18     ·
+18                       ·   18 24                             ·            24 17 18
+17           18 17           24 18 17                          ·            ·
+17                       17  18 17                             ·            ·
+15           17 15           17 15                             18 17 15     24 18 17 15
+24           15 24           17 15 24                          17 15 24     ·
+17           24 17           ·                                 ·            17 15 24
+24                       ·   24 17                             ·            ·
+18           24 18           17 24 18                          17 24 18     15 17 24 18
+Figure 8.19  Working Set of Process as Defined by Window Size
+             Virtual time is defined as follows. Consider a sequence of memory references,
+r(1), r(2), . . . ., in which r(i) is the page that contains the ith virtual address gener-
+ated by a given process. Time is measured in memory references; thus t  1, 2, 3, . . . .
+measures the process's internal virtual time.
+             Let us consider each of the two variables of W. The variable  is a window
+of virtual time over which the process is observed. The working set size will be a
+nondecreasing function of the window size. The result is illustrated in Figure 8.19
+(based on [BACH86]), which shows a sequence of page references for a process.
+The dots indicate time units in which the working set does not change. Note that the
+larger the window size, the larger is the working set. This can be expressed in the
+following relationship:
+                             W(t, + 1)  W(t,)
+             The working set is also a function of time. If a process executes over  time
+units and uses only a single page, then |W(t,)| = 1. A working set can also grow
+as large as the number of pages N of the process if many different pages are rapidly
+addressed and if the window size allows. Thus,
+                             1 ... |W(t,)| ...  min(,N)
+             Figure 8.20 indicates the way in which the working set size can vary over time
+for a fixed value of . For many programs, periods of relatively stable working set
+
+374  CHAPTER 8 / VIRTUAL MEMORY
+                       
+     Working set size
+                                                                                                   Time
+                       Transient          Transient          Transient          Transient
+                                  Stable             Stable             Stable             Stable
+     Figure 8.20                  Typical Graph of Working Set Size [MAEK87]
+     sizes alternate with periods of rapid change. When a process first begins execut-
+     ing, it gradually builds up to a working set as it references new pages. Eventually,
+     by the principle of locality, the process should stabilize on a certain set of pages.
+     Subsequent transient periods reflect a shift of the program to a new locality. During
+     the transition phase, some of the pages from the old locality remain within the win-
+     dow, , causing a surge in the size of the working set as new pages are referenced.
+     As the window slides past these page references, the working set size declines until
+     it contains only those pages from the new locality.
+                       This concept of a working set can be used to guide a strategy for resident
+     set size:
+     1.                Monitor the working set of each process.
+     2.                Periodically remove from the resident set of a process those pages that are not
+                       in its working set. This is essentially an LRU policy.
+     3.                A process may execute only if its working set is in main memory (i.e., if its
+                       resident set includes its working set).
+                       This strategy is appealing because it takes an accepted principle, the principle
+     of locality, and exploits it to achieve a memory management strategy that should
+     minimize page faults. Unfortunately, there are a number of problems with the work-
+     ing set strategy:
+     1.                The past does not always predict the future. Both the size and the membership
+                       of the working set will change over time (e.g., see Figure 8.20).
+     2.                A true measurement of working set for each process is impractical. It would
+                       be necessary to time-stamp every page reference for every process using the
+
+                       8.2 / OPERATING SYSTEM SOFTWARE                                  375
+    virtual time of that process and then maintain a time-ordered queue of pages
+    for each process.
+3.  The optimal value of  is unknown and in any case would vary.
+    Nevertheless, the spirit of this strategy is valid, and a number of operating
+systems attempt to approximate a working set strategy. One way to do this is to
+focus not on the exact page references but on the page fault rate of a process. As
+Figure 8.11b illustrates, the page fault rate falls as we increase the resident set size of
+a process. The working set size should fall at a point on this curve such as indicated
+by W in the figure. Therefore, rather than monitor the working set size directly, we
+can achieve comparable results by monitoring the page fault rate. The line of reason-
+ing is as follows: If the page fault rate for a process is below some minimum thresh-
+old, the system as a whole can benefit by assigning a smaller resident set size to this
+process (because more page frames are available for other processes) without harm-
+ing the process (by causing it to incur increased page faults). If the page fault rate
+for a process is above some maximum threshold, the process can benefit from an
+increased resident set size (by incurring fewer faults) without degrading the system.
+    An algorithm that follows this strategy is the page fault frequency (PFF) algo-
+rithm [CHU72, GUPT78]. It requires a use bit to be associated with each page in
+memory. The bit is set to 1 when that page is accessed. When a page fault occurs,
+the OS notes the virtual time since the last page fault for that process; this could
+be done by maintaining a counter of page references. A threshold F is defined. If
+the amount of time since the last page fault is less than F, then a page is added to the
+resident set of the process. Otherwise, discard all pages with a use bit of 0, and
+shrink the resident set accordingly. At the same time, reset the use bit on the remain-
+ing pages of the process to 0. The strategy can be refined by using two thresholds: an
+upper threshold that is used to trigger a growth in the resident set size, and a lower
+threshold that is used to trigger a contraction in the resident set size.
+    The time between page faults is the reciprocal of the page fault rate. Although
+it would seem to be better to maintain a running average of the page fault rate, the
+use of a single time measurement is a reasonable compromise that allows decisions
+about resident set size to be based on the page fault rate. If such a strategy is sup-
+plemented with page buffering, the resulting performance should be quite good.
+    Nevertheless, there is a major flaw in the PFF approach, which is that it does
+not perform well during the transient periods when there is a shift to a new locality.
+With PFF, no page ever drops out of the resident set before F virtual time units have
+elapsed since it was last referenced. During interlocality transitions, the rapid suc-
+cession of page faults causes the resident set of a process to swell before the pages
+of the old locality are expelled; the sudden peaks of memory demand may produce
+unnecessary process deactivations and reactivations, with the corresponding unde-
+sirable switching and swapping overheads.
+    An approach that attempts to deal with the phenomenon of interlocality tran-
+sition with a similar relatively low overhead to that of PFF is the variable-interval
+sampled working set (VSWS) policy [FERR83]. The VSWS policy evaluates the
+working set of a process at sampling instances based on elapsed virtual time. At the
+beginning of a sampling interval, the use bits of all the resident pages for the process
+are reset; at the end, only the pages that have been referenced during the interval
+
+376  CHAPTER 8 / VIRTUAL MEMORY
+     will have their use bit set; these pages are retained in the resident set of the process
+     throughout the next interval, while the others are discarded. Thus the resident set
+     size can only decrease at the end of an interval. During each interval, any faulted
+     pages are added to the resident set; thus the resident set remains fixed or grows
+     during the interval.
+         The VSWS policy is driven by three parameters:
+     M:  The minimum duration of the sampling interval
+     L:  The maximum duration of the sampling interval
+     Q:  The number of page faults that are allowed to occur between sampling instances
+         The VSWS policy is as follows:
+     1.  If the virtual time since the last sampling instance reaches L, then suspend the
+         process and scan the use bits.
+     2.  If, prior to an elapsed virtual time of L, Q page faults occur,
+         a. If the virtual time since the last sampling instance is less than M, then wait
+         until the elapsed virtual time reaches M to suspend the process and scan the
+         use bits.
+         b. If the virtual time since the last sampling instance is greater than or equal to
+         M, suspend the process and scan the use bits.
+         The parameter values are to be selected so that the sampling will normally
+     be triggered by the occurrence of the Qth page fault after the last scan (case 2b).
+     The other two parameters (M and L) provide boundary protection for exceptional
+     conditions. The VSWS policy tries to reduce the peak memory demands caused by
+     abrupt interlocality transitions by increasing the sampling frequency, and hence the
+     rate at which unused pages drop out of the resident set, when the page fault rate
+     increases. Experience with this technique in the Bull mainframe operating system,
+     GCOS 8, indicates that this approach is as simple to implement as PFF and more
+     effective [PIZZ89].
+     Cleaning Policy
+     A cleaning policy is the opposite of a fetch policy; it is concerned with determining
+     when a modified page should be written out to secondary memory. Two common
+     alternatives are demand cleaning and precleaning. With demand cleaning, a page is
+     written out to secondary memory only when it has been selected for replacement.
+     A precleaning policy writes modified pages before their page frames are needed so
+     that pages can be written out in batches.
+         There is a danger in following either policy to the full. With precleaning, a
+     page is written out but remains in main memory until the page replacement algo-
+     rithm dictates that it be removed. Precleaning allows the writing of pages in batches,
+     but it makes little sense to write out hundreds or thousands of pages only to find
+     that the majority of them have been modified again before they are replaced. The
+     transfer capacity of secondary memory is limited and should not be wasted with
+     unnecessary cleaning operations.
+
+                                            8.2 / OPERATING SYSTEM SOFTWARE            377
+On the other hand, with demand cleaning, the writing of a dirty page is coupled
+to, and precedes, the reading in of a new page. This technique may minimize page
+writes, but it means that a process that suffers a page fault may have to wait for two
+page transfers before it can be unblocked. This may decrease processor utilization.
+A better approach incorporates page buffering. This allows the adoption
+of the following policy: Clean only pages that are replaceable, but decouple the
+cleaning and replacement operations. With page buffering, replaced pages can be
+placed on two lists: modified and unmodified. The pages on the modified list can
+periodically be written out in batches and moved to the unmodified list. A page on
+the unmodified list is either reclaimed if it is referenced or lost when its frame is
+assigned to another page.
+Load Control
+Load control is concerned with determining the number of processes that will be resi-
+dent in main memory, which has been referred to as the multiprogramming level. The
+load control policy is critical in effective memory management. If too few processes
+are resident at any one time, then there will be many occasions when all processes
+are blocked, and much time will be spent in swapping. On the other hand, if too
+many processes are resident, then, on average, the size of the resident set of each
+process will be inadequate and frequent faulting will occur. The result is thrashing.
+MULTIPROGRAMMING                     LEVEL  Thrashing is illustrated in Figure 8.21. As the
+multiprogramming level increases from a small value, one would expect to see
+processor utilization rise, because there is less chance that all resident processes
+are blocked. However, a point is reached at which the average resident set is
+inadequate. At this point, the number of page faults rises dramatically, and
+processor utilization collapses.
+There are a number of ways to approach this problem. A working set or PFF
+algorithm implicitly incorporates load control. Only those processes whose resident
+set is sufficiently large are allowed to execute. In providing the required resident set
+              Processor utilization
+                                            Multiprogramming level
+              Figure 8.21            Multiprogramming Effects
+
+378  CHAPTER 8 / VIRTUAL MEMORY
+     size for each active process, the policy automatically and dynamically determines
+     the number of active programs.
+         Another approach, suggested by Denning and his colleagues [DENN80b], is
+     known as the L  S criterion, which adjusts the multiprogramming level so that the
+     mean time between faults equals the mean time required to process a page fault.
+     Performance studies indicate that this is the point at which processor utilization
+     attained a maximum. A policy with a similar effect, proposed in [LERO76], is the
+     50% criterion, which attempts to keep utilization of the paging device at approxi-
+     mately 50%. Again, performance studies indicate that this is a point of maximum
+     processor utilization.
+         Another approach is to adapt the clock page replacement algorithm described
+     earlier (Figure 8.16). [CARR84] describes a technique, using a global scope,
+     that involves monitoring the rate at which the pointer scans the circular buffer
+     of frames. If the rate is below a given lower threshold, this indicates one or both of
+     two circumstances:
+     1.  Few page faults are occurring, resulting in few requests to advance the pointer.
+     2.  For each request, the average number of frames scanned by the pointer is
+         small, indicating that there are many resident pages not being referenced and
+         are readily replaceable.
+         In both cases, the multiprogramming level can safely be increased. On the
+     other hand, if the pointer scan rate exceeds an upper threshold, this indicates either
+     a high fault rate or difficulty in locating replaceable pages, which implies that the
+     multiprogramming level is too high.
+     PROCESS SUSPENSION      If the degree of multiprogramming is to be reduced, one
+     or more of the currently resident processes must be suspended (swapped out).
+     [CARR84] lists six possibilities:
+     ·   Lowest-priority process: This implements a scheduling policy decision and is
+         unrelated to performance issues.
+     ·   Faulting process: The reasoning is that there is a greater probability that the
+         faulting task does not have its working set resident, and performance would
+         suffer least by suspending it. In addition, this choice has an immediate payoff
+         because it blocks a process that is about to be blocked anyway and it elimi-
+         nates the overhead of a page replacement and I/O operation.
+     ·   Last process activated: This is the process least likely to have its working set
+         resident.
+     ·   Process with the smallest resident set: This will require the least future effort
+         to reload. However, it penalizes programs with strong locality.
+     ·   Largest process: This obtains the most free frames in an overcommitted
+         memory, making additional deactivations unlikely soon.
+     ·   Process with the largest remaining execution window: In most process sched-
+         uling schemes, a process may only run for a certain quantum of time before
+         being interrupted and placed at the end of the Ready queue. This approxi-
+         mates a shortest-processing-time-first scheduling discipline.
+
+                             8.3 / UNIX AND SOLARIS MEMORY MANAGEMENT                              379
+     As in so many other areas of OS design, which policy to choose is a matter of
+     judgment and depends on many other design factors in the OS as well as the charac-
+     teristics of the programs being executed.
+8.3  UNIX AND SOLARIS MEMORY MANAGEMENT
+     Because UNIX is intended to be machine independent, its memory management
+     scheme will vary from one system to the next. Earlier versions of UNIX simply used
+     variable partitioning with no virtual memory scheme. Current implementations of
+     UNIX and Solaris make use of paged virtual memory.
+     In SVR4 and Solaris, there are actually two separate memory management
+     schemes. The paging system provides a virtual memory capability that allocates
+     page frames in main memory to processes and also allocates page frames to disk
+     block buffers. Although this is an effective memory management scheme for user
+     processes and disk I/O, a paged virtual memory scheme is less suited to manag-
+     ing the memory allocation for the kernel. For this latter purpose, a kernel memory
+     allocator is used. We examine these two mechanisms in turn.
+     Paging System
+     DATA STRUCTURES         For paged virtual memory, UNIX makes use of a number of
+     data structures that, with minor adjustment, are machine independent (Figure 8.22
+     and Table 8.6):
+                                                               Copy    Mod-  Refe-           Pro-
+                      Page frame number            Age             on  ify   rence  Valid    tect
+                                                               write
+                                         (a) Page table entry
+     Swap device number                  Device block number           Type of storage
+                                        (b) Disk block descriptor
+     Page state              Reference   Logical               Block                Pfdata
+                             count         device             number                pointer
+                                    (c) Page frame data table entry
+     Reference               Page/storage
+                      count  unit number
+                                        (d) Swap-use table entry
+     Figure 8.22             UNIX SVR4 Memory Management Formats

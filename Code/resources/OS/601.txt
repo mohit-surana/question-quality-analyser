@@ -1,0 +1,638 @@
+eCos
+                                                                            13.3 / ECOS   579
+      ·  Provides for special alarms and time-outs
+      ·  Supports real-time queuing disciplines such as earliest deadline first and
+         primitives for jamming a message into the front of a queue
+      ·  Provides primitives to delay processing by a fixed amount of time and to
+         suspend/resume execution
+         The characteristics just listed are common in embedded operating systems with
+      real-time requirements. However, for complex embedded systems, the requirement
+      may emphasize predictable operation over fast operation, necessitating different
+      design decisions, particularly in the area of task scheduling.
+13.3  ECOS
+      The Embedded Configurable Operating System (eCos) is an open source, royalty-
+      free, real-time OS intended for embedded applications. The system is targeted at
+      high-performance small embedded systems. For such systems, an embedded form
+      of Linux or other commercial OS would not provide the streamlined software
+      required. The eCos software has been implemented on a wide variety of proces-
+      sor platforms, including Intel IA32, PowerPC, SPARC, ARM, CalmRISC, MIPS,
+      and NEC V8xx. It is one of the most widely used embedded operating systems. It is
+      implemented in C/C++.
+      Configurability
+      An embedded OS that is flexible enough to be used in a wide variety of embed-
+      ded applications and on a wide variety of embedded platforms must provide more
+      functionality than will be needed for any particular application and platform. For
+      example, many real-time operating systems support task switching, concurrency
+      controls, and a variety of priority scheduling mechanisms. A relatively simple
+      embedded system would not need all these features.
+         The challenge is to provide an efficient, user-friendly mechanism for configur-
+      ing selected components and for enabling and disabling particular features within
+      components. The eCos configuration tool, which runs on Windows or Linux, is used
+      to configure an eCos package to run on a target embedded system. The complete
+      eCos package is structured hierarchically, making it easy, using the configuration
+      tool, to assemble a target configuration. At a top level, eCos consists of a number of
+      components, and the configuration user may select only those components needed
+      for the target application. For example, a system might have a particular serial I/O
+      device. The configuration user would select serial I/O for this configuration, then
+      select one or more specific I/O devices to be supported. The configuration tool
+      would include the minimum necessary software for that support. The configuration
+      user can also select specific parameters, such as default data rate and the size of I/O
+      buffers to be used.
+         This configuration process can be extended down to finer levels of detail, even
+      to the level of individual lines of code. For example, the configuration tool provides
+      the option of including or omitting a priority inheritance protocol.
+
+580  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+             Figure 13.2 shows the top level of the eCos configuration tool as seen by
+     the tool user. Each of the items on the list in the left-hand window can be
+     selected or deselected. When an item is highlighted, the lower right-hand window
+     provides a description and the upper right-hand window provides a link to further
+     documentation plus additional information about the highlighted item. Items on
+     the list can be expanded to provide a finer-grained menu of options. Figure 13.3
+     illustrates an expansion of the eCos kernel option. In this figure, note that excep-
+     tion handling has been selected for inclusion, but SMP (symmetric multiprocessing)
+     has been omitted. In general, components and individual options can be selected
+     or omitted. In some cases, individual values can be set; for example, a minimum
+     acceptable stack size is an integer value that can be set or left to a default value.
+             Figure 13.4 shows a typical example of the overall process of creating the
+     binary image to execute in the embedded system. This process is run on a source
+     system, such as a Windows or Linux platform, and the executable image is des-
+     tined to execute on a target embedded system, such as a sensor in an industrial
+     environment. At the highest software level is the application source code for the
+     particular embedded application. This code is independent of eCos but makes use
+     of application programming interfaces (API) to sit on top of the eCos software.
+     There may be only one version of the application source code, or there may be
+     variations for different versions of the target embedded platform. In this example,
+     the GNU make utility is used to selectively determine which pieces of a program
+Figure 13.2  eCos Configuration Tool--Top Level
+
+                                                                          13.3 / ECOS  581
+Figure 13.3  eCos Configuration Tool--Kernel Details
+             GNU make utility                         Application
+                                                      source code
+                                                      GNU cross compiler
+             ­ eCos kernel libraries
+             ­Target architecture                     GNU linker
+             libraries
+                                                      Executable
+                                                      file
+             Figure 13.4  Loading     an              eCos Configuration
+
+582  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+     need to be compiled or recompiled (in the case of a modified version of the source
+     code) and issues the commands to recompile them. The GNU cross compiler,
+     executing on the source platform, then generates the binary executable code for
+     the target embedded platform. The GNU linker links the application object code
+     with the code generated by the eCos configuration tool. This latter set of software
+     includes selected portions of the eCos kernel plus selected software for the target
+     embedded system. The result can then be loaded into the target system.
+     eCos Components
+     A key design requirement for eCos is portability to different architectures and plat-
+     forms with minimal effort. To meet this requirement, eCos consists of a layered set
+     of components (Figure 13.5).
+     HARDWARE ABSTRACTION LAYER    At the bottom is the hardware abstraction layer
+     (HAL). The HAL is software that presents a consistent API to the upper layers and
+     maps upper-layer operations onto a specific hardware platform. Thus, the HAL is
+     different for each hardware platform. Figure 13.6 is an example that demonstrates
+     how the HAL abstracts hardware-specific implementations for the same API call
+     on two different platforms. As this example shows, the call from an upper layer to
+     enable interrupts is the same on both platforms, but the C code implementation of
+     the function is specific to each platform.
+        The HAL is implemented as three separate modules:
+     ·  Architecture: Defines the processor family type. This module contains the code
+        necessary for processor startup, interrupt delivery, context switching, and other
+        functionality specific to the instruction set architecture of that processor family.
+     ·  Variant: Supports the features of the specific processor in the family. An
+        example of a supported feature is an on-chip module such as a memory man-
+        agement unit (MMU).
+     ·  Platform: Extends the HAL support to tightly coupled peripherals like
+        interrupt controllers and timer devices. This module defines the platform
+        or board that includes the selected processor architecture and variant. It
+        includes code for startup, chip selection configuration, interrupt controllers,
+        and timer devices.
+        User application code
+        Standard C library
+        I/O system (device drivers)
+        Kernel
+        Hardware abstraction layer
+        Figure 13.5                eCos Layered  Structure
+
+                                                             13.3  /  ECOS     583
+             1    #define    HAL_ENABLE_INTERRUPTS()         \
+             2     asm     volatile    (                     \
+             3         "mrs  r3,  cpsr;"                     \
+             4         "bic  r3,  r3,     #0xC0;"            \
+             5         "mrs  cpsr,     r3;"                  \
+             6         :                                     \
+             7         :                                     \
+             8         :   "r3"                              \
+             9         );                                    \
+             (a)  ARM     architecture
+             1    #define    HAL_ENABLE_INTERRUPTS()         \
+             2     CYG_MACRO_START                           \
+             3     cyg_uint32     tmp1,      tmp2            \
+             4     asm     volatile    (                     \
+             5         "mfmsr    %0;"                        \
+             6         "ori  %1,%1,0x800;"                   \
+             7         "r1wimi    %0,%1,0,16,16;"            \
+             8         "mtmsr    %0;"                        \
+             9         :   "=r"  (tmp1),     "=r"  (tmp2));  \
+             10       CYG_MACRO_END                          \
+             (b)  PowerPC    architecture
+             Figure 13.6     Two Implementations of
+             Hal_Enable_Interrupts() Macro
+    Note that the HAL interface can be directly used by any of the upper layers,
+promoting efficient code.
+ECOS KERNEL     The eCos kernel was designed to satisfy four main objectives:
+·   Low interrupt latency: The time it takes to respond to an interrupt and begin
+    executing an ISR.
+·   Low task switching latency: The time it takes from when a thread becomes
+    available to when actual execution begins.
+·   Small memory footprint: Memory resources for both program and data are
+    kept to a minimum by allowing all components to configure memory as needed.
+·   Deterministic behavior: Throughout all aspect of execution, the kernels
+    performance must be predictable and bounded to meet real-time application
+    requirements.
+    The eCos kernel provides the core functionality needed for developing multi-
+threaded applications:
+1.  The ability to create new threads in the system, either during startup or when
+    the system is already running
+2.  Control over the various threads in the system: for example, manipulating
+    their priorities
+3.  A choice of schedulers, determining which thread should currently be running
+
+584  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+     4.  A range of synchronization primitives, allowing threads to interact and share
+         data safely
+     5.  Integration with the system's support for interrupts and exceptions
+         Some functionality that is typically included in the kernel of an OS is not
+     included in the eCos kernel. For example, memory allocation is handled by a sepa-
+     rate package. Similarly, each device driver is a separate package. Various packages
+     are combined and configured using the eCos configuration technology to meet the
+     requirements of the application. This makes for a lean kernel. Further, the minimal
+     nature of the kernel means that for some embedded platforms, the eCos kernel is
+     not used at all. Simple single-threaded applications can be run directly on HAL.
+     Such configurations can incorporate needed C library functions and device drivers
+     but avoid the space and time overhead of the kernel.
+         There are two different techniques for utilizing kernel functions in eCos. One
+     way to employ kernel functionality is by using the C API of kernel. Examples of
+     such functions are cyg_thread_create and cyg_mutex_lock. These functions can be
+     invoked directly from application code. On the other hand, kernel functions can
+     also be invoked by using compatibility packages for existing API's, for example
+     POSIX threads or ITRON. The compatibility packages allow application code to
+     call standard functions like pthread_create, and those functions are implemented
+     using the basic functions provided by the eCos kernel. Code sharing and reusability
+     of already developed code is easily achieved by use of compatibility packages.
+     I/O SYSTEM  The eCos I/O system is a framework for supporting device drivers. A
+     variety of drivers for a variety of platforms are provided in the eCos configuration
+     package. These include drivers for serial devices, Ethernet, flash memory interfaces,
+     and various I/O interconnects such as PCI (Peripheral Component Interconnect)
+     and USB (Universal Serial Bus). In addition, users can develop their own device
+     drivers.
+         The principal objective for the I/O system is efficiency, with no unnecessary
+     software layering or extraneous functionality. Device drivers provide the necessary
+     functions for input, output, buffering, and device control.
+         As mentioned, device drivers and other higher-layer software may be imple-
+     mented directly on the HAL if this is appropriate. If specialized kernel-type functions
+     are needed, then the device driver is implemented using kernel APIs. The kernel
+     provides a three-level interrupt model [ECOS07]:
+     ·   Interrupt service routines (ISRs): Invoked in response to a hardware interrupt.
+         Hardware interrupts are delivered with minimal intervention to an ISR. The
+         HAL decodes the hardware source of the interrupt and calls the ISR of the
+         attached interrupt object. This ISR may manipulate the hardware but is only
+         allowed to make a restricted set of calls on the driver API. When it returns, an
+         ISR may request that its DSR should be scheduled to run.
+     ·   Deferred service routines (DSRs): Invoked in response to a request by an ISR.
+         A DSR will be run when it is safe to do so without interfering with the sched-
+         uler. Most of the time the DSR will run immediately after the ISR, but if the
+         current thread is in the scheduler, it will be delayed until the thread is finished.
+
+                                                                                             13.3 / ECOS             585
+                A DSR is allowed to make a larger set of driver API calls, including, in particu-
+                lar, being able to call cyg_drv_cond_signal() to wake up waiting threads.
+             ·  Threads: The clients of the driver. Threads are able to make all API calls and
+                in particular are allowed to wait on mutexes and condition variables.
+                Tables 13.2 and 13.3 show the device driver interface to the kernel. These
+tables give a good feel for the type of functionality available in the kernel to support
+Table 13.2   Device Driver Interface to the eCos Kernel: Concurrency
+cyg_drv_spinlock_init       Initialize a spinlock in a locked or unlocked state.
+cyg_drv_spinlock_destroy    Destroy a spinlock that is no longer of use.
+cyg_drv_spinlock_spin       Claim a spinlock, waiting in a busy loop until it is available.
+cyg_drv_spinlock_clear      Clear a spinlock. This clears the spinlock and allows another CPU to claim it.
+If there is more than one CPU waiting in cyg_drv_spinlock_spin, then just one of them will be allowed
+to proceed.
+cyg_drv_spinlock_test       Inspect the state of the spinlock. If the spinlock is not locked, then the result is
+TRUE. If it is locked, then the result will be FALSE.
+cyg_drv_spinlock_spin_intsave            This function behaves like cyg_drv_spinlock_spin except
+that it also disables interrupts before attempting to claim the lock. The current interrupt enable state is saved
+in *istate. Interrupts remain disabled once the spinlock has been claimed and must be restored by calling
+cyg_drv_spinlock_clear_intsave. Device drivers should use this function to claim and release
+spinlocks rather than the non-_intsave() variants, to ensure proper exclusion with code running on both other
+CPUs and this CPU.
+cyg_drv_mutex_init          Initialize a mutex.
+cyg_drv_mutex_destroy       Destroy a mutex. The mutex should be unlocked and there should be no
+threads waiting to lock it when this call in made.
+cyg_drv_mutex_lock          Attempt to lock the mutex pointed to by the mutex argument. If the mutex is
+already locked by another thread, then this thread will wait until that thread is finished. If the result from this
+function is FALSE, then the thread was broken out of its wait by some other thread. In this case, the mutex will
+not have been locked.
+cyg_drv_mutex_trylock       Attempt to lock the mutex pointed to by the mutex argument without waiting.
+If the mutex is already locked by some other thread then this function returns FALSE. If the function can
+lock the mutex without waiting, then TRUE is returned.
+cyg_drv_mutex_unlock        Unlock the mutex pointed to by the mutex argument. If there are any threads
+waiting to claim the lock, one of them is woken up to try and claim it.
+cyg_drv_mutex_release       Release all threads waiting on the mutex.
+cyg_drv_cond_init           Initialize a condition variable associated with a mutex with. A thread may only
+wait on this condition variable when it has already locked the associated mutex. Waiting will cause the mutex
+to be unlocked, and when the thread is reawakened, it will automatically claim the mutex before continuing.
+cyg_drv_cond_destroy        Destroy the condition variable.
+cyg_drv_cond_wait           Wait for a signal on a condition variable.
+cyg_drv_cond_signal         Signal a condition variable. If there are any threads waiting on this variable, at
+least one of them will all be awakened.
+cyg_drv_cond_broadcast      Signal a condition variable. If there are any threads waiting on this variable,
+they will all be awakened.
+
+586  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+Table 13.3     Device Driver Interface to the eCos Kernel: Interrupts
+cyg_drv_isr_lock           Disable delivery of interrupts, preventing all ISRs running. This function maintains a
+counter of the number of times it is called.
+cyg_drv_isr_unlock          Reenable delivery of interrupts, allowing ISRs to run. This function decrements
+the counter maintained by cyg_drv_isr_lock, and only reallows interrupts when it goes to zero.
+cyg_ISR_t      Define ISR.
+cyg_drv_dsr_lock           Disable scheduling of DSRs. This function maintains a counter of the number of
+times it has been called.
+cyg_drv_dsr_unlock          Reenable scheduling of DSRs. This function decrements the counter incremented
+by cyg_drv_dsr_lock.        DSRs are only allowed to be delivered when the counter goes to zero.
+cyg_DSR_t      Define DSR prototype.
+cyg_drv_interrupt_create        Create an interrupt object and returns a handle to it.
+cyg_drv_interrupt_delete        Detach the interrupt from the vector and free the memory for reuse.
+cyg_drv_interrupt_attach        Attach an interrupt to a vector so that interrupts will be delivered to the
+ISR when the interrupt occurs.
+cyg_drv_interrupt_detach        Detach the interrupt from the vector so that interrupts will no longer be
+delivered to the ISR.
+cyg_drv_interrupt_mask          Program the interrupt controller to stop delivery of interrupts on the
+given vector.
+cyg_drv_interrupt_mask_intunsafe                  Program the interrupt controller to stop delivery of interrupts
+on the given vector. This version differs from cyg_drv_interrupt_mask in not being interrupt safe. So
+in situations where, for example, interrupts are already known to be disabled, this may be called to avoid the
+extra overhead.
+cyg_drv_interrupt_unmask,       cyg_drv_interrupt_unmask_intunsafe                      Program the interrupt
+controller to reallow delivery of interrupts on the given vector.
+cyg_drv_interrupt_acknowledge                 Perform any processing required at the interrupt controller and in
+the CPU to cancel the current interrupt request.
+cyg_drv_interrupt_configure           Program the interrupt controller with the characteristics of the
+interrupt source.
+cyg_drv_interrupt_level         Program the interrupt controller to deliver the given interrupt at the
+supplied priority level.
+cyg_drv_interrupt_set_cpu       On multiprocessor systems, this function causes all interrupts on the
+given vector to be routed to the specified CPU. Subsequently, all such interrupts will be handled by that CPU.
+cyg_drv_interrupt_get_cpu       On multiprocessor systems, this function returns the ID of the CPU to
+which interrupts on the given vector are currently being delivered.
+     device drivers. Note that the device driver interface can be configured for one or
+     more of the following concurrency mechanisms: spinlocks, condition variables, and
+     mutexes. These are described in a subsequent portion of this discussion.
+     STANDARD C LIBRARIES                     A complete Standard C run-time library is provided. Also
+     included is a complete math run time library for high-level mathematics functions,
+     including a complete IEEE-754 floating-point library for those platforms without
+     hardware floating points.
+
+                                                                   13.3 / ECOS          587
+eCos Scheduler
+The eCos kernel can be configured to provide one of two scheduler designs: the
+bitmap scheduler and a multilevel queue scheduler. The configuration user selects
+the appropriate scheduler for the environment and the application. The bitmap
+scheduler provides efficient scheduling for a system with a small number of threads
+that may be active at any point in time. The multiqueue scheduler is appropriate
+if the number of threads is dynamic or if it is desirable to have multiple threads
+at the same priority level. The multilevel scheduler is also needed if time slicing
+is desired.
+BITMAP SCHEDULER        A bitmap scheduler supports multiple priority levels, but only
+one thread can exist at each priority level at any given time. Scheduling decisions
+are quite simple with this scheduler (Figure 13.7a). When a blocked thread becomes
+ready to run, it may preempt a thread of lower priority. When a running thread
+suspends, the ready thread with the highest priority is dispatched. A thread can
+be suspended because it is blocked on a synchronization primitive, because it is
+interrupted, or because it relinquishes control. Because there is only one thread,
+at most, at each priority level, the scheduler does not have to make a decision as to
+which thread at a given priority level should be dispatched next.
+The bitmap scheduler is configured with 8, 16, or 32 priority levels. A simple
+bitmap is kept of the threads that are ready to execute. The scheduler need only
+determine the position of the most significant one bit in the bitmap to make a sched-
+uling decision.
+MULTILEVEL       QUEUE  SCHEDULER  As with the bitmap scheduler, the multilevel
+queue scheduler supports up to 32 priority levels. The multilevel queue scheduler
+allows for multiple active threads at each priority level, limited only by system
+resources.
+Figure 13.7b illustrates the nature of the multilevel queue scheduler. A data
+structure represents the number of ready threads at each priority level. When a
+blocked thread becomes ready to run, it may preempt a thread of lower priority.
+As with the bitmap scheduler, a running thread may be blocked on a synchroniza-
+tion primitive, because it is interrupted, or because it relinquishes control. When
+a thread is blocked, the scheduler must first determine if one or more threads at
+the same priority level as the blocked thread is ready. If so, the scheduler chooses
+the one at the front of the queue. Otherwise, the scheduler looks for the next
+highest priority level with one or more ready threads and dispatches one of these
+threads.
+In addition, the multilevel queue scheduler can be configured for time slicing.
+Thus, if a thread is running and there is one or more ready threads at the same
+priority level, the scheduler will suspend the running thread after one time slice
+and choose the next thread in the queue at that priority level. This is a round-robin
+policy within one priority level. Not all applications require time slicing. For exam-
+ple, an application may contain only threads that block regularly for some other
+reason. For these applications, the user can disable time slicing, which reduces the
+overhead associated with timer interrupts.
+
+588  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+                                                           Bitmap
+                                                         scheduling queue
+                           Maximum priority 31
+                                                         Thread C
+                                                         Thread B
+                                     Minimum priority 0  Thread A
+                           Thread A
+                                       Deschedule
+               Preemption                                          Thread B
+                                                                               Deschedule
+     Thread C                                                                                        Thread C
+                                     (a) Bitmap scheduler thread operation
+                                     Multilevel scheduling queue
+     Maximum priority 31
+                                                                   Thread C
+     Minimum priority 0                                  Thread B  Thread A
+                           Thread A  Time slice  Thread B          Deschedule  Thread A
+               Preemption                                                                Deschedule
+     Thread C                                                                                        Thread C
+                           (b) Multilevel queue scheduler thread operation
+Figure 13.7    eCos Scheduler Options
+
+                                                                     13.3 / ECOS         589
+eCos Thread Synchronization
+The eCos kernel can be configured to include one or more of six different thread
+synchronization mechanisms. These include the classic synchronization mecha-
+nisms: mutexes, semaphores, and condition variables. In addition, eCos supports
+two synchronization/communication mechanisms that are common in real-time
+systems, namely event flags and mailboxes. Finally, the eCos kernel supports spin-
+locks, which are useful in SMP (symmetric multiprocessing) systems.
+MUTEXES  The mutex (mutual exclusion lock) was introduced in Chapter 6. Recall
+that a mutex is used to enforce mutually exclusive access to a resource, allowing
+only one thread at a time to gain access. The mutex has only two states: locked and
+unlocked. This is similar to a binary semaphore: When a mutex is locked by one
+thread, any other thread attempting to lock the mutex is blocked; when the mutex is
+unlocked, then one of the threads blocked on this mutex is unblocked and allowed
+to lock the mutex and gain access to the resource.
+The mutex differs from a binary semaphore in two respects. First, the thread
+that locks the mutex must be the one to unlock it. In contrast, it is possible for
+one thread to lock a binary semaphore and for another to unlock it. The other
+difference is that a mutex provides protection against priority inversion, whereas a
+semaphore does not.
+The eCos kernel can be configured to support either a priority inheritance
+protocol or a priority ceiling protocol. These are described in Chapter 10.
+SEMAPHORES      The eCos kernel provides support for a counting semaphore. Recall
+from Chapter 5 that a counting semaphore is an integer value used for signaling
+among threads. The cyg_semaphore_init is used to initialize a semaphore. The
+cyg_semaphore_post command increments the semaphore count when an event
+occurs. If the new count is less than or equal to zero, then a thread is waiting on
+this semaphore and is awakened. The cyg_semaphore_wait function checks the
+value of a semaphore count. If the count is zero, the thread calling this function will
+wait for the semaphore. If the count is nonzero, the count is decremented and the
+thread continues.
+Counting semaphores are suited to enabling threads to wait until an event
+has occurred. The event may be generated by a producer thread, or by a DSR in
+response to a hardware interrupt. Associated with each semaphore is an integer
+counter that keeps track of the number of events that have not yet been processed.
+If this counter is zero, an attempt by a consumer thread to wait on the semaphore
+will block until some other thread or a DSR posts a new event to the semaphore.
+If the counter is greater than zero, then an attempt to wait on the semaphore will
+consume one event, in other words decrement the counter, and return immedi-
+ately. Posting to a semaphore will wake up the first thread that is currently waiting,
+which will then resume inside the semaphore wait operation and decrement the
+counter again.
+Another use of semaphores is for certain forms of resource management. The
+counter would correspond to how many of a certain type of resource are currently
+available, with threads waiting on the semaphore to claim a resource and posting to
+
+590  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+     release the resource again. In practice, condition variables are usually much better
+     suited for operations like this.
+     CONDITION  VARIABLES  A condition variable is used to block a thread until a
+     particular condition is true. Condition variables are used with mutexes to allow
+     multiple threads to access shared data. They can be used to implement monitors
+     of the type discussed in Chapter 6 (e.g., Figure 6.14). The basic commands are as
+     follows:
+     cyg_cond_wait                     Causes the current threat to wait on the specified con-
+                                       dition variable and simultaneously unlocks the mutex
+                                       attached to the condition variable
+     cyg_cond_signal                   Wakes up one of the threads waiting on this condition
+                                       variable, causing that thread to become the owner of
+                                       the mutex
+     cyg_cond_broadcast                Wakes up all the threads waiting on this condition
+                                       variable. Each thread that was waiting on the condi-
+                                       tion variable becomes the owner of the mutex when
+                                       it runs.
+     In eCos, condition variables are typically used in conjunction with mutexes to
+     implement long-term waits for some condition to become true. We use an example
+     from [ECOS07] to illustrate. Figure 13.8 defines a set of functions to control access
+     to a pool of resources using mutexes. The mutex is used to make the allocation
+     and freeing of resources from a pool atomic. The function res_t       res_allocate
+     checks to see if one or more units of a resource are available and, if so, takes one
+     unit. This operation is protected by a mutex so that no other thread can check or
+     alter the resource pool while this thread has control of the mutex. The function
+     res_free(res_t  res) enables a thread to release one unit of a resource that it
+     had previously acquired. Again, this operation is made atomic by a mutex.
+     In this example, if a thread attempts to access a resource and none are
+     available, the function returns RES_NONE. Suppose, however, that we want the
+     thread to be blocked and wait for a resource to become available, rather than
+     returning RES_NONE. Figure 13.9 accomplishes this with the use of a condition
+     variable associated with the mutex. When res_allocate detects that there are
+     no resources, it calls cyg_cond_wait. This latter function unlocks the mutex
+     and puts the calling thread to sleep on the condition variable. When res_free
+     is eventually called, it puts a resource back into the pool and calls cyg_cond_
+     signal to wake up any thread waiting on the condition variable. When the wait-
+     ing thread eventually gets to run again, it will relock the mutex before returning
+     from cyg_cond_wait.
+     [ECOS07] points out two significant features of this example, and of the use
+     of condition variables in general. First, the mutex unlock and wait in cyg_cond_
+     wait are atomic: No other thread can run between the unlock and the wait. If this
+     were not the case, then a call to res_free by some other thread would release
+     the resource, but the call to cyg_cond_signal would be lost, and the first thread
+     would end up waiting when there were resources available.
+
+                                                                                        13.3 / ECOS        591
+cyg_mutex_t    res_lock;
+res_t     res_pool[RES_MAX];
+int   res_count   =  RES_MAX;
+void   res_init(void)
+{
+       cyg_mutex_init(&res_lock);
+       <fill   pool  with   resources>
+}
+res_t     res_allocate(void)
+{
+       res_t   res;
+       cyg_mutex_lock(&res_lock);                                           //  lock   the   mutex
+       if(   res_count  ==  0    )                                          //  check   for     free  resource
+             res  =  RES_NONE;                                              //  return  RES_NONE       if  none
+       else
+       {
+             res_count--;                                                   //  allocate     a  resources
+             res  =  res_pool[res_count];
+       }
+       cyg_mutex_unlock(&res_lock);                                         //  unlock  the     mutex
+       return  res;
+}
+void   res_free(res_t      res)
+{
+       cyg_mutex_lock(&res_lock);                                           //  lock   the   mutex
+       res_pool[res_count]          =  res;                                 //  free   the   resource
+       res_count++;
+       cyg_mutex_unlock(&res_lock);                                         //  unlock  the     mutex
+}
+Figure 13.8    Controlling Access to a Pool  of  Resources  Using  Mutexes
+                  The second feature is that the call to cyg_cond_wait is in a while loop
+          and not a simple if statement. This is because of the need to relock the mutex in
+          cyg_cond_wait when the signaled thread reawakens. If there are other threads
+          already queued to claim the lock, then this thread must wait. Depending on the
+          scheduler and the queue order, many other threads may have entered the critical
+          section before this one gets to run. So the condition that it was waiting for may have
+          been rendered false. Using a loop around all condition variable wait operations is the
+          only way to guarantee that the condition being waited for is still true after waiting.
+          EVENT FLAGS          An event flag is a 32-bit word used as a synchronization mechanism.
+          Application code may associate a different event with each bit in a flag. A thread
+          can wait for either a single event or a combination of events by checking one or
+          multiple bits in the corresponding flag. The thread is blocked until all of the required
+          bits are set (AND) or until at least one of the bits is set (OR). A signaling thread
+          can set or reset bits based on specific conditions or events so that the appropriate
+
+592    CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+cyg_mutex_t     res_lock;
+cyg_cond_t      res_wait;
+res_t  res_pool[RES_MAX];
+int   res_count  =    RES_MAX;
+void   res_init(void)
+{
+       cyg_mutex_init(&res_lock);
+       cyg_cond_init(&res_wait,         &res_lock);
+       <fill    pool  with  resources>
+}
+res_t  res_allocate(void)
+{
+       res_t    res;
+       cyg_mutex_lock(&res_lock);                                 //  lock  the  mutex
+       while(   res_count   ==    0  )                            //  wait  for  a    resources
+                cyg_cond_wait(&res_wait);
+       res_count--;                                               //  allocate   a    resource
+       res   =  res_pool[res_count];
+       cyg_mutex_unlock(&res_lock);                               //  unlock    the   mutex
+       return   res;
+}
+void   res_free(res_t       res)
+{
+       cyg_mutex_lock(&res_lock);                                 //  lock  the  mutex
+       res_pool[res_count]        =  res;                         //  free  the  resource
+       res_count++;
+       cyg_cond_signal(&res_wait);                                //  wake  up   any  waiting    allocators
+       cyg_mutex_unlock(&res_lock);                               //  unlock    the   mutex
+}
+Figure 13.9     Controlling Access to a Pool of Resources  Using  Mutexes and Condition Variables
+       thread is unblocked. For example, bit 0 could represent completion of a specific I/O
+       operation, making data available, and bit 1 could indicate that the user has pressed
+       a start button. A producer thread or DSR could set these two bits, and a consumer
+       thread waiting on these two events will be woken up.
+                 A thread can wait on one or more events using the cyg_flag_wait com-
+       mand, which takes three arguments: a particular event flag, a combination of bit
+       positions in the flag, and a mode parameter. The mode parameter specifies whether
+       the thread will block until all the bits are set (AND) or until at least one of the bits
+       is set (OR). The mode parameter may also specify that when the wait succeeds, the
+       entire event flag is cleared (set to all zeros).
+       MAILBOXES            Mailboxes, also called message boxes, are an eCos synchronization
+       mechanism that provides a means for two threads to exchange information.
+
+                                                            13.3 / ECOS                      593
+Section 5.5 provides a general discussion of message-passing synchronization.
+Here, we look at the specifics of the eCos version.
+The eCos mailbox mechanism can be configured for blocking or nonblocking
+on both the send and receive side. The maximum size of the message queue associ-
+ated with a given mailbox can also be configured.
+The send message primitive, called put, includes two arguments: a handle to
+the mailbox and a pointer for the message itself. There are three variants to this
+primitive:
+cyg_mbox_put                If there is a spare slot in the mailbox, then the new message is
+                            placed there; if there is a waiting thread, it will be woken up
+                            so that it can receive the message. If the mailbox is currently
+                            full, cyg_mbox_put blocks until there has been a corre-
+                            sponding get operation and a slot ids available.
+cyg_mbox_timed_put          Same as cyg_mbox_put if there is a spare slot. Otherwise,
+                            the function will wait a specified time limit and place the
+                            message if a slot becomes available. If the time limit expires,
+                            the operation returns false. Thus, cyg_mbox_timed_
+                            put is blocking only for less than or equal to a specified
+                            time interval.
+cyg_mbox_tryput             This is a nonblocking version, which returns true if the
+                            message is sent successfully and false if the mailbox is full.
+Similarly, there are three  variants to the get primitive.
+cyg_mbox_get                If there is a pending message in the specified mailbox,
+                            cyg_mbox_get returns with the message that was put into
+                            the mailbox. Otherwise this function blocks until there is a
+                            put operation.
+cyg_mbox_timed_get          Immediately returns a message if one is available. Otherwise,
+                            the function will wait until either a message is available or
+                            until a number of clock ticks have occurred. If the time limit
+                            expires, the operation returns a null pointer. Thus, cyg_box_
+                            timed_get is blocking only for less than or equal
+                            to a specified time interval.
+cyg_mbox_tryget             This is a nonblocking version, which returns a message if one
+                            is available and a null pointer if the mailbox is empty.
+SPINLOCKS   A spinlock is a flag that a thread can check before executing a particular
+piece of code. Recall from our discussion of Linux spinlocks in Chapter 6 the basic
+operation of the spinlock: Only one thread at a time can acquire a spinlock. Any
+other thread attempting to acquire the same lock will keep trying (spinning) until it
+can acquire the lock. In essence, a spinlock is built on an integer location in memory
+that is checked by each thread before it enters its critical section. If the value is 0,
+the thread sets the value to 1 and enters its critical section. If the value is nonzero,
+the thread continually checks the value until it is zero.
+A spinlock should not be used on a single-processor system, which is why it
+is compiled away on Linux. As an example of the danger, consider a uniprocessor
+
+594  CHAPTER 13 / EMBEDDED OPERATING SYSTEMS
+      system with preemptive scheduling, in which a higher-priority thread attempts to
+      acquire a spinlock already held by a lower priority thread. The lower-priority thread
+      cannot execute so as to finish its work and release the spinlock, because the higher-
+      priority thread preempts it. The higher-priority thread can execute but is stuck
+      checking the spinlock. As a result, the higher-priority thread will just loop forever
+      and the lower-priority thread will never get another chance to run and release the
+      spinlock. On an SMP system, the current owner of a spinlock can continue running
+      on a different processor.
+13.4  TINYOS
+      The eCos system provides a more streamlined approach for an embedded OS than
+      one based on a commercial general-purpose OS, such as an embedded version of
+      Linux. Thus, eCos and similar systems are better suited for small embedded systems
+      with tight requirements on memory, processing time, real-time response, power
+      consumption, and so on. TinyOS takes the process of streamlining to a much further
+      point, resulting in a very minimal OS for embedded systems. The core OS requires
+      400 bytes of code and data memory, combined.
+      TinyOS represents a significant departure from other embedded operating
+      systems. One striking difference is that TinyOS is not a real-time OS. The reason for
+      this is the expected workload, which is in the context of a wireless sensor network,
+      as described in the next subsection. Because of power consumption, these devices
+      are off most of the time. Applications tend to be simple, with processor contention
+      not much of an issue.
+      Additionally, in TinyOS there is no kernel, as there is no memory protection
+      and it is a component-based OS; there are no processes; the OS itself does not have
+      a memory allocation system (although some rarely used components do introduce
+      one); interrupt and exception handling is dependent on the peripheral; and it is
+      completely nonblocking, so there are few explicit synchronization primitives.
+      TinyOS has become a popular approach to implementing wireless sensor
+      network software. Currently, over 500 organizations are developing and contributing
+      to an open source standard for Tiny OS.
+      Wireless Sensor Networks
+      TinyOS was developed primarily for use with networks of small wireless sensors. A
+      number of trends have enabled the development of extremely compact, low-power
+      sensors. The well-known Moore's law continues to drive down the size of memory
+      and processing logic elements. Smaller size in turn reduces power consumption. Low
+      power and small size trends are also evident in wireless communications hardware,
+      micro-electromechanical sensors (MEMS), and transducers. As a result, it is possible
+      to develop an entire sensor complete with logic in a cubic millimeter. The application
+      and system software must be compact enough that sensing, communication, and com-
+      putation capabilities can be incorporated into a complete, but tiny, architecture.
+      Low­cost, small­size, low-power-consuming wireless sensors can be used in a
+      host of applications [ROME04]. Figure 13.10 shows a typical configuration. A base

@@ -1,0 +1,165 @@
+Memory Management Requirements
+                                     7.1 / MEMORY MANAGEMENT REQUIREMENTS                                    307
+Table 7.1  Memory Management Terms
+Frame      A fixed-length block of main memory.
+Page       A fixed-length block of data that resides in secondary memory (such as disk). A page of data may
+           temporarily be copied into a frame of main memory.
+Segment    A variable-length block of data that resides in secondary memory. An entire segment may tempo-
+           rarily be copied into an available region of main memory (segmentation) or the segment may be
+           divided into pages which can be individually copied into main memory (combined segmentation
+           and paging).
+7.1        MEMORY MANAGEMENT REQUIREMENTS
+           While surveying the various mechanisms and policies associated with memory man-
+           agement, it is helpful to keep in mind the requirements that memory management is
+           intended to satisfy. These requirements include the following:
+           �  Relocation
+           �  Protection
+           �  Sharing
+           �  Logical organization
+           �  Physical organization
+           Relocation
+           In a multiprogramming system, the available main memory is generally shared
+           among a number of processes. Typically, it is not possible for the programmer to
+           know in advance which other programs will be resident in main memory at the time
+           of execution of his or her program. In addition, we would like to be able to swap
+           active processes in and out of main memory to maximize processor utilization by
+           providing a large pool of ready processes to execute. Once a program is swapped
+           out to disk, it would be quite limiting to specify that when it is next swapped back in,
+           it must be placed in the same main memory region as before. Instead, we may need
+           to relocate the process to a different area of memory.
+              Thus, we cannot know ahead of time where a program will be placed, and we
+           must allow for the possibility that the program may be moved about in main memory
+           due to swapping. These facts raise some technical concerns related to addressing,
+           as illustrated in Figure 7.1. The figure depicts a process image. For simplicity, let
+           us assume that the process image occupies a contiguous region of main memory.
+           Clearly, the operating system will need to know the location of process control
+           information and of the execution stack, as well as the entry point to begin execution
+           of the program for this process. Because the operating system is managing mem-
+           ory and is responsible for bringing this process into main memory, these addresses
+           are easy to come by. In addition, however, the processor must deal with memory
+
+308  CHAPTER 7 / MEMORY MANAGEMENT
+           Process control               Process control block
+           information      Entry point
+                            to program
+                                                                   Branch
+                                              Program              instruction
+           Increasing
+                   address
+                   values                                          Reference
+                                                                   to data
+                                              Data
+                            Current top
+                            of stack
+                                              Stack
+           Figure 7.1       Addressing Requirements for a Process
+     references within the program. Branch instructions contain an address to reference
+     the instruction to be executed next. Data reference instructions contain the address
+     of the byte or word of data referenced. Somehow, the processor hardware and oper-
+     ating system software must be able to translate the memory references found in the
+     code of the program into actual physical memory addresses, reflecting the current
+     location of the program in main memory.
+     Protection
+     Each  process  should  be  protected  against     unwanted    interference  by  other
+     processes, whether accidental or intentional. Thus, programs in other processes
+     should not be able to reference memory locations in a process for reading or writing
+     purposes without permission. In one sense, satisfaction of the relocation require-
+     ment increases the difficulty of satisfying the protection requirement. Because
+     the location of a program in main memory is unpredictable, it is impossible to
+     check absolute addresses at compile time to assure protection. Furthermore, most
+     programming languages allow the dynamic calculation of addresses at run time
+     (e.g., by computing an array subscript or a pointer into a data structure). Hence all
+     memory references generated by a process must be checked at run time to ensure
+     that they refer only to the memory space allocated to that process. Fortunately,
+     we shall see that mechanisms that support relocation also support the protection
+     requirement.
+           Normally, a user process cannot access any portion of the operating system,
+     neither program nor data. Again, usually a program in one process cannot branch
+     to an instruction in another process. Without special arrangement, a program in one
+     process cannot access the data area of another process. The processor must be able
+     to abort such instructions at the point of execution.
+
+                       7.1 / MEMORY MANAGEMENT REQUIREMENTS                             309
+    Note that the memory protection requirement must be satisfied by the proces-
+sor (hardware) rather than the operating system (software). This is because the OS
+cannot anticipate all of the memory references that a program will make. Even if
+such anticipation were possible, it would be prohibitively time consuming to screen
+each program in advance for possible memory-reference violations. Thus, it is only
+possible to assess the permissibility of a memory reference (data access or branch)
+at the time of execution of the instruction making the reference. To accomplish this,
+the processor hardware must have that capability.
+Sharing
+Any protection mechanism must have the flexibility to allow several processes to
+access the same portion of main memory. For example, if a number of processes are
+executing the same program, it is advantageous to allow each process to access the
+same copy of the program rather than have its own separate copy. Processes that
+are cooperating on some task may need to share access to the same data structure.
+The memory management system must therefore allow controlled access to shared
+areas of memory without compromising essential protection. Again, we will see that
+the mechanisms used to support relocation support sharing capabilities.
+Logical Organization
+Almost invariably, main memory in a computer system is organized as a linear,
+or one-dimensional, address space, consisting of a sequence of bytes or words.
+Secondary memory, at its physical level, is similarly organized. While this organi-
+zation closely mirrors the actual machine hardware, it does not correspond to the
+way in which programs are typically constructed. Most programs are organized into
+modules, some of which are unmodifiable (read only, execute only) and some of
+which contain data that may be modified. If the operating system and computer
+hardware can effectively deal with user programs and data in the form of modules
+of some sort, then a number of advantages can be realized:
+1.  Modules can be written and compiled independently, with all references from
+    one module to another resolved by the system at run time.
+2.  With modest additional overhead, different degrees of protection (read only,
+    execute only) can be given to different modules.
+3.  It is possible to introduce mechanisms by which modules can be shared among
+    processes. The advantage of providing sharing on a module level is that this
+    corresponds to the user's way of viewing the problem, and hence it is easy for
+    the user to specify the sharing that is desired.
+The tool that most readily satisfies these requirements is segmentation, which is one
+of the memory management techniques explored in this chapter.
+Physical Organization
+As we discussed in Section 1.5, computer memory is organized into at least two
+levels, referred to as main memory and secondary memory. Main memory provides
+fast access at relatively high cost. In addition, main memory is volatile; that is, it
+
+310  CHAPTER 7 / MEMORY MANAGEMENT
+     does not provide permanent storage. Secondary memory is slower and cheaper than
+     main memory and is usually not volatile. Thus secondary memory of large capacity
+     can be provided for long-term storage of programs and data, while a smaller main
+     memory holds programs and data currently in use.
+         In this two-level scheme, the organization of the flow of information between
+     main and secondary memory is a major system concern. The responsibility for this
+     flow could be assigned to the individual programmer, but this is impractical and
+     undesirable for two reasons:
+     1.  The main memory available for a program plus its data may be insufficient. In
+         that case, the programmer must engage in a practice known as overlaying, in
+         which the program and data are organized in such a way that various modules
+         can be assigned the same region of memory, with a main program responsible
+         for switching the modules in and out as needed. Even with the aid of compiler
+         tools, overlay programming wastes programmer time.
+     2.  In a multiprogramming environment, the programmer does not know at the
+         time of coding how much space will be available or where that space will be.
+         It is clear, then, that the task of moving information between the two levels
+     of memory should be a system responsibility. This task is the essence of memory
+     management.
+7.2  MEMORY PARTITIONING
+     The principal operation of memory management is to bring processes into main
+     memory for execution by the processor. In almost all modern multiprogramming
+     systems, this involves a sophisticated scheme known as virtual memory. Virtual
+     memory is, in turn, based on the use of one or both of two basic techniques: segmen-
+     tation and paging. Before we can look at these virtual memory techniques, we must
+     prepare the ground by looking at simpler techniques that do not involve virtual
+     memory (Table 7.2 summarizes all the techniques examined in this chapter and the
+     next). One of these techniques, partitioning, has been used in several variations in
+     some now-obsolete operating systems. The other two techniques, simple paging and
+     simple segmentation, are not used by themselves. However, it will clarify the dis-
+     cussion of virtual memory if we look first at these two techniques in the absence of
+     virtual memory considerations.
+     Fixed Partitioning
+     In most schemes for memory management, we can assume that the OS occupies
+     some fixed portion of main memory and that the rest of main memory is available
+     for use by multiple processes. The simplest scheme for managing this available
+     memory is to partition it into regions with fixed boundaries.
+     PARTITION  SIZES  Figure 7.2 shows examples of two alternatives for fixed
+     partitioning. One possibility is to make use of equal-size partitions. In this case,
+     any process whose size is less than or equal to the partition size can be loaded into

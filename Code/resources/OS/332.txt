@@ -1,0 +1,472 @@
+Memory Partitioning
+310  CHAPTER 7 / MEMORY MANAGEMENT
+     does not provide permanent storage. Secondary memory is slower and cheaper than
+     main memory and is usually not volatile. Thus secondary memory of large capacity
+     can be provided for long-term storage of programs and data, while a smaller main
+     memory holds programs and data currently in use.
+         In this two-level scheme, the organization of the flow of information between
+     main and secondary memory is a major system concern. The responsibility for this
+     flow could be assigned to the individual programmer, but this is impractical and
+     undesirable for two reasons:
+     1.  The main memory available for a program plus its data may be insufficient. In
+         that case, the programmer must engage in a practice known as overlaying, in
+         which the program and data are organized in such a way that various modules
+         can be assigned the same region of memory, with a main program responsible
+         for switching the modules in and out as needed. Even with the aid of compiler
+         tools, overlay programming wastes programmer time.
+     2.  In a multiprogramming environment, the programmer does not know at the
+         time of coding how much space will be available or where that space will be.
+         It is clear, then, that the task of moving information between the two levels
+     of memory should be a system responsibility. This task is the essence of memory
+     management.
+7.2  MEMORY PARTITIONING
+     The principal operation of memory management is to bring processes into main
+     memory for execution by the processor. In almost all modern multiprogramming
+     systems, this involves a sophisticated scheme known as virtual memory. Virtual
+     memory is, in turn, based on the use of one or both of two basic techniques: segmen-
+     tation and paging. Before we can look at these virtual memory techniques, we must
+     prepare the ground by looking at simpler techniques that do not involve virtual
+     memory (Table 7.2 summarizes all the techniques examined in this chapter and the
+     next). One of these techniques, partitioning, has been used in several variations in
+     some now-obsolete operating systems. The other two techniques, simple paging and
+     simple segmentation, are not used by themselves. However, it will clarify the dis-
+     cussion of virtual memory if we look first at these two techniques in the absence of
+     virtual memory considerations.
+     Fixed Partitioning
+     In most schemes for memory management, we can assume that the OS occupies
+     some fixed portion of main memory and that the rest of main memory is available
+     for use by multiple processes. The simplest scheme for managing this available
+     memory is to partition it into regions with fixed boundaries.
+     PARTITION  SIZES  Figure 7.2 shows examples of two alternatives for fixed
+     partitioning. One possibility is to make use of equal-size partitions. In this case,
+     any process whose size is less than or equal to the partition size can be loaded into
+
+                                                                 7.2 / MEMORY PARTITIONING                 311
+Table 7.2  Memory Management Techniques
+Technique        Description                      Strengths                    Weaknesses
+Fixed            Main memory is divided into      Simple to implement; little  Inefficient use of memory
+Partitioning     a number of static partitions    operating system overhead.   due to internal fragmenta-
+                 at system generation time.                                    tion; maximum number of
+                 A process may be loaded                                       active processes is fixed.
+                 into a partition of equal or
+                 greater size.
+Dynamic          Partitions are created           No internal fragmentation;   Inefficient use of processor
+Partitioning     dynamically, so that each        more efficient use of main   due to the need for com-
+                 process is loaded into a         memory.                      paction to counter external
+                 partition of exactly the same                                 fragmentation.
+                 size as that process.
+Simple Paging    Main memory is divided           No external fragmentation.   A small amount of internal
+                 into a number of equal-size                                   fragmentation.
+                 frames. Each process is
+                 divided into a number of
+                 equal-size pages of the same
+                 length as frames. A process
+                 is loaded by loading all of its
+                 pages into available, not nec-
+                 essarily contiguous, frames.
+Simple           Each process is divided into     No internal fragmentation;   External fragmentation.
+Segmentation     a number of segments. A          improved memory utiliza-
+                 process is loaded by load-       tion and reduced overhead
+                 ing all of its segments into     compared to dynamic
+                 dynamic partitions that need     partitioning.
+                 not be contiguous.
+Virtual Memory   As with simple paging,           No external fragmentation;   Overhead of complex
+Paging           except that it is not necessary  higher degree of multipro-   memory management.
+                 to load all of the pages of a    gramming; large virtual
+                 process. Nonresident pages       address space.
+                 that are needed are brought
+                 in later automatically.
+Virtual Memory   As with simple segmenta-         No internal fragmentation,   Overhead of complex
+Segmentation     tion, except that it is not      higher degree of multipro-   memory management.
+                 necessary to load all of         gramming; large virtual
+                 the segments of a process.       address space; protection
+                 Nonresident segments that        and sharing support.
+                 are needed are brought in
+                 later automatically.
+           any available partition. If all partitions are full and no process is in the Ready or
+           Running state, the operating system can swap a process out of any of the partitions
+           and load in another process, so that there is some work for the processor.
+                 There are two difficulties with the use of equal-size fixed partitions:
+              ·  A program may be too big to fit into a partition. In this case, the programmer
+                 must design the program with the use of overlays so that only a portion of the
+                 program need be in main memory at any one time. When a module is needed
+
+312  CHAPTER  7  /  MEMORY MANAGEMENT
+                    Operating system           Operating system
+                    8M                         8M
+                                               2M
+                    8M                         4M
+                                               6M
+                    8M
+                                               8M
+                    8M
+                                               8M
+                    8M
+                    8M                         12M
+                    8M
+                                               16M
+                    8M
+                    (a) Equal-size partitions  (b) Unequal-size partitions
+                    Figure 7.2  Example of Fixed Partitioning of a 64-Mbyte Memory
+        that is not present, the user's program must load that module into the pro-
+        gram's partition, overlaying whatever programs or data are there.
+     ·  Main memory utilization is extremely inefficient. Any program, no matter
+        how small, occupies an entire partition. In our example, there may be a pro-
+        gram whose length is less than 2 Mbytes; yet it occupies an 8-Mbyte partition
+        whenever it is swapped in. This phenomenon, in which there is wasted space
+        internal to a partition due to the fact that the block of data loaded is smaller
+        than the partition, is referred to as internal fragmentation.
+        Both of these problems can be lessened, though not solved, by using unequal-
+     size partitions (Figure 7.2b). In this example, programs as large as 16 Mbytes can
+     be accommodated without overlays. Partitions smaller than 8 Mbytes allow smaller
+     programs to be accommodated with less internal fragmentation.
+     PLACEMENT ALGORITHM        With equal-size partitions, the placement of processes
+     in memory is trivial. As long as there is any available partition, a process can be
+
+                                                 7.2 / MEMORY PARTITIONING                                313
+loaded into that partition. Because all partitions are of equal size, it does not matter
+which partition is used. If all partitions are occupied with processes that are not
+ready to run, then one of these processes must be swapped out to make room for a
+new process. Which one to swap out is a scheduling decision; this topic is explored
+in Part Four.
+With unequal-size partitions, there are two possible ways to assign processes
+to partitions. The simplest way is to assign each process to the smallest partition
+within which it will fit.1 In this case, a scheduling queue is needed for each parti-
+tion, to hold swapped-out processes destined for that partition (Figure 7.3a). The
+advantage of this approach is that processes are always assigned in such a way as to
+minimize wasted memory within a partition (internal fragmentation).
+Although this technique seems optimum from the point of view of an indi-
+vidual partition, it is not optimum from the point of view of the system as a whole.
+In Figure 7.2b, for example, consider a case in which there are no processes with a
+size between 12 and 16M at a certain point in time. In that case, the 16M partition
+will remain unused, even though some smaller process could have been assigned to
+it. Thus, a preferable approach would be to employ a single queue for all processes
+(Figure 7.3b). When it is time to load a process into main memory, the smallest
+available partition that will hold the process is selected. If all partitions are occupied,
+then a swapping decision must be made. Preference might be given to swapping out
+of the smallest partition that will hold the incoming process. It is also possible to
+                                      Operating                      Operating
+                                      system                         system
+New                                              New
+processes                                        processes
+               (a) One process queue per partition                   (b) Single queue
+Figure 7.3     Memory Assignment for Fixed Partitioning
+1This assumes that one knows the maximum amount of memory that a process will require. This is not
+always the case. If it is not known how large a process may become, the only alternatives are an overlay
+scheme or the use of virtual memory.
+
+314  CHAPTER 7 / MEMORY MANAGEMENT
+     consider other factors, such as priority, and a preference for swapping out blocked
+     processes versus ready processes.
+        The use of unequal-size partitions provides a degree of flexibility to fixed
+     partitioning. In addition, it can be said that fixed-partitioning schemes are relatively
+     simple and require minimal OS software and processing overhead. However, there
+     are disadvantages:
+     ·  The number of partitions specified at system generation time limits the number
+        of active (not suspended) processes in the system.
+     ·  Because partition sizes are preset at system generation time, small jobs will not
+        utilize partition space efficiently. In an environment where the main storage
+        requirement of all jobs is known beforehand, this may be reasonable, but in
+        most cases, it is an inefficient technique.
+        The use of fixed partitioning is almost unknown today. One example of a suc-
+     cessful operating system that did use this technique was an early IBM mainframe
+     operating system, OS/MFT (Multiprogramming with a Fixed Number of Tasks).
+     Dynamic Partitioning
+     To overcome some of the difficulties with fixed partitioning, an approach known
+     as dynamic partitioning was developed. Again, this approach has been supplanted
+     by more sophisticated memory management techniques. An important operating
+     system that used this technique was IBM's mainframe operating system, OS/MVT
+     (Multiprogramming with a Variable Number of Tasks).
+        With dynamic partitioning, the partitions are of variable length and number.
+     When a process is brought into main memory, it is allocated exactly as much mem-
+     ory as it requires and no more. An example, using 64 Mbytes of main memory, is
+     shown in Figure 7.4. Initially, main memory is empty, except for the OS (a). The
+     first three processes are loaded in, starting where the operating system ends and
+     occupying just enough space for each process (b, c, d). This leaves a "hole" at
+     the end of memory that is too small for a fourth process. At some point, none of
+     the processes in memory is ready. The operating system swaps out process 2 (e),
+     which leaves sufficient room to load a new process, process 4 (f). Because process
+     4 is smaller than process 2, another small hole is created. Later, a point is reached
+     at which none of the processes in main memory is ready, but process 2, in the
+     Ready-Suspend state, is available. Because there is insufficient room in memory
+     for process 2, the operating system swaps process 1 out (g) and swaps process 2
+     back in (h).
+        As this example shows, this method starts out well, but eventually it leads to a
+     situation in which there are a lot of small holes in memory. As time goes on, mem-
+     ory becomes more and more fragmented, and memory utilization declines. This
+     phenomenon is referred to as external fragmentation, indicating that the memory
+     that is external to all partitions becomes increasingly fragmented. This is in contrast
+     to internal fragmentation, referred to earlier.
+        One technique for overcoming external fragmentation is compaction: From
+     time to time, the OS shifts the processes so that they are contiguous and so that all of
+     the free memory is together in one block. For example, in Figure 7.4h, compaction
+
+                                           7.2 / MEMORY    PARTITIONING                 315
+Operating   8M       Operating             Operating       Operating
+system               system                system          system
+                     Process 1  20M        Process 1  20M  Process 1  20M
+            56M                            Process 2  14M  Process 2  14M
+                                36M
+                                                      22M  Process 3  18M
+                                                                      4M
+(a)                  (b)                   (c)             (d)
+Operating            Operating             Operating       Operating
+system               system                system          system
+Process 1            Process 1                             Process 2  14M
+            20M                 20M                   20M
+                                                                      6M
+            14M      Process 4  8M         Process 4  8M   Process 4  8M
+                                6M                    6M              6M
+Process 3   18M      Process 3  18M        Process 3  18M  Process 3  18M
+            4M                  4M                    4M              4M
+(e)                  (f)                   (g)             (h)
+Figure 7.4  The Effect of Dynamic Partitioning
+will result in a block of free memory of length 16M. This may well be sufficient
+to load in an additional process. The difficulty with compaction is that it is a time-
+consuming procedure and wasteful of processor time. Note that compaction implies
+the need for a dynamic relocation capability. That is, it must be possible to move a
+program from one region to another in main memory without invalidating the
+memory references in the program (see Appendix 7A).
+PLACEMENT ALGORITHM  Because memory compaction is time consuming, the OS
+designer must be clever in deciding how to assign processes to memory (how to plug
+the holes). When it is time to load or swap a process into main memory, and if there
+is more than one free block of memory of sufficient size, then the operating system
+must decide which free block to allocate.
+Three placement algorithms that might be considered are best-fit, first-fit, and
+next-fit. All, of course, are limited to choosing among free blocks of main memory
+that are equal to or larger than the process to be brought in. Best-fit chooses the
+block that is closest in size to the request. First-fit begins to scan memory from the
+
+316  CHAPTER  7  /  MEMORY MANAGEMENT
+                    8M                                             8M
+                    12M                                 First fit  12M
+                    22M
+                                                                   6M
+                                                        Best fit
+     Last           18M
+     allocated                                                     2M
+     block (14K)
+                    8M                                             8M
+                    6M                                             6M
+                                       Allocated block
+                                       Free block
+                    14M                Possible new allocation     14M
+                                                        Next fit
+                    36M
+                                                                   20M
+                         (a) Before                                       (b) After
+     Figure 7.5     Example Memory Configuration before and after Allocation of
+                    16-Mbyte Block
+     beginning and chooses the first available block that is large enough. Next-fit begins
+     to scan memory from the location of the last placement, and chooses the next avail-
+     able block that is large enough.
+     Figure 7.5a shows an example memory configuration after a number of place-
+     ment and swapping-out operations. The last block that was used was a 22-Mbyte
+     block from which a 14-Mbyte partition was created. Figure 7.5b shows the
+     difference between the best-, first-, and next-fit placement algorithms in satisfying
+     a 16-Mbyte allocation request. Best-fit will search the entire list of available blocks
+     and make use of the 18-Mbyte block, leaving a 2-Mbyte fragment. First-fit results
+     in a 6-Mbyte fragment, and next-fit results in a 20-Mbyte fragment.
+     Which of these approaches is best will depend on the exact sequence of proc-
+     ess swappings that occurs and the size of those processes. However, some general
+     comments can be made (see also [BREN89], [SHOR75], and [BAYS77]). The
+     first-fit algorithm is not only the simplest but usually the best and fastest as well.
+     The next-fit algorithm tends to produce slightly worse results than the first-fit. The
+     next-fit algorithm will more frequently lead to an allocation from a free block at the
+     end of memory. The result is that the largest block of free memory, which usually
+
+                                              7.2 / MEMORY PARTITIONING                   317
+appears at the end of the memory space, is quickly broken up into small fragments.
+Thus, compaction may be required more frequently with next-fit. On the other
+hand, the first-fit algorithm may litter the front end with small free partitions that
+need to be searched over on each subsequent first-fit pass. The best-fit algorithm,
+despite its name, is usually the worst performer. Because this algorithm looks for
+the smallest block that will satisfy the requirement, it guarantees that the fragment
+left behind is as small as possible. Although each memory request always wastes
+the smallest amount of memory, the result is that main memory is quickly littered
+by blocks too small to satisfy memory allocation requests. Thus, memory compac-
+tion must be done more frequently than with the other algorithms.
+REPLACEMENT  ALGORITHM  In  a  multiprogramming  system            using  dynamic
+partitioning, there will come a time when all of the processes in main memory
+are in a blocked state and there is insufficient memory, even after compaction,
+for an additional process. To avoid wasting processor time waiting for an active
+process to become unblocked, the OS will swap one of the processes out of main
+memory to make room for a new process or for a process in a Ready-Suspend state.
+Therefore, the operating system must choose which process to replace. Because
+the topic of replacement algorithms will be covered in some detail with respect to
+various virtual memory schemes, we defer a discussion of replacement algorithms
+until then.
+Buddy System
+Both fixed and dynamic partitioning schemes have drawbacks. A fixed partition-
+ing scheme limits the number of active processes and may use space inefficiently
+if there is a poor match between available partition sizes and process sizes. A
+dynamic partitioning scheme is more complex to maintain and includes the over-
+head of compaction. An interesting compromise is the buddy system ([KNUT97],
+[PETE77]).
+In a buddy system, memory blocks are available of size 2K words, L  K  U,
+where
+2L  smallest size block that is allocated
+2U  largest size block that is allocated; generally 2U is the size of the entire
+             memory available for allocation
+To begin, the entire space available for allocation is treated as a single block
+of size 2U. If a request of size s such that 2U­1 < s  2U is made, then the entire block
+is allocated. Otherwise, the block is split into two equal buddies of size 2U­1. If 2U­2
+< s  2U­1, then the request is allocated to one of the two buddies. Otherwise, one
+of the buddies is split in half again. This process continues until the smallest block
+greater than or equal to s is generated and allocated to the request. At any time, the
+buddy system maintains a list of holes (unallocated blocks) of each size 2i. A hole
+may be removed from the (i + 1) list by splitting it in half to create two buddies of
+size 2i in the i list. Whenever a pair of buddies on the i list both become unallocated,
+they are removed from that list and coalesced into a single block on the (i + 1)
+
+318  CHAPTER 7 / MEMORY MANAGEMENT
+     list. Presented with a request for an allocation of size k such that 2i­1  k  2i, the
+     following recursive algorithm is used to find a hole of size 2i:
+                  void   get_hole(int              i)
+                  {
+                     if  (i   ==      (U   +  1))      <failure>;
+                     if  (<i_list          empty>)       {
+                           get_hole(i           +  1);
+                           <split      hole        into  buddies>;
+                           <put   buddies          on    i_list>;
+                     }
+                     <take    first        hole    on    i_list>;
+                  }
+                  Figure 7.6 gives an example using a 1-Mbyte initial block. The first request, A,
+     is for 100 Kbytes, for which a 128K block is needed. The initial block is divided into
+     two 512K buddies. The first of these is divided into two 256K buddies, and the first
+     of these is divided into two 128K buddies, one of which is allocated to A. The next
+     request, B, requires a 256K block. Such a block is already available and is allocated.
+     The process continues with splitting and coalescing occurring as needed. Note that
+     when E is released, two 128K buddies are coalesced into a 256K block, which is
+     immediately coalesced with its buddy.
+                  Figure 7.7 shows a binary tree representation of the buddy allocation immedi-
+     ately after the Release B request. The leaf nodes represent the current partitioning
+     of the memory. If two buddies are leaf nodes, then at least one must be allocated;
+     otherwise they would be coalesced into a larger block.
+1-Mbyte block                                               1M
+Request 100K      A  128K        128K              256K                      512K
+Request 240K      A  128K        128K              B  256K                   512K
+     Request 64K  A  128K     C  64K  64K          B  256K                   512K
+Request 256K      A  128K     C  64K  64K          B  256K          D  256K        256K
+     Release B    A  128K     C  64K  64K          256K             D  256K        256K
+     Release A       128K     C  64K  64K          256K             D  256K        256K
+     Request 75K     E  128K  C  64K  64K          256K             D  256K        256K
+     Release C       E  128K     128K              256K             D  256K        256K
+     Release E                            512K                      D  256K        256K
+     Release D                                              1M
+Figure 7.6        Example of Buddy System
+
+                                                  7.2 / MEMORY PARTITIONING           319
+1M
+512K
+256K
+128K
+64K
+A  128K      C  64K  64K     256K                 D  256K                 256K
+            Leaf node for    Leaf node for                 Non-leaf node
+            allocated block  unallocated block
+Figure 7.7   Tree Representation of Buddy System
+      The buddy system is a reasonable compromise to overcome the disadvantages
+of both the fixed and variable partitioning schemes, but in contemporary operating
+systems, virtual memory based on paging and segmentation is superior. However,
+the buddy system has found application in parallel systems as an efficient means
+of allocation and release for parallel programs (e.g., see [JOHN92]). A modified
+form of the buddy system is used for UNIX kernel memory allocation (described in
+Chapter 8).
+Relocation
+Before we consider ways of dealing with the shortcomings of partitioning, we must
+clear up one loose end, which relates to the placement of processes in memory.
+When the fixed partition scheme of Figure 7.3a is used, we can expect that a pro-
+cess will always be assigned to the same partition. That is, whichever partition is
+selected when a new process is loaded will always be used to swap that process back
+into memory after it has been swapped out. In that case, a simple relocating loader,
+such as is described in Appendix 7A, can be used: When the process is first loaded,
+all relative memory references in the code are replaced by absolute main memory
+addresses, determined by the base address of the loaded process.
+      In the case of equal-size partitions (Figure 7.2), and in the case of a single proc-
+ess queue for unequal-size partitions (Figure 7.3b), a process may occupy different
+partitions during the course of its life. When a process image is first created, it is
+
+320  CHAPTER 7 / MEMORY MANAGEMENT
+     loaded into some partition in main memory. Later, the process may be swapped out;
+     when it is subsequently swapped back in, it may be assigned to a different partition
+     than the last time. The same is true for dynamic partitioning. Observe in Figure 7.4c
+     and Figure 7.4h that process 2 occupies two different regions of memory on the two
+     occasions when it is brought in. Furthermore, when compaction is used, processes
+     are shifted while they are in main memory. Thus, the locations (of instructions and
+     data) referenced by a process are not fixed. They will change each time a process is
+     swapped in or shifted. To solve this problem, a distinction is made among several
+     types of addresses. A logical address is a reference to a memory location independ-
+     ent of the current assignment of data to memory; a translation must be made to a
+     physical address before the memory access can be achieved. A relative address is a
+     particular example of logical address, in which the address is expressed as a location
+     relative to some known point, usually a value in a processor register. A physical
+     address, or absolute address, is an actual location in main memory.
+     Programs that employ relative addresses in memory are loaded using dynamic
+     run-time loading (see Appendix 7A for a discussion). Typically, all of the memory
+     references in the loaded process are relative to the origin of the program. Thus a hard-
+     ware mechanism is needed for translating relative addresses to physical main memory
+     addresses at the time of execution of the instruction that contains the reference.
+     Figure 7.8 shows the way in which this address translation is typically accom-
+     plished. When a process is assigned to the Running state, a special processor register,
+     sometimes called the base register, is loaded with the starting address in main memory
+     of the program. There is also a "bounds" register that indicates the ending location
+                                              Relative address
+     Base register                                              Process control block
+                      Adder                                               Program
+                                    Absolute
+                                    address
+     Bounds register  Comparator
+                                                                          Data
+                      Interrupt to
+                      operating system
+                                                                          Stack
+                                                                Process image in
+                                                                main memory
+     Figure 7.8  Hardware Support for Relocation
+
+                                                 7.3 / PAGING                                321
+     of the program; these values must be set when the program is loaded into memory or
+     when the process image is swapped in. During the course of execution of the proc-
+     ess, relative addresses are encountered. These include the contents of the instruc-
+     tion register, instruction addresses that occur in branch and call instructions, and
+     data addresses that occur in load and store instructions. Each such relative address
+     goes through two steps of manipulation by the processor. First, the value in the base
+     register is added to the relative address to produce an absolute address. Second, the
+     resulting address is compared to the value in the bounds register. If the address is
+     within bounds, then the instruction execution may proceed. Otherwise, an interrupt is
+     generated to the operating system, which must respond to the error in some fashion.
+     The scheme of Figure 7.8 allows programs to be swapped in and out of mem-
+     ory during the course of execution. It also provides a measure of protection: Each
+     process image is isolated by the contents of the base and bounds registers and safe
+     from unwanted accesses by other processes.
+7.3  PAGING
+     Both unequal fixed-size and variable-size partitions are inefficient in the use of
+     memory; the former results in internal fragmentation, the latter in external frag-
+     mentation. Suppose, however, that main memory is partitioned into equal fixed-size
+     chunks that are relatively small, and that each process is also divided into small
+     fixed-size chunks of the same size. Then the chunks of a process, known as pages,
+     could be assigned to available chunks of memory, known as frames, or page frames.
+     We show in this section that the wasted space in memory for each process is due
+     to internal fragmentation consisting of only a fraction of the last page of a process.
+     There is no external fragmentation.
+     Figure 7.9 illustrates the use of pages and frames. At a given point in time, some
+     of the frames in memory are in use and some are free. A list of free frames is main-
+     tained by the OS. Process A, stored on disk, consists of four pages. When it is time to
+     load this process, the OS finds four free frames and loads the four pages of process A
+     into the four frames (Figure 7.9b). Process B, consisting of three pages, and process C,
+     consisting of four pages, are subsequently loaded. Then process B is suspended and is
+     swapped out of main memory. Later, all of the processes in main memory are blocked,
+     and the OS needs to bring in a new process, process D, which consists of five pages.
+     Now suppose, as in this example, that there are not sufficient unused contiguous
+     frames to hold the process. Does this prevent the operating system from loading D?
+     The answer is no, because we can once again use the concept of logical address.
+     A simple base address register will no longer suffice. Rather, the operating system
+     maintains a page table for each process. The page table shows the frame location for
+     each page of the process. Within the program, each logical address consists of a page
+     number and an offset within the page. Recall that in the case of simple partition, a
+     logical address is the location of a word relative to the beginning of the program; the
+     processor translates that into a physical address. With paging, the logical-to-physical
+     address translation is still done by processor hardware. Now the processor must
+     know how to access the page table of the current process. Presented with a logical

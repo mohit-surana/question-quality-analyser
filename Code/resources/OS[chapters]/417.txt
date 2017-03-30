@@ -1,0 +1,1396 @@
+Uniprocessor Scheduling
+PART 4 Scheduling
+                                    CHAPTER
+UNIPROCESSOR SCHEDULING
+9.1  Types of Processor Scheduling
+     Long-Term Scheduling
+     Medium-Term Scheduling
+     Short-Term Scheduling
+9.2  Scheduling Algorithms
+     Short-Term Scheduling Criteria
+     The Use of Priorities
+     Alternative Scheduling Policies
+     Performance Comparison
+     Fair-Share Scheduling
+9.3  Traditional UNIX Scheduling
+9.4  Summary
+9.5  Recommended Reading
+9.6  Key Terms, Review Questions, and Problems
+                                                395
+
+396  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+              I take a two hour nap, from one o'clock to four.
+                                                                                             --Yogi Berra
+           LEARNING OBJECTIVES
+           After studying this chapter, you should be able to:
+           ·    Explain the differences among long-, medium-, and short-term scheduling.
+           ·    Assess the performance of different scheduling policies.
+           ·    Understand the scheduling technique used in traditional UNIX.
+           In a multiprogramming system, multiple processes exist concurrently in main
+           memory. Each process alternates between using a processor and waiting for
+           some event to occur, such as the completion of an I/O operation. The processor
+           or processors are kept busy by executing one process while the others wait.
+                The key to multiprogramming is scheduling. In fact, four types of schedul-
+           ing are typically involved (Table 9.1). One of these, I/O scheduling, is more conven-
+           iently addressed in Chapter 11, where I/O is discussed. The remaining three types of
+           scheduling, which are types of processor scheduling, are addressed in this chapter and
+           the next.
+                This chapter begins with an examination of the three types of processor
+           scheduling, showing how they are related. We see that long-term scheduling and
+           medium-term scheduling are driven primarily by performance concerns related
+           to the degree of multiprogramming. These issues are dealt with to some extent
+           in Chapter 3 and in more detail in Chapters 7 and 8. Thus, the remainder of this
+           chapter concentrates on short-term scheduling and is limited to a consideration of
+           scheduling on a uniprocessor system. Because the use of multiple processors adds
+           additional complexity, it is best to focus on the uniprocessor case first, so that the
+           differences among scheduling algorithms can be clearly seen.
+                Section 9.2 looks at the various algorithms that may be used to make short-
+           term scheduling decisions. A set of animations that illustrate concepts in this chap-
+           ter is available online. Click on the rotating globe at WilliamStallings.com/OS/OS7e.
+           html for access.
+Table 9.1  Types of Scheduling
+Long-term scheduling            The decision to add to the pool of processes to be executed
+Medium-term scheduling          The decision to add to the number of processes that are partially or fully in
+                                main memory
+Short-term scheduling           The decision as to which available process will be executed by the processor
+I/O scheduling                  The decision as to which process's pending I/O request shall be handled by
+                                an available I/O device
+
+                                       9.1  / TYPES OF     PROCESSOR            SCHEDULING                       397
+                 New
+     Long-term                Long-term
+     scheduling               scheduling
+     Ready/                   Ready                        Running              Exit
+     suspend     Medium-term                Short-term
+                 scheduling                 scheduling
+     Blocked/                 Blocked
+     suspend     Medium-term
+                 scheduling
+     Figure 9.1  Scheduling and Process State Transitions
+9.1  TYPES OF PROCESSOR SCHEDULING
+     The aim of processor scheduling is to assign processes to be executed by the proces-
+     sor or processors over time, in a way that meets system objectives, such as response
+     time, throughput, and processor efficiency. In many systems, this scheduling activity is
+     broken down into three separate functions: long-, medium-, and short-term scheduling.
+     The names suggest the relative time scales with which these functions are performed.
+     Figure 9.1 relates the scheduling functions to the process state transition diagram
+     (first shown in Figure 3.9b). Long-term scheduling is performed when a new process
+     is created. This is a decision whether to add a new process to the set of processes that
+     are currently active. Medium-term scheduling is a part of the swapping function. This
+     is a decision whether to add a process to those that are at least partially in main mem-
+     ory and therefore available for execution. Short-term scheduling is the actual decision
+     of which ready process to execute next. Figure 9.2 reorganizes the state transition
+     diagram of Figure 3.9b to suggest the nesting of scheduling functions.
+     Scheduling affects the performance of the system because it determines
+     which processes will wait and which will progress. This point of view is presented in
+     Figure 9.3, which shows the queues involved in the state transitions of a process.1
+     Fundamentally, scheduling is a matter of managing queues to minimize queueing
+     delay and to optimize performance in a queueing environment.
+     Long-Term Scheduling
+     The long-term scheduler determines which programs are admitted to the system for
+     processing. Thus, it controls the degree of multiprogramming. Once admitted, a job
+     1For simplicity, Figure 9.3 shows new processes going directly to the Ready state, whereas Figures 9.1 and
+     9.2 show the option of either the Ready state or the Ready/Suspend state.
+
+398  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+                                Running
+                                Ready
+                                Blocked
+                                Short term
+                                Blocked,
+                                suspend
+                                Ready,
+                                suspend
+                                Medium term
+                                Long term
+                           New                   Exit
+     Figure 9.2            Levels of Scheduling
+     or user program becomes a process and is added to the queue for the short-term
+     scheduler. In some systems, a newly created process begins in a swapped-out condi-
+     tion, in which case it is added to a queue for the medium-term scheduler.
+     In a batch system, or for the batch portion of an OS, newly submitted jobs are
+     routed to disk and held in a batch queue. The long-term scheduler creates processes
+     from the queue when it can. There are two decisions involved. The scheduler must
+     decide when the OS can take on one or more additional processes. And the scheduler
+     must decide which job or jobs to accept and turn into processes. We briefly consider
+     these two decisions.
+     The decision as to when to create a new process is generally driven by the
+     desired degree of multiprogramming. The more processes that are created, the
+     smaller is the percentage of time that each process can be executed (i.e., more proc-
+     esses are competing for the same amount of processor time). Thus, the long-term
+     scheduler may limit the degree of multiprogramming to provide satisfactory service
+
+                                 9.1 / TYPES OF PROCESSOR SCHEDULING                                             399
+            Long-term                                           Timeout
+            scheduling
+Batch                            Ready queue                    Short-term               Release
+jobs                                                            scheduling  Processor
+                                 Medium-term
+                                 scheduling
+            Interactive          Ready, suspend queue
+            users
+                                                                            Medium-term
+                                                                            scheduling
+                                 Blocked, suspend queue
+                                 Blocked queue
+                         Event                                           Event wait
+                         occurs
+Figure 9.3  Queueing Diagram for Scheduling
+       to the current set of processes. Each time a job terminates, the scheduler may decide
+       to add one or more new jobs. Additionally, if the fraction of time that the processor
+       is idle exceeds a certain threshold, the long-term scheduler may be invoked.
+            The decision as to which job to admit next can be on a simple first-come-
+       first-served (FCFS) basis, or it can be a tool to manage system performance. The
+       criteria used may include priority, expected execution time, and I/O requirements.
+       For example, if the information is available, the scheduler may attempt to keep a
+       mix of processor-bound and I/O-bound processes.2 Also, the decision can depend
+       on which I/O resources are to be requested, in an attempt to balance I/O usage.
+            For interactive programs in a time-sharing system, a process creation request can
+       be generated by the act of a user attempting to connect to the system. Time-sharing
+       users are not simply queued up and kept waiting until the system can accept them.
+       Rather, the OS will accept all authorized comers until the system is saturated, using
+       some predefined measure of saturation. At that point, a connection request is met
+       with a message indicating that the system is full and the user should try again later.
+       Medium-Term Scheduling
+       Medium-term scheduling is part of the swapping function. The issues involved are
+       discussed in Chapters 3, 7, and 8. Typically, the swapping-in decision is based on
+       the need to manage the degree of multiprogramming. On a system that does not
+       2A process is regarded as processor bound if it mainly performs computational work and occasionally
+       uses I/O devices. A process is regarded as I/O bound if the time it takes to execute the process depends
+       primarily on the time spent waiting for I/O operations.
+
+400  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+     use virtual memory, memory management is also an issue. Thus, the swapping-in
+     decision will consider the memory requirements of the swapped-out processes.
+     Short-Term Scheduling
+     In terms of frequency of execution, the long-term scheduler executes relatively
+     infrequently and makes the coarse-grained decision of whether or not to take on
+     a new process and which one to take. The medium-term scheduler is executed
+     somewhat more frequently to make a swapping decision. The short-term scheduler,
+     also known as the dispatcher, executes most frequently and makes the fine-grained
+     decision of which process to execute next.
+        The short-term scheduler is invoked whenever an event occurs that may lead
+     to the blocking of the current process or that may provide an opportunity to preempt
+     a currently running process in favor of another. Examples of such events include:
+     ·  Clock interrupts
+     ·  I/O interrupts
+     ·  Operating system calls
+     ·  Signals (e.g., semaphores)
+9.2  SCHEDULING ALGORITHMS
+     Short-Term Scheduling Criteria
+     The main objective of short-term scheduling is to allocate processor time in such
+     a way as to optimize one or more aspects of system behavior. Generally, a set of
+     criteria is established against which various scheduling policies may be evaluated.
+        The commonly used criteria can be categorized along two dimensions. First,
+     we can make a distinction between user-oriented and system-oriented criteria. User-
+     oriented criteria relate to the behavior of the system as perceived by the individual
+     user or process. An example is response time in an interactive system. Response
+     time is the elapsed time between the submission of a request until the response
+     begins to appear as output. This quantity is visible to the user and is naturally of
+     interest to the user. We would like a scheduling policy that provides "good" serv-
+     ice to various users. In the case of response time, a threshold may be defined, say
+     two seconds. Then a goal of the scheduling mechanism should be to maximize the
+     number of users who experience an average response time of two seconds or less.
+        Other criteria are system oriented. That is, the focus is on effective and
+     efficient utilization of the processor. An example is throughput, which is the rate
+     at which processes are completed. This is certainly a worthwhile measure of sys-
+     tem performance and one that we would like to maximize. However, it focuses on
+     system performance rather than service provided to the user. Thus, throughput is of
+     concern to a system administrator but not to the user population.
+        Whereas user-oriented criteria are important on virtually all systems, system-
+     oriented criteria are generally of minor importance on single-user systems. On a
+     single-user system, it probably is not important to achieve high processor utilization
+
+                                                            9.2 / SCHEDULING ALGORITHMS                               401
+           or high throughput as long as the responsiveness of the system to user applications
+           is acceptable.
+                Another dimension along which criteria can be classified is those that are
+           performance related and those that are not directly performance related. Performance-
+           related criteria are quantitative and generally can be readily measured. Examples
+           include response time and throughput. Criteria that are not performance related are
+           either qualitative in nature or do not lend themselves readily to measurement and
+           analysis. An example of such a criterion is predictability. We would like for the service
+           provided to users to exhibit the same characteristics over time, independent of other
+           work being performed by the system. To some extent, this criterion can be measured
+           by calculating variances as a function of workload. However, this is not nearly as
+           straightforward as measuring throughput or response time as a function of workload.
+                Table 9.2 summarizes key scheduling criteria. These are interdependent, and
+           it is impossible to optimize all of them simultaneously. For example, providing good
+Table 9.2    Scheduling Criteria
+                                     User Oriented, Performance Related
+Turnaround time        This is the interval of time between the submission of a process and its completion. Includes
+actual execution time plus time spent waiting for resources, including the processor. This is an appropriate
+measure for a batch job.
+Response time    For an interactive process, this is the time from the submission of a request until the response
+begins to be received. Often a process can begin producing some output to the user while continuing to process
+the request. Thus, this is a better measure than turnaround time from the user's point of view. The schedul-
+ing discipline should attempt to achieve low response time and to maximize the number of interactive users
+receiving acceptable response time.
+Deadlines    When process completion deadlines can be specified, the scheduling discipline should subordinate
+other goals to that of maximizing the percentage of deadlines met.
+                                     User Oriented, Other
+Predictability  A given job should run in about the same amount of time and at about the same cost regardless
+of the load on the system. A wide variation in response time or turnaround time is distracting to users. It may
+signal a wide swing in system workloads or the need for system tuning to cure instabilities.
+                                     System Oriented, Performance Related
+Throughput      The scheduling policy should attempt to maximize the number of processes completed per unit
+of time. This is a measure of how much work is being performed. This clearly depends on the average length
+of a process but is also influenced by the scheduling policy, which may affect utilization.
+Processor utilization  This is the percentage of time that the processor is busy. For an expensive shared system,
+this is a significant criterion. In single-user systems and in some other systems, such as real-time systems, this
+criterion is less important than some of the others.
+                                     System Oriented, Other
+Fairness     In the absence of guidance from the user or other system-supplied guidance, processes should be
+treated the same, and no process should suffer starvation.
+Enforcing priorities   When processes are assigned priorities, the scheduling policy should favor higher-priority
+processes.
+Balancing resources    The scheduling policy should keep the resources of the system busy. Processes that will
+underutilize stressed resources should be favored. This criterion also involves medium-term and long-term
+scheduling.
+
+402  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+     response time may require a scheduling algorithm that switches between processes
+     frequently. This increases the overhead of the system, reducing throughput. Thus,
+     the design of a scheduling policy involves compromising among competing require-
+     ments; the relative weights given the various requirements will depend on the
+     nature and intended use of the system.
+     In most interactive operating systems, whether single user or time shared, ade-
+     quate response time is the critical requirement. Because of the importance of this
+     requirement, and because the definition of adequacy will vary from one application
+     to another, the topic is explored further in Appendix G.
+     The Use of Priorities
+     In many systems, each process is assigned a priority and the scheduler will always
+     choose a process of higher priority over one of lower priority. Figure 9.4 illustrates the
+     use of priorities. For clarity, the queueing diagram is simplified, ignoring the existence
+     of multiple blocked queues and of suspended states (compare Figure 3.8a). Instead
+     of a single ready queue, we provide a set of queues, in descending order of priority:
+     RQ0, RQ1, . . . , RQn, with priority[RQi] > priority[RQj] for i> j.3 When a scheduling
+     selection is to be made, the scheduler will start at the highest-priority ready queue
+     (RQ0). If there are one or more processes in the queue, a process is selected using
+     some scheduling policy. If RQ0 is empty, then RQ1 is examined, and so on.
+                                               RQ0                          Release
+                                                    Dispatch
+                                                                Processor
+                                               RQ1
+     Admit
+                                               RQn
+                                                    Preemption
+                                                                Event wait
+                 Event
+                 occurs     Blocked queue
+     Figure 9.4  Priority Queueing
+     3In UNIX and many other systems, larger priority values represent lower priority processes; unless
+     otherwise stated we follow that convention. Some systems, such as Windows, use the opposite convention:
+     a higher number means a higher priority.
+
+                                                             9.2 / SCHEDULING ALGORITHMS       403
+            One problem with a pure priority scheduling scheme is that lower-priority
+           processes may suffer starvation. This will happen if there is always a steady supply
+           of higher-priority ready processes. If this behavior is not desirable, the priority of a
+           process can change with its age or execution history. We will give one example of
+           this subsequently.
+           Alternative Scheduling Policies
+           Table 9.3 presents some summary information about the various scheduling poli-
+           cies that are examined in this subsection. The selection function determines which
+           process, among ready processes, is selected next for execution. The function may
+           be based on priority, resource requirements, or the execution characteristics of the
+           process. In the latter case, three quantities are significant:
+            w = time spent in system so far, waiting
+            e = time spent in execution so far
+            s = total service time required by the process, including e; generally, this quantity
+            must be estimated or supplied by the user
+           For example, the selection function max[w] indicates an FCFS discipline.
+Table 9.3   Characteristics of  Various Scheduling Policies
+            FCFS                Round         SPN            SRT           HRRN           Feedback
+                                Robin
+Selection   max[w]              constant      min[s]         min[s ­ e]    max a w + s b  (see text)
+Function                                                                         s
+Decision    Non-                Preemptive    Non-           Preemptive    Non-           Preemptive
+Mode        preemptive          (at time      preemptive     (at arrival)  preemptive     (at time
+                                quantum)                                                  quantum)
+            Not                 May be low                                                Not
+Throughput  emphasized          if quantum    High           High          High           emphasized
+                                is too small
+            May be high,
+            especially if       Provides      Provides
+            there is            good          good           Provides      Provides
+Response    a large             response      response       good          good           Not
+Time        variance            time for      time for       response      response       emphasized
+            in process          short         short          time          time
+            execution           processes     processes
+            times
+Overhead    Minimum             Minimum       Can be high    Can be high   Can be high    Can be high
+            Penalizes
+            short                             Penalizes      Penalizes                    May favor
+Effect on   processes;          Fair          long           long          Good           I/O bound
+Processes   penalizes           treatment     processes      processes     balance        processes
+            I/O bound
+            processes
+Starvation  No                  No            Possible       Possible      No             Possible
+
+404  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+        The decision mode specifies the instants in time at which the selection function
+     is exercised. There are two general categories:
+     ·  Nonpreemptive: In this case, once a process is in the Running state, it contin-
+        ues to execute until (a) it terminates or (b) it blocks itself to wait for I/O or to
+        request some OS service.
+     ·  Preemptive: The currently running process may be interrupted and moved to
+        the Ready state by the OS. The decision to preempt may be performed when
+        a new process arrives; when an interrupt occurs that places a blocked proc-
+        ess in the Ready state; or periodically, based on a clock interrupt.
+        Preemptive policies incur greater overhead than nonpreemptive ones but
+     may provide better service to the total population of processes, because they
+     prevent any one process from monopolizing the processor for very long. In
+     addition, the cost of preemption may be kept relatively low by using efficient
+     process-switching mechanisms (as much help from hardware as possible) and by
+     providing a large main memory to keep a high percentage of programs in main
+     memory.
+        As we describe the various scheduling policies, we will use the set of processes
+     in Table 9.4 as a running example. We can think of these as batch jobs, with the
+     service time being the total execution time required. Alternatively, we can consider
+     these to be ongoing processes that require alternate use of the processor and I/O
+     in a repetitive fashion. In this latter case, the service times represent the processor
+     time required in one cycle. In either case, in terms of a queueing model, this quantity
+     corresponds to the service time.4
+        For the example of Table 9.4, Figure 9.5 shows the execution pattern for
+     each policy for one cycle, and Table 9.5 summarizes some key results. First, the
+     finish time of each process is determined. From this, we can determine the turna-
+     round time. In terms of the queueing model, turnaround time (TAT) is the resi-
+     dence time Tr, or total time that the item spends in the system (waiting time plus
+     service time). A more useful figure is the normalized turnaround time, which
+     is the ratio of turnaround time to service time. This value indicates the relative
+              Table 9.4                   Process Scheduling Example
+              Process                     Arrival Time  Service Time
+                                       A  0             3
+                                       B  2             6
+                                       C  4             4
+                                       D  6             5
+                                       E  8             2
+     4See Appendix H for a summary of queueing model terminology, and Chapter 20 for a more detailed
+     discussion of queueing analysis.
+
+                                                9.2 / SCHEDULING  ALGORITHMS        405
+                       0            5                     10      15          20
+First-come-first    A
+served (FCFS)       B
+                    C
+                    D
+                    E
+Round-robin         A
+(RR), q  1          B
+                    C
+                    D
+                    E
+Round-robin         A
+(RR), q  4          B
+                    C
+                    D
+                    E
+Shortest process    A
+next (SPN)          B
+                    C
+                    D
+                    E
+Shortest remaining  A
+time (SRT)          B
+                    C
+                    D
+                    E
+Highest response    A
+ratio next (HRRN)   B
+                    C
+                    D
+                    E
+Feedback            A
+q1                  B
+                    C
+                    D
+                    E
+Feedback            A
+q  2i               B
+                    C
+                    D
+                    E
+                       0            5                     10      15          20
+Figure 9.5        A Comparison  of  Scheduling  Policies
+delay experienced by a process. Typically, the longer the process execution time,
+the greater is the absolute amount of delay that can be tolerated. The minimum
+possible value for this ratio is 1.0; increasing values correspond to a decreasing
+level of service.
+
+406    CHAPTER 9 / UNIPROCESSOR SCHEDULING
+Table 9.5  A Comparison  of  Scheduling  Policies
+Process                      A           B                C     D     E
+Arrival Time                 0           2                4     6     8
+Service Time (Ts)            3           6                4     5     2     Mean
+                                               FCFS
+Finish Time                     3           9             13    18    20
+Turnaround Time (Tr)            3           7                9  12    12    8.60
+Tr/Ts                        1.00        1.17             2.25  2.40  6.00  2.56
+                                               RR q = 1
+Finish Time                     4        18               17    20    15
+Turnaround Time (Tr)            4        16               13    14       7  10.80
+Tr/Ts                        1.33        2.67             3.25  2.80  3.50  2.71
+                                               RR q = 4
+Finish Time                     3        17               11    20    19
+Turnaround Time (Tr)            3        15                  7  14    11    10.00
+Tr/Ts                        1.00        2.5              1.75  2.80  5.50  2.71
+                                               SPN
+Finish Time                     3           9             15    20    11
+Turnaround Time (Tr)            3           7             11    14       3  7.60
+Tr/Ts                        1.00        1.17             2.75  2.80  1.50  1.84
+                                               SRT
+Finish Time                     3        15                  8  20    10
+Turnaround Time (Tr)            3        13                  4  14       2  7.20
+Tr/Ts                        1.00        2.17             1.00  2.80  1.00  1.59
+                                               HRRN
+Finish Time                     3           9             13    20    15
+Turnaround Time (Tr)            3           7                9  14       7  8.00
+Tr/Ts                        1.00        1.17             2.25  2.80  3.5   2.14
+                                               FB q = 1
+Finish Time                     4        20               16    19    11
+Turnaround Time (Tr)            4        18               12    13       3  10.00
+Tr/Ts                        1.33        3.00             3.00  2.60  1.5   2.29
+                                               FB q = 2i
+Finish Time                     4        17               18    20    14
+Turnaround Time (Tr)            4        15               14    14       6  10.60
+Tr/Ts                        1.33        2.50             3.50  2.80  3.00  2.63
+
+                                         9.2 / SCHEDULING ALGORITHMS                    407
+FIRST-COME-FIRST-SERVED              The simplest scheduling policy is first-come-first-
+served (FCFS), also known as first-in-first-out (FIFO) or a strict queueing scheme.
+As each process becomes ready, it joins the ready queue. When the currently
+running process ceases to execute, the process that has been in the ready queue the
+longest is selected for running.
+FCFS performs much better for long processes than short ones. Consider the
+following example, based on one in [FINK88]:
+             Arrival  Service                    Finish  Turnaround
+Process      Time     Time (Ts)      Start Time  Time    Time (Tr)         Tr /Ts
+W            0                    1      0       1       1                           1
+X            1           100             1       101     100                         1
+Y            2                    1      101     102     100               100
+Z            3           100             102     202     199               1.99
+Mean                                                     100                         26
+The normalized turnaround time for process Y is way out of line compared to
+the other processes: the total time that it is in the system is 100 times the required
+processing time. This will happen whenever a short process arrives just after a long
+process. On the other hand, even in this extreme example, long processes do not
+fare poorly. Process Z has a turnaround time that is almost double that of Y, but its
+normalized residence time is under 2.0.
+Another difficulty with FCFS is that it tends to favor processor-bound processes
+over I/O-bound processes. Consider that there is a collection of processes, one of
+which mostly uses the processor (processor bound) and a number of which favor I/O
+(I/O bound). When a processor-bound process is running, all of the I/O bound proc-
+esses must wait. Some of these may be in I/O queues (blocked state) but may move
+back to the ready queue while the processor-bound process is executing. At this point,
+most or all of the I/O devices may be idle, even though there is potentially work for
+them to do. When the currently running process leaves the Running state, the ready
+I/O-bound processes quickly move through the Running state and become blocked on
+I/O events. If the processor-bound process is also blocked, the processor becomes idle.
+Thus, FCFS may result in inefficient use of both the processor and the I/O devices.
+FCFS is not an attractive alternative on its own for a uniprocessor system.
+However, it is often combined with a priority scheme to provide an effective sched-
+uler. Thus, the scheduler may maintain a number of queues, one for each priority
+level, and dispatch within each queue on a first-come-first-served basis. We see one
+example of such a system later, in our discussion of feedback scheduling.
+ROUND ROBIN  A straightforward way to reduce the penalty that short jobs suffer
+with FCFS is to use preemption based on a clock. The simplest such policy is round
+robin. A clock interrupt is generated at periodic intervals. When the interrupt
+occurs, the currently running process is placed in the ready queue, and the next
+ready job is selected on a FCFS basis. This technique is also known as time slicing,
+because each process is given a slice of time before being preempted.
+
+408  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+     With round robin, the principal design issue is the length of the time quantum,
+     or slice, to be used. If the quantum is very short, then short processes will move
+     through the system relatively quickly. On the other hand, there is processing over-
+     head involved in handling the clock interrupt and performing the scheduling and
+     dispatching function. Thus, very short time quanta should be avoided. One useful
+     guide is that the time quantum should be slightly greater than the time required for
+     a typical interaction or process function. If it is less, then most processes will require
+     at least two time quanta. Figure 9.6 illustrates the effect this has on response time.
+     Note that in the limiting case of a time quantum that is longer than the longest-
+     running process, round robin degenerates to FCFS.
+     Figure 9.5 and Table 9.5 show the results for our example using time quanta q
+     of 1 and 4 time units. Note that process E, which is the shortest job, enjoys signifi-
+     cant improvement for a time quantum of 1.
+     Round robin is particularly effective in a general-purpose time-sharing system
+     or transaction processing system. One drawback to round robin is its relative
+                        Time
+     Process allocated        Interaction
+     time quantum             complete
+                 Response time   qs
+                        s
+                        Quantum
+                           q
+     (a) Time quantum greater than typical interaction
+     Process allocated                     Process      Process allocated              Interaction
+     time quantum                preempted                               time quantum  complete
+                           q                        Other processes run
+                                                    s
+     (b) Time quantum less than typical interaction
+     Figure 9.6    Effect of Size of Preemption Time Quantum
+
+                                              9.2 / SCHEDULING ALGORITHMS                409
+treatment of processor-bound and I/O-bound processes. Generally, an I/O-bound
+process has a shorter processor burst (amount of time spent executing between I/O
+operations) than a processor-bound process. If there is a mix of processor-bound
+and I/O-bound processes, then the following will happen: An I/O-bound process
+uses a processor for a short period and then is blocked for I/O; it waits for the
+I/O operation to complete and then joins the ready queue. On the other hand, a
+processor-bound process generally uses a complete time quantum while execut-
+ing and immediately returns to the ready queue. Thus, processor-bound processes
+tend to receive an unfair portion of processor time, which results in poor perform-
+ance for I/O-bound processes, inefficient use of I/O devices, and an increase in the
+variance of response time.
+[HALD91] suggests a refinement to round robin that he refers to as a virtual
+round robin (VRR) and that avoids this unfairness. Figure 9.7 illustrates the scheme.
+New processes arrive and join the ready queue, which is managed on an FCFS basis.
+When a running process times out, it is returned to the ready queue. When a process
+is blocked for I/O, it joins an I/O queue. So far, this is as usual. The new feature is
+an FCFS auxiliary queue to which processes are moved after being released from
+an I/O block. When a dispatching decision is to be made, processes in the auxil-
+iary queue get preference over those in the main ready queue. When a process is
+dispatched from the auxiliary queue, it runs no longer than a time equal to the basic
+time quantum minus the total time spent running since it was last selected from the
+                                         Timeout
+                            Ready queue
+Admit                                         Dispatch              Release
+                                                        Processor
+            Auxiliary queue
+I/O 1                                                  I/O 1 wait
+occurs
+                            I/O 1 queue
+I/O 2                                                  I/O 2 wait
+occurs
+                            I/O 2 queue
+I/O n                                                  I/O n wait
+occurs
+                            I/O n queue
+Figure 9.7  Queueing Diagram             for  Virtual  Round-Robin  Scheduler
+
+410  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+     main ready queue. Performance studies by the authors indicate that this approach is
+     indeed superior to round robin in terms of fairness.
+     SHORTEST      PROCESS  NEXT  Another approach to reducing the bias in favor of
+     long processes inherent in FCFS is the shortest process next (SPN) policy. This is
+     a nonpreemptive policy in which the process with the shortest expected processing
+     time is selected next. Thus, a short process will jump to the head of the queue past
+     longer jobs.
+     Figure 9.5 and Table 9.5 show the results for our example. Note that process
+     E receives service much earlier than under FCFS. Overall performance is also sig-
+     nificantly improved in terms of response time. However, the variability of response
+     times is increased, especially for longer processes, and thus predictability is reduced.
+     One difficulty with the SPN policy is the need to know or at least estimate the
+     required processing time of each process. For batch jobs, the system may require
+     the programmer to estimate the value and supply it to the OS. If the programmer's
+     estimate is substantially under the actual running time, the system may abort the job.
+     In a production environment, the same jobs run frequently, and statistics may be gath-
+     ered. For interactive processes, the OS may keep a running average of each "burst" for
+     each process. The simplest calculation would be the following:
+                                                  1   n
+                                        Sn+1  =   n   a Ti                                  (9.1)
+                                                      i=1
+     where
+     Ti = processor execution time for the ith instance of this process (total execu-
+               tion time for batch job; processor burst time for interactive job)
+     Si = predicted value for the ith instance
+     S1 = predicted value for first instance; not calculated
+     To avoid recalculating the entire summation each time, we can rewrite
+     Equation (9.1) as
+                                  Sn+1  =  1  Tn  +   n-1     Sn                            (9.2)
+                                           n               n
+     Note that each term in this summation is given equal weight; that is, each term
+     is multiplied by the same constant 1/(n). Typically, we would like to give greater
+     weight to more recent instances, because these are more likely to reflect future
+     behavior. A common technique for predicting a future value on the basis of a time
+     series of past values is exponential averaging:
+                                  Sn +1 = aTn + (1 - a)Sn                                   (9.3)
+     where  is a constant weighting factor (0 >  > 1) that determines the relative weight
+     given to more recent observations relative to older observations. Compare with
+     Equation (9.2). By using a constant value of , independent of the number of past
+     observations, Equation (9.3) considers all past values, but the less recent ones have less
+     weight. To see this more clearly, consider the following expansion of Equation (9.3):
+     Sn +1 = aTn + (1 - a)aTn -1 +  c      + (1 - a)iaTn -i +        c  + (1 - a)nS1        (9.4)
+
+                                                          9.2 / SCHEDULING ALGORITHMS              411
+Because both  and (1 ­ ) are less than 1, each successive term in the preced-
+ing equation is smaller. For example, for  = 0.8, Equation (9.4) becomes
+Sn +1 = 0.8Tn + 0.16Tn -1 + 0.032Tn -2 + 0.0064Tn -3 +                              c  + (0.2)nS1
+The older the observation, the less it is counted in to the average.
+The size of the coefficient as a function of its position in the expansion is shown
+in Figure 9.8. The larger the value of                 , the greater is the weight given to the more
+recent observations. For  = 0.8, virtually all of the weight is given to the four most
+recent observations, whereas for  = 0.2, the averaging is effectively spread out over
+the eight or so most recent observations. The advantage of using a value of  close
+to 1 is that the average will quickly reflect a rapid change in the observed quantity.
+The disadvantage is that if there is a brief surge in the value of the observed quan-
+tity and it then settles back to some average value, the use of a large value of  will
+result in jerky changes in the average.
+Figure 9.9 compares simple averaging with exponential averaging (for two
+different values of ). In Figure 9.9a, the observed value begins at 1, grows gradu-
+ally to a value of 10, and then stays there. In Figure 9.9b, the observed value begins
+at 20, declines gradually to 10, and then stays there. In both cases, we start out with
+an estimate of S1 = 0. This gives greater priority to new processes. Note that expo-
+nential averaging tracks changes in process behavior faster than does simple aver-
+aging and that the larger value of  results in a more rapid reaction to the change
+in the observed value.
+A risk with SPN is the possibility of starvation for longer processes, as long
+as there is a steady supply of shorter processes. On the other hand, although SPN
+reduces the bias in favor of longer jobs, it still is not desirable for a time-sharing or
+transaction processing environment because of the lack of preemption. Looking
+back at our worst-case analysis described under FCFS, processes W, X, Y, and Z
+will still execute in the same order, heavily penalizing the short process Y.
+SHORTEST  REMAINING                    TIME     The shortest remaining time (SRT) policy is a
+preemptive version of SPN. In this case, the scheduler always chooses the process
+                             0.8
+                             0.7
+          Coefficient value  0.6                                           a
+                                                                               0.2
+                             0.5                                           a   0.5
+                             0.4                                           a   0.8
+                             0.3
+                             0.2
+                             0.1
+                             0.0  1    2     3      4  5  6             7   8       9  10
+                                                    Age of observation
+          Figure                  9.8  Exponential  Smoothing Coefficients
+
+412  CHAPTER                    9   /  UNIPROCESSOR SCHEDULING
+                                10
+                                8
+     Observed or average value  6
+                                4                                                                = 0.8
+                                                                                                 = 0.5
+                                2                                                               Simple average
+                                                                                                Observed value
+                                0
+                                       1  2  3  4  5  6  7  8  9  10    11    12  13    14  15  16  17  18  19  20
+                                                                        Time
+                                                            (a) Increasing function
+                                20
+     Observed or average value  15
+                                10
+                                                                         = 0.8
+                                5                                        = 0.5
+                                                                        Simple average
+                                                                        Observed value
+                                0      1  2  3  4  5  6  7  8  9  10    11    12  13    14  15  16  17  18  19  20
+                                                                        Time
+                                                            (b) Decreasing function
+     Figure 9.9                           Use of Exponential Averaging
+     that has the shortest expected remaining processing time. When a new process joins
+     the ready queue, it may in fact have a shorter remaining time than the currently
+     running process. Accordingly, the scheduler may preempt the current process when
+     a new process becomes ready. As with SPN, the scheduler must have an estimate of
+     processing time to perform the selection function, and there is a risk of starvation of
+     longer processes.
+     SRT does not have the bias in favor of long processes found in FCFS. Unlike
+     round robin, no additional interrupts are generated, reducing overhead. On the
+
+                                           9.2 / SCHEDULING ALGORITHMS                 413
+other hand, elapsed service times must be recorded, contributing to overhead. SRT
+should also give superior turnaround time performance to SPN, because a short job
+is given immediate preference to a running longer job.
+Note that in our example (Table 9.5), the three shortest processes all receive
+immediate service, yielding a normalized turnaround time for each of 1.0.
+HIGHEST  RESPONSE  RATIO         NEXT  In Table 9.5, we have used the normalized
+turnaround time, which is the ratio of turnaround time to actual service time, as a
+figure of merit. For each individual process, we would like to minimize this ratio,
+and we would like to minimize the average value over all processes. In general,
+we cannot know ahead of time what the service time is going to be, but we can
+approximate it, either based on past history or some input from the user or a
+configuration manager. Consider the following ratio:
+                                       R=  w+s
+                                           s
+where
+R  response ratio
+w  time spent waiting for the processor
+       s  expected service time
+If the process with this value is dispatched immediately, R is equal to the normal-
+ized turnaround time. Note that the minimum value of R is 1.0, which occurs when
+a process first enters the system.
+Thus, our scheduling rule becomes the following: when the current process
+completes or is blocked, choose the ready process with the greatest value of R.
+This approach is attractive because it accounts for the age of the process. While
+shorter jobs are favored (a smaller denominator yields a larger ratio), aging without
+service increases the ratio so that a longer process will eventually get past compet-
+ing shorter jobs.
+As with SRT and SPN, the expected service time must be estimated to use
+highest response ratio next (HRRN).
+FEEDBACK  If we have no indication of the relative length of various processes,
+then none of SPN, SRT, and HRRN can be used. Another way of establishing a
+preference for shorter jobs is to penalize jobs that have been running longer. In
+other words, if we cannot focus on the time remaining to execute, let us focus on the
+time spent in execution so far.
+The way to do this is as follows. Scheduling is done on a preemptive (at time
+quantum) basis, and a dynamic priority mechanism is used. When a process first
+enters the system, it is placed in RQ0 (see Figure 9.4). After its first preemption,
+when it returns to the Ready state, it is placed in RQ1. Each subsequent time that
+it is preempted, it is demoted to the next lower-priority queue. A short process will
+complete quickly, without migrating very far down the hierarchy of ready queues.
+A longer process will gradually drift downward. Thus, newer, shorter processes are
+favored over older, longer processes. Within each queue, except the lowest-priority
+queue, a simple FCFS mechanism is used. Once in the lowest-priority queue, a
+
+414  CHAPTER 9 /  UNIPROCESSOR SCHEDULING
+                       RQ0                                                        Release
+     Admit                                      Processor
+                       RQ1                                                        Release
+                                                Processor
+                       RQn                                                        Release
+                                                Processor
+     Figure 9.10       Feedback Scheduling
+     process cannot go lower, but is returned to this queue repeatedly until it completes
+     execution. Thus, this queue is treated in round-robin fashion.
+     Figure 9.10 illustrates the feedback scheduling mechanism by showing the
+     path that a process will follow through the various queues.5 This approach is known
+     as multilevel feedback, meaning that the OS allocates the processor to a process
+     and, when the process blocks or is preempted, feeds it back into one of several
+     priority queues.
+     There are a number of variations on this scheme. A simple version is to perform
+     preemption in the same fashion as for round robin: at periodic intervals. Our exam-
+     ple shows this (Figure 9.5 and Table 9.5) for a quantum of one time unit. Note that in
+     this case, the behavior is similar to round robin with a time quantum of 1.
+     One problem with the simple scheme just outlined is that the turnaround time
+     of longer processes can stretch out alarmingly. Indeed, it is possible for starvation to
+     occur if new jobs are entering the system frequently. To compensate for this, we can
+     vary the preemption times according to the queue: A process scheduled from RQ0
+     is allowed to execute for one time unit and then is preempted; a process scheduled
+     from RQ1 is allowed to execute two time units, and so on. In general, a process
+     scheduled from RQi is allowed to execute 2i time units before preemption. This
+     scheme is illustrated for our example in Figure 9.5 and Table 9.5.
+     5Dotted lines are used to emphasize that this is a time sequence diagram rather than a static depiction of
+     possible transitions, such as Figure 9.4.
+
+                                                    9.2 / SCHEDULING ALGORITHMS        415
+Even with the allowance for greater time allocation at lower priority, a longer
+process may still suffer starvation. A possible remedy is to promote a process to a
+higher-priority queue after it spends a certain amount of time waiting for service in
+its current queue.
+Performance Comparison
+Clearly, the performance of various scheduling policies is a critical factor in the
+choice of a scheduling policy. However, it is impossible to make definitive com-
+parisons because relative performance will depend on a variety of factors, including
+the probability distribution of service times of the various processes, the efficiency
+of the scheduling and context switching mechanisms, and the nature of the I/O
+demand and the performance of the I/O subsystem. Nevertheless, we attempt in
+what follows to draw some general conclusions.
+QUEUEING ANALYSIS     In this section, we make use of basic queueing formulas, with
+the common assumptions of Poisson arrivals and exponential service times.6
+First, we make the observation that any such scheduling discipline that
+chooses the next item to be served independent of service time obeys the following
+relationship:
+                               Tr            =      1
+                               Ts                   1-r
+where
+Tr  turnaround time or residence time; total time in system, waiting plus
+           execution
+Ts  average service time; average time spent in Running state
+r       processor utilization
+In particular, a priority-based scheduler, in which the priority of each process
+is assigned independent of expected service time, provides the same average turna-
+round time and average normalized turnaround time as a simple FCFS discipline.
+Furthermore, the presence or absence of preemption makes no differences in these
+averages.
+With the exception of round robin and FCFS, the various scheduling disci-
+plines considered so far do make selections on the basis of expected service time.
+Unfortunately, it turns out to be quite difficult to develop closed analytic models
+of these disciplines. However, we can get an idea of the relative performance of
+such scheduling algorithms, compared to FCFS, by considering priority scheduling
+in which priority is based on service time.
+If scheduling is done on the basis of priority and if processes are assigned to
+a priority class on the basis of service time, then differences do emerge. Table 9.6
+shows the formulas that result when we assume two priority classes, with different
+service times for each class. In the table,         refers to the arrival rate. These results can
+6The queueing terminology used in this chapter is summarized in Appendix H. Poisson arrivals essentially
+means random arrivals, as explained in Appendix H.
+
+416  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+Table 9.6  Formulas for Single-Server Queues with Two Priority Categories
+Assumptions: 1.     Poisson arrival rate.
+                2.  Priority 1 items are serviced before priority 2 items.
+                3.  First-come-first-served dispatching for items of equal priority.
+                4.  No item is interrupted while being served.
+                5.  No items leave the queue (lost calls delayed).
+                                              (a) General formulas
+                                                     l = l1 + l2
+                                              r1  =  l1Ts1;  r2    =   l2Ts2
+                                                     r=  r1   +    r2
+                                              Ts  =  l1  Ts1    +   l2   Ts2
+                                                     l                l
+                                              Tr  =  l1  Tr1    +   l2   Tr2
+                                                     l                l
+(b) No interrupts; exponential service times                  (c) Preemptive-resume queueing discipline;
+                                                                    exponential service times
+           Tr1   =  Ts1  +  r1Ts1   +  r2Ts2                             Tr1  =  Ts1  +  r1Ts1
+                                 1 + r1                                                  1 - r1
+           Tr2   =  Ts2  +  Tr1  -  Ts1                                  Tr2  =  Ts2  +     1      a r1Ts2  +  rTs  b
+                            1-r                                                          1  -  r1              1-r
+           be generalized to any number of priority classes. Note that the formulas differ for
+           nonpreemptive versus preemptive scheduling. In the latter case, it is assumed that
+           a lower-priority process is immediately interrupted when a higher-priority process
+           becomes ready.
+                 As an example, let us consider the case of two priority classes, with an equal
+           number of process arrivals in each class and with the average service time for the
+           lower-priority class being five times that of the upper priority class. Thus, we wish to
+           give preference to shorter processes. Figure 9.11 shows the overall result. By giving
+           preference to shorter jobs, the average normalized turnaround time is improved
+           at higher levels of utilization. As might be expected, the improvement is greatest
+           with the use of preemption. Notice, however, that overall performance is not much
+           affected.
+                 However, significant differences emerge when we consider the two priority
+           classes separately. Figure 9.12 shows the results for the higher-priority, shorter
+           processes. For comparison, the upper line on the graph assumes that priorities are
+           not used but that we are simply looking at the relative performance of that half of
+           all processes that have the shorter processing time. The other two lines assume that
+           these processes are assigned a higher priority. When the system is run using priority
+           scheduling without preemption, the improvements are significant. They are even
+           more significant when preemption is used.
+
+                                                                                         9.2 / SCHEDULING ALGORITHMS             417
+                                    10
+                                    9         2 priority classes
+                                              1  2
+                                              ts2  5  ts1
+                                    8
+Normalized response time (Tr/Ts)    7
+                                    6
+                                    5
+                                    4                                  Priority
+                                    3                                                                      Priority
+                                                                                                           with preemption
+                                    2
+                                    1
+                                                                                         No priority
+                                              0.1          0.2    0.3  0.4       0.5         0.6      0.7  0.8              0.9  1.0
+                                                                            Utilization  ()
+Figure                                  9.11  Overall Normalized       Response Time
+                                    10
+                                    9         2 priority classes
+                                              1  2
+                                              ts2  5  ts1
+                                    8
+Normalized response time (Tr1/Ts1)                                                       No priority
+                                    7
+                                    6
+                                    5
+                                                                                                           Priority
+                                    4
+                                    3
+                                    2                                                                      Priority
+                                                                                                           with preemption
+                                    1
+                                              0.1          0.2    0.3  0.4       0.5         0.6      0.7  0.8              0.9  1.0
+                                                                            Utilization ()
+Figure                                  9.12  Normalized Response Time for Shorter Processes
+
+418  CHAPTER 9 / UNIPROCESSOR                                         SCHEDULING
+                                         10
+                                         9   2 priority classes
+                                             1  2
+                                             ts2  5  ts1
+                                         8
+     Normalized response time (Tr2/Ts2)  7
+                                         6
+                                                                                               Priority
+                                         5                                                  with preemption
+                                         4
+                                         3                                           Priority
+                                                                                                              No priority
+                                         2
+                                         1
+                                             0.1          0.2    0.3  0.4       0.5            0.6       0.7  0.8          0.9  1.0
+                                                                            Utilization ()
+     Figure 9.13                             Normalized Response Time for Longer Processes
+                                             Figure 9.13 shows the same analysis for the lower-priority, longer processes.
+     As expected, such processes suffer a performance degradation under priority
+     scheduling.
+     SIMULATION                                    MODELING           Some  of  the  difficulties   of   analytic  modeling     are
+     overcome by using discrete-event simulation, which allows a wide range of policies
+     to be modeled. The disadvantage of simulation is that the results for a given "run"
+     only apply to that particular collection of processes under that particular set of
+     assumptions. Nevertheless, useful insights can be gained.
+                                             The results of one such study are reported in [FINK88]. The simulation
+     involved 50,000 processes with an arrival rate of   0.8 and an average service time
+     of Ts  1. Thus, the assumption is that the processor utilization is r = Ts = 0.8.
+     Note, therefore, that we are only measuring one utilization point.
+                                             To present the results, processes are grouped into service-time percentiles,
+     each of which has 500 processes. Thus, the 500 processes with the shortest service
+     time are in the first percentile; with these eliminated, the 500 remaining processes
+     with the shortest service time are in the second percentile; and so on. This allows
+     us to view the effect of various policies on processes as a function of the length of
+     the process.
+                                             Figure 9.14 shows the normalized turnaround time, and Figure 9.15 shows
+     the average waiting time. Looking at the turnaround time, we can see that the
+     performance of FCFS is very unfavorable, with one-third of the processes having
+
+                                                                                     9.2 / SCHEDULING ALGORITHMS                      419
+                            100
+                                             FCFS
+Normalized turnaround time  10
+                                                    HRRN                                                                         FB
+                                                                                                    RR  (q   1)                  SRT
+                                         RR (q  1)
+                                                        SPN                                                                      SPN
+                                                                                                                                 HRRN
+                                               FB                                                                                FCFS
+                                                                                               SRT
+                                1
+                                   0     10         20       30         40       50  60             70      80       90      100
+                                                                  Percentile of time required
+Figure                             9.14  Simulation Result   for  Normalized Turnaround Time
+                                                                                                                         RR
+                            10                                                                                           (q  1)
+                                                                                                                 FB              SPN
+                            9
+                            8
+                                                                                                                                  HRRN
+                            7
+                            6
+Wait time                   5
+                            4            FCFS                                                                                     FCFS
+                            3
+                                                             RR (q  1)
+                            2
+                                         HRRN                               SPN
+                            1                                                                               SRT
+                                                             FB
+                            0
+                                   0     10         20       30         40       50  60             70      80       90          100
+                                                                  Percentile of time required
+Figure                             9.15  Simulation Result for Waiting Time
+
+420  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+     a normalized turnaround time greater than 10 times the service time; furthermore,
+     these are the shortest processes. On the other hand, the absolute waiting time is
+     uniform, as is to be expected because scheduling is independent of service time.
+     The figures show round robin using a quantum of one time unit. Except for the
+     shortest processes, which execute in less than one quantum, round robin yields
+     a normalized turnaround time of about five for all processes, treating all fairly.
+     Shortest process next performs better than round robin, except for the shortest
+     processes. Shortest remaining time, the preemptive version of SPN, performs bet-
+     ter than SPN except for the longest 7% of all processes. We have seen that, among
+     nonpreemptive policies, FCFS favors long processes and SPN favors short ones.
+     Highest response ratio next is intended to be a compromise between these two
+     effects, and this is indeed confirmed in the figures. Finally, the figure shows feed-
+     back scheduling with fixed, uniform quanta in each priority queue. As expected,
+     FB performs quite well for short processes.
+     Fair-Share Scheduling
+     All of the scheduling algorithms discussed so far treat the collection of ready
+     processes as a single pool of processes from which to select the next running process.
+     This pool may be broken down by priority but is otherwise homogeneous.
+     However, in a multiuser system, if individual user applications or jobs may be
+     organized as multiple processes (or threads), then there is a structure to the collec-
+     tion of processes that is not recognized by a traditional scheduler. From the user's
+     point of view, the concern is not how a particular process performs but rather how
+     his or her set of processes, which constitute a single application, performs. Thus, it
+     would be attractive to make scheduling decisions on the basis of these process sets.
+     This approach is generally known as fair-share scheduling. Further, the concept can
+     be extended to groups of users, even if each user is represented by a single process.
+     For example, in a time-sharing system, we might wish to consider all of the users
+     from a given department to be members of the same group. Scheduling decisions
+     could then be made that attempt to give each group similar service. Thus, if a large
+     number of people from one department log onto the system, we would like to see
+     response time degradation primarily affect members of that department rather than
+     users from other departments.
+     The term fair share indicates the philosophy behind such a scheduler. Each
+     user is assigned a weighting of some sort that defines that user's share of system
+     resources as a fraction of the total usage of those resources. In particular, each
+     user is assigned a share of the processor. Such a scheme should operate in a more
+     or less linear fashion, so that if user A has twice the weighting of user B, then in
+     the long run, user A should be able to do twice as much work as user B. The objec-
+     tive of a fair-share scheduler is to monitor usage to give fewer resources to users
+     who have had more than their fair share and more to those who have had less than
+     their fair share.
+     A number of proposals have been made for fair-share schedulers [HENR84,
+     KAY88, WOOD86]. In this section, we describe the scheme proposed in [HENR84]
+     and implemented on a number of UNIX systems. The scheme is simply referred to
+     as the fair-share scheduler (FSS). FSS considers the execution history of a related
+
+                                             9.2 / SCHEDULING ALGORITHMS               421
+group of processes, along with the individual execution history of each process in
+making scheduling decisions. The system divides the user community into a set of
+fair-share groups and allocates a fraction of the processor resource to each group.
+Thus, there might be four groups, each with 25% of the processor usage. In effect,
+each fair-share group is provided with a virtual system that runs proportionally
+slower than a full system.
+Scheduling is done on the basis of priority, which takes into account the
+underlying priority of the process, its recent processor usage, and the recent proc-
+essor usage of the group to which the process belongs. The higher the numerical
+value of the priority, the lower is the priority. The following formulas apply for
+process j in group k:
+                                          =  CPUj(i -     1)
+                               CPUj(i)             2
+                               GCPUk(i)   =  GCPUk(i      - 1)
+                                                      2
+                       Pj(i)   = Basej +  CPUj(i)     +   GCPUk(i)
+                                             2            4 * Wk
+where
+CPUj(i)   measure of processor utilization by process j through interval i
+GCPUk(i)  measure of processor utilization of group k through interval i
+Pj(i)     priority of process j at beginning of interval i; lower values equal
+         higher priorities
+Basej     base priority of process j
+Wk        weighting assigned to group k, with the constraint that 0 6 Wk ... 1
+         and a Wk = 1
+                            k
+Each process is assigned a base priority. The priority of a process drops as the
+process uses the processor and as the group to which the process belongs uses the
+processor. In the case of the group utilization, the average is normalized by dividing
+by the weight of that group. The greater the weight assigned to the group, the less its
+utilization will affect its priority.
+Figure 9.16 is an example in which process A is in one group and processes B
+and C are in a second group, with each group having a weighting of 0.5. Assume that
+all processes are processor bound and are usually ready to run. All processes have
+a base priority of 60. Processor utilization is measured as follows: The processor is
+interrupted 60 times per second; during each interrupt, the processor usage field of
+the currently running process is incremented, as is the corresponding group proces-
+sor field. Once per second, priorities are recalculated.
+In the figure, process A is scheduled first. At the end of one second, it is
+preempted. Processes B and C now have the higher priority, and process B is sched-
+uled. At the end of the second time unit, process A has the highest priority. Note
+that the pattern repeats: the kernel schedules the processes in order: A, B, A, C, A,
+B, and so on. Thus, 50% of the processor is allocated to process A, which constitutes
+one group, and 50% to processes B and C, which constitute another group.
+
+422  CHAPTER  9  / UNIPROCESSOR SCHEDULING
+                           Process A                   Process B                        Process C
+                           Process    Group                   Process  Group            Process    Group
+     Time                  CPU        CPU                     CPU      CPU              CPU        CPU
+                 Priority  count      count  Priority         count    count  Priority  count      count
+     0            60       0          0      60               0        0        60      0          0
+                           1          1
+                           2          2
+                           60         60
+     1            90       30         30     60               0        0        60      0          0
+                                                              1        1                           1
+                                                              2        2                           2
+                                                              60       60                          60
+     2            74       15         15     90               30       30       75      0          30
+                           16         16
+                           17         17
+                           75         75
+     3            96       37         37     74               15       15       67      0          15
+                                                                       16               1          16
+                                                                       17               2          17
+                                                                       75               60         75
+     4            78       18         18     81               7        37       93      30         37
+                           19         19
+                           20         20
+                           78         78
+     5            98       39         39     70               3        18       76      15         18
+                           Group 1                                     Group 2
+              Colored rectangle represents executing process
+     Figure 9.16      Example of Fair-Share Scheduler--Three Processes, Two Groups
+9.3  TRADITIONAL UNIX SCHEDULING
+     In this section we examine traditional UNIX scheduling, which is used in both
+     SVR3 and 4.3 BSD UNIX. These systems are primarily targeted at the time-sharing
+     interactive environment. The scheduling algorithm is designed to provide good
+     response time for interactive users while ensuring that low-priority background
+     jobs do not starve. Although this algorithm has been replaced in modern UNIX
+     systems, it is worthwhile to examine the approach because it is representative of
+
+                                   9.3 / TRADITIONAL UNIX SCHEDULING                  423
+practical time-sharing scheduling algorithms. The scheduling scheme for SVR4
+includes an accommodation for real-time requirements, and so its discussion is
+deferred to Chapter 10.
+   The traditional UNIX scheduler employs multilevel feedback using round
+robin within each of the priority queues. The system makes use of one-second
+preemption. That is, if a running process does not block or complete within one
+second, it is preempted. Priority is based on process type and execution history. The
+following formulas apply:
+                             CPUj(i) =      CPUj(i -  1)
+                                               2
+                           Pj(i) = Basej +  CPUj(i)   + nicej
+                                            2
+where
+   CPUj(i)  measure of processor utilization by process j through interval i
+   Pj(i)        priority of process j at beginning of interval i; lower values equal
+               higher priorities
+   Basej        base priority of process j
+   nicej        user-controllable adjustment factor
+   The priority of each process is recomputed once per second, at which time a
+new scheduling decision is made. The purpose of the base priority is to divide all
+processes into fixed bands of priority levels. The CPU and nice components are
+restricted to prevent a process from migrating out of its assigned band (assigned by
+the base priority level). These bands are used to optimize access to block devices
+(e.g., disk) and to allow the OS to respond quickly to system calls. In decreasing
+order of priority, the bands are:
+·  Swapper
+·  Block I/O device control
+·  File manipulation
+·  Character I/O device control
+·  User processes
+   This hierarchy should provide the most efficient use of the I/O devices.
+Within the user process band, the use of execution history tends to penalize proc-
+essor-bound processes at the expense of I/O-bound processes. Again, this should
+improve efficiency. Coupled with the round-robin preemption scheme, the sched-
+uling strategy is well equipped to satisfy the requirements for general-purpose
+time sharing.
+   An example of process scheduling is shown in Figure 9.17. Processes A, B,
+and C are created at the same time with base priorities of 60 (we will ignore the
+nice value). The clock interrupts the system 60 times per second and increments
+a counter for the running process. The example assumes that none of the proc-
+esses block themselves and that no other processes are ready to run. Compare
+this with Figure 9.16.
+
+424  CHAPTER  9 / UNIPROCESSOR SCHEDULING
+              Time         Process A        Process B                      Process C
+                    0  Priority  CPU count  Priority  CPU count            Priority  CPU count
+                           60         0     60                         0   60         0
+                                      1
+                                      2
+                    1                 60
+                           75         30    60                         0   60         0
+                                                                       1
+                                                                       2
+                    2                                                  60
+                           67         15    75                         30  60         0
+                                                                                      1
+                                                                                      2
+                    3                                                                 60
+                           63         7     67                         15  75         30
+                                      8
+                                      9
+                    4                 67
+                           76         33    63                         7   67         15
+                                                                       8
+                                                                       9
+                    5                                                  67
+                           68         16    76                         33  63         7
+                       Colored rectangle represents executing process
+              Figure 9.17  Example of a Traditional UNIX Process Scheduling
+9.4  SUMMARY
+     The OS must make three types of scheduling decisions with respect to the execu-
+     tion of processes. Long-term scheduling determines when new processes are admit-
+     ted to the system. Medium-term scheduling is part of the swapping function and
+     determines when a program is brought partially or fully into main memory so that
+     it may be executed. Short-term scheduling determines which ready process will
+     be executed next by the processor. This chapter focuses on the issues relating to
+     short-term scheduling.
+
+                                                 9.5 / RECOMMENDED READING                  425
+        A variety of criteria are used in designing the short-term scheduler. Some of
+     these criteria relate to the behavior of the system as perceived by the individual user
+     (user oriented), while others view the total effectiveness of the system in meeting
+     the needs of all users (system oriented). Some of the criteria relate specifically to
+     quantitative measures of performance, while others are more qualitative in nature.
+     From a user's point of view, response time is generally the most important char-
+     acteristic of a system, while from a system point of view, throughput or processor
+     utilization is important.
+        A variety of algorithms have been developed for making the short-term sched-
+     uling decision among all ready processes:
+     ·  First-come-first-served: Select the process that has been waiting the longest
+        for service.
+     ·  Round robin: Use time slicing to limit any running process to a short burst of
+        processor time, and rotate among all ready processes.
+     ·  Shortest process next: Select the process with the shortest expected processing
+        time, and do not preempt the process.
+     ·  Shortest remaining time: Select the process with the shortest expected remain-
+        ing process time. A process may be preempted when another process becomes
+        ready.
+     ·  Highest response ratio next: Base the scheduling decision on an estimate of
+        normalized turnaround time.
+     ·  Feedback: Establish a set of scheduling queues and allocate processes to
+        queues based on execution history and other criteria.
+        The choice of scheduling algorithm will depend on expected performance and
+     on implementation complexity.
+9.5  RECOMMENDED READING
+     Virtually  every  textbook   on  operating  systems  covers  scheduling.  Rigorous
+     queueing analyses of various scheduling policies are presented in [KLEI04] and
+     [CONW67]. [DOWD93] provides an instructive performance analysis of various
+     scheduling algorithms.
+     CONW67     Conway, R., Maxwell, W., and Miller, L. Theory of Scheduling. Reading,
+        MA: Addison-Wesley, 1967. Reprinted by Dover Publications, 2003.
+     DOWD93     Dowdy, L., and Lowery, C. P.S. to Operating Systems. Upper Saddle River,
+        NJ: Prentice Hall, 1993.
+     KLEI04     Kleinrock, L. Queuing Systems, Volume Three: Computer Applications. New
+        York: Wiley, 2004.
+
+426  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+9.6       KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS
+Key Terms
+arrival rate                     medium-term scheduler                  short-term scheduler
+dispatcher                       multilevel feedback                    throughput
+exponential averaging            predictability                         time slicing
+fair-share scheduling            residence time                         turnaround time
+fairness                         response time                          utilization
+first-come-first-served          round robin                            waiting time
+first-in-first-out               scheduling priority
+long-term scheduler              service time
+          Review Questions
+          9.1       Briefly describe the three types of processor scheduling.
+          9.2       What is usually the critical performance requirement in an interactive operating
+                    system?
+          9.3       What is the difference between turnaround time and response time?
+          9.4       For process scheduling, does a low-priority value represent a low priority or a high
+                    priority?
+          9.5       What is the difference between preemptive and nonpreemptive scheduling?
+          9.6       Briefly define FCFS scheduling.
+          9.7       Briefly define round-robin scheduling.
+          9.8       Briefly define shortest-process-next scheduling.
+          9.9       Briefly define shortest-remaining-time scheduling.
+          9.10      Briefly define highest-response-ratio-next scheduling.
+          9.11      Briefly define feedback scheduling.
+          Problems
+          9.1       Consider the following workload:
+                        Process  Burst Time              Priority       Arrival Time
+                         P1      50 ms                      4                  0 ms
+                         P2      20 ms                      1                  20 ms
+                         P3      100 ms                     3                  40 ms
+                         P4      40 ms                      2                  60 ms
+                    a.  Show the schedule using shortest remaining time, nonpreemptive priority (a
+                        smaller priority number implies higher priority) and round robin with quantum
+                        30 ms. Use time scale diagram as shown below for the FCFS example to show the
+                        schedule for each requested scheduling policy.
+
+                          9.6 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                           427
+              Example for FCFS (1 unit = 10 ms):
+P1  P1   P1   P1  P1  P2  P2        P3  P3        P3   P3  P3  P3  P3  P3       P3  P3  P4  P4  P4  P4
+0   123       4   5   6   7         8   9      10     11   12  13  14  15       16  17  18  19  20
+              b.  What is the average waiting time of the above scheduling policies?
+         9.2  Consider the following set of processes:
+                          Process          Arrival Time        Processing Time
+                                 A                 0               3
+                                 B                 1               5
+                                 C                 3               2
+                                 D                 9               5
+                                 E                 12              5
+              Perform the same analysis as depicted in Table 9.5 and Figure 9.5 for this set.
+         9.3  Prove that, among nonpreemptive scheduling algorithms, SPN provides the minimum
+              average waiting time for a batch of jobs that arrive at the same time. Assume that the
+              scheduler must always execute a task if one is available.
+         9.4  Assume the following burst-time pattern for a process: 6, 4, 6, 4, 13, 13, 13, and assume
+              that the initial guess is 10. Produce a plot similar to those of Figure 9.9.
+         9.5  Consider the following pair of equations as an alternative to Equation (9.3):
+                                       Sn+1    =  aTn + (1 - a)Sn
+                                       Xn + 1  =  min[Ubound, max[Lbound, (bSn+1)]]
+              where Ubound and Lbound are prechosen upper and lower bounds on the estimated
+              value of T.The value of Xn + 1 is used in the shortest-process-next algorithm, instead of
+              the value of Sn + 1. What functions do a and b perform, and what is the effect of higher
+              and lower values on each?
+         9.6  In the bottom example in Figure 9.5, process A runs for two time units before control
+              is passed to process B. Another plausible scenario would be that A runs for three time
+              units before control is passed to process B. What policy differences in the feedback-
+              scheduling algorithm would account for the two different scenarios?
+         9.7  In a nonpreemptive uniprocessor system, the ready queue contains three jobs at time
+              t immediately after the completion of a job. These jobs arrived at times t1, t2, and t3
+              with estimated execution times of r1, r2, and r3, respectively. Figure 9.18 shows the
+              linear increase of their response ratios over time. Use this example to find a variant
+              of response ratio scheduling, known as minimax response ratio scheduling, that mini-
+              mizes the maximum response ratio for a given batch of jobs ignoring further arrivals.
+              (Hint: Decide, first, which job to schedule as the last one.)
+         9.8  Prove that the minimax response ratio algorithm of the preceding problem minimizes
+              the maximum response ratio for a given batch of jobs. (Hint: Focus attention on the
+              job that will achieve the highest response ratio and all jobs executed before it. Con-
+              sider the same subset of jobs scheduled in any other order and observe the response
+              ratio of the job that is executed as the last one among them. Notice that this subset
+              may now be mixed with other jobs from the total set.)
+         9.9  Define residence time Tr as the average total time a process spends waiting and being
+              served. Show that for FIFO, with mean service time Ts, we have Tr = Ts/(1 ­ r), where
+              r is utilization.
+
+428  CHAPTER 9 / UNIPROCESSOR SCHEDULING
+           Response ratio                                                      1
+                                                                               r2
+                                                    1
+                                                    r1
+                                                                                   1
+                                                                                   r3
+                           1
+                                   t1                              t2      t3           t4
+                                                             Time
+           Figure 9.18             Response Ratio as a Function of Time
+     9.10  A processor is multiplexed at infinite speed among all processes present in a ready
+           queue with no overhead. (This is an idealized model of round-robin scheduling
+           among ready processes using time slices that are very small compared to the mean
+           service time.) Show that for Poisson input from an infinite source with exponential
+           service times, the mean response time Rx of a process with service time x is given by
+           Rx = x/(1 ­ r). (Hint: Review the basic queueing equations in Appendix H or Chapter
+           20. Then consider the number of items waiting, w, in the system upon arrival of the
+           given process.)
+     9.11  Consider a variant of the RR scheduling algorithm where the entries in the ready
+           queue are pointers to the PCBs.
+           a.              What would be the effect of putting two pointers to the same process in the ready
+                           queue?
+           b.              What would be the major advantage of this scheme?
+           c.              How could you modify the basic RR algorithm to achieve the same effect without
+                           the duplicate pointers?
+     9.12  In a queueing system, new jobs must wait for a while before being served. While a job
+           waits, its priority increases linearly with time from zero at a rate a. A job waits until its
+           priority reaches the priority of the jobs in service; then, it begins to share the proces-
+           sor equally with other jobs in service using round robin while its priority continues to
+           increase at a slower rate b. The algorithm is referred to as selfish round robin, because
+           the jobs in service try (in vain) to monopolize the processor by increasing their prior-
+           ity continuously. Use Figure 9.19 to show that the mean response time Rx for a job of
+           service time x is given by:
+                                                        Rx   s         +  x-s
+                                                             1-r          1 - r
+           where
+                                                                       b       0...b6a
+                                       r  ls            r  ra1 -       ab
+           assuming that arrival and service times are exponentially distributed with means
+           1/ and s, respectively. (Hint: Consider the total system and the two subsystems
+           separately.)
+     9.13  An interactive system using round-robin scheduling and swapping tries to give guar-
+           anteed response to trivial requests as follows: After completing a round-robin cycle
+           among all ready processes, the system determines the time slice to allocate to each
+
+                                  9.6 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                      429
+          l                           a             l          b
+                                                                                           Departures
+                                  Waiting jobs           Served jobs
+             Increasing priority                         1/l                   b
+                                                a                 a
+                                                    1/l
+                                                         Time
+          Figure 9.19             Selfish Round Robin
+      ready process for the next cycle by dividing a maximum response time by the number
+      of processes requiring service. Is this a reasonable policy?
+9.14  Which  type                 of  process   is  generally  favored  by  a  multilevel  feedback    queueing
+      scheduler--a processor-bound process or an I/O-bound process? Briefly explain why.
+9.15  In priority-based process scheduling, the scheduler only gives control to a particular
+      process if no other process of higher priority is currently in the Ready state. Assume
+      that no other information is used in making the process scheduling decision. Also
+      assume that process priorities are established at process creation time and do not
+      change. In a system operating with such assumptions, why would using Dekker's solu-
+      tion (see Section A.1) to the mutual exclusion problem be "dangerous"? Explain this
+      by telling what undesired event could occur and how it could occur.
+9.16  Five batch jobs, A through E, arrive at a computer center at essentially the same time.
+      They have an estimated running time of 15, 9, 3, 6, and 12 minutes, respectively. Their
+      (externally defined) priorities are 6, 3, 7, 9, and 4, respectively, with a lower value
+      corresponding to a higher priority. For each of the following scheduling algorithms,
+      determine the turnaround time for each process and the average turnaround for all
+      jobs. Ignore process switching overhead. Explain how you arrived at your answers. In
+      the last three cases, assume that only one job at a time runs until it finishes and that all
+      jobs are completely processor bound.
+      a.  round robin with a time quantum of 1 minute
+      b.  priority scheduling
+      c.  FCFS (run in order 15, 9, 3, 6, and 12)
+      d.  shortest job first
+
+                                       CHAPTER
+MULTIPROCESSOR AND
+REAL-TIME SCHEDULING
+     10.1   Multiprocessor Scheduling
+            Granularity
+            Design Issues
+            Process Scheduling
+            Thread Scheduling
+     10.2   Real-Time Scheduling
+            Background
+            Characteristics of Real-Time Operating Systems
+            Real-Time Scheduling
+            Deadline Scheduling
+            Rate Monotonic Scheduling
+            Priority Inversion
+     10.3   Linux Scheduling
+     10.4   UNIX SVR4 Scheduling
+     10.5   UNIX FreeBSD Scheduling
+     10.6   Windows Scheduling
+     10.7   Linux Virtual Machine Process Scheduling
+     10.8   Summary
+     10.9   Recommended Reading
+     10.10  Key Terms, Review Questions, and Problems
+430                                                         430

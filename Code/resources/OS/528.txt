@@ -1,0 +1,134 @@
+UNIX SVR4 I/O
+506  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+                               70
+                               60
+                               50
+     Disk cache miss rate (%)                                                                           IBM VM
+                               40
+                               30
+                                                              IBM MVS
+                               20
+                                                    VAX UNIX
+                               10
+                               0
+                                   0             5  10        15                          20    25      30
+                                                              Cache size (megabytes)
+     Figure 11.11                     Disk Cache Performance Using Frequency-Based Replacement
+                               The figures appear to show that LRU outperforms the frequency-based replace-
+                               ment algorithm. However, when identical reference patterns using the same cache
+                               structure are compared, the frequency-based replacement algorithm is superior.
+                               Thus, the exact sequence of reference patterns, plus related design issues such as
+                               block size, will have a profound influence on the performance achieved.
+11.8                           UNIX SVR4 I/O
+                               In UNIX, each individual I/O device is associated with a special file. These are man-
+                               aged by the file system and are read and written in the same manner as user data
+                               files. This provides a clean, uniform interface to users and processes. To read from
+                               or write to a device, read and write requests are made for the special file associated
+                               with the device.
+                                      Figure 11.12 illustrates the logical structure of the I/O facility. The file subsys-
+                               tem manages files on secondary storage devices. In addition, it serves as the process
+                               interface to devices, because these are treated as files.
+                                      There are two types of I/O in UNIX: buffered and unbuffered. Buffered I/O
+                               passes through system buffers, whereas unbuffered I/O typically involves the DMA
+
+                                                          11.8 / UNIX SVR4 I/O           507
+                                 File subsystem
+                                            Buffer cache
+                                 Character  Block
+                                 Device drivers
+                 Figure 11.12               UNIX I/O Structure
+facility, with the transfer taking place directly between the I/O module and the
+process I/O area. For buffered I/O, two types of buffers are used: system buffer
+caches and character queues.
+Buffer Cache
+The buffer cache in UNIX is essentially a disk cache. I/O operations with disk are
+handled through the buffer cache. The data transfer between the buffer cache and
+the user process space always occurs using DMA. Because both the buffer cache
+and the process I/O area are in main memory, the DMA facility is used in this case
+to perform a memory-to-memory copy. This does not use up any processor cycles,
+but it does consume bus cycles.
+   To manage the buffer cache, three lists are maintained:
+·  Free list: List of all slots in the cache (a slot is referred to as a buffer in UNIX;
+   each slot holds one disk sector) that are available for allocation
+·  Device list: List of all buffers currently associated with each disk
+·  Driver I/O queue: List of buffers that are actually undergoing or waiting for
+   I/O on a particular device
+   All buffers should be on the free list or on the driver I/O queue list. A buffer,
+once associated with a device, remains associated with the device even if it is on the
+free list, until is actually reused and becomes associated with another device. These
+lists are maintained as pointers associated with each buffer rather than physically
+separate lists.
+   When a reference is made to a physical block number on a particular device, the
+OS first checks to see if the block is in the buffer cache. To minimize the search time,
+the device list is organized as a hash table, using a technique similar to the overflow
+with chaining technique discussed in Appendix F (Figure F.1b). Figure 11.13 depicts
+the general organization of the buffer cache. There is a hash table of fixed length
+that contains pointers into the buffer cache. Each reference to a (device#, block#)
+maps into a particular entry in the hash table. The pointer in that entry points to
+the first buffer in the chain. A hash pointer associated with each buffer points to
+the next buffer in the chain for that hash table entry. Thus, for all (device#, block#)
+
+508  CHAPTER  11 / I/O MANAGEMENT AND DISK     SCHEDULING
+                               Hash table                      Buffer cache  Free list pointers  Hash pointers
+              Device#, Block#
+                               Free list
+                               pointer
+              Figure 11.13     UNIX Buffer Cache Organization
+     references that map into the same hash table entry, if the corresponding block is in
+     the buffer cache, then that buffer will be in the chain for that hash table entry. Thus,
+     the length of the search of the buffer cache is reduced by a factor on the order of N,
+     where N is the length of the hash table.
+     For block replacement, a least-recently-used algorithm is used: After a buffer has
+     been allocated to a disk block, it cannot be used for another block until all other buff-
+     ers have been used more recently. The free list preserves this least-recently-used order.
+     Character Queue
+     Block-oriented devices, such as disk and USB keys, can be effectively served by the
+     buffer cache. A different form of buffering is appropriate for character-oriented
+     devices, such as terminals and printers. A character queue is either written by the
+     I/O device and read by the process or written by the process and read by the device.
+     In both cases, the producer/consumer model introduced in Chapter 5 is used. Thus,
+     character queues may only be read once; as each character is read, it is effectively
+     destroyed. This is in contrast to the buffer cache, which may be read multiple times
+     and hence follows the readers/writers model (also discussed in Chapter 5).
+     Unbuffered I/O
+     Unbuffered I/O, which is simply DMA between device and process space,
+     is always the fastest method for a process to perform I/O. A process that is
+
+                                                                    11.9  /  LINUX I/O       509
+      Table 11.5  Device I/O in UNIX
+                              Unbuffered I/O  Buffer Cache                   Character Queue
+      Disk Drive                      X       X
+      Tape Drive                      X       X
+      Terminals                                                              X
+      Communication Lines                                                    X
+      Printers                        X                                      X
+      performing unbuffered I/O is locked in main memory and cannot be swapped
+      out. This reduces the opportunities for swapping by tying up part of main mem-
+      ory, thus reducing the overall system performance. Also, the I/O device is tied up
+      with the process for the duration of the transfer, making it unavailable for other
+      processes.
+      UNIX Devices
+      Among the categories of devices recognized by UNIX are the following:
+      ·  Disk drives
+      ·  Tape drives
+      ·  Terminals
+      ·  Communication lines
+      ·  Printers
+         Table 11.5 shows the types of I/O suited to each type of device. Disk drives
+      are heavily used in UNIX, are block oriented, and have the potential for reason-
+      able high throughput. Thus, I/O for these devices tends to be unbuffered or via
+      buffer cache. Tape drives are functionally similar to disk drives and use similar I/O
+      schemes.
+         Because terminals involve relatively slow exchange of characters, terminal I/O
+      typically makes use of the character queue. Similarly, communication lines require
+      serial processing of bytes of data for input or output and are best handled by char-
+      acter queues. Finally, the type of I/O used for a printer will generally depend on its
+      speed. Slow printers will normally use the character queue, while a fast printer might
+      employ unbuffered I/O. A buffer cache could be used for a fast printer. However,
+      because data going to a printer are never reused, the overhead of the buffer cache is
+      unnecessary.
+11.9  LINUX I/O
+      In general terms, the Linux I/O kernel facility is very similar to that of other UNIX
+      implementation, such as SVR4. The Linux kernel associates a special file with each
+      I/O device driver. Block, character, and network devices are recognized. In this sec-
+      tion, we look at several features of the Linux I/O facility.

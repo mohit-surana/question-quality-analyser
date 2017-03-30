@@ -1,0 +1,341 @@
+Linux Kernel Concurrency Mechanisms
+                                    6.8 / LINUX KERNEL CONCURRENCY MECHANISMS                                  285
+Table 6.2  UNIX Signals
+Value      Name          Description
+01         SIGHUP        Hang up; sent to process when kernel assumes that the user of that process is doing
+                         no useful work
+02         SIGINT        Interrupt
+03         SIGQUIT       Quit; sent by user to induce halting of process and production of core dump
+04         SIGILL        Illegal instruction
+05         SIGTRAP       Trace trap; triggers the execution of code for process tracing
+06         SIGIOT        IOT instruction
+07         SIGEMT        EMT instruction
+08         SIGFPE        Floating-point exception
+09         SIGKILL       Kill; terminate process
+10         SIGBUS        Bus error
+11         SIGSEGV       Segmentation violation; process attempts to access location outside its virtual
+                         address space
+12         SIGSYS        Bad argument to system call
+13         SIGPIPE       Write on a pipe that has no readers attached to it
+14         SIGALRM       Alarm clock; issued when a process wishes to receive a signal after a period of time
+15         SIGTERM       Software termination
+16         SIGUSR1       User-defined signal 1
+17         SIGUSR2       User-defined signal 2
+18         SIGCHLD       Death of a child
+19         SIGPWR        Power failure
+6.8        LINUX KERNEL CONCURRENCY MECHANISMS
+           Linux includes all of the concurrency mechanisms found in other UNIX systems,
+           such as SVR4, including pipes, messages, shared memory, and signals. In addi-
+           tion, Linux 2.6 includes a rich set of concurrency mechanisms specifically intended
+           for use when a thread is executing in kernel mode. That is, these are mechanisms
+           used within the kernel to provide concurrency in the execution of kernel code. This
+           section examines the Linux kernel concurrency mechanisms.
+           Atomic Operations
+           Linux provides a set of operations that guarantee atomic operations on a variable.
+           These operations can be used to avoid simple race conditions. An atomic operation
+           executes without interruption and without interference. On a uniprocessor system,
+           a thread performing an atomic operation cannot be interrupted once the operation
+           has started until the operation is finished. In addition, on a multiprocessor system,
+
+286   CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+           the variable being operated on is locked from access by other threads until this oper-
+           ation is completed.
+              Two types of atomic operations are defined in Linux: integer operations,
+           which operate on an integer variable, and bitmap operations, which operate
+           on one bit in a bitmap (Table 6.3). These operations must be implemented on
+           any architecture that implements Linux. For some architectures, there are cor-
+           responding assembly language instructions for the atomic operations. On other
+           architectures, an operation that locks the memory bus is used to guarantee that
+           the operation is atomic.
+              For atomic integer operations, a special data type is used, atomic_t. The
+           atomic integer operations can be used only on this data type, and no other operations
+Table 6.3  Linux Atomic Operations
+                                           Atomic Integer Operations
+ATOMIC_INIT     (int  i)                        At declaration: initialize an atomic_t to i
+int   atomic_read(atomic_t       *v)            Read integer value of v
+void  atomic_set(atomic_t        *v,  int  i)   Set the value of v to integer i
+void  atomic_add(int       i,   atomic_t   *v)  Add i to v
+void  atomic_sub(int       i,   atomic_t   *v)  Subtract i from v
+void  atomic_inc(atomic_t        *v)            Add 1 to v
+void  atomic_dec(atomic_t        *v)            Subtract 1 from v
+int   atomic_sub_and_test(int         i,        Subtract i from v; return 1 if the result is zero;
+atomic_t   *v)                                  return 0 otherwise
+int   atomic_add_negative(int         i,        Add i to v; return 1 if the result is negative;
+atomic_t   *v)                                  return 0 otherwise (used for implementing
+                                                semaphores)
+int   atomic_dec_and_test(atomic_t         *v)  Subtract 1 from v; return 1 if the result is
+                                                zero; return 0 otherwise
+int   atomic_inc_and_test(atomic_t         *v)  Add 1 to v; return 1 if the result is zero;
+                                                return 0 otherwise
+                                           Atomic Bitmap Operations
+void  set_bit(int     nr,  void  *addr)         Set bit nr in the bitmap pointed to by addr
+void  clear_bit(int       nr,   void  *addr)    Clear bit nr in the bitmap pointed to by addr
+void  change_bit(int       nr,  void  *addr)    Invert bit nr in the bitmap pointed to by addr
+int   test_and_set_bit(int       nr,            Set bit nr in the bitmap pointed to by addr;
+void  *addr)                                    return the old bit value
+int   test_and_clear_bit(int          nr,       Clear bit nr in the bitmap pointed to by addr;
+void  *addr)                                    return the old bit value
+int   test_and_change_bit(int         nr,       Invert bit nr in the bitmap pointed to by addr;
+void  *addr)                                    return the old bit value
+int   test_bit(int    nr,  void  *addr)         Return the value of bit nr in the bitmap
+                                                pointed to by addr
+
+                         6.8 / LINUX KERNEL CONCURRENCY MECHANISMS                      287
+are allowed on this data type. [LOVE04] lists the following advantages for these
+restrictions:
+1.  The atomic operations are never used on variables that might in some circum-
+    stances be unprotected from race conditions.
+2.  Variables of this data type are protected from improper use by nonatomic
+    operations.
+3.  The compiler cannot erroneously optimize access to the value (e.g., by using
+    an alias rather than the correct memory address).
+4.  This data type serves to hide architecture-specific differences in its imple-
+    mentation.
+    A typical use of the atomic integer data type is to implement counters.
+    The atomic bitmap operations operate on one of a sequence of bits at an arbi-
+trary memory location indicated by a pointer variable. Thus, there is no equivalent
+to the atomic_t data type needed for atomic integer operations.
+    Atomic operations are the simplest of the approaches to kernel synchroniza-
+tion. More complex locking mechanisms can be built on top of them.
+Spinlocks
+The most common technique used for protecting a critical section in Linux is the spin-
+lock. Only one thread at a time can acquire a spinlock. Any other thread attempting
+to acquire the same lock will keep trying (spinning) until it can acquire the lock. In
+essence a spinlock is built on an integer location in memory that is checked by each
+thread before it enters its critical section. If the value is 0, the thread sets the value to
+1 and enters its critical section. If the value is nonzero, the thread continually checks
+the value until it is zero. The spinlock is easy to implement but has the disadvantage
+that locked-out threads continue to execute in a busy-waiting mode. Thus spinlocks
+are most effective in situations where the wait time for acquiring a lock is expected
+to be very short, say on the order of less than two context changes.
+    The basic form of use of a spinlock is the following:
+    spin_lock(&lock)
+    /*  critical         section  */
+    spin_unlock(&lock)
+BASIC SPINLOCKS  The basic spinlock (as opposed to the reader­writer spinlock
+explained subsequently) comes in four flavors (Table 6.4):
+·   Plain: If the critical section of code is not executed by interrupt handlers or if
+    the interrupts are disabled during the execution of the critical section, then the
+    plain spinlock can be used. It does not affect the interrupt state on the processor
+    on which it is run.
+·   _irq: If interrupts are always enabled, then this spinlock should be used.
+·   _irqsave: If it is not known if interrupts will be enabled or disabled at the time
+    of execution, then this version should be used. When a lock is acquired, the cur-
+    rent state of interrupts on the local processor is saved, to be restored when the
+    lock is released.
+
+288   CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+Table 6.4  Linux Spinlocks
+void  spin_lock(spinlock_t     *lock)               Acquires the specified lock, spinning if needed
+                                                    until it is available
+void  spin_lock_irq(spinlock_t         *lock)       Like spin_lock, but also disables interrupts on the
+                                                    local processor
+void  spin_lock_irqsave(spinlock_t          *lock,  Like spin_lock_irq, but also saves the current
+unsigned   long  flags)                             interrupt state in flags
+void  spin_lock_bh(spinlock_t          *lock)       Like spin_lock, but also disables the execution
+                                                    of all bottom halves
+void  spin_unlock(spinlock_t        *lock)          Releases given lock
+void  spin_unlock_irq(spinlock_t       *lock)       Releases given lock and enables local interrupts
+void  spin_unlock_irqrestore(spinlock_t             Releases given lock and restores local interrupts
+*lock,     unsigned  long   flags)                  to given previous state
+void  spin_unlock_bh(spinlock_t        *lock)       Releases given lock and enables bottom halves
+void  spin_lock_init(spinlock_t        *lock)       Initializes given spinlock
+int   spin_trylock(spinlock_t       *lock)          Tries to acquire specified lock; returns nonzero if
+                                                    lock is currently held and zero otherwise
+int   spin_is_locked(spinlock_t        *lock)       Returns nonzero if lock is currently held and zero
+                                                    otherwise
+           ·  _bh: When an interrupt occurs, the minimum amount of work necessary is
+              performed by the corresponding interrupt handler. A piece of code, called
+              the bottom half, performs the remainder of the interrupt-related work, allow-
+              ing the current interrupt to be enabled as soon as possible. The _bh spinlock
+              is used to disable and then enable bottom halves to avoid conflict with the
+              protected critical section.
+              The plain spinlock is used if the programmer knows that the protected data
+           is not accessed by an interrupt handler or bottom half. Otherwise, the appropriate
+           nonplain spinlock is used.
+              Spinlocks are implemented differently on a uniprocessor system versus a mul-
+           tiprocessor system. For a uniprocessor system, the following considerations apply.
+           If kernel preemption is turned off, so that a thread executing in kernel mode cannot
+           be interrupted, then the locks are deleted at compile time; they are not needed.
+           If kernel preemption is enabled, which does permit interrupts, then the spinlocks
+           again compile away (i.e., no test of a spinlock memory location occurs) but are sim-
+           ply implemented as code that enables/disables interrupts. On a multiple processor
+           system, the spinlock is compiled into code that does in fact test the spinlock loca-
+           tion. The use of the spinlock mechanism in a program allows it to be independent
+           of whether it is executed on a uniprocessor or multiprocessor system.
+           READER­WRITER    SPINLOCK           The reader­writer spinlock is a mechanism that
+           allows a greater degree of concurrency within the kernel than the basic spinlock.
+           The reader­writer spinlock allows multiple threads to have simultaneous access
+           to the same data structure for reading only but gives exclusive access to the
+
+                    6.8 / LINUX KERNEL CONCURRENCY MECHANISMS                      289
+spinlock for a thread that intends to update the data structure. Each reader­writer
+spinlock consists of a 24-bit reader counter and an unlock flag, with the following
+interpretation:
+    Counter      Flag        Interpretation
+        0        1           The spinlock is released and available for use
+        0        0           Spinlock has been acquired for writing by one thread
+    n (n > 0)    0           Spinlock has been acquired for reading by n threads
+    n (n > 0)    1           Not valid
+    As with the basic spinlock, there are plain, _irq, and _irqsave versions of
+the reader­writer spinlock.
+    Note that the reader­writer spinlock favors readers over writers. If the spin-
+lock is held for readers, then so long as there is at least one reader, the spinlock
+cannot be preempted by a writer. Furthermore, new readers may be added to the
+spinlock even while a writer is waiting.
+Semaphores
+At the user level, Linux provides a semaphore interface corresponding to that in
+UNIX SVR4. Internally, Linux provides an implementation of semaphores for its
+own use. That is, code that is part of the kernel can invoke kernel semaphores.
+These kernel semaphores cannot be accessed directly by the user program via sys-
+tem calls. They are implemented as functions within the kernel and are thus more
+efficient than user-visible semaphores.
+    Linux provides three types of semaphore facilities in the kernel: binary sema-
+phores, counting semaphores, and reader­writer semaphores.
+BINARY  AND      COUNTING    SEMAPHORES   The binary and counting semaphores
+defined in Linux 2.6 (Table 6.5) have the same functionality as described for
+such semaphores in Chapter 5. The function names down and up are used for the
+functions referred to in Chapter 5 as semWait and semSignal, respectively.
+    A counting semaphore is initialized using the sema_init function, which gives
+the semaphore a name and assigns an initial value to the semaphore. Binary sema-
+phores, called MUTEXes in Linux, are initialized using the init_MUTEX and init_
+MUTEX_LOCKED functions, which initialize the semaphore to 1 or 0, respectively.
+    Linux provides three versions of the down (semWait) operation.
+1.  The down function corresponds to the traditional semWait operation. That
+    is, the thread tests the semaphore and blocks if the semaphore is not available.
+    The thread will awaken when a corresponding up operation on this sema-
+    phore occurs. Note that this function name is used for an operation on either a
+    counting semaphore or a binary semaphore.
+2.  The down_interruptible function allows the thread to receive and
+    respond to a kernel signal while being blocked on the down operation. If the
+    thread is woken up by a signal, the down_interruptible function incre-
+    ments the count value of the semaphore and returns an error code known in
+
+290   CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+                  Linux as -EINTR. This alerts the thread that the invoked semaphore function
+                  has aborted. In effect, the thread has been forced to "give up" the semaphore.
+                  This feature is useful for device drivers and other services in which it is conve-
+                  nient to override a semaphore operation.
+           3.     The down_trylock function makes it possible to try to acquire a semaphore
+                  without being blocked. If the semaphore is available, it is acquired. Otherwise,
+                  this function returns a nonzero value without blocking the thread.
+           READER­WRITER SEMAPHORES            The reader­writer semaphore divides users into
+           readers and writers; it allows multiple concurrent readers (with no writers) but only
+           a single writer (with no concurrent readers). In effect, the semaphore functions as
+           a counting semaphore for readers but a binary semaphore (MUTEX) for writers.
+           Table 6.5 shows the basic reader­writer semaphore operations. The reader­writer
+           semaphore uses uninterruptible sleep, so there is only one version of each of the
+           down operations.
+Table 6.5  Linux Semaphores
+                                        Traditional Semaphores
+void   sema_init(struct      semaphore  *sem,      Initializes the dynamically created semaphore to the
+int   count)                                       given count
+void   init_MUTEX(struct     semaphore      *sem)  Initializes the dynamically created semaphore with a
+                                                   count of 1 (initially unlocked)
+void   init_MUTEX_LOCKED(struct         sema-      Initializes the dynamically created semaphore with a
+phore      *sem)                                   count of 0 (initially locked)
+void   down(struct    semaphore  *sem)             Attempts to acquire the given semaphore, entering
+                                                   uninterruptible sleep if semaphore is unavailable
+int   down_interruptible(struct                    Attempts to acquire the given semaphore, enter-
+semaphore      *sem)                               ing interruptible sleep if semaphore is unavailable;
+                                                   returns-EINTR value if a signal other than the result
+                                                   of an up operation is received
+int   down_trylock(struct        semaphore         Attempts to acquire the given semaphore, and
+*sem)                                              returns a nonzero value if semaphore is unavailable
+void   up(struct      semaphore  *sem)             Releases the given semaphore
+                                        Reader­Writer Semaphores
+void   init_rwsem(struct     rw_semaphore,         Initializes the dynamically created semaphore with a
+*rwsem)                                            count of 1
+void   down_read(struct      rw_semaphore,         Down operation for readers
+*rwsem)
+void   up_read(struct   rw_semaphore,              Up operation for readers
+*rwsem)
+void   down_write(struct     rw_semaphore,         Down operation for writers
+*rwsem)
+void   up_write(struct   rw_semaphore,             Up operation for writers
+*rwsem)
+
+                    6.8 / LINUX KERNEL CONCURRENCY MECHANISMS                                 291
+Barriers
+In some architectures, compilers and/or the processor hardware may reorder mem-
+ory accesses in source code to optimize performance. These reorderings are done
+to optimize the use of the instruction pipeline in the processor. The reordering
+algorithms contain checks to ensure that data dependencies are not violated. For
+example, the code:
+       a   =  1;
+       b   =  1;
+may be reordered so that memory location b is updated before memory location a
+is updated. However, the code:
+       a   =  1;
+       b   =  a;
+will not be reordered. Even so, there are occasions when it is important that reads
+or writes are executed in the order specified because of use of the information that
+is made by another thread or a hardware device.
+       To enforce the order in which instructions are executed, Linux provides the
+memory barrier facility. Table 6.6 lists the most important functions that are defined
+for this facility. The rmb() operation insures that no reads occur across the bar-
+rier defined by the place of the rmb() in the code. Similarly, the wmb() operation
+insures that no writes occur across the barrier defined by the place of the wmb() in
+the code. The mb() operation provides both a load and store barrier.
+       Two important points to note about the barrier operations:
+1.     The barriers relate to machine instructions, namely loads and stores. Thus the
+       higher-level language instruction a  =     b involves both a load (read) from loca-
+       tion b and a store (write) to location a.
+2.     The rmb, wmb, and mb operations dictate the behavior of both the compiler
+       and the processor. In the case of the compiler, the barrier operation dictates
+       that the compiler not reorder instructions during the compile process. In the
+       case of the processor, the barrier operation dictates that any instructions pend-
+       ing in the pipeline before the barrier must be committed for execution before
+       any instructions encountered after the barrier.
+Table 6.6  Linux Memory Barrier Operations
+rmb()               Prevents loads from being reordered across the barrier
+wmb()               Prevents stores from being reordered across the barrier
+mb()                Prevents loads and stores from being reordered across the barrier
+Barrier()           Prevents the compiler from reordering loads or stores across the barrier
+smp_rmb()           On SMP, provides a rmb() and on UP provides a barrier()
+smp_wmb()           On SMP, provides a wmb() and on UP provides a barrier()
+smp_mb()            On SMP, provides a mb() and on UP provides a barrier()
+Note: SMP = symmetric multiprocessor;
+UP = uniprocessor
+
+292  CHAPTER 6 / CONCURRENCY: DEADLOCK AND STARVATION
+        The barrier() operation is a lighter-weight version of the mb() operation,
+     in that it only controls the compiler's behavior. This would be useful if it is known
+     that the processor will not perform undesirable reorderings. For example, the Intel
+     x86 processors do not reorder writes.
+        The smp_rmb, smp_wmb, and smp_mb operations provide an optimization for
+     code that may be compiled on either a uniprocessor (UP) or a symmetric multiproc-
+     essor (SMP). These instructions are defined as the usual memory barriers for an
+     SMP, but for a UP, they are all treated only as compiler barriers. The smp_ opera-
+     tions are useful in situations in which the data dependencies of concern will only
+     arise in an SMP context.
+6.9  SOLARIS THREAD SYNCHRONIZATION PRIMITIVES
+     In addition to the concurrency mechanisms of UNIX SVR4, Solaris supports four
+     thread synchronization primitives:
+     ·  Mutual exclusion (mutex) locks
+     ·  Semaphores
+     ·  Multiple readers, single writer (readers/writer) locks
+     ·  Condition variables
+        Solaris implements these primitives within the kernel for kernel threads; they
+     are also provided in the threads library for user-level threads. Figure 6.15 shows
+     the data structures for these primitives. The initialization functions for the primi-
+     tives fill in some of the data members. Once a synchronization object is created,
+     there are essentially only two operations that can be performed: enter (acquire
+     lock) and release (unlock). There are no mechanisms in the kernel or the threads
+     library to enforce mutual exclusion or to prevent deadlock. If a thread attempts to
+     access a piece of data or code that is supposed to be protected but does not use the
+     appropriate synchronization primitive, then such access occurs. If a thread locks
+     an object and then fails to unlock it, no kernel action is taken.
+        All of the synchronization primitives require the existence of a hardware
+     instruction that allows an object to be tested and set in one atomic operation.
+     Mutual Exclusion Lock
+     A mutex is used to ensure that only one thread at a time can access the resource
+     protected by the mutex. The thread that locks the mutex must be the one that
+     unlocks it. A thread attempts to acquire a mutex lock by executing the mutex_
+     enter primitive. If mutex_enter cannot set the lock (because it is already set
+     by another thread), the blocking action depends on type-specific information
+     stored in the mutex object. The default blocking policy is a spinlock: A blocked
+     thread polls the status of the lock while executing in a busy waiting loop.
+     An interrupt-based blocking mechanism is optional. In this latter case, the
+     mutex includes a turnstile          id that identifies a queue of threads sleeping on
+     this lock.

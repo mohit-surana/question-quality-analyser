@@ -1,0 +1,250 @@
+Readers/Writers Problem
+                           5.6 / READERS/WRITERS PROBLEM                                    239
+     determined by the global variable capacity. Initially, the mailbox mayproduce
+     is filled with a number of null messages equal to the capacity of the buffer. The
+     number of messages in mayproduce shrinks with each production and grows with
+     each consumption.
+         This approach is quite flexible. There may be multiple producers and consum-
+     ers, as long as all have access to both mailboxes. The system may even be distrib-
+     uted, with all producer processes and the mayproduce mailbox at one site and all
+     the consumer processes and the mayconsume mailbox at another.
+5.6  READERS/WRITERS PROBLEM
+     In dealing with the design of synchronization and concurrency mechanisms, it is
+     useful to be able to relate the problem at hand to known problems and to be able
+     to test any solution in terms of its ability to solve these known problems. In the
+     literature, several problems have assumed importance and appear frequently, both
+     because they are examples of common design problems and because of their edu-
+     cational value. One such problem is the producer/consumer problem, which has
+     already been explored. In this section, we look at another classic problem: the read-
+     ers/writers problem.
+         The readers/writers problem is defined as follows: There is a data area shared
+     among a number of processes. The data area could be a file, a block of main mem-
+     ory, or even a bank of processor registers. There are a number of processes that
+     only read the data area (readers) and a number that only write to the data area
+     (writers). The conditions that must be satisfied are as follows:
+     1.  Any number of readers may simultaneously read the file.
+     2.  Only one writer at a time may write to the file.
+     3.  If a writer is writing to the file, no reader may read it.
+         Thus, readers are processes that are not required to exclude one another and
+     writers are processes that are required to exclude all other processes, readers and
+     writers alike.
+         Before proceeding, let us distinguish this problem from two others: the general
+     mutual exclusion problem and the producer/consumer problem. In the readers/writ-
+     ers problem readers do not also write to the data area, nor do writers read the data
+     area while writing. A more general case, which includes this case, is to allow any of
+     the processes to read or write the data area. In that case, we can declare any por-
+     tion of a process that accesses the data area to be a critical section and impose the
+     general mutual exclusion solution. The reason for being concerned with the more
+     restricted case is that more efficient solutions are possible for this case and that the
+     less efficient solutions to the general problem are unacceptably slow. For example,
+     suppose that the shared area is a library catalog. Ordinary users of the library read
+     the catalog to locate a book. One or more librarians are able to update the catalog.
+     In the general solution, every access to the catalog would be treated as a critical sec-
+     tion, and users would be forced to read the catalog one at a time. This would clearly
+     impose intolerable delays. At the same time, it is important to prevent writers from
+
+240  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+     interfering with each other and it is also required to prevent reading while writing is
+     in progress to prevent the access of inconsistent information.
+           Can the producer/consumer problem be considered simply a special case of
+     the readers/writers problem with a single writer (the producer) and a single reader
+     (the consumer)? The answer is no. The producer is not just a writer. It must read
+     queue pointers to determine where to write the next item, and it must determine if
+     the buffer is full. Similarly, the consumer is not just a reader, because it must adjust
+     the queue pointers to show that it has removed a unit from the buffer.
+           We now examine two solutions to the problem.
+     Readers Have Priority
+     Figure 5.22 is a solution using semaphores, showing one instance each of a reader
+     and a writer; the solution does not change for multiple readers and writers. The
+     writer process is simple. The semaphore wsem is used to enforce mutual exclusion.
+     As long as one writer is accessing the shared data area, no other writers and no
+     readers may access it. The reader process also makes use of wsem to enforce mutual
+     exclusion. However, to allow multiple readers, we require that, when there are no
+     readers reading, the first reader that attempts to read should wait on wsem. When
+     /*   program     readersandwriters      */
+     int   readcount;
+     semaphore     x   =  1,wsem     =   1;
+     void     reader()
+     {
+           while   (true){
+              semWait     (x);
+              readcount++;
+              if(readcount       ==  1)
+                  semWait       (wsem);
+              semSignal      (x);
+              READUNIT();
+              semWait     (x);
+              readcount;
+              if(readcount       ==  0)
+                  semSignal        (wsem);
+              semSignal      (x);
+           }
+     }
+     void     writer()
+     {
+           while   (true){
+              semWait     (wsem);
+              WRITEUNIT();
+              semSignal      (wsem);
+           }
+     }
+     void     main()
+     {
+           readcount      =  0;
+           parbegin       (reader,writer);
+     }
+     Figure 5.22      A Solution to the Readers/Writers  Problem  Using  Semaphore:  Readers  Have
+                      Priority
+
+                                                              5.6 / READERS/WRITERS PROBLEM           241
+there is already at least one reader reading, subsequent readers need not wait before
+entering. The global variable readcount is used to keep track of the number of
+readers, and the semaphore x is used to assure that readcount is updated properly.
+Writers Have Priority
+In the previous solution, readers have priority. Once a single reader has begun to
+access the data area, it is possible for readers to retain control of the data area as
+long as there is at least one reader in the act of reading. Therefore, writers are sub-
+ject to starvation.
+      Figure 5.23 shows a solution that guarantees that no new readers are allowed
+access to the data area once at least one writer has declared a desire to write. For
+/*   program     readersandwriters          */
+int   readcount,writecount;
+void     reader()
+{
+      while   (true){
+         semWait      (z);
+              semWait       (rsem);
+                      semWait      (x);
+                               readcount++;
+                               if  (readcount         ==  1)
+                                     semWait        (wsem);
+                               semSignal        (x);
+                      semSignal      (rsem);
+              semSignal        (z);
+              READUNIT();
+              semWait       (x);
+                      readcount--;
+                      if  (readcount        ==  0)    semSignal  (wsem);
+              semSignal        (x);
+      }
+}
+void     writer   ()
+{
+      while   (true){
+         semWait      (y);
+              writecount++;
+              if   (writecount       ==     1)
+                      semWait      (rsem);
+         semSignal       (y);
+         semWait      (wsem);
+         WRITEUNIT();
+         semSignal       (wsem);
+         semWait      (y);
+              writecount;
+              if   (writecount       ==     0)  semSignal     (rsem);
+         semSignal       (y);
+      }
+}
+void     main()
+{
+      readcount       =  writecount      =  0;
+      parbegin     (reader,       writer);
+}
+Figure 5.23      A Solution to the Readers/Writers Problem                Using  Semaphore:  Writers  Have
+                 Priority
+
+242  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+Table 5.6  State of the Process Queues     for  Program  of  Figure 5.23
+Readers only in the system                                   ·  wsem set
+                                                             ·  no queues
+Writers only in the system                                   ·  wsem and rsem set
+                                                             ·  writers queue on wsem
+Both readers and writers with read first                     ·  wsem set by reader
+                                                             ·  rsem set by writer
+                                                             ·  all writers queue on wsem
+                                                             ·  one reader queues on rsem
+                                                             ·  other readers queue on z
+Both readers and writers with write first                    ·  wsem set by writer
+                                                             ·  rsem set by writer
+                                                             ·  writers queue on wsem
+                                                             ·  one reader queues on rsem
+                                                             ·  other readers queue on z
+           writers, the following semaphores and variables are added to the ones already
+           defined:
+           ·  A semaphore rsem that inhibits all readers while there is at                 least one writer
+              desiring access to the data area
+           ·  A variable writecount that controls the setting of rsem
+           ·  A semaphore y that controls the updating of writecount
+              For readers, one additional semaphore is needed. A long queue must not
+           be allowed to build up on rsem; otherwise writers will not be able to jump the
+           queue. Therefore, only one reader is allowed to queue on rsem, with any additional
+           readers queueing on semaphore z, immediately before waiting on rsem. Table 5.6
+           summarizes the possibilities.
+              An alternative solution, which gives writers priority and which is implemented
+           using message passing, is shown in Figure 5.24. In this case, there is a controller
+           process that has access to the shared data area. Other processes wishing to access
+           the data area send a request message to the controller, are granted access with an
+           "OK" reply message, and indicate completion of access with a "finished" message.
+           The controller is equipped with three mailboxes, one for each type of message that
+           it may receive.
+              The controller process services write request messages before read request
+           messages to give writers priority. In addition, mutual exclusion must be enforced.
+           To do this the variable count is used, which is initialized to some number greater
+           than the maximum possible number of readers. In this example, we use a value of
+           100. The action of the controller can be summarized as follows:
+           ·  If count > 0, then no writer is waiting and there may or may not be read-
+              ers active. Service all "finished" messages first to clear active readers. Then
+              service write requests and then read requests.
+           ·  If count = 0, then the only request outstanding is a write request. Allow the
+              writer to proceed and wait for a "finished" message.
+
+                                                                                    5.7 / SUMMARY               243
+void    reader(int       i)                       void  controller()
+{                                                 {
+   message     rmsg;                                 while  (true)
+        while     (true)     {                       {
+           rmsg   =   i;                                if  (count     >   0)    {
+           send   (readrequest,         rmsg);              if  (!empty      (finished))           {
+           receive       (mbox[i],  rmsg);                      receive      (finished,         msg);
+           READUNIT       ();                                   count++;
+           rmsg   =   i;                                    }
+           send   (finished,    rmsg);                      else   if  (!empty         (writerequest))          {
+        }                                                       receive      (writerequest,           msg);
+}                                                               writer_id        =     msg.id;
+void    writer(int       j)                                     count     =  count        ­  100;
+{                                                           }
+   message     rmsg;                                        else   if  (!empty         (readrequest))        {
+   while(true)        {                                         receive      (readrequest,            msg);
+        rmsg   =  j;                                            count--;
+        send   (writerequest,       rmsg);                      send   (msg.id,           "OK");
+        receive   (mbox[j],     rmsg);                      }
+        WRITEUNIT     ();                               }
+        rmsg   =  j;                                    if  (count     ==    0)     {
+        send   (finished,       rmsg);                      send   (writer_id,            "OK");
+   }                                                        receive    (finished,            msg);
+}                                                           count   =  100;
+                                                        }
+                                                        while   (count       <   0)    {
+                                                            receive    (finished,            msg);
+                                                            count++;
+                                                        }
+                                                     }
+                                                  }
+Figure 5.24    A Solution to the Readers/Writers  Problem Using Message Passing
+               ·  If count < 0, then a writer has made a request and is being made to wait
+                  to clear all active readers. Therefore, only "finished" messages should be
+                  serviced.
+   5.7     SUMMARY
+           The central themes of modern operating systems are multiprogramming, multipro-
+           cessing, and distributed processing. Fundamental to these themes, and fundamen-
+           tal to the technology of OS design, is concurrency. When multiple processes are
+           executing concurrently, either actually in the case of a multiprocessor system or vir-
+           tually in the case of a single-processor multiprogramming system, issues of conflict
+           resolution and cooperation arise.
+                  Concurrent processes may interact in a number of ways. Processes that are
+           unaware of each other may nevertheless compete for resources, such as processor
+           time or access to I/O devices. Processes may be indirectly aware of one another
+           because they share access to a common object, such as a block of main memory or
+           a file. Finally, processes may be directly aware of each other and cooperate by the
+           exchange of information. The key issues that arise in these interactions are mutual
+           exclusion and deadlock.

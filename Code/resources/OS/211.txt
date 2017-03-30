@@ -1,0 +1,148 @@
+Mac OS X Grand Central Dispatch
+                                                4.7 / MAC OS X GRAND CENTRAL DISPATCH                                   189
+Table 4.5  Linux clone  () flags
+CLONE_CLEARID               Clear the task ID.
+CLONE_DETACHED              The parent does not want a SIGCHLD signal sent on exit.
+CLONE_FILES                 Share the table that identifies the open files.
+CLONE_FS                    Share the table that identifies the root directory and the current working directory, as
+                            well as the value of the bit mask used to mask the initial file permissions of a new file.
+CLONE_IDLETASK              Set PID to zero, which refers to an idle task. The idle task is employed when all
+                            available tasks are blocked waiting for resources.
+CLONE_NEWNS                 Create a new namespace for the child.
+CLONE_PARENT                Caller and new task share the same parent process.
+CLONE_PTRACE                If the parent process is being traced, the child process will also be traced.
+CLONE_SETTID                Write the TID back to user space.
+CLONE_SETTLS                Create a new TLS for the child.
+CLONE_SIGHAND               Share the table that identifies the signal handlers.
+CLONE_SYSVSEM               Share System V SEM_UNDO semantics.
+CLONE_THREAD                Insert this process into the same thread group of the parent. If this flag is true, it
+                            implicitly enforces CLONE_PARENT.
+CLONE_VFORK                 If set, the parent does not get scheduled for execution until the child invokes the
+                            execve() system call.
+CLONE_VM                    Share the address space (memory descriptor and all page tables).
+4.7        MAC OS X GRAND CENTRAL DISPATCH
+           As was mentioned in Chapter 2, Mac OS X Grand Central Dispatch (GCD) pro-
+           vides a pool of available threads. Designers can designate portions of applications,
+           called blocks, that can be dispatched independently and run concurrently. The OS
+           will provide as much concurrency as possible based on the number of cores avail-
+           able and the thread capacity of the system. Although other operating systems have
+           implemented thread pools, GCD provides a qualitative improvement in ease of use
+           and efficiency.
+           A block is a simple extension to C or other languages, such as C++. The pur-
+           pose of defining a block is to define a self-contained unit of work, including code
+           plus data. Here is a simple example of a block definition:
+           x  =  ^{         printf("hello          world\n");      }
+           A block is denoted by a caret at the start of the function, which is enclosed in
+           curly brackets. The above block definition defines x as a way of calling the func-
+           tion, so that invoking the function x() would print the words hello world.
+
+190  CHAPTER 4 / THREADS
+     Blocks enable the programmer to encapsulate complex functions, together
+     with their arguments and data, so that they can easily be referenced and passed
+     around in a program, much like a variable.9 Symbolically:
+                             F     =F+    data
+     Blocks are scheduled and dispatched by means of queues. The application
+     makes use of system queues provided by GCD and may also set up private queues.
+     Blocks are put onto a queue as they are encountered during program execution.
+     GCD then uses those queues to describe concurrency, serialization, and callbacks.
+     Queues are lightweight user-space data structures, which generally makes them far
+     more efficient than manually managing threads and locks. For example, this queue
+     has three blocks:
+                             H     G      F
+                                   Queue
+     Depending on the queue and how it is defined, GCD either treats these blocks
+     as potentially concurrent activities, or treats them as serial activities. In either case,
+     blocks are dispatched on a first-in-first-out basis. If this is a concurrent queue, then
+     the dispatcher assigns F to a thread as soon as one is available, then G, then H. If
+     this is a serial queue, the dispatcher assigns F to a thread, and then only assigns G
+     to a thread after F has completed. The use of predefined threads saves the cost of
+     creating a new thread for each request, reducing the latency associated with process-
+     ing a block. Thread pools are automatically sized by the system to maximize the
+     performance of the applications using GCD while minimizing the number of idle or
+     competing threads.
+                          H     G  F
+                             Pool         Thread
+     In addition to scheduling blocks directly, the application can associate a sin-
+     gle block and queue with an event source, such as a timer, network socket, or file
+     descriptor. Every time the source issues an event, the block is scheduled if it is not
+     9Much of the material in the remainder of this section is based on [APPL09].
+
+                       4.7 / MAC OS X GRAND CENTRAL DISPATCH                             191
+already running. This allows rapid response without the expense of polling or "park-
+ing a thread" on the event source.
+                       Source               E
+                                               E       E
+An example from [SIRA09] indicates the ease of using GCD. Consider a
+document-based application with a button that, when clicked, will analyze the
+current document and display some interesting statistics about it. In the common
+case, this analysis should execute in under a second, so the following code is used
+to connect the button with an action:
+-  (Inaction)analyzeDocument:(NSButton                    *)sender
+{
+   NSDictionary      *stats            =  [myDoc  analyze];
+   [myModel  setDict:stats];
+   [myStatsView      setNeedsDisplay:YES];
+   [stats    release];
+}
+The first line of the function body analyzes the document, the second line
+updates the application's internal state, and the third line tells the application that
+the statistics view needs to be updated to reflect this new state. This code, which fol-
+lows a common pattern, is executed in the main thread. The design is acceptable so
+long as the analysis does not take too long, because after the user clicks the button,
+the main thread of the application needs to handle that user input as fast as pos-
+sible so it can get back to the main event loop to process the next user action. But
+if the user opens a very large or complex document, the analyze step may take an
+unacceptably long amount of time. A developer may be reluctant to alter the code
+to meet this unlikely event, which may involve application-global objects, thread
+management, callbacks, argument marshalling, context objects, new variables, and
+so on. But with GCD, a modest addition to the code produces the desired result:
+-  (IBAction)analyzeDocument:(NSButton                    *)sender
+   {dispatch_async(dispatch_get_global_queue(0,                     0),          ^{
+        NSDictionary                *stats  =  [myDoc  analyze];
+        dispatch_async(dispatch_get_main_queue(),                   ^{
+             [myModel   setDict:stats];
+             [myStatsView              setNeedsDisplay:YES];
+             [stats  release];
+        });
+   });
+}
+
+192  CHAPTER 4 / THREADS
+     All functions in GCD begin with dispatch_. The outer dispatch_
+     async() call puts a task on a global concurrent queue. This tells the OS that the
+     block can be assigned to a separate concurrent queue, off the main queue, and exe-
+     cuted in parallel. Therefore, the main thread of execution is not delayed. When the
+     analyze function is complete, the inner dispatch_async() call is encountered.
+     This directs the OS to put the following block of code at the end of the main queue,
+     to be executed when it reaches the head of the queue. So, with very little work on
+     the part of the programmer, the desired requirement is met.
+4.8  SUMMARY
+     Some operating systems distinguish the concepts of process and thread, the for-
+     mer related to resource ownership and the latter related to program execution.
+     This approach may lead to improved efficiency and coding convenience. In a mul-
+     tithreaded system, multiple concurrent threads may be defined within a single
+     process. This may be done using either user-level threads or kernel-level threads.
+     User-level threads are unknown to the OS and are created and managed by a
+     threads library that runs in the user space of a process. User-level threads are
+     very efficient because a mode switch is not required to switch from one thread
+     to another. However, only a single user-level thread within a process can execute
+     at a time, and if one thread blocks, the entire process is blocked. Kernel-level
+     threads are threads within a process that are maintained by the kernel. Because
+     they are recognized by the kernel, multiple threads within the same process can
+     execute in parallel on a multiprocessor and the blocking of a thread does not
+     block the entire process. However, a mode switch is required to switch from one
+     thread to another.
+4.9  RECOMMENDED READING
+     [LEWI96] and [KLEI96] provide good overviews of thread concepts and a discus-
+     sion of programming strategies; the former focuses more on concepts and the latter
+     more on programming, but both provide useful coverage of both topics. [PHAM96]
+     discusses the Windows NT thread facility in depth. Good coverage of UNIX threads
+     concepts is found in [ROBB04].
+     KLEI96  Kleiman, S., Shah, D., and Smallders, B. Programming with Threads. Upper
+     Saddle River, NJ: Prentice Hall, 1996.
+     LEWI96  Lewis, B., and Berg, D. Threads Primer. Upper Saddle River, NJ: Prentice
+     Hall, 1996.
+     PHAM96  Pham, T., and Garg, P. Multithreaded Programming with Windows NT.
+     Upper Saddle River, NJ: Prentice Hall, 1996.
+     ROBB04  Robbins, K., and Robbins, S. UNIX Systems Programming: Communication,
+     Concurrency, and Threads. Upper Saddle River, NJ: Prentice Hall, 2004.

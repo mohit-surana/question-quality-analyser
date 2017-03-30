@@ -1,0 +1,1454 @@
+Memory Management
+PART 3 Memory
+                              CHAPTER
+MEMORY MANAGEMENT
+7.1  Memory Management Requirements
+     Relocation
+     Protection
+     Sharing
+     Logical Organization
+     Physical Organization
+7.2  Memory Partitioning
+     Fixed Partitioning
+     Dynamic Partitioning
+     Buddy System
+     Relocation
+7.3  Paging
+7.4  Segmentation
+7.5  Security Issues
+     Buffer Overflow Attacks
+     Defending against Buffer Overflows
+7.6  Summary
+7.7  Recommended Reading
+7.8  Key Terms, Review Questions, and Problems
+APPENDIX 7A           Loading and Linking
+                                                305
+
+306  CHAPTER 7 / MEMORY MANAGEMENT
+        I cannot guarantee that I carry all the facts in my mind. Intense mental
+        concentration has a curious way of blotting out what has passed.
+        Each of my cases displaces the last, and Mlle. Carère has blurred my
+        recollection of Baskerville Hall. Tomorrow some other little problem
+        may be submitted to my notice which will in turn dispossess the fair
+        French lady and the infamous Upwood.
+                                              --THE HOUND OF THE BASKERVILLES,
+                                                             Arthur Conan Doyle.
+     LEARNING OBJECTIVES
+     After studying this chapter, you should be able to:
+     ·  Discuss the principal requirements for memory management.
+     ·  Understand the reason for memory partitioning and explain the  various
+        techniques that are used.
+     ·  Understand and explain the concept of paging.
+     ·  Understand and explain the concept of segmentation.
+     ·  Assess the relative advantages of paging and segmentation.
+     ·  Summarize key security issues related to memory management.
+     ·  Describe the concepts of loading and linking.
+     In a uniprogramming system, main memory is divided into two parts: one part for
+     the operating system (resident monitor, kernel) and one part for the program cur-
+     rently being executed. In a multiprogramming system, the "user" part of memory
+     must be further subdivided to accommodate multiple processes. The task of subdi-
+     vision is carried out dynamically by the operating system and is known as memory
+     management.
+        Effective memory management is vital in a multiprogramming system. If only
+     a few processes are in memory, then for much of the time all of the processes
+     will be waiting for I/O and the processor will be idle. Thus memory needs to be
+     allocated to ensure a reasonable supply of ready processes to consume available
+     processor time.
+        We begin with the requirements that memory management is intended to
+     satisfy. Next, we discuss a variety of simple schemes that have been used for
+     memory management
+        Table 7.1 introduces some key terms for our discussion. A set of animations
+     that illustrate concepts in this chapter is available online. Click on the rotating globe
+     at WilliamStallings.com/OS/OS7e.html for access.
+
+                                     7.1 / MEMORY MANAGEMENT REQUIREMENTS                                    307
+Table 7.1  Memory Management Terms
+Frame      A fixed-length block of main memory.
+Page       A fixed-length block of data that resides in secondary memory (such as disk). A page of data may
+           temporarily be copied into a frame of main memory.
+Segment    A variable-length block of data that resides in secondary memory. An entire segment may tempo-
+           rarily be copied into an available region of main memory (segmentation) or the segment may be
+           divided into pages which can be individually copied into main memory (combined segmentation
+           and paging).
+7.1        MEMORY MANAGEMENT REQUIREMENTS
+           While surveying the various mechanisms and policies associated with memory man-
+           agement, it is helpful to keep in mind the requirements that memory management is
+           intended to satisfy. These requirements include the following:
+           ·  Relocation
+           ·  Protection
+           ·  Sharing
+           ·  Logical organization
+           ·  Physical organization
+           Relocation
+           In a multiprogramming system, the available main memory is generally shared
+           among a number of processes. Typically, it is not possible for the programmer to
+           know in advance which other programs will be resident in main memory at the time
+           of execution of his or her program. In addition, we would like to be able to swap
+           active processes in and out of main memory to maximize processor utilization by
+           providing a large pool of ready processes to execute. Once a program is swapped
+           out to disk, it would be quite limiting to specify that when it is next swapped back in,
+           it must be placed in the same main memory region as before. Instead, we may need
+           to relocate the process to a different area of memory.
+              Thus, we cannot know ahead of time where a program will be placed, and we
+           must allow for the possibility that the program may be moved about in main memory
+           due to swapping. These facts raise some technical concerns related to addressing,
+           as illustrated in Figure 7.1. The figure depicts a process image. For simplicity, let
+           us assume that the process image occupies a contiguous region of main memory.
+           Clearly, the operating system will need to know the location of process control
+           information and of the execution stack, as well as the entry point to begin execution
+           of the program for this process. Because the operating system is managing mem-
+           ory and is responsible for bringing this process into main memory, these addresses
+           are easy to come by. In addition, however, the processor must deal with memory
+
+308  CHAPTER 7 / MEMORY MANAGEMENT
+           Process control               Process control block
+           information      Entry point
+                            to program
+                                                                   Branch
+                                              Program              instruction
+           Increasing
+                   address
+                   values                                          Reference
+                                                                   to data
+                                              Data
+                            Current top
+                            of stack
+                                              Stack
+           Figure 7.1       Addressing Requirements for a Process
+     references within the program. Branch instructions contain an address to reference
+     the instruction to be executed next. Data reference instructions contain the address
+     of the byte or word of data referenced. Somehow, the processor hardware and oper-
+     ating system software must be able to translate the memory references found in the
+     code of the program into actual physical memory addresses, reflecting the current
+     location of the program in main memory.
+     Protection
+     Each  process  should  be  protected  against     unwanted    interference  by  other
+     processes, whether accidental or intentional. Thus, programs in other processes
+     should not be able to reference memory locations in a process for reading or writing
+     purposes without permission. In one sense, satisfaction of the relocation require-
+     ment increases the difficulty of satisfying the protection requirement. Because
+     the location of a program in main memory is unpredictable, it is impossible to
+     check absolute addresses at compile time to assure protection. Furthermore, most
+     programming languages allow the dynamic calculation of addresses at run time
+     (e.g., by computing an array subscript or a pointer into a data structure). Hence all
+     memory references generated by a process must be checked at run time to ensure
+     that they refer only to the memory space allocated to that process. Fortunately,
+     we shall see that mechanisms that support relocation also support the protection
+     requirement.
+           Normally, a user process cannot access any portion of the operating system,
+     neither program nor data. Again, usually a program in one process cannot branch
+     to an instruction in another process. Without special arrangement, a program in one
+     process cannot access the data area of another process. The processor must be able
+     to abort such instructions at the point of execution.
+
+                       7.1 / MEMORY MANAGEMENT REQUIREMENTS                             309
+    Note that the memory protection requirement must be satisfied by the proces-
+sor (hardware) rather than the operating system (software). This is because the OS
+cannot anticipate all of the memory references that a program will make. Even if
+such anticipation were possible, it would be prohibitively time consuming to screen
+each program in advance for possible memory-reference violations. Thus, it is only
+possible to assess the permissibility of a memory reference (data access or branch)
+at the time of execution of the instruction making the reference. To accomplish this,
+the processor hardware must have that capability.
+Sharing
+Any protection mechanism must have the flexibility to allow several processes to
+access the same portion of main memory. For example, if a number of processes are
+executing the same program, it is advantageous to allow each process to access the
+same copy of the program rather than have its own separate copy. Processes that
+are cooperating on some task may need to share access to the same data structure.
+The memory management system must therefore allow controlled access to shared
+areas of memory without compromising essential protection. Again, we will see that
+the mechanisms used to support relocation support sharing capabilities.
+Logical Organization
+Almost invariably, main memory in a computer system is organized as a linear,
+or one-dimensional, address space, consisting of a sequence of bytes or words.
+Secondary memory, at its physical level, is similarly organized. While this organi-
+zation closely mirrors the actual machine hardware, it does not correspond to the
+way in which programs are typically constructed. Most programs are organized into
+modules, some of which are unmodifiable (read only, execute only) and some of
+which contain data that may be modified. If the operating system and computer
+hardware can effectively deal with user programs and data in the form of modules
+of some sort, then a number of advantages can be realized:
+1.  Modules can be written and compiled independently, with all references from
+    one module to another resolved by the system at run time.
+2.  With modest additional overhead, different degrees of protection (read only,
+    execute only) can be given to different modules.
+3.  It is possible to introduce mechanisms by which modules can be shared among
+    processes. The advantage of providing sharing on a module level is that this
+    corresponds to the user's way of viewing the problem, and hence it is easy for
+    the user to specify the sharing that is desired.
+The tool that most readily satisfies these requirements is segmentation, which is one
+of the memory management techniques explored in this chapter.
+Physical Organization
+As we discussed in Section 1.5, computer memory is organized into at least two
+levels, referred to as main memory and secondary memory. Main memory provides
+fast access at relatively high cost. In addition, main memory is volatile; that is, it
+
+310  CHAPTER 7 / MEMORY MANAGEMENT
+     does not provide permanent storage. Secondary memory is slower and cheaper than
+     main memory and is usually not volatile. Thus secondary memory of large capacity
+     can be provided for long-term storage of programs and data, while a smaller main
+     memory holds programs and data currently in use.
+         In this two-level scheme, the organization of the flow of information between
+     main and secondary memory is a major system concern. The responsibility for this
+     flow could be assigned to the individual programmer, but this is impractical and
+     undesirable for two reasons:
+     1.  The main memory available for a program plus its data may be insufficient. In
+         that case, the programmer must engage in a practice known as overlaying, in
+         which the program and data are organized in such a way that various modules
+         can be assigned the same region of memory, with a main program responsible
+         for switching the modules in and out as needed. Even with the aid of compiler
+         tools, overlay programming wastes programmer time.
+     2.  In a multiprogramming environment, the programmer does not know at the
+         time of coding how much space will be available or where that space will be.
+         It is clear, then, that the task of moving information between the two levels
+     of memory should be a system responsibility. This task is the essence of memory
+     management.
+7.2  MEMORY PARTITIONING
+     The principal operation of memory management is to bring processes into main
+     memory for execution by the processor. In almost all modern multiprogramming
+     systems, this involves a sophisticated scheme known as virtual memory. Virtual
+     memory is, in turn, based on the use of one or both of two basic techniques: segmen-
+     tation and paging. Before we can look at these virtual memory techniques, we must
+     prepare the ground by looking at simpler techniques that do not involve virtual
+     memory (Table 7.2 summarizes all the techniques examined in this chapter and the
+     next). One of these techniques, partitioning, has been used in several variations in
+     some now-obsolete operating systems. The other two techniques, simple paging and
+     simple segmentation, are not used by themselves. However, it will clarify the dis-
+     cussion of virtual memory if we look first at these two techniques in the absence of
+     virtual memory considerations.
+     Fixed Partitioning
+     In most schemes for memory management, we can assume that the OS occupies
+     some fixed portion of main memory and that the rest of main memory is available
+     for use by multiple processes. The simplest scheme for managing this available
+     memory is to partition it into regions with fixed boundaries.
+     PARTITION  SIZES  Figure 7.2 shows examples of two alternatives for fixed
+     partitioning. One possibility is to make use of equal-size partitions. In this case,
+     any process whose size is less than or equal to the partition size can be loaded into
+
+                                                                 7.2 / MEMORY PARTITIONING                 311
+Table 7.2  Memory Management Techniques
+Technique        Description                      Strengths                    Weaknesses
+Fixed            Main memory is divided into      Simple to implement; little  Inefficient use of memory
+Partitioning     a number of static partitions    operating system overhead.   due to internal fragmenta-
+                 at system generation time.                                    tion; maximum number of
+                 A process may be loaded                                       active processes is fixed.
+                 into a partition of equal or
+                 greater size.
+Dynamic          Partitions are created           No internal fragmentation;   Inefficient use of processor
+Partitioning     dynamically, so that each        more efficient use of main   due to the need for com-
+                 process is loaded into a         memory.                      paction to counter external
+                 partition of exactly the same                                 fragmentation.
+                 size as that process.
+Simple Paging    Main memory is divided           No external fragmentation.   A small amount of internal
+                 into a number of equal-size                                   fragmentation.
+                 frames. Each process is
+                 divided into a number of
+                 equal-size pages of the same
+                 length as frames. A process
+                 is loaded by loading all of its
+                 pages into available, not nec-
+                 essarily contiguous, frames.
+Simple           Each process is divided into     No internal fragmentation;   External fragmentation.
+Segmentation     a number of segments. A          improved memory utiliza-
+                 process is loaded by load-       tion and reduced overhead
+                 ing all of its segments into     compared to dynamic
+                 dynamic partitions that need     partitioning.
+                 not be contiguous.
+Virtual Memory   As with simple paging,           No external fragmentation;   Overhead of complex
+Paging           except that it is not necessary  higher degree of multipro-   memory management.
+                 to load all of the pages of a    gramming; large virtual
+                 process. Nonresident pages       address space.
+                 that are needed are brought
+                 in later automatically.
+Virtual Memory   As with simple segmenta-         No internal fragmentation,   Overhead of complex
+Segmentation     tion, except that it is not      higher degree of multipro-   memory management.
+                 necessary to load all of         gramming; large virtual
+                 the segments of a process.       address space; protection
+                 Nonresident segments that        and sharing support.
+                 are needed are brought in
+                 later automatically.
+           any available partition. If all partitions are full and no process is in the Ready or
+           Running state, the operating system can swap a process out of any of the partitions
+           and load in another process, so that there is some work for the processor.
+                 There are two difficulties with the use of equal-size fixed partitions:
+              ·  A program may be too big to fit into a partition. In this case, the programmer
+                 must design the program with the use of overlays so that only a portion of the
+                 program need be in main memory at any one time. When a module is needed
+
+312  CHAPTER  7  /  MEMORY MANAGEMENT
+                    Operating system           Operating system
+                    8M                         8M
+                                               2M
+                    8M                         4M
+                                               6M
+                    8M
+                                               8M
+                    8M
+                                               8M
+                    8M
+                    8M                         12M
+                    8M
+                                               16M
+                    8M
+                    (a) Equal-size partitions  (b) Unequal-size partitions
+                    Figure 7.2  Example of Fixed Partitioning of a 64-Mbyte Memory
+        that is not present, the user's program must load that module into the pro-
+        gram's partition, overlaying whatever programs or data are there.
+     ·  Main memory utilization is extremely inefficient. Any program, no matter
+        how small, occupies an entire partition. In our example, there may be a pro-
+        gram whose length is less than 2 Mbytes; yet it occupies an 8-Mbyte partition
+        whenever it is swapped in. This phenomenon, in which there is wasted space
+        internal to a partition due to the fact that the block of data loaded is smaller
+        than the partition, is referred to as internal fragmentation.
+        Both of these problems can be lessened, though not solved, by using unequal-
+     size partitions (Figure 7.2b). In this example, programs as large as 16 Mbytes can
+     be accommodated without overlays. Partitions smaller than 8 Mbytes allow smaller
+     programs to be accommodated with less internal fragmentation.
+     PLACEMENT ALGORITHM        With equal-size partitions, the placement of processes
+     in memory is trivial. As long as there is any available partition, a process can be
+
+                                                 7.2 / MEMORY PARTITIONING                                313
+loaded into that partition. Because all partitions are of equal size, it does not matter
+which partition is used. If all partitions are occupied with processes that are not
+ready to run, then one of these processes must be swapped out to make room for a
+new process. Which one to swap out is a scheduling decision; this topic is explored
+in Part Four.
+With unequal-size partitions, there are two possible ways to assign processes
+to partitions. The simplest way is to assign each process to the smallest partition
+within which it will fit.1 In this case, a scheduling queue is needed for each parti-
+tion, to hold swapped-out processes destined for that partition (Figure 7.3a). The
+advantage of this approach is that processes are always assigned in such a way as to
+minimize wasted memory within a partition (internal fragmentation).
+Although this technique seems optimum from the point of view of an indi-
+vidual partition, it is not optimum from the point of view of the system as a whole.
+In Figure 7.2b, for example, consider a case in which there are no processes with a
+size between 12 and 16M at a certain point in time. In that case, the 16M partition
+will remain unused, even though some smaller process could have been assigned to
+it. Thus, a preferable approach would be to employ a single queue for all processes
+(Figure 7.3b). When it is time to load a process into main memory, the smallest
+available partition that will hold the process is selected. If all partitions are occupied,
+then a swapping decision must be made. Preference might be given to swapping out
+of the smallest partition that will hold the incoming process. It is also possible to
+                                      Operating                      Operating
+                                      system                         system
+New                                              New
+processes                                        processes
+               (a) One process queue per partition                   (b) Single queue
+Figure 7.3     Memory Assignment for Fixed Partitioning
+1This assumes that one knows the maximum amount of memory that a process will require. This is not
+always the case. If it is not known how large a process may become, the only alternatives are an overlay
+scheme or the use of virtual memory.
+
+314  CHAPTER 7 / MEMORY MANAGEMENT
+     consider other factors, such as priority, and a preference for swapping out blocked
+     processes versus ready processes.
+        The use of unequal-size partitions provides a degree of flexibility to fixed
+     partitioning. In addition, it can be said that fixed-partitioning schemes are relatively
+     simple and require minimal OS software and processing overhead. However, there
+     are disadvantages:
+     ·  The number of partitions specified at system generation time limits the number
+        of active (not suspended) processes in the system.
+     ·  Because partition sizes are preset at system generation time, small jobs will not
+        utilize partition space efficiently. In an environment where the main storage
+        requirement of all jobs is known beforehand, this may be reasonable, but in
+        most cases, it is an inefficient technique.
+        The use of fixed partitioning is almost unknown today. One example of a suc-
+     cessful operating system that did use this technique was an early IBM mainframe
+     operating system, OS/MFT (Multiprogramming with a Fixed Number of Tasks).
+     Dynamic Partitioning
+     To overcome some of the difficulties with fixed partitioning, an approach known
+     as dynamic partitioning was developed. Again, this approach has been supplanted
+     by more sophisticated memory management techniques. An important operating
+     system that used this technique was IBM's mainframe operating system, OS/MVT
+     (Multiprogramming with a Variable Number of Tasks).
+        With dynamic partitioning, the partitions are of variable length and number.
+     When a process is brought into main memory, it is allocated exactly as much mem-
+     ory as it requires and no more. An example, using 64 Mbytes of main memory, is
+     shown in Figure 7.4. Initially, main memory is empty, except for the OS (a). The
+     first three processes are loaded in, starting where the operating system ends and
+     occupying just enough space for each process (b, c, d). This leaves a "hole" at
+     the end of memory that is too small for a fourth process. At some point, none of
+     the processes in memory is ready. The operating system swaps out process 2 (e),
+     which leaves sufficient room to load a new process, process 4 (f). Because process
+     4 is smaller than process 2, another small hole is created. Later, a point is reached
+     at which none of the processes in main memory is ready, but process 2, in the
+     Ready-Suspend state, is available. Because there is insufficient room in memory
+     for process 2, the operating system swaps process 1 out (g) and swaps process 2
+     back in (h).
+        As this example shows, this method starts out well, but eventually it leads to a
+     situation in which there are a lot of small holes in memory. As time goes on, mem-
+     ory becomes more and more fragmented, and memory utilization declines. This
+     phenomenon is referred to as external fragmentation, indicating that the memory
+     that is external to all partitions becomes increasingly fragmented. This is in contrast
+     to internal fragmentation, referred to earlier.
+        One technique for overcoming external fragmentation is compaction: From
+     time to time, the OS shifts the processes so that they are contiguous and so that all of
+     the free memory is together in one block. For example, in Figure 7.4h, compaction
+
+                                           7.2 / MEMORY    PARTITIONING                 315
+Operating   8M       Operating             Operating       Operating
+system               system                system          system
+                     Process 1  20M        Process 1  20M  Process 1  20M
+            56M                            Process 2  14M  Process 2  14M
+                                36M
+                                                      22M  Process 3  18M
+                                                                      4M
+(a)                  (b)                   (c)             (d)
+Operating            Operating             Operating       Operating
+system               system                system          system
+Process 1            Process 1                             Process 2  14M
+            20M                 20M                   20M
+                                                                      6M
+            14M      Process 4  8M         Process 4  8M   Process 4  8M
+                                6M                    6M              6M
+Process 3   18M      Process 3  18M        Process 3  18M  Process 3  18M
+            4M                  4M                    4M              4M
+(e)                  (f)                   (g)             (h)
+Figure 7.4  The Effect of Dynamic Partitioning
+will result in a block of free memory of length 16M. This may well be sufficient
+to load in an additional process. The difficulty with compaction is that it is a time-
+consuming procedure and wasteful of processor time. Note that compaction implies
+the need for a dynamic relocation capability. That is, it must be possible to move a
+program from one region to another in main memory without invalidating the
+memory references in the program (see Appendix 7A).
+PLACEMENT ALGORITHM  Because memory compaction is time consuming, the OS
+designer must be clever in deciding how to assign processes to memory (how to plug
+the holes). When it is time to load or swap a process into main memory, and if there
+is more than one free block of memory of sufficient size, then the operating system
+must decide which free block to allocate.
+Three placement algorithms that might be considered are best-fit, first-fit, and
+next-fit. All, of course, are limited to choosing among free blocks of main memory
+that are equal to or larger than the process to be brought in. Best-fit chooses the
+block that is closest in size to the request. First-fit begins to scan memory from the
+
+316  CHAPTER  7  /  MEMORY MANAGEMENT
+                    8M                                             8M
+                    12M                                 First fit  12M
+                    22M
+                                                                   6M
+                                                        Best fit
+     Last           18M
+     allocated                                                     2M
+     block (14K)
+                    8M                                             8M
+                    6M                                             6M
+                                       Allocated block
+                                       Free block
+                    14M                Possible new allocation     14M
+                                                        Next fit
+                    36M
+                                                                   20M
+                         (a) Before                                       (b) After
+     Figure 7.5     Example Memory Configuration before and after Allocation of
+                    16-Mbyte Block
+     beginning and chooses the first available block that is large enough. Next-fit begins
+     to scan memory from the location of the last placement, and chooses the next avail-
+     able block that is large enough.
+     Figure 7.5a shows an example memory configuration after a number of place-
+     ment and swapping-out operations. The last block that was used was a 22-Mbyte
+     block from which a 14-Mbyte partition was created. Figure 7.5b shows the
+     difference between the best-, first-, and next-fit placement algorithms in satisfying
+     a 16-Mbyte allocation request. Best-fit will search the entire list of available blocks
+     and make use of the 18-Mbyte block, leaving a 2-Mbyte fragment. First-fit results
+     in a 6-Mbyte fragment, and next-fit results in a 20-Mbyte fragment.
+     Which of these approaches is best will depend on the exact sequence of proc-
+     ess swappings that occurs and the size of those processes. However, some general
+     comments can be made (see also [BREN89], [SHOR75], and [BAYS77]). The
+     first-fit algorithm is not only the simplest but usually the best and fastest as well.
+     The next-fit algorithm tends to produce slightly worse results than the first-fit. The
+     next-fit algorithm will more frequently lead to an allocation from a free block at the
+     end of memory. The result is that the largest block of free memory, which usually
+
+                                              7.2 / MEMORY PARTITIONING                   317
+appears at the end of the memory space, is quickly broken up into small fragments.
+Thus, compaction may be required more frequently with next-fit. On the other
+hand, the first-fit algorithm may litter the front end with small free partitions that
+need to be searched over on each subsequent first-fit pass. The best-fit algorithm,
+despite its name, is usually the worst performer. Because this algorithm looks for
+the smallest block that will satisfy the requirement, it guarantees that the fragment
+left behind is as small as possible. Although each memory request always wastes
+the smallest amount of memory, the result is that main memory is quickly littered
+by blocks too small to satisfy memory allocation requests. Thus, memory compac-
+tion must be done more frequently than with the other algorithms.
+REPLACEMENT  ALGORITHM  In  a  multiprogramming  system            using  dynamic
+partitioning, there will come a time when all of the processes in main memory
+are in a blocked state and there is insufficient memory, even after compaction,
+for an additional process. To avoid wasting processor time waiting for an active
+process to become unblocked, the OS will swap one of the processes out of main
+memory to make room for a new process or for a process in a Ready-Suspend state.
+Therefore, the operating system must choose which process to replace. Because
+the topic of replacement algorithms will be covered in some detail with respect to
+various virtual memory schemes, we defer a discussion of replacement algorithms
+until then.
+Buddy System
+Both fixed and dynamic partitioning schemes have drawbacks. A fixed partition-
+ing scheme limits the number of active processes and may use space inefficiently
+if there is a poor match between available partition sizes and process sizes. A
+dynamic partitioning scheme is more complex to maintain and includes the over-
+head of compaction. An interesting compromise is the buddy system ([KNUT97],
+[PETE77]).
+In a buddy system, memory blocks are available of size 2K words, L  K  U,
+where
+2L  smallest size block that is allocated
+2U  largest size block that is allocated; generally 2U is the size of the entire
+             memory available for allocation
+To begin, the entire space available for allocation is treated as a single block
+of size 2U. If a request of size s such that 2U­1 < s  2U is made, then the entire block
+is allocated. Otherwise, the block is split into two equal buddies of size 2U­1. If 2U­2
+< s  2U­1, then the request is allocated to one of the two buddies. Otherwise, one
+of the buddies is split in half again. This process continues until the smallest block
+greater than or equal to s is generated and allocated to the request. At any time, the
+buddy system maintains a list of holes (unallocated blocks) of each size 2i. A hole
+may be removed from the (i + 1) list by splitting it in half to create two buddies of
+size 2i in the i list. Whenever a pair of buddies on the i list both become unallocated,
+they are removed from that list and coalesced into a single block on the (i + 1)
+
+318  CHAPTER 7 / MEMORY MANAGEMENT
+     list. Presented with a request for an allocation of size k such that 2i­1  k  2i, the
+     following recursive algorithm is used to find a hole of size 2i:
+                  void   get_hole(int              i)
+                  {
+                     if  (i   ==      (U   +  1))      <failure>;
+                     if  (<i_list          empty>)       {
+                           get_hole(i           +  1);
+                           <split      hole        into  buddies>;
+                           <put   buddies          on    i_list>;
+                     }
+                     <take    first        hole    on    i_list>;
+                  }
+                  Figure 7.6 gives an example using a 1-Mbyte initial block. The first request, A,
+     is for 100 Kbytes, for which a 128K block is needed. The initial block is divided into
+     two 512K buddies. The first of these is divided into two 256K buddies, and the first
+     of these is divided into two 128K buddies, one of which is allocated to A. The next
+     request, B, requires a 256K block. Such a block is already available and is allocated.
+     The process continues with splitting and coalescing occurring as needed. Note that
+     when E is released, two 128K buddies are coalesced into a 256K block, which is
+     immediately coalesced with its buddy.
+                  Figure 7.7 shows a binary tree representation of the buddy allocation immedi-
+     ately after the Release B request. The leaf nodes represent the current partitioning
+     of the memory. If two buddies are leaf nodes, then at least one must be allocated;
+     otherwise they would be coalesced into a larger block.
+1-Mbyte block                                               1M
+Request 100K      A  128K        128K              256K                      512K
+Request 240K      A  128K        128K              B  256K                   512K
+     Request 64K  A  128K     C  64K  64K          B  256K                   512K
+Request 256K      A  128K     C  64K  64K          B  256K          D  256K        256K
+     Release B    A  128K     C  64K  64K          256K             D  256K        256K
+     Release A       128K     C  64K  64K          256K             D  256K        256K
+     Request 75K     E  128K  C  64K  64K          256K             D  256K        256K
+     Release C       E  128K     128K              256K             D  256K        256K
+     Release E                            512K                      D  256K        256K
+     Release D                                              1M
+Figure 7.6        Example of Buddy System
+
+                                                  7.2 / MEMORY PARTITIONING           319
+1M
+512K
+256K
+128K
+64K
+A  128K      C  64K  64K     256K                 D  256K                 256K
+            Leaf node for    Leaf node for                 Non-leaf node
+            allocated block  unallocated block
+Figure 7.7   Tree Representation of Buddy System
+      The buddy system is a reasonable compromise to overcome the disadvantages
+of both the fixed and variable partitioning schemes, but in contemporary operating
+systems, virtual memory based on paging and segmentation is superior. However,
+the buddy system has found application in parallel systems as an efficient means
+of allocation and release for parallel programs (e.g., see [JOHN92]). A modified
+form of the buddy system is used for UNIX kernel memory allocation (described in
+Chapter 8).
+Relocation
+Before we consider ways of dealing with the shortcomings of partitioning, we must
+clear up one loose end, which relates to the placement of processes in memory.
+When the fixed partition scheme of Figure 7.3a is used, we can expect that a pro-
+cess will always be assigned to the same partition. That is, whichever partition is
+selected when a new process is loaded will always be used to swap that process back
+into memory after it has been swapped out. In that case, a simple relocating loader,
+such as is described in Appendix 7A, can be used: When the process is first loaded,
+all relative memory references in the code are replaced by absolute main memory
+addresses, determined by the base address of the loaded process.
+      In the case of equal-size partitions (Figure 7.2), and in the case of a single proc-
+ess queue for unequal-size partitions (Figure 7.3b), a process may occupy different
+partitions during the course of its life. When a process image is first created, it is
+
+320  CHAPTER 7 / MEMORY MANAGEMENT
+     loaded into some partition in main memory. Later, the process may be swapped out;
+     when it is subsequently swapped back in, it may be assigned to a different partition
+     than the last time. The same is true for dynamic partitioning. Observe in Figure 7.4c
+     and Figure 7.4h that process 2 occupies two different regions of memory on the two
+     occasions when it is brought in. Furthermore, when compaction is used, processes
+     are shifted while they are in main memory. Thus, the locations (of instructions and
+     data) referenced by a process are not fixed. They will change each time a process is
+     swapped in or shifted. To solve this problem, a distinction is made among several
+     types of addresses. A logical address is a reference to a memory location independ-
+     ent of the current assignment of data to memory; a translation must be made to a
+     physical address before the memory access can be achieved. A relative address is a
+     particular example of logical address, in which the address is expressed as a location
+     relative to some known point, usually a value in a processor register. A physical
+     address, or absolute address, is an actual location in main memory.
+     Programs that employ relative addresses in memory are loaded using dynamic
+     run-time loading (see Appendix 7A for a discussion). Typically, all of the memory
+     references in the loaded process are relative to the origin of the program. Thus a hard-
+     ware mechanism is needed for translating relative addresses to physical main memory
+     addresses at the time of execution of the instruction that contains the reference.
+     Figure 7.8 shows the way in which this address translation is typically accom-
+     plished. When a process is assigned to the Running state, a special processor register,
+     sometimes called the base register, is loaded with the starting address in main memory
+     of the program. There is also a "bounds" register that indicates the ending location
+                                              Relative address
+     Base register                                              Process control block
+                      Adder                                               Program
+                                    Absolute
+                                    address
+     Bounds register  Comparator
+                                                                          Data
+                      Interrupt to
+                      operating system
+                                                                          Stack
+                                                                Process image in
+                                                                main memory
+     Figure 7.8  Hardware Support for Relocation
+
+                                                 7.3 / PAGING                                321
+     of the program; these values must be set when the program is loaded into memory or
+     when the process image is swapped in. During the course of execution of the proc-
+     ess, relative addresses are encountered. These include the contents of the instruc-
+     tion register, instruction addresses that occur in branch and call instructions, and
+     data addresses that occur in load and store instructions. Each such relative address
+     goes through two steps of manipulation by the processor. First, the value in the base
+     register is added to the relative address to produce an absolute address. Second, the
+     resulting address is compared to the value in the bounds register. If the address is
+     within bounds, then the instruction execution may proceed. Otherwise, an interrupt is
+     generated to the operating system, which must respond to the error in some fashion.
+     The scheme of Figure 7.8 allows programs to be swapped in and out of mem-
+     ory during the course of execution. It also provides a measure of protection: Each
+     process image is isolated by the contents of the base and bounds registers and safe
+     from unwanted accesses by other processes.
+7.3  PAGING
+     Both unequal fixed-size and variable-size partitions are inefficient in the use of
+     memory; the former results in internal fragmentation, the latter in external frag-
+     mentation. Suppose, however, that main memory is partitioned into equal fixed-size
+     chunks that are relatively small, and that each process is also divided into small
+     fixed-size chunks of the same size. Then the chunks of a process, known as pages,
+     could be assigned to available chunks of memory, known as frames, or page frames.
+     We show in this section that the wasted space in memory for each process is due
+     to internal fragmentation consisting of only a fraction of the last page of a process.
+     There is no external fragmentation.
+     Figure 7.9 illustrates the use of pages and frames. At a given point in time, some
+     of the frames in memory are in use and some are free. A list of free frames is main-
+     tained by the OS. Process A, stored on disk, consists of four pages. When it is time to
+     load this process, the OS finds four free frames and loads the four pages of process A
+     into the four frames (Figure 7.9b). Process B, consisting of three pages, and process C,
+     consisting of four pages, are subsequently loaded. Then process B is suspended and is
+     swapped out of main memory. Later, all of the processes in main memory are blocked,
+     and the OS needs to bring in a new process, process D, which consists of five pages.
+     Now suppose, as in this example, that there are not sufficient unused contiguous
+     frames to hold the process. Does this prevent the operating system from loading D?
+     The answer is no, because we can once again use the concept of logical address.
+     A simple base address register will no longer suffice. Rather, the operating system
+     maintains a page table for each process. The page table shows the frame location for
+     each page of the process. Within the program, each logical address consists of a page
+     number and an offset within the page. Recall that in the case of simple partition, a
+     logical address is the location of a word relative to the beginning of the program; the
+     processor translates that into a physical address. With paging, the logical-to-physical
+     address translation is still done by processor hardware. Now the processor must
+     know how to access the page table of the current process. Presented with a logical
+
+322  CHAPTER 7 / MEMORY MANAGEMENT
+     Frame       Main memory                          Main memory              Main memory
+     number  0                                    0   A.0                  0   A.0
+             1                                    1   A.1                  1   A.1
+             2                                    2   A.2                  2   A.2
+             3                                    3   A.3                  3   A.3
+             4                                    4                        4   B.0
+             5                                    5                        5   B.1
+             6                                    6                        6   B.2
+             7                                    7                        7
+             8                                    8                        8
+             9                                    9                        9
+             10                                   10                       10
+             11                                   11                       11
+             12                                   12                       12
+             13                                   13                       13
+             14                                   14                       14
+     (a) Fifteen available frames                     (b) Load process  A      (c) Load process  B
+                 Main memory                          Main memory              Main memory
+             0   A.0                              0   A.0                  0   A.0
+             1   A.1                              1   A.1                  1   A.1
+             2   A.2                              2   A.2                  2   A.2
+             3   A.3                              3   A.3                  3   A.3
+             4   B.0                              4                        4   D.0
+             5   B.1                              5                        5   D.1
+             6   B.2                              6                        6   D.2
+             7   C.0                              7   C.0                  7   C.0
+             8   C.1                              8   C.1                  8   C.1
+             9   C.2                              9   C.2                  9   C.2
+             10  C.3                              10  C.3                  10  C.3
+             11                                   11                       11  D.3
+             12                                   12                       12  D.4
+             13                                   13                       13
+             14                                   14                       14
+                 (d) Load process C                   (e) Swap out B           (f) Load process D
+     Figure 7.9  Assignment          of  Process  to Free Frames
+     address (page number, offset), the processor uses the page table to produce a physi-
+     cal address (frame number, offset).
+     Continuing our example, the five pages of process D are loaded into frames 4,
+     5, 6, 11, and 12. Figure 7.10 shows the various page tables at this time. A page table
+     contains one entry for each page of the process, so that the table is easily indexed by
+     the page number (starting at page 0). Each page table entry contains the number of
+     the frame in main memory, if any, that holds the corresponding page. In addition,
+     the OS maintains a single free-frame list of all the frames in main memory that are
+     currently unoccupied and available for pages.
+     Thus we see that simple paging, as described here, is similar to fixed parti-
+     tioning. The differences are that, with paging, the partitions are rather small; a
+
+                                                                                                                       7.3 / PAGING                  323
+              0              0                 0  --                  0  7                                      0  4                           13
+              1              1                 1  --                  1  8                                      1  5                           14
+              2              2                 2  --                  2  9                                      2  6                           Free frame
+              3              3                    Process B           3  10                                     3  11                          list
+                 Process A                        page table             Process C                              4  12
+                 page table                                              page table                                Process D
+                                                                                                                   page table
+              Figure 7.10       Data Structures for the Example of Figure 7.9 at Time Epoch (f)
+program may occupy more than one partition; and these partitions need not be
+contiguous.
+                             To make this paging scheme convenient, let us dictate that the page size,
+hence the frame size, must be a power of 2. With the use of a page size that is a
+power of 2, it is easy to demonstrate that the relative address, which is defined with
+reference to the origin of the program, and the logical address, expressed as a page
+number and offset, are the same. An example is shown in Figure 7.11. In this exam-
+ple, 16-bit addresses are used, and the page size is 1K  1,024 bytes. The relative
+address 1502, in binary form, is 0000010111011110. With a page size of 1K, an offset
+field of 10 bits is needed, leaving 6 bits for the page number. Thus a program can
+consist of a maximum of 26  64 pages of 1K bytes each. As Figure 7.11b shows, rel-
+ative address 1502 corresponds to an offset of 478 (0111011110) on page 1 (000001),
+which yields the same 16-bit number, 0000010111011110.
+                             The consequences of using a page size that is a power of 2 are twofold. First,
+the logical addressing scheme is transparent to the programmer, the assembler, and
+                                                              Logical address                                                     Logical address 
+Relative address  1502                                        Page#  1, Offset  478                                   Segment#  1, Offset  752
+              0000010111011110                                0000010111011110                                                    0001 001011110000
+                                                              Page 0                                                   Segment 0  750 bytes
+User process  (2,700 bytes)                                                       478                                                          752
+                                                              Page 1                                                   Segment 1  1,950 bytes
+                                                              Page 2                   Internal  fragmentation
+                             (a) Partitioning                                                                                     (c) Segmentation
+                                                                      (b) Paging
+                                                              (page size  1K)
+Figure 7.11                     Logical Addresses
+
+324  CHAPTER 7 / MEMORY MANAGEMENT
+     the linker. Each logical address (page number, offset) of a program is identical to
+     its relative address. Second, it is a relatively easy matter to implement a function in
+     hardware to perform dynamic address translation at run time. Consider an address
+     of n + m bits, where the leftmost n bits are the page number and the rightmost m
+     bits are the offset. In our example (Figure 7.11b), n  6 and m  10. The following
+     steps are needed for address translation:
+     ·  Extract the page number as the leftmost n bits of the logical address.
+     ·  Use the page number as an index into the process page table to find the frame
+        number, k.
+     ·  The starting physical address of the frame is k × 2m, and the physical address
+        of the referenced byte is that number plus the offset. This physical address
+        need not be calculated; it is easily constructed by appending the frame number
+        to the offset.
+        In our example, we have the logical address 0000010111011110, which is page
+     number 1, offset 478. Suppose that this page is residing in main memory frame
+     6  binary 000110. Then the physical address is frame number 6, offset 478 
+     0001100111011110 (Figure 7.12a).
+                          16-bit logical address
+               6-bit page #     10-bit offset
+               0000010111011110
+                                0 000101
+                                1 000110
+                                2 011001
+                                Process
+                                page table
+                                                              0  0  0  110     0111011           1  1  0
+                                                                       16-bit  physical address
+                                                  (a) Paging
+                        16-bit  logical address
+        4-bit  segment #        12-bit offset
+               000100           1011110           000
+                                Length                 Base
+                          0 0010111011100000010000000000
+                          1 0111100111100010000000100000                       +
+                                Process segment table
+                                                              0010001100010                      0  0  0
+                                                                       16-bit physical address
+                                                  (b) Segmentation
+        Figure 7.12       Examples of Logical-to-Physical Address Translation
+
+                                                   7.4 / SEGMENTATION                         325
+        To summarize, with simple paging, main memory is divided into many small
+     equal-size frames. Each process is divided into frame-size pages. Smaller processes
+     require fewer pages; larger processes require more. When a process is brought in,
+     all of its pages are loaded into available frames, and a page table is set up. This
+     approach solves many of the problems inherent in partitioning.
+7.4  SEGMENTATION
+     A user program can be subdivided using segmentation, in which the program and its
+     associated data are divided into a number of segments. It is not required that all seg-
+     ments of all programs be of the same length, although there is a maximum segment
+     length. As with paging, a logical address using segmentation consists of two parts, in
+     this case a segment number and an offset.
+        Because of the use of unequal-size segments, segmentation is similar to
+     dynamic partitioning. In the absence of an overlay scheme or the use of virtual
+     memory, it would be required that all of a program's segments be loaded into mem-
+     ory for execution. The difference, compared to dynamic partitioning, is that with
+     segmentation a program may occupy more than one partition, and these partitions
+     need not be contiguous. Segmentation eliminates internal fragmentation but, like
+     dynamic partitioning, it suffers from external fragmentation. However, because a
+     process is broken up into a number of smaller pieces, the external fragmentation
+     should be less.
+        Whereas paging is invisible to the programmer, segmentation is usually visible
+     and is provided as a convenience for organizing programs and data. Typically, the
+     programmer or compiler will assign programs and data to different segments. For
+     purposes of modular programming, the program or data may be further broken
+     down into multiple segments. The principal inconvenience of this service is that the
+     programmer must be aware of the maximum segment size limitation.
+        Another consequence of unequal-size segments is that there is no simple rela-
+     tionship between logical addresses and physical addresses. Analogous to paging, a
+     simple segmentation scheme would make use of a segment table for each process
+     and a list of free blocks of main memory. Each segment table entry would have
+     to give the starting address in main memory of the corresponding segment. The
+     entry should also provide the length of the segment, to assure that invalid addresses
+     are not used. When a process enters the Running state, the address of its segment
+     table is loaded into a special register used by the memory management hardware.
+     Consider an address of n  m bits, where the leftmost n bits are the segment number
+     and the rightmost m bits are the offset. In our example (Figure 7.11c), n  4 and
+     m  12. Thus the maximum segment size is 212  4096. The following steps are
+     needed for address translation:
+     ·  Extract the segment number as the leftmost n bits of the logical address.
+     ·  Use the segment number as an index into the process segment table to find the
+        starting physical address of the segment.
+     ·  Compare the offset, expressed in the rightmost m bits, to the length of the seg-
+        ment. If the offset is greater than or equal to the length, the address is invalid.
+
+326  CHAPTER 7 / MEMORY MANAGEMENT
+     · The desired physical address is the sum of the starting physical address of the
+     segment plus the offset.
+     In our example, we have the logical address 0001001011110000, which is
+     segment number 1, offset 752. Suppose that this segment is residing in main mem-
+     ory starting at physical address 0010000000100000. Then the physical address is
+     0010000000100000 + 001011110000  0010001100010000 (Figure 7.12b).
+     To summarize, with simple segmentation, a process is divided into a number
+     of segments that need not be of equal size. When a process is brought in, all of its
+     segments are loaded into available regions of memory, and a segment table is set up.
+7.5  SECURITY ISSUES
+     Main memory and virtual memory are system resources subject to security threats
+     and for which security countermeasures need to be taken. The most obvious secu-
+     rity requirement is the prevention of unauthorized access to the memory contents
+     of processes. If a process has not declared a portion of its memory to be sharable,
+     then no other process should have access to the contents of that portion of memory.
+     If a process declares that a portion of memory may be shared by other designated
+     processes, then the security service of the OS must ensure that only the designated
+     processes have access. The security threats and countermeasures discussed in
+     Chapter 3 are relevant to this type of memory protection.
+     In this section, we summarize another threat that involves memory protection.
+     Part Seven provides more detail.
+     Buffer Overflow Attacks
+     One serious security threat related to memory management remains to be intro-
+     duced: buffer overflow, also known as a buffer overrun, which is defined in the NIST
+     (National Institute of Standards and Technology) Glossary of Key Information
+     Security Terms as follows:
+     buffer overrun: A condition at an interface under which more input can be
+     placed into a buffer or data-holding area than the capacity allocated, overwrit-
+     ing other information. Attackers exploit such a condition to crash a system or to
+     insert specially crafted code that allows them to gain control of the system.
+     A buffer overflow can occur as a result of a programming error when a process
+     attempts to store data beyond the limits of a fixed-sized buffer and consequently
+     overwrites adjacent memory locations. These locations could hold other program
+     variables or parameters or program control flow data such as return addresses
+     and pointers to previous stack frames. The buffer could be located on the stack,
+     in the heap, or in the data section of the process. The consequences of this error
+     include corruption of data used by the program, unexpected transfer of control in
+     the program, possibly memory access violations, and very likely eventual program
+
+                                                                         7.5 / SECURITY ISSUES                  327
+       termination. When done deliberately as part of an attack on a system, the transfer
+       of control could be to code of the attacker's choosing, resulting in the ability to
+       execute arbitrary code with the privileges of the attacked process. Buffer overflow
+       attacks are one of the most prevalent and dangerous types of security attacks.
+             To illustrate the basic operation of a common type of buffer overflow,
+       known as stack overflow, consider the C main function given in Figure 7.13a. This
+       contains three variables (valid, str1, and str2),2 whose values will typically
+       be saved in adjacent memory locations. Their order and location depends on the
+       type of variable (local or global), the language and compiler used, and the target
+       machine architecture. For this example, we assume that they are saved in consecu-
+       tive memory locations, from highest to lowest, as shown in Figure 7.14.3 This is
+       typically the case for local variables in a C function on common processor archi-
+       tectures such as the Intel Pentium family. The purpose of the code fragment is to
+       call the function next_tag(str1) to copy into str1 some expected tag value.
+int    main(int     argc,  char  *argv[])         {
+       int   valid  =  FALSE;
+       char  str1[8];
+       char  str2[8];
+       next_tag(str1);
+       gets(str2);
+       if    (strncmp(str1,    str2,      8)  ==     0)
+             valid  =  TRUE;
+       printf("buffer1: str1(%s), str2(%s),              valid(%d)\n",             str1,  str2,  valid);
+}
+                                 (a) Basic buffer overflow C code
+$  cc  -g    -o  buffer1   buffer1.c
+$  ./buffer1
+START
+buffer1:     str1(START),      str2(START),          valid(1)
+$  ./buffer1
+EVILINPUTVALUE
+buffer1:     str1(TVALUE),       str2(EVILINPUTVALUE),                   valid(0)
+$  ./buffer1
+BADINPUTBADINPUT
+buffer1:     str1(BADINPUT),     str2(BADINPUTBADINPUT),                 valid(1)
+                               (b) Basic buffer overflow example runs
+Figure 7.13  Basic Buffer Overflow Example
+       2In this example, the flag variable is saved as an integer rather than a Boolean. This is done both because
+       it is the classic C style and to avoid issues of word alignment in its storage. The buffers are deliberately
+       small to accentuate the buffer overflow issue being illustrated.
+       3Address and data values are specified in hexadecimal in this and related figures. Data values are also
+       shown in ASCII where appropriate.
+
+328  CHAPTER 7 / MEMORY MANAGEMENT
+     Memory       Before                              After                    Contains
+     Address      gets             (str2)             gets             (str2)  Value      of
+     ....         ....                                ....
+     bffffbf4     34fcffbf                            34fcffbf                            argv
+                  4...                                3...
+     bffffbf0     01000000                            01000000                            argc
+                  ....                                ....
+     bffffbec     c6bd0340                            c6bd0340                 return     addr
+                  ...@                                ...@
+     bffffbe8     08fcffbf                            08fcffbf                 old  base  ptr
+                  ....                                ....
+     bffffbe4     00000000                            01000000                         valid
+                  ....                                ....
+     bffffbe0     80640140                            00640140
+                  .d.@                                .d.@
+     bffffbdc     54001540                            4e505554                      str1[4-7]
+                  T..@                                NPUT
+     bffffbd8     53544152                            42414449                      str1[0-3]
+                  STAR                                BADI
+     bffffbd4     00850408                            4e505554                      str2[4-7]
+                  ....                                NPUT
+     bffffbd0     30561540                            42414449                      str2[0-3]
+                  0v.@                                BADI
+     ....         ....                                ....
+     Figure 7.14  Basic Buffer Overflow Stack Values
+     Let's assume this will be the string START. It then reads the next line from the
+     standard input for the program using the C library gets() function, and then
+     compares the string read with the expected tag. If the next line did indeed contain
+     just the string START, this comparison would succeed, and the variable valid would
+     be set to TRUE.4 This case is shown in the first of the three example program runs
+     in Figure 7.13b. Any other input tag would leave it with the value FALSE. Such a
+     code fragment might be used to parse some structured network protocol interac-
+     tion or formatted text file.
+     The problem with this code exists because the traditional C library gets()
+     function does not include any checking on the amount of data copied. It reads the
+     next line of text from the program's standard input up until the first newline5 char-
+     acter occurs and copies it into the supplied buffer followed by the NULL terminator
+     4In C the logical values FALSE and TRUE are simply integers with the values 0 and 1 (or indeed any
+     nonzero value), respectively. Symbolic defines are often used to map these symbolic names to their
+     underlying value, as was done in this program.
+     5The newline (NL) or linefeed (LF) character is the standard end of line terminator for UNIX systems,
+     and hence for C, and is the character with the ASCII value 0x0a.
+
+                                                    7.5 / SECURITY ISSUES                329
+used with C strings.6 If more than seven characters are present on the input line,
+when read in they will (along with the terminating NULL character) require more
+room than is available in the str2 buffer. Consequently, the extra characters will
+overwrite the values of the adjacent variable, str1 in this case. For example, if the
+input line contained EVILINPUTVALUE, the result will be that str1 will be over-
+written with the characters TVALUE, and str2 will use not only the eight characters
+allocated to it but seven more from str1 as well. This can be seen in the second
+example run in Figure 7.13b. The overflow has resulted in corruption of a variable
+not directly used to save the input. Because these strings are not equal, valid also
+retains the value FALSE. Further, if 16 or more characters were input, additional
+memory locations would be overwritten.
+    The preceding example illustrates the basic behavior of a buffer overflow. At
+its simplest, any unchecked copying of data into a buffer could result in corruption
+of adjacent memory locations, which may be other variables, or possibly program
+control addresses and data. Even this simple example could be taken further.
+Knowing the structure of the code processing it, an attacker could arrange for the
+overwritten value to set the value in str1 equal to the value placed in str2, result-
+ing in the subsequent comparison succeeding. For example, the input line could
+be the string BADINPUTBADINPUT. This results in the comparison succeeding, as
+shown in the third of the three example program runs in Figure 7.13b, and illus-
+trated in Figure 7.14, with the values of the local variables before and after the call
+to gets(). Note also that the terminating NULL for the input string was written to
+the memory location following str1. This means the flow of control in the program
+will continue as if the expected tag was found, when in fact the tag read was some-
+thing completely different. This will almost certainly result in program behavior
+that was not intended. How serious this is depends very much on the logic in the
+attacked program. One dangerous possibility occurs if instead of being a tag, the
+values in these buffers were an expected and supplied password needed to access
+privileged features. If so, the buffer overflow provides the attacker with a means of
+accessing these features without actually knowing the correct password.
+    To exploit any type of buffer overflow, such as those we have illustrated here,
+the attacker needs:
+1.  To identify a buffer overflow vulnerability in some program that can be trig-
+    gered using externally sourced data under the attackers control, and
+2.  To understand how that buffer will be stored in the processes memory, and
+    hence the potential for corrupting adjacent memory locations and potentially
+    altering the flow of execution of the program.
+    Identifying vulnerable programs may be done by inspection of program source,
+tracing the execution of programs as they process oversized input, or using tools
+such as fuzzing, which we discuss in Part Seven, to automatically identify potentially
+6Strings in C are stored in an array of characters and terminated with the NULL character, which has the
+ASCII value 0x00. Any remaining locations in the array are undefined, and typically contain whatever
+value was previously saved in that area of memory. This can be clearly seen in the value in the variable
+str2 in the "Before" column of Figure 7.14.
+
+330  CHAPTER 7 / MEMORY MANAGEMENT
+     vulnerable programs. What the attacker     does with the resulting corruption             of
+     memory varies considerably, depending on   what values are being overwritten.
+     Defending against Buffer Overflows
+     Finding and exploiting a stack buffer overflow is not that difficult. The large num-
+     ber of exploits over the previous couple of decades clearly illustrates this. There
+     is consequently a need to defend systems against such attacks by either prevent-
+     ing them or at least detecting and aborting such attacks. Countermeasures can be
+     broadly classified into two categories:
+     ·  Compile-time defenses, which aim to harden programs to resist attacks in new
+        programs
+     ·  Run-time defenses, which aim to detect and abort attacks in existing programs
+        While suitable defenses have been known for a couple of decades, the very
+     large existing base of vulnerable software and systems hinders their deployment.
+     Hence the interest in run-time defenses, which can be deployed in operating
+     systems and updates and can provide some protection for existing vulnerable
+     programs.
+7.6  SUMMARY
+     One of the most important and complex tasks of an operating system is memory
+     management. Memory management involves treating main memory as a resource
+     to be allocated to and shared among a number of active processes. To use the pro-
+     cessor and the I/O facilities efficiently, it is desirable to maintain as many processes
+     in main memory as possible. In addition, it is desirable to free programmers from
+     size restrictions in program development.
+        The basic tools of memory management are paging and segmentation. With
+     paging, each process is divided into relatively small, fixed-size pages. Segmentation
+     provides for the use of pieces of varying size. It is also possible to combine segmen-
+     tation and paging in a single memory management scheme.
+7.7  RECOMMENDED READING
+     Because partitioning has been supplanted by virtual memory techniques, most OS
+     books offer only cursory coverage. One of the more complete and interesting treat-
+     ments is in [MILE92]. A thorough discussion of partitioning strategies is found in
+     [KNUT97].
+        The topics of linking and loading are covered in many books on program
+     development, computer architecture, and operating systems. A particularly detailed
+     treatment is [BECK97]. [CLAR98] also contains a good discussion. A thorough
+     practical discussion of this topic, with numerous OS examples, is [LEVI00].
+
+                           7.8 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                     331
+       BECK97          Beck, L. System Software. Reading, MA: Addison-Wesley, 1997.
+       CLAR98          Clarke, D., and Merusi, D. System Software Programming: The Way Things
+                 Work. Upper Saddle River, NJ: Prentice Hall, 1998.
+       KNUT97          Knuth, D. The Art of Computer Programming, Volume 1: Fundamental
+                 Algorithms. Reading, MA: Addison-Wesley, 1997.
+       LEVI00       Levine, J. Linkers and Loaders. San Francisco: Morgan Kaufmann, 2000.
+       MILE92          Milenkovic, M. Operating Systems: Concepts and Design. New York:
+                 McGraw-Hill, 1992.
+7.8    KEY TERMS,          REVIEW QUESTIONS,                   AND PROBLEMS
+Key Terms
+absolute loading           linkage editor                            physical address
+buddy system               linking                                   physical organization
+compaction                 loading                                   protection
+dynamic linking            logical address                           relative address
+dynamic partitioning       logical organization                      relocatable loading
+dynamic run-time loading   memory management                         relocation
+external fragmentation     page                                      segment
+fixed partitioning         page table                                segmentation
+frame                      paging                                    sharing
+internal fragmentation     partitioning
+       Review Questions
+       7.1    What requirements is memory management intended to satisfy?
+       7.2    Why is the capability to relocate processes desirable?
+       7.3    Why is it not possible to enforce memory protection at compile time?
+       7.4    What are some reasons to allow two or more processes to all have access to a particu-
+              lar region of memory?
+       7.5    In    a  fixed-partitioning  scheme,  what  are  the   advantages  of    using  unequal-size
+              partitions?
+       7.6    What is the difference between internal and external fragmentation?
+       7.7    What are the distinctions among logical, relative, and physical addresses?
+       7.8    What is the difference between a page and a frame?
+       7.9    What is the difference between a page and a segment?
+       Problems
+       7.1    In Section 2.3, we listed five objectives of memory management, and in Section 7.1,
+              we listed five requirements. Argue that each list encompasses all of the concerns ad-
+              dressed in the other.
+
+332  CHAPTER 7 / MEMORY MANAGEMENT
+     7.2   Consider a fixed partitioning scheme with equal-size partitions of 216 bytes and a total
+           main memory size of 224 bytes. A process table is maintained that includes a pointer
+           to a partition for each resident process. How many bits are required for the pointer?
+     7.3   Consider a dynamic partitioning scheme. Show that, on average, the memory contains
+           half as many holes as segments.
+     7.4   To implement the various placement algorithms discussed for dynamic partitioning
+           (Section 7.2), a list of the free blocks of memory must be kept. For each of the three
+           methods discussed (best-fit, first-fit, next-fit), what is the average length of the search?
+     7.5   Another placement algorithm for dynamic partitioning is referred to as worst-fit. In
+           this case, the largest free block of memory is used for bringing in a process.
+           a.  Discuss the pros and cons of this method compared to first-, next-, and best-fit.
+           b.  What is the average length of the search for worst-fit?
+     7.6   This diagram shows an example of memory configuration under dynamic partition-
+           ing, after a number of placement and swapping-out operations have been carried out.
+           Addresses go from left to right; gray areas indicate blocks occupied by processes;
+           white areas indicate free memory blocks. The last process placed is 2-Mbyte and is
+           marked with an X. Only one process was swapped out after that.
+                   1
+               4M  M  X                   5M          8M  2M            4M           3M
+           a.  What was the maximum size of the swapped out process?
+           b.  What was the size of the free block just before it was partitioned by X?
+           c.  A new 3-Mbyte allocation request must be satisfied next. Indicate the intervals of
+               memory where a partition will be created for the new process under the following
+               four placement algorithms: best-fit, first-fit, next-fit, worst-fit. For each algorithm,
+               draw a horizontal segment under the memory strip and label it clearly.
+     7.7   A 1-Mbyte block of memory is allocated using the buddy system.
+           a.  Show the results of the following sequence in a figure similar to Figure 7.6:Request 70;
+               Request 35; Request 80; Return A; Request 60; Return B; Return D; Return C.
+           b.  Show the binary tree representation following Return B.
+     7.8   Consider a buddy system in which a particular block under the current allocation has
+           an address of 011011110000.
+           a.  If the block is of size 4, what is the binary address of its buddy?
+           b.  If the block is of size 16, what is the binary address of its buddy?
+     7.9   Let buddyk(x)  address of the buddy of the block of size 2k whose address is x. Write
+           a general expression for buddyk(x).
+     7.10  The Fibonacci sequence is defined as follows:
+                      F0  0,                  F1  1,  Fn+2  Fn+1 + Fn,   n0
+           a.  Could this sequence be used to establish a buddy system?
+           b.  What would be the advantage of this system over the binary buddy system
+               described in this chapter?
+     7.11  During the course of execution of a program, the processor will increment the contents
+           of the instruction register (program counter) by one word after each instruction fetch,
+           but will alter the contents of that register if it encounters a branch or call instruction
+           that causes execution to continue elsewhere in the program. Now consider Figure 7.8.
+           There are two alternatives with respect to instruction addresses:
+           ·   Maintain a relative address in the instruction register and do the dynamic address
+               translation using the instruction register as input. When a successful branch or call
+               is encountered, the relative address generated by that branch or call is loaded into
+               the instruction register.
+           ·   Maintain an absolute address in the instruction register. When a successful branch
+               or call is encountered, dynamic address translation is employed, with the results
+               stored in the instruction register.
+           Which approach is preferable?
+
+                  7.8 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                        333
+7.12  Consider a simple paging system with the following parameters: 232 bytes of physical
+      memory; page size of 210 bytes; 216 pages of logical address space.
+      a.  How many bits are in a logical address?
+      b.  How many bytes in a frame?
+      c.  How many bits in the physical address specify the frame?
+      d.  How many entries in the page table?
+      e.  How many bits in each page table entry? Assume each page table entry contains a
+          valid/invalid bit.
+7.13  Write the binary translation of the logical address 0001010010111010 under the
+      following hypothetical memory management schemes, and explain your answer:
+      a.  a paging system with a 256-address page size, using a page table in which the frame
+          number happens to be four times smaller than the page number
+      b.  a segmentation system with a 1K-address maximum segment size, using a segment
+          table in which bases happen to be regularly placed at real addresses: 22  4,096 
+          segment #
+7.14  Consider a simple segmentation system that has the following segment table:
+                                  Starting Address   Length (bytes)
+                                            660                 248
+                                        1,752                   422
+                                            222                 198
+                                            996                 604
+      For each of the following logical addresses, determine the physical address or indicate
+      if a segment fault occurs:
+      a.  0, 198
+      b.  2, 156
+      c.  1, 530
+      d.  3, 444
+      e.  0, 222
+7.15  Consider a memory in which contiguous segments S1, S2,...,Sn are placed in their
+      order of creation from one end of the store to the other, as suggested by the following
+      figure:
+          S1            S2                                      Sn           Hole
+      When segment Sn+1 is being created, it is placed immediately after segment Sn even
+      though some of the segments S1, S2,...,Sn may already have been deleted. When the
+      boundary between segments (in use or deleted) and the hole reaches the other end of
+      the memory, the segments in use are compacted.
+      a.  Show    that  the   fraction  of  time  F  spent  on  compacting   obeys  the  following
+          inequality:
+                                  FÚ        1-f      where      k=   t   -1
+                                        1 + kf                       2s
+          where
+               s  average length of a segment, in words
+               t  average lifetime of a segment, in memory references
+               f  fraction of the memory that is unused under equilibrium conditions
+          Hint: Find the average speed at which the boundary crosses the memory and
+          assume that the copying of a single word requires at least two memory references.
+      b.  Find F for f  0.2, t  1,000, and s  50.
+
+334  CHAPTER 7 / MEMORY MANAGEMENT
+     APPENDIX 7A LOADING AND LINKING
+     The first step in the creation of an active process is to load a program into main
+     memory and create a process image (Figure 7.15). Figure 7.16 depicts a scenario typ-
+     ical for most systems.The application consists of a number of compiled or assembled
+     modules in object-code form. These are linked to resolve any references between
+     modules. At the same time, references to library routines are resolved. The library
+     routines themselves may be incorporated into the program or referenced as shared
+     code that must be supplied by the operating system at run time. In this appendix, we
+     summarize the key features of linkers and loaders. For clarity in the presentation,
+     we begin with a description of the loading task when a single program module is
+     involved; no linking is required.
+     Loading
+     In Figure 7.16, the loader places the load module in main memory starting at loca-
+     tion x. In loading the program, the addressing requirement illustrated in Figure 7.1
+     must be satisfied. In general, three approaches can be taken:
+     ·  Absolute loading
+     ·  Relocatable loading
+     ·  Dynamic run-time loading
+     ABSOLUTE  LOADING    An absolute loader requires that a given load module
+     always be loaded into the same location in main memory. Thus, in the load module
+     presented to the loader, all address references must be to specific, or absolute, main
+                                                       Process control block
+                        Program                        Program
+                          Data                         Data
+               Object code
+                                                       Stack
+                                                       Process image in
+                                                       main memory
+               Figure 7.15       The Loading Function
+
+                      APPENDIX                     7A  / LOADING  AND  LINKING         335
+Static
+library               Dynamic
+                      library                                                            x
+Module 1
+                                             Load      Loader
+             Linker   module
+Module 2
+                      Dynamic                          Run-time
+                      library                          linker/
+                                                       loader
+Module n
+                                                                       Main memory
+Figure 7.16  A Linking and Loading Scenario
+memory addresses. For example, if x in Figure 7.16 is location 1024, then the first
+word in a load module destined for that region of memory has address 1024.
+             The assignment of specific address values to memory references within a
+program can be done either by the programmer or at compile or assembly time
+(Table 7.3a). There are several disadvantages to the former approach. First, every
+programmer would have to know the intended assignment strategy for placing mod-
+ules into main memory. Second, if any modifications are made to the program that
+involve insertions or deletions in the body of the module, then all of the addresses
+will have to be altered. Accordingly, it is preferable to allow memory references
+within programs to be expressed symbolically and then resolve those symbolic refer-
+ences at the time of compilation or assembly. This is illustrated in Figure 7.17. Every
+reference to an instruction or item of data is initially represented by a symbol. In
+preparing the module for input to an absolute loader, the assembler or compiler will
+convert all of these references to specific addresses (in this example, for a module to
+be loaded starting at location 1024), as shown in Figure 7.17b.
+RELOCATABLE  LOADING  The disadvantage of binding memory references to
+specific addresses prior to loading is that the resulting load module can only be
+placed in one region of main memory. However, when many programs share main
+memory, it may not be desirable to decide ahead of time into which region of memory
+a particular module should be loaded. It is better to make that decision at load time.
+Thus we need a load module that can be located anywhere in main memory.
+             To satisfy this new requirement, the assembler or compiler produces not
+actual main memory addresses (absolute addresses) but addresses that are relative
+to some known point, such as the start of the program. This technique is illustrated
+in Figure 7.17c. The start of the load module is assigned the relative address 0, and
+
+336  CHAPTER 7 / MEMORY MANAGEMENT
+Table 7.3  Address Binding
+                                               (a) Loader
+           Binding Time                                                Function
+Programming time            All actual physical addresses are directly specified by the programmer in the
+                            program itself.
+Compile or assembly time    The program contains symbolic address references, and these are converted to
+                            actual physical addresses by the compiler or assembler.
+Load time                   The compiler or assembler produces relative addresses. The loader translates
+                            these to absolute addresses at the time of program loading.
+Run time                    The loaded program retains relative addresses. These are converted dynamically
+                            to absolute addresses by processor hardware.
+                                               (b) Linker
+     Linkage Time                                                      Function
+Programming time            No external program or data references are allowed. The programmer must
+                            place into the program the source code for all subprograms that are referenced.
+Compile or assembly time    The assembler must fetch the source code of every subroutine that is referenced
+                            and assemble them as a unit.
+Load module creation        All object modules have been assembled using relative addresses. These
+                            modules are linked together and all references are restated relative to the origin
+                            of the final load module.
+Load time                   External references are not resolved until the load module is to be loaded into
+                            main memory. At that time, referenced dynamic link modules are appended to
+                            the load module, and the entire package is loaded into main or virtual memory.
+Run time                    External references are not resolved until the external call is executed by the
+                            processor. At that time, the process is interrupted and the desired module is
+                            linked to the calling program.
+Symbolic                  Absolute                          Relative                     Main memory
+addresses                 addresses                         addresses                    addresses
+           PROGRAM          1024     PROGRAM                0          PROGRAM           x          PROGRAM
+     JUMP X                         JUMP 1424                         JUMP 400                      JUMP 400
+X                           1424                            400                       400 + x
+     LOAD Y                         LOAD 2224                         LOAD 1200                     LOAD 1200
+           DATA                      DATA                              DATA                           DATA
+Y                           2224                            1200                      1200 + x
+     (a) Object module      (b) Absolute load module        (c) Relative load module     (d) Relative load module
+                                                                                         loaded into main memory
+                                                                                         starting at location x
+Figure 7.17      Absolute and Relocatable Load Modules
+
+                                    APPENDIX 7A / LOADING AND LINKING                  337
+all other memory references within the module are expressed relative to the begin-
+ning of the module.
+With all memory references expressed in relative format, it becomes a simple
+task for the loader to place the module in the desired location. If the module is to be
+loaded beginning at location x, then the loader must simply add x to each memory
+reference as it loads the module into memory. To assist in this task, the load module
+must include information that tells the loader where the address references are and
+how they are to be interpreted (usually relative to the program origin, but also pos-
+sibly relative to some other point in the program, such as the current location). This
+set of information is prepared by the compiler or assembler and is usually referred
+to as the relocation dictionary.
+DYNAMIC  RUN-TIME    LOADING        Relocatable loaders are common and provide
+obvious benefits relative to absolute loaders. However, in a multiprogramming
+environment, even one that does not depend on virtual memory, the relocatable
+loading scheme is inadequate. We have referred to the need to swap process images
+in and out of main memory to maximize the utilization of the processor. To maximize
+main memory utilization, we would like to be able to swap the process image back into
+different locations at different times. Thus, a program, once loaded, may be swapped
+out to disk and then swapped back in at a different location. This would be impossible
+if memory references had been bound to absolute addresses at the initial load time.
+The alternative is to defer the calculation of an absolute address until it is
+actually needed at run time. For this purpose, the load module is loaded into main
+memory with all memory references in relative form (Figure 7.17c). It is not until
+an instruction is actually executed that the absolute address is calculated. To assure
+that this function does not degrade performance, it must be done by special proces-
+sor hardware rather than software. This hardware is described in Section 7.2.
+Dynamic address calculation provides complete flexibility. A program can be
+loaded into any region of main memory. Subsequently, the execution of the pro-
+gram can be interrupted and the program can be swapped out of main memory, to
+be later swapped back in at a different location.
+Linking
+The function of a linker is to take as input a collection of object modules and pro-
+duce a load module, consisting of an integrated set of program and data modules, to
+be passed to the loader. In each object module, there may be address references to
+locations in other modules. Each such reference can only be expressed symbolically
+in an unlinked object module. The linker creates a single load module that is the
+contiguous joining of all of the object modules. Each intramodule reference must be
+changed from a symbolic address to a reference to a location within the overall load
+module. For example, module A in Figure 7.18a contains a procedure invocation
+of module B. When these modules are combined in the load module, this symbolic
+reference to module B is changed to a specific reference to the location of the entry
+point of B within the load module.
+LINKAGE  EDITOR      The nature of this address linkage will depend on the type
+of load module to be created and when the linkage occurs (Table 7.3b). If, as is
+
+338  CHAPTER 7 / MEMORY MANAGEMENT
+                                                    Relative
+                                                    addresses
+                     Module A                       0                  Module A
+     External        CALL B;                                           JSR "L"
+     reference to                        Length L
+     module B
+                     Return                         L1                 Return
+                                                    L                  Module B
+                     Module B
+                                                                       JSR "L  M"
+                     CALL C;
+                                         Length M
+                                                    LM1                Return
+                     Return                         LM                 Module C
+                     Module C
+                                         Length  N  LMN1               Return
+                     Return                                            (b) Load module
+                     (a) Object modules
+     Figure    7.18  The Linking Function
+     usually the case, a relocatable load module is desired, then linkage is usually done
+     in the following fashion. Each compiled or assembled object module is created with
+     references relative to the beginning of the object module. All of these modules are
+     put together into a single relocatable load module with all references relative to the
+     origin of the load module. This module can be used as input for relocatable loading
+     or dynamic run-time loading.
+     A linker that produces a relocatable load module is often referred to as a link-
+     age editor. Figure 7.18 illustrates the linkage editor function.
+     DYNAMIC LINKER  As with loading, it is possible to defer some linkage functions.
+     The term dynamic linking is used to refer to the practice of deferring the linkage of
+     some external modules until after the load module has been created. Thus, the load
+     module contains unresolved references to other programs. These references can be
+     resolved either at load time or run time.
+     For load-time dynamic linking (involving upper dynamic library in Figure 7.16),
+     the following steps occur. The load module (application module) to be loaded is
+     read into memory. Any reference to an external module (target module) causes the
+     loader to find the target module, load it, and alter the reference to a relative address
+     in memory from the beginning of the application module. There are several advan-
+     tages to this approach over what might be called static linking:
+
+                            APPENDIX 7A / LOADING AND LINKING                          339
+·  It becomes easier to incorporate changed or upgraded versions of the target
+   module, which may be an operating system utility or some other general-
+   purpose routine. With static linking, a change to such a supporting module
+   would require the relinking of the entire application module. Not only is this
+   inefficient, but it may be impossible in some circumstances. For example, in
+   the personal computer field, most commercial software is released in load
+   module form; source and object versions are not released.
+·  Having target code in a dynamic link file paves the way for automatic code
+   sharing. The operating system can recognize that more than one application is
+   using the same target code because it loaded and linked that code. It can use
+   that information to load a single copy of the target code and link it to both
+   applications, rather than having to load one copy for each application.
+·  It becomes easier for independent software developers to extend the function-
+   ality of a widely used operating system such as Linux. A developer can come
+   up with a new function that may be useful to a variety of applications and
+   package it as a dynamic link module.
+   With  run-time  dynamic  linking      (involving     lower        dynamic  library      in
+Figure 7.16), some of the linking is postponed until execution time. External refer-
+ences to target modules remain in the loaded program. When a call is made to the
+absent module, the operating system locates the module, loads it, and links it to the
+calling module. Such modules are typically shareable. In the Windows environment,
+these are call dynamic-link libraries (DLLs). Thus, if one process is already making
+use of a dynamically-linked shared module, then that module is in main memory
+and a new process can simply link to the already-loaded module.
+   The use of DLLs can lead to a problem commonly referred to as DLL hell.
+DLL hell occurs if two or more processes are sharing a DLL module but expect dif-
+ferent versions of the module. For example, an application or system function might
+be reinstalled and bring in with it an older version of a DLL file.
+   We have seen that dynamic loading allows an entire load module to be moved
+around; however, the structure of the module is static, being unchanged throughout
+the execution of the process and from one execution to the next. However, in some
+cases, it is not possible to determine prior to execution which object modules will
+be required. This situation is typified by transaction-processing applications, such as
+an airline reservation system or a banking application. The nature of the transaction
+dictates which program modules are required, and they are loaded as appropriate
+and linked with the main program. The advantage of the use of such a dynamic
+linker is that it is not necessary to allocate memory for program units unless those
+units are referenced. This capability is used in support of segmentation systems.
+   One additional refinement is possible: An application need not know the
+names of all the modules or entry points that may be called. For example, a charting
+program may be written to work with a variety of plotters, each of which is driven
+by a different driver package. The application can learn the name of the plotter that
+is currently installed on the system from another process or by looking it up in a
+configuration file. This allows the user of the application to install a new plotter that
+did not exist at the time the application was written.
+
+                                           CHAPTER
+VIRTUAL MEMORY
+     8.1  Hardware and Control Structures
+          Locality and Virtual Memory
+          Paging
+          Segmentation
+          Combined Paging and Segmentation
+          Protection and Sharing
+     8.2  Operating System Software
+          Fetch Policy
+          Placement Policy
+          Replacement Policy
+          Resident Set Management
+          Cleaning Policy
+          Load Control
+     8.3  UNIX and Solaris Memory Management
+          Paging System
+          Kernel Memory Allocator
+     8.4  Linux Memory Management
+          Linux Virtual Memory
+          Kernel Memory Allocation
+     8.5  Windows Memory Management
+          Windows Virtual Address Map
+          Windows Paging
+     8.6  Summary
+     8.7  Recommended Reading and Web Sites
+     8.8  Key Terms, Review Questions, and Problems
+340                                                  340

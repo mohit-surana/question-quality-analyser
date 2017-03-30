@@ -1,0 +1,511 @@
+Multiprocessor Scheduling
+                                           10.1 / MULTIPROCESSOR SCHEDULING                431
+         Bear in mind, Sir Henry, one of the phrases in that queer old legend
+         which Dr. Mortimer has read to us, and avoid the moor in those hours
+         of darkness when the powers of evil are exalted.
+                     --THE HOUND OF THE BASKERVILLES, Arthur Conan Doyle
+      LEARNING OBJECTIVES
+      After studying this chapter, you should be able to:
+      ·     Understand the concept of thread granularity.
+      ·     Discuss the key design issues in multiprocessor thread scheduling and some
+            of the key approaches to scheduling.
+      ·     Understand the requirements imposed by real-time scheduling.
+      ·     Explain the scheduling methods used in Linux, UNIX SVR4, and Windows 7.
+      This chapter continues our survey of process and thread scheduling. We begin with
+      an examination of issues raised by the availability of more than one processor. A
+      number of design issues are explored. This is followed by a look at the scheduling of
+      processes on a multiprocessor system. Then the somewhat different design consid-
+      erations for multiprocessor thread scheduling are examined. The second section of
+      this chapter covers real-time scheduling. The section begins with a discussion of the
+      characteristics of real-time processes and then looks at the nature of the schedul-
+      ing process. Two approaches to real-time scheduling, deadline scheduling and rate
+      monotonic scheduling, are examined.
+10.1  MULTIPROCESSOR SCHEDULING
+      When a computer system contains more than a single processor, several new issues
+      are introduced into the design of the scheduling function. We begin with a brief
+      overview of multiprocessors and then look at the rather different considerations
+      when scheduling is done at the process level and at the thread level.
+            We can classify multiprocessor systems as follows:
+         ·  Loosely coupled or distributed multiprocessor, or cluster: Consists of a col-
+            lection of relatively autonomous systems, each processor having its own main
+            memory and I/O channels. We address this type of configuration in Chapter 16.
+         ·  Functionally specialized processors: An example is an I/O processor. In this
+            case, there is a master, general-purpose processor; specialized processors are
+            controlled by the master processor and provide services to it. Issues relating to
+            I/O processors are addressed in Chapter 11.
+         ·  Tightly coupled multiprocessor: Consists of a set of processors that share a
+            common main memory and are under the integrated control of an operating
+            system.
+
+432   CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+Table 10.1   Synchronization Granularity and Processes
+                                                                                 Synchronization
+Grain Size                          Description                                  Interval (Instructions)
+Fine         Parallelism inherent in a single instruction stream                            6 20
+Medium       Parallel processing or multitasking within a single application     20­200
+Coarse       Multiprocessing of concurrent processes in a                        200­2,000
+             multiprogramming environment
+Very Coarse  Distributed processing across network nodes to form a single        2,000­1M
+             computing environment
+Independent  Multiple unrelated processes                                        Not applicable
+        Our concern in this section is with the last category, and specifically with issues
+        relating to scheduling.
+        Granularity
+        A good way of characterizing multiprocessors and placing them in context with
+        other architectures is to consider the synchronization granularity, or frequency of
+        synchronization, between processes in a system. We can distinguish five catego-
+        ries of parallelism that differ in the degree of granularity. These are summarized in
+        Table 10.1, which is adapted from [GEHR87] and [WOOD89].
+        INDEPENDENT  PARALLELISM           With independent parallelism, there is no explicit
+        synchronization  among      processes.   Each      represents         a  separate,  independent
+        application or job. A typical use of this type of parallelism is in a time-sharing system.
+        Each user is performing a particular application such as word processing or using a
+        spreadsheet. The multiprocessor provides the same service as a multiprogrammed
+        uniprocessor. Because more than one processor is available, average response time
+        to the users will be less.
+             It is possible to achieve a similar performance gain by providing each user with
+        a personal computer or workstation. If any files or information are to be shared,
+        then the individual systems must be hooked together into a distributed system sup-
+        ported by a network. This approach is examined in Chapter 16. On the other hand,
+        a single, multiprocessor shared system in many instances is more cost-effective than
+        a distributed system, allowing economies of scale in disks and other peripherals.
+        COARSE AND VERY COARSE-GRAINED PARALLELISM                            With coarse and very coarse-
+        grained parallelism, there is synchronization among processes, but at a very gross
+        level. This kind of situation is easily handled as a set of concurrent processes running
+        on a multiprogrammed uniprocessor and can be supported on a multiprocessor with
+        little or no change to user software.
+             A simple example of an application that can exploit the existence of a multi-
+        processor is given in [WOOD89]. The authors have developed a program that takes
+        a specification of files needing recompilation to rebuild a piece of software and
+        determines which of these compiles (usually all of them) can be run simultaneously.
+
+                                  10.1 / MULTIPROCESSOR SCHEDULING                     433
+The program then spawns one process for each parallel compile. The authors report
+that the speedup on a multiprocessor actually exceeds what would be expected
+by simply adding up the number of processors in use, due to synergies in the disk
+buffer caches (a topic explored in Chapter 11) and sharing of compiler code, which
+is loaded into memory only once.
+   In general, any collection of concurrent processes that need to communicate or
+synchronize can benefit from the use of a multiprocessor architecture. In the case of
+very infrequent interaction among processes, a distributed system can provide good
+support. However, if the interaction is somewhat more frequent, then the overhead
+of communication across the network may negate some of the potential speedup. In
+that case, the multiprocessor organization provides the most effective support.
+MEDIUM-GRAINED PARALLELISM        We saw in Chapter 4 that a single application
+can be effectively implemented as a collection of threads within a single process.
+In this case, the programmer must explicitly specify the potential parallelism of an
+application. Typically, there will need to be rather a high degree of coordination
+and interaction among the threads of an application, leading to a medium-grain
+level of synchronization.
+   Whereas independent, very coarse, and coarse-grained parallelism can be sup-
+ported on either a multiprogrammed uniprocessor or a multiprocessor with little or
+no impact on the scheduling function, we need to reexamine scheduling when deal-
+ing with the scheduling of threads. Because the various threads of an application
+interact so frequently, scheduling decisions concerning one thread may affect the
+performance of the entire application. We return to this issue later in this section.
+FINE-GRAINED PARALLELISM          Fine-grained parallelism represents a much more
+complex use of parallelism than is found in the use of threads. Although much
+work has been done on highly parallel applications, this is so far a specialized and
+fragmented area, with many different approaches.
+   Chapter 4 provides an example of the use of granularity for the Valve game
+software.
+Design Issues
+Scheduling on a multiprocessor involves three interrelated issues:
+·  The assignment of processes to processors
+·  The use of multiprogramming on individual processors
+·  The actual dispatching of a process
+   In looking at these three issues, it is important to keep in mind that the
+approach taken will depend, in general, on the degree of granularity of the applica-
+tions and on the number of processors available.
+ASSIGNMENT OF PROCESSES TO PROCESSORS             If we assume that the architecture
+of the multiprocessor is uniform, in the sense that no processor has a particular
+physical advantage with respect to access to main memory or to I/O devices, then
+the simplest scheduling approach is to treat the processors as a pooled resource and
+
+434  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     assign processes to processors on demand. The question then arises as to whether
+     the assignment should be static or dynamic.
+     If a process is permanently assigned to one processor from activation until its
+     completion, then a dedicated short-term queue is maintained for each processor.
+     An advantage of this approach is that there may be less overhead in the scheduling
+     function, because the processor assignment is made once and for all. Also, the use
+     of dedicated processors allows a strategy known as group or gang scheduling, as
+     discussed later.
+     A disadvantage of static assignment is that one processor can be idle, with an
+     empty queue, while another processor has a backlog. To prevent this situation, a
+     common queue can be used. All processes go into one global queue and are sched-
+     uled to any available processor. Thus, over the life of a process, the process may
+     be executed on different processors at different times. In a tightly coupled shared-
+     memory architecture, the context information for all processes will be available to
+     all processors, and therefore the cost of scheduling a process will be independent of
+     the identity of the processor on which it is scheduled. Yet another option is dynamic
+     load balancing, in which threads are moved for a queue for one processor to a queue
+     for another processor; Linux uses this approach.
+     Regardless of whether processes are dedicated to processors, some means is
+     needed to assign processes to processors. Two approaches have been used: master/
+     slave and peer. With a master/slave architecture, key kernel functions of the oper-
+     ating system always run on a particular processor. The other processors may only
+     execute user programs. The master is responsible for scheduling jobs. Once a proc-
+     ess is active, if the slave needs service (e.g., an I/O call), it must send a request to the
+     master and wait for the service to be performed. This approach is quite simple and
+     requires little enhancement to a uniprocessor multiprogramming operating system.
+     Conflict resolution is simplified because one processor has control of all memory
+     and I/O resources. There are two disadvantages to this approach: (1) A failure of
+     the master brings down the whole system, and (2) the master can become a per-
+     formance bottleneck.
+     In a peer architecture, the kernel can execute on any processor, and each
+     processor does self-scheduling from the pool of available processes. This approach
+     complicates the operating system. The operating system must ensure that two proc-
+     essors do not choose the same process and that the processes are not somehow lost
+     from the queue. Techniques must be employed to resolve and synchronize compet-
+     ing claims to resources.
+     There is, of course, a spectrum of approaches between these two extremes. One
+     approach is to provide a subset of processors dedicated to kernel processing instead
+     of just one. Another approach is simply to manage the difference between the needs
+     of kernel processes and other processes on the basis of priority and execution history.
+     THE USE OF MULTIPROGRAMMING ON INDIVIDUAL PROCESSORS  When each process
+     is statically assigned to a processor for the duration of its lifetime, a new question
+     arises: Should that processor be multiprogrammed? The reader's first reaction may
+     be to wonder why the question needs to be asked; it would appear particularly
+     wasteful to tie up a processor with a single process when that process may frequently
+     be blocked waiting for I/O or because of concurrency/synchronization considerations.
+
+                               10.1 / MULTIPROCESSOR SCHEDULING                               435
+In the traditional multiprocessor, which is dealing with coarse-grained or
+independent synchronization granularity (see Table 10.1), it is clear that each individ-
+ual processor should be able to switch among a number of processes to achieve high
+utilization and therefore better performance. However, for medium-grained applica-
+tions running on a multiprocessor with many processors, the situation is less clear.
+When many processors are available, it is no longer paramount that every single proc-
+essor be busy as much as possible. Rather, we are concerned to provide the best per-
+formance, on average, for the applications. An application that consists of a number
+of threads may run poorly unless all of its threads are available to run simultaneously.
+PROCESS DISPATCHING  The final design issue related to multiprocessor scheduling
+is the actual selection of a process to run. We have seen that, on a multiprogrammed
+uniprocessor, the use of priorities or of sophisticated scheduling algorithms based
+on past usage may improve performance over a simple-minded first-come-first-
+served strategy. When we consider multiprocessors, these complexities may be
+unnecessary or even counterproductive, and a simpler approach may be more
+effective with less overhead. In the case of thread scheduling, new issues come into
+play that may be more important than priorities or execution histories. We address
+each of these topics in turn.
+Process Scheduling
+In most traditional multiprocessor systems, processes are not dedicated to proces-
+sors. Rather there is a single queue for all processors, or if some sort of priority
+scheme is used, there are multiple queues based on priority, all feeding into the
+common pool of processors. In any case, we can view the system as being a multi-
+server queueing architecture.
+Consider the case of a dual-processor system in which each processor of the
+dual-processor system has half the processing rate of a processor in the single-processor
+system. [SAUE81] reports a queueing analysis that compares FCFS scheduling to round
+robin and to shortest remaining time. The study is concerned with process service time,
+which measures the amount of processor time a process needs, either for a total job or
+the amount of time needed each time the process is ready to use the processor. In the
+case of round robin, it is assumed that the time quantum is large compared to context-
+switching overhead and small compared to mean service time. The results depend on
+the variability that is seen in service times. A common measure of variability is the
+coefficient of variation, Cs.1 A value of Cs  0 corresponds to the case where there is
+no variability: the service times of all processes are equal. Increasing values of Cs corre-
+spond to increasing variability among the service times. That is, the larger the value of
+Cs, the more widely do the values of the service times vary. Values of Cs of 5 or more
+are not unusual for processor service time distributions.
+Figure 10.1a compares round-robin throughput to FCFS throughput as a func-
+tion of Css. Note that the difference in scheduling algorithms is much smaller in the
+dual-processor case. With two processors, a single process with long service time is
+1The value of Cs is calculated as s/Ts, where s is the standard deviation of service time and Ts is the
+mean service time. For a further explanation of Cs, see the discussion in Chapter 20.
+
+436  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+                                   1.15
+                                                                                             Single
+     RR to FCFS throughput ratio                                                             processor
+                                   1.10
+                                   1.05                                                      Dual
+                                                                                             processor
+                                   1.00
+                                   0.98
+                                         0  1  2                3              4          5
+                                               Coefficient of variation
+                                               (a) Comparison of RR and FCFS
+                                   1.25
+                                                                                             Single
+                                   1.20                                                      processor
+     SRT to FCFS throughput ratio  1.15
+                                   1.10
+                                                                                             Dual
+                                   1.05                                                      processor
+                                   1.00  0  1  2                3              4          5
+                                               Coefficient of variation
+                                               (b) Comparison of SRT and FCFS
+     Figure 10.1                            Comparison of Scheduling Performance for One
+                                            and Two Processors
+     much less disruptive in the FCFS case; other processes can use the other processor.
+     Similar results are shown in Figure 10.1b.
+     The study in [SAUE81] repeated this analysis under a number of assumptions
+     about degree of multiprogramming, mix of I/O-bound versus CPU-bound proc-
+     esses, and the use of priorities. The general conclusion is that the specific scheduling
+     discipline is much less important with two processors than with one. It should be
+     evident that this conclusion is even stronger as the number of processors increases.
+     Thus, a simple FCFS discipline or the use of FCFS within a static priority scheme
+     may suffice for a multiple-processor system.
+
+                             10.1 / MULTIPROCESSOR SCHEDULING                                              437
+Thread Scheduling
+As we have seen, with threads, the concept of execution is separated from the rest
+of the definition of a process. An application can be implemented as a set of threads
+that cooperate and execute concurrently in the same address space.
+   On a uniprocessor, threads can be used as a program structuring aid and to
+overlap I/O with processing. Because of the minimal penalty in doing a thread
+switch compared to a process switch, these benefits are realized with little cost.
+However, the full power of threads becomes evident in a multiprocessor system. In
+this environment, threads can be used to exploit true parallelism in an application.
+If the various threads of an application are simultaneously run on separate proces-
+sors, dramatic gains in performance are possible. However, it can be shown that
+for applications that require significant interaction among threads (medium-grain
+parallelism), small differences in thread management and scheduling can have a
+significant performance impact [ANDE89].
+   Among the many proposals for multiprocessor thread scheduling and proces-
+sor assignment, four general approaches stand out:
+·  Load sharing: Processes are not assigned to a particular processor. A global
+   queue of ready threads is maintained, and each processor, when idle, selects a
+   thread from the queue. The term load sharing is used to distinguish this strat-
+   egy from load-balancing schemes in which work is allocated on a more perma-
+   nent basis (e.g., see [FEIT90a]).2
+·  Gang scheduling: A set of related threads is scheduled to run on a set of proc-
+   essors at the same time, on a one-to-one basis.
+·  Dedicated processor assignment: This is the opposite of the load-sharing
+   approach and provides implicit scheduling defined by the assignment of
+   threads to processors. Each program, for the duration of its execution, is allo-
+   cated a number of processors equal to the number of threads in the program.
+   When the program terminates, the processors return to the general pool for
+   possible allocation to another program.
+·  Dynamic scheduling: The number of threads in a process can be altered during
+   the course of execution.
+LOAD SHARING  Load sharing is perhaps the simplest approach and the one that
+carries over most directly from a uniprocessor environment. It has several advantages:
+·  The load is distributed evenly across the processors, assuring that no processor
+   is idle while work is available to do.
+·  No centralized scheduler is required; when a processor is available, the
+   scheduling routine of the operating system is run on that processor to select
+   the next thread.
+2Some of the literature on this topic refers to this approach as self-scheduling, because each processor
+schedules itself without regard to other processors. However, this term is also used in the literature to
+refer to programs written in a language that allows the programmer to specify the scheduling (e.g., see
+[FOST91]).
+
+438  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     ·  The global queue can be organized and accessed using any of the schemes dis-
+        cussed in Chapter 9, including priority-based schemes and schemes that con-
+        sider execution history or anticipated processing demands.
+        [LEUT90] analyzes three different versions of load sharing:
+     ·  First-come-first-served (FCFS): When a job arrives, each of its threads is
+        placed consecutively at the end of the shared queue. When a processor be-
+        comes idle, it picks the next ready thread, which it executes until completion
+        or blocking.
+     ·  Smallest number of threads first: The shared ready queue is organized as a pri-
+        ority queue, with highest priority given to threads from jobs with the smallest
+        number of unscheduled threads. Jobs of equal priority are ordered according
+        to which job arrives first. As with FCFS, a scheduled thread is run to comple-
+        tion or blocking.
+     ·  Preemptive smallest number of threads first: Highest priority is given to jobs
+        with the smallest number of unscheduled threads. An arriving job with a
+        smaller number of threads than an executing job will preempt threads belong-
+        ing to the scheduled job.
+     Using simulation models, the authors report that, over a wide range of job charac-
+     teristics, FCFS is superior to the other two policies in the preceding list. Further, the
+     authors find that some form of gang scheduling, discussed in the next subsection, is
+     generally superior to load sharing.
+        There are several disadvantages of load sharing:
+     ·  The central queue occupies a region of memory that must be accessed in a
+        manner that enforces mutual exclusion. Thus, it may become a bottleneck if
+        many processors look for work at the same time. When there is only a small
+        number of processors, this is unlikely to be a noticeable problem. However,
+        when the multiprocessor consists of dozens or even hundreds of processors,
+        the potential for bottleneck is real.
+     ·  Preempted threads are unlikely to resume execution on the same processor. If
+        each processor is equipped with a local cache, caching becomes less efficient.
+     ·  If all threads are treated as a common pool of threads, it is unlikely that all of
+        the threads of a program will gain access to processors at the same time. If a
+        high degree of coordination is required between the threads of a program, the
+        process switches involved may seriously compromise performance.
+        Despite the potential disadvantages, load sharing is one of the most commonly
+     used schemes in current multiprocessors.
+        A refinement of the load-sharing technique is used in the Mach operating
+     system [BLAC90, WEND89]. The operating system maintains a local run queue
+     for each processor and a shared global run queue. The local run queue is used by
+     threads that have been temporarily bound to a specific processor. A processor
+     examines the local run queue first to give bound threads absolute preference over
+     unbound threads. As an example of the use of bound threads, one or more proces-
+     sors could be dedicated to running processes that are part of the operating system.
+
+                                      10.1 / MULTIPROCESSOR SCHEDULING                    439
+Another example is that the threads of a particular application could be distributed
+among a number of processors; with the proper additional software, this provides
+support for gang scheduling, discussed next.
+GANG SCHEDULING  The concept of scheduling a set of processes simultaneously
+on a set of processors predates the use of threads. [JONE80] refers to the concept as
+group scheduling and cites the following benefits:
+·  If closely related processes execute in parallel, synchronization blocking may
+   be reduced, less process switching may be necessary, and performance will
+   increase.
+· Scheduling overhead may be reduced because a single decision affects a
+   number of processors and processes at one time.
+   On the Cm* multiprocessor, the term coscheduling is used [GEHR87].
+Coscheduling is based on the concept of scheduling a related set of tasks, called a
+task force. The individual elements of a task force tend to be quite small and are
+hence close to the idea of a thread.
+   The term gang scheduling has been applied to the simultaneous scheduling of
+the threads that make up a single process [FEIT90b]. Gang scheduling is useful for
+medium-grained to fine-grained parallel applications whose performance severely
+degrades when any part of the application is not running while other parts are ready
+to run. It is also beneficial for any parallel application, even one that is not quite
+so performance sensitive. The need for gang scheduling is widely recognized, and
+implementations exist on a variety of multiprocessor operating systems.
+   One obvious way in which gang scheduling improves the performance of a
+single application is that process switches are minimized. Suppose one thread of a
+process is executing and reaches a point at which it must synchronize with another
+thread of the same process. If that other thread is not running, but is in a ready
+queue, the first thread is hung up until a process switch can be done on some other
+processor to bring in the needed thread. In an application with tight coordination
+among threads, such switches will dramatically reduce performance. The simultane-
+ous scheduling of cooperating threads can also save time in resource allocation. For
+example, multiple gang-scheduled threads can access a file without the additional
+overhead of locking during a seek, read/write operation.
+   The use of gang scheduling creates a requirement for processor allocation.
+One possibility is the following. Suppose that we have N processors and M applica-
+tions, each of which has N or fewer threads. Then each application could be given
+1/M of the available time on the N processors, using time slicing. [FEIT90a] notes
+that this strategy can be inefficient. Consider an example in which there are two
+applications, one with four threads and one with one thread. Using uniform time
+allocation wastes 37.5% of the processing resource, because when the single-thread
+application runs, three processors are left idle (see Figure 10.2). If there are several
+one-thread applications, these could all be fit together to increase processor utiliza-
+tion. If that option is not available, an alternative to uniform scheduling is schedul-
+ing that is weighted by the number of threads. Thus, the four-thread application
+could be given four-fifths of the time and the one-thread application given only one-
+fifth of the time, reducing the processor waste to 15%.
+
+440  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+                  Uniform division                                Division by weights
+                  Group 1    Group 2                              Group 1           Group    2
+           PE1                                          PE1
+           PE2                      Idle                PE2                            Idle
+           PE3                      Idle                PE3                            Idle
+           PE4                      Idle                PE4                            Idle
+     Time         1/2               1/2                           4/5                  1/5
+                       37.5% Waste                                15% Waste
+     Figure 10.2  Example of Scheduling   Groups  with  Four and  One Threads [FEIT90b]
+     DEDICATED    PROCESSOR  ASSIGNMENT   An extreme form of gang scheduling,
+     suggested in [TUCK89], is to dedicate a group of processors to an application for
+     the duration of the application. That is, when an application is scheduled, each of
+     its threads is assigned a processor that remains dedicated to that thread until the
+     application runs to completion.
+         This approach would appear to be extremely wasteful of processor time. If
+     a thread of an application is blocked waiting for I/O or for synchronization with
+     another thread, then that thread's processor remains idle: there is no multiprogram-
+     ming of processors. Two observations can be made in defense of this strategy:
+     1.  In a highly parallel system, with tens or hundreds of processors, each of which
+         represents a small fraction of the cost of the system, processor utilization is no
+         longer so important as a metric for effectiveness or performance.
+     2.  The total avoidance of process switching during the lifetime of a program
+         should result in a substantial speedup of that program.
+         Both [TUCK89] and [ZAHO90] report analyses that support statement 2.
+     Figure 10.3 shows the results of one experiment [TUCK89]. The authors ran two
+     applications simultaneously (executing concurrently), a matrix multiplication and a
+     fast Fourier transform (FFT) calculation, on a system with 16 processors. Each appli-
+     cation breaks its problem into a number of tasks, which are mapped onto the threads
+     executing that application. The programs are written in such a way as to allow the
+     number of threads to be used to vary. In essence, a number of tasks are defined
+     and queued by an application. Tasks are taken from the queue and mapped onto
+     the available threads by the application. If there are fewer threads than tasks, then
+     leftover tasks remain queued and are picked up by threads as they complete their
+     assigned tasks. Clearly, not all applications can be structured in this way, but many
+     numerical problems and some other applications can be dealt with in this fashion.
+         Figure 10.3 shows the speedup for the applications as the number of threads
+     executing the tasks in each application is varied from 1 to 24. For example, we see
+     that when both applications are started simultaneously with 24 threads each, the
+     speedup obtained, compared to using a single thread for each application, is 2.8 for
+     matrix multiplication and 2.4 for FFT. The figure shows that the performance of
+     both applications worsens considerably when the number of threads in each applica-
+     tion exceeds eight and thus the total number of processes in the system exceeds the
+     number of processors. Furthermore, the larger the number of threads, the worse the
+
+                     10.1 / MULTIPROCESSOR SCHEDULING                                  441
+         7
+         6                                                     Matrix multiplication
+                                                               FFT
+         5
+Speedup  4
+         3
+         2
+         1
+         0  0  4  8  12                              16             20                        24
+                  Number of threads per application
+Figure 10.3    Application Speedup as a Function of Number of Threads [TUCK89]
+performance gets, because there is a greater frequency of thread preemption and
+rescheduling. This excessive preemption results in inefficiency from many sources,
+including time spent waiting for a suspended thread to leave a critical section, time
+wasted in process switching, and inefficient cache behavior.
+            The authors conclude that an effective strategy is to limit the number of active
+threads to the number of processors in the system. If most of the applications are
+either single thread or can use the task-queue structure, this will provide an effec-
+tive and reasonably efficient use of the processor resources.
+            Both dedicated processor assignment and gang scheduling attack the schedul-
+ing problem by addressing the issue of processor allocation. One can observe that
+the processor allocation problem on a multiprocessor more closely resembles the
+memory allocation problem on a uniprocessor than the scheduling problem on a
+uniprocessor. The issue is how many processors to assign to a program at any given
+time, which is analogous to how many page frames to assign to a given process at
+any time. [GEHR87] proposes the term activity working set, analogous to a virtual
+memory working set, as the minimum number of activities (threads) that must be
+scheduled simultaneously on processors for the application to make acceptable
+progress. As with memory management schemes, the failure to schedule all of the
+elements of an activity working set can lead to processor thrashing. This occurs when
+the scheduling of threads whose services are required induces the descheduling of
+other threads whose services will soon be needed. Similarly, processor fragmenta-
+tion refers to a situation in which some processors are left over when others are
+allocated, and the leftover processors are either insufficient in number or unsuitably
+organized to support the requirements of waiting applications. Gang scheduling and
+dedicated processor allocation are meant to avoid these problems.
+
+442  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     DYNAMIC SCHEDULING  For some applications, it is possible to provide language
+     and system tools that permit the number of threads in the process to be altered
+     dynamically. This would allow the operating system to adjust the load to improve
+     utilization.
+         [ZAHO90] proposes an approach in which both the operating system and the
+     application are involved in making scheduling decisions. The operating system is
+     responsible for partitioning the processors among the jobs. Each job uses the proc-
+     essors currently in its partition to execute some subset of its runnable tasks by map-
+     ping these tasks to threads. An appropriate decision about which subset to run, as
+     well as which thread to suspend when a process is preempted, is left to the individ-
+     ual applications (perhaps through a set of run-time library routines). This approach
+     may not be suitable for all applications. However, some applications could default
+     to a single thread while others could be programmed to take advantage of this par-
+     ticular feature of the operating system.
+         In this approach, the scheduling responsibility of the operating system is pri-
+     marily limited to processor allocation and proceeds according to the following pol-
+     icy. When a job requests one or more processors (either when the job arrives for the
+     first time or because its requirements change),
+     1.  If there are idle processors, use them to satisfy the request.
+     2.  Otherwise, if the job making the request is a new arrival, allocate it a single
+         processor by taking one away from any job currently allocated more than one
+         processor.
+     3.  If any portion of the request cannot be satisfied, it remains outstanding until
+         either a processor becomes available for it or the job rescinds the request (e.g.,
+         if there is no longer a need for the extra processors).
+     Upon release of one or more processors (including job departure),
+     4.  Scan the current queue of unsatisfied requests for processors. Assign a single
+         processor to each job in the list that currently has no processors (i.e., to all
+         waiting new arrivals). Then scan the list again, allocating the rest of the proc-
+         essors on an FCFS basis.
+         Analyses reported in [ZAHO90] and [MAJU88] suggest that for applica-
+     tions that can take advantage of dynamic scheduling, this approach is superior to
+     gang scheduling or dedicated processor assignment. However, the overhead of this
+     approach may negate this apparent performance advantage. Experience with actual
+     systems is needed to prove the worth of dynamic scheduling.
+10.2 REAL-TIME SCHEDULING
+     Background
+     Real-time computing is becoming an increasingly important discipline. The operat-
+     ing system, and in particular the scheduler, is perhaps the most important compo-
+     nent of a real-time system. Examples of current applications of real-time systems

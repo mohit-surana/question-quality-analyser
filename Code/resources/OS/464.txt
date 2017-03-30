@@ -1,0 +1,662 @@
+Real-Time Scheduling
+442  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     DYNAMIC SCHEDULING  For some applications, it is possible to provide language
+     and system tools that permit the number of threads in the process to be altered
+     dynamically. This would allow the operating system to adjust the load to improve
+     utilization.
+         [ZAHO90] proposes an approach in which both the operating system and the
+     application are involved in making scheduling decisions. The operating system is
+     responsible for partitioning the processors among the jobs. Each job uses the proc-
+     essors currently in its partition to execute some subset of its runnable tasks by map-
+     ping these tasks to threads. An appropriate decision about which subset to run, as
+     well as which thread to suspend when a process is preempted, is left to the individ-
+     ual applications (perhaps through a set of run-time library routines). This approach
+     may not be suitable for all applications. However, some applications could default
+     to a single thread while others could be programmed to take advantage of this par-
+     ticular feature of the operating system.
+         In this approach, the scheduling responsibility of the operating system is pri-
+     marily limited to processor allocation and proceeds according to the following pol-
+     icy. When a job requests one or more processors (either when the job arrives for the
+     first time or because its requirements change),
+     1.  If there are idle processors, use them to satisfy the request.
+     2.  Otherwise, if the job making the request is a new arrival, allocate it a single
+         processor by taking one away from any job currently allocated more than one
+         processor.
+     3.  If any portion of the request cannot be satisfied, it remains outstanding until
+         either a processor becomes available for it or the job rescinds the request (e.g.,
+         if there is no longer a need for the extra processors).
+     Upon release of one or more processors (including job departure),
+     4.  Scan the current queue of unsatisfied requests for processors. Assign a single
+         processor to each job in the list that currently has no processors (i.e., to all
+         waiting new arrivals). Then scan the list again, allocating the rest of the proc-
+         essors on an FCFS basis.
+         Analyses reported in [ZAHO90] and [MAJU88] suggest that for applica-
+     tions that can take advantage of dynamic scheduling, this approach is superior to
+     gang scheduling or dedicated processor assignment. However, the overhead of this
+     approach may negate this apparent performance advantage. Experience with actual
+     systems is needed to prove the worth of dynamic scheduling.
+10.2 REAL-TIME SCHEDULING
+     Background
+     Real-time computing is becoming an increasingly important discipline. The operat-
+     ing system, and in particular the scheduler, is perhaps the most important compo-
+     nent of a real-time system. Examples of current applications of real-time systems
+
+                                              10.2 / REAL-TIME SCHEDULING                                443
+include control of laboratory experiments, process control in industrial plants,
+robotics, air traffic control, telecommunications, and military command and con-
+trol systems. Next-generation systems will include the autonomous land rover,
+controllers of robots with elastic joints, systems found in intelligent manufacturing,
+the space station, and undersea exploration.
+   Real-time computing may be defined as that type of computing in which the
+correctness of the system depends not only on the logical result of the computation
+but also on the time at which the results are produced. We can define a real-time
+system by defining what is meant by a real-time process, or task.3 In general, in a
+real-time system, some of the tasks are real-time tasks, and these have a certain
+degree of urgency to them. Such tasks are attempting to control or react to events
+that take place in the outside world. Because these events occur in "real time," a
+real-time task must be able to keep up with the events with which it is concerned.
+Thus, it is usually possible to associate a deadline with a particular task, where
+the deadline specifies either a start time or a completion time. Such a task may be
+classified as hard or soft. A hard real-time task is one that must meet its deadline;
+otherwise it will cause unacceptable damage or a fatal error to the system. A soft
+real-time task has an associated deadline that is desirable but not mandatory; it still
+makes sense to schedule and complete the task even if it has passed its deadline.
+   Another characteristic of real-time tasks is whether they are periodic or aperi-
+odic. An aperiodic task has a deadline by which it must finish or start, or it may have
+a constraint on both start and finish time. In the case of a periodic task, the require-
+ment may be stated as "once per period T" or "exactly T units apart."
+Characteristics of Real-Time Operating Systems
+Real-time operating systems can be characterized as having unique requirements in
+five general areas [MORG92]:
+·  Determinism
+·  Responsiveness
+·  User control
+·  Reliability
+·  Fail-soft operation
+   An operating system is deterministic to the extent that it performs operations
+at fixed, predetermined times or within predetermined time intervals. When mul-
+tiple processes are competing for resources and processor time, no system will be
+fully deterministic. In a real-time operating system, process requests for service are
+dictated by external events and timings. The extent to which an operating system
+can deterministically satisfy requests depends first on the speed with which it can
+3As usual, terminology poses a problem, because various words are used in the literature with varying
+meanings. It is common for a particular process to operate under real-time constraints of a repetitive
+nature. That is, the process lasts for a long time and, during that time, performs some repetitive function
+in response to real-time events. Let us, for this section, refer to an individual function as a task. Thus,
+the process can be viewed as progressing through a sequence of tasks. At any given time, the process is
+engaged in a single task, and it is the process/task that must be scheduled.
+
+444  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     respond to interrupts and, second, on whether the system has sufficient capacity to
+     handle all requests within the required time.
+         One useful measure of the ability of an operating system to function deterministi-
+     cally is the maximum delay from the arrival of a high-priority device interrupt to when
+     servicing begins. In non-real-time operating systems, this delay may be in the range of
+     tens to hundreds of milliseconds, while in real-time operating systems that delay may
+     have an upper bound of anywhere from a few microseconds to a millisecond.
+         A related but distinct characteristic is responsiveness. Determinism is con-
+     cerned with how long an operating system delays before acknowledging an interrupt.
+     Responsiveness is concerned with how long, after acknowledgment, it takes an oper-
+     ating system to service the interrupt. Aspects of responsiveness include the following:
+     1.  The amount of time required to initially handle the interrupt and begin execu-
+         tion of the interrupt service routine (ISR). If execution of the ISR requires a
+         process switch, then the delay will be longer than if the ISR can be executed
+         within the context of the current process.
+     2.  The amount of time required to perform the ISR. This generally is dependent
+         on the hardware platform.
+     3.  The effect of interrupt nesting. If an ISR can be interrupted by the arrival of
+         another interrupt, then the service will be delayed.
+     Determinism and responsiveness together make up the response time to external
+     events. Response time requirements are critical for real-time systems, because such
+     systems must meet timing requirements imposed by individuals, devices, and data
+     flows external to the system.
+         User control is generally much broader in a real-time operating system than
+     in ordinary operating systems. In a typical non-real-time operating system, the user
+     either has no control over the scheduling function of the operating system or can
+     only provide broad guidance, such as grouping users into more than one priority
+     class. In a real-time system, however, it is essential to allow the user fine-grained
+     control over task priority. The user should be able to distinguish between hard and
+     soft tasks and to specify relative priorities within each class. A real-time system may
+     also allow the user to specify such characteristics as the use of paging or process
+     swapping, what processes must always be resident in main memory, what disk trans-
+     fer algorithms are to be used, what rights the processes in various priority bands
+     have, and so on.
+         Reliability is typically far more important for real-time systems than non-real-
+     time systems. A transient failure in a non-real-time system may be solved by simply
+     rebooting the system. A processor failure in a multiprocessor non-real-time system
+     may result in a reduced level of service until the failed processor is repaired or
+     replaced. But a real-time system is responding to and controlling events in real time.
+     Loss or degradation of performance may have catastrophic consequences, ranging
+     from financial loss to major equipment damage and even loss of life.
+         As in other areas, the difference between a real-time and a non-real-time oper-
+     ating system is one of degree. Even a real-time system must be designed to respond
+     to various failure modes. Fail-soft operation is a characteristic that refers to the
+     ability of a system to fail in such a way as to preserve as much capability and data as
+
+                                            10.2 / REAL-TIME SCHEDULING                      445
+possible. For example, a typical traditional UNIX system, when it detects a corrup-
+tion of data within the kernel, issues a failure message on the system console, dumps
+the memory contents to disk for later failure analysis, and terminates execution of
+the system. In contrast, a real-time system will attempt either to correct the problem
+or minimize its effects while continuing to run. Typically, the system notifies a user
+or user process that it should attempt corrective action and then continues opera-
+tion perhaps at a reduced level of service. In the event a shutdown is necessary, an
+attempt is made to maintain file and data consistency.
+   An important aspect of fail-soft operation is referred to as stability. A real-
+time system is stable if, in cases where it is impossible to meet all task deadlines,
+the system will meet the deadlines of its most critical, highest-priority tasks, even if
+some less critical task deadlines are not always met.
+   To meet the foregoing requirements, real-time operating systems typically
+include the following features [STAN89]:
+·  Fast process or thread switch
+·  Small size (with its associated minimal functionality)
+·  Ability to respond to external interrupts quickly
+·  Multitasking with interprocess communication tools such as semaphores,
+   signals, and events
+·  Use of special sequential files that can accumulate data at a fast rate
+·  Preemptive scheduling based on priority
+·  Minimization of intervals during which interrupts are disabled
+·  Primitives to delay tasks for a fixed amount of time and to pause/resume tasks
+·  Special alarms and timeouts
+   The heart of a real-time system is the short-term task scheduler. In design-
+ing such a scheduler, fairness and minimizing average response time are not para-
+mount. What is important is that all hard real-time tasks complete (or start) by their
+deadline and that as many as possible soft real-time tasks also complete (or start)
+by their deadline.
+   Most contemporary real-time operating systems are unable to deal directly
+with deadlines. Instead, they are designed to be as responsive as possible to real-time
+tasks so that, when a deadline approaches, a task can be quickly scheduled. From
+this point of view, real-time applications typically require deterministic response
+times in the several-millisecond to submillisecond span under a broad set of condi-
+tions; leading-edge applications--in simulators for military aircraft, for example--
+often have constraints in the range of 10­100 s [ATLA89].
+   Figure 10.4 illustrates a spectrum of possibilities. In a preemptive scheduler that
+uses simple round-robin scheduling, a real-time task would be added to the ready
+queue to await its next timeslice, as illustrated in Figure 10.4a. In this case, the sched-
+uling time will generally be unacceptable for real-time applications. Alternatively,
+in a nonpreemptive scheduler, we could use a priority scheduling mechanism, giv-
+ing real-time tasks higher priority. In this case, a real-time task that is ready would
+be scheduled as soon as the current process blocks or runs to completion (Figure
+10.4b). This could lead to a delay of several seconds if a slow, low-priority task were
+
+446  CHAPTER 10  / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+                 Request from a
+                 real-time process         Real-time process added to
+                                    run queue to await its next slice
+                 Process 1          Process 2                         Process n         Real-time
+                                                                                        process
+     Clock
+     tick                                  Scheduling time
+                                    (a) Round-robin preemptive scheduler
+                        Request from a
+                        real-time process      Real-time process added
+                                                     to head of run queue
+                                    Current process                   Real-time
+                                                                       process
+                                                                       Current process
+                                    Scheduling time                    blocked or completed
+                                    (b) Priority-driven nonpreemptive scheduler
+                                    Request from a
+                                    real-time process         Wait for next
+                                                       preemption point
+                                    Current process                   Real-time
+                                                                       process
+     Preemption                            Scheduling time
+                 point
+                        (c) Priority-driven preemptive scheduler on preemption points
+                                           Request from a
+                                           real-time process
+                                                              Real-time process preempts current
+                                                              process and executes immediately
+                                    Current process                   Real-time
+                                                                       process
+                                                     Scheduling time
+                                        (d) Immediate preemptive scheduler
+     Figure 10.4        Scheduling of Real-Time Process
+
+                                               10.2 / REAL-TIME SCHEDULING              447
+executing at a critical time. Again, this approach is not acceptable. A more promis-
+ing approach is to combine priorities with clock-based interrupts. Preemption points
+occur at regular intervals. When a preemption point occurs, the currently running
+task is preempted if a higher-priority task is waiting. This would include the preemp-
+tion of tasks that are part of the operating system kernel. Such a delay may be on the
+order of several milliseconds (Figure 10.4c). While this last approach may be ade-
+quate for some real-time applications, it will not suffice for more demanding applica-
+tions. In those cases, the approach that has been taken is sometimes referred to as
+immediate preemption. In this case, the operating system responds to an interrupt
+almost immediately, unless the system is in a critical-code lockout section. Scheduling
+delays for a real-time task can then be reduced to 100 s or less.
+Real-Time Scheduling
+Real-time scheduling is one of the most active areas of research in computer science.
+In this subsection, we provide an overview of the various approaches to real-time
+scheduling and look at two popular classes of scheduling algorithms.
+   In a survey of real-time scheduling algorithms, [RAMA94] observes that the
+various scheduling approaches depend on (1) whether a system performs sched-
+ulability analysis, (2) if it does, whether it is done statically or dynamically, and
+(3) whether the result of the analysis itself produces a schedule or plan according to
+which tasks are dispatched at run time. Based on these considerations, the authors
+identify the following classes of algorithms:
+·  Static table-driven approaches: These perform a static analysis of feasible
+   schedules of dispatching. The result of the analysis is a schedule that deter-
+   mines, at run time, when a task must begin execution.
+·  Static priority-driven preemptive approaches: Again, a static analysis is per-
+   formed, but no schedule is drawn up. Rather, the analysis is used to assign
+   priorities to tasks, so that a traditional priority-driven preemptive scheduler
+   can be used.
+·  Dynamic planning-based approaches: Feasibility is determined at run time
+   (dynamically) rather than offline prior to the start of execution (statically).
+   An arriving task is accepted for execution only if it is feasible to meet its time
+   constraints. One of the results of the feasibility analysis is a schedule or plan
+   that is used to decide when to dispatch this task.
+·  Dynamic best effort approaches: No feasibility analysis is performed. The sys-
+   tem tries to meet all deadlines and aborts any started process whose deadline
+   is missed.
+   Static table-driven scheduling is applicable to tasks that are periodic. Input
+to the analysis consists of the periodic arrival time, execution time, periodic end-
+ing deadline, and relative priority of each task. The scheduler attempts to develop
+a schedule that enables it to meet the requirements of all periodic tasks. This is
+a predictable approach but one that is inflexible, because any change to any task
+requirements requires that the schedule be redone. Earliest-deadline-first or other
+periodic deadline techniques (discussed subsequently) are typical of this category of
+scheduling algorithms.
+
+448  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+        Static priority-driven preemptive scheduling makes use of the priority-driven
+     preemptive scheduling mechanism common to most non-real-time multiprogram-
+     ming systems. In a non-real-time system, a variety of factors might be used to
+     determine priority. For example, in a time-sharing system, the priority of a process
+     changes depending on whether it is processor bound or I/O bound. In a real-time
+     system, priority assignment is related to the time constraints associated with each
+     task. One example of this approach is the rate monotonic algorithm (discussed
+     subsequently), which assigns static priorities to tasks based on the length of their
+     periods.
+        With dynamic planning-based scheduling, after a task arrives, but before its
+     execution begins, an attempt is made to create a schedule that contains the previ-
+     ously scheduled tasks as well as the new arrival. If the new arrival can be scheduled
+     in such a way that its deadlines are satisfied and that no currently scheduled task
+     misses a deadline, then the schedule is revised to accommodate the new task.
+        Dynamic best effort scheduling is the approach used by many real-time sys-
+     tems that are currently commercially available. When a task arrives, the system
+     assigns a priority based on the characteristics of the task. Some form of deadline
+     scheduling, such as earliest-deadline scheduling, is typically used. Typically, the
+     tasks are aperiodic and so no static scheduling analysis is possible. With this type
+     of scheduling, until a deadline arrives or until the task completes, we do not know
+     whether a timing constraint will be met. This is the major disadvantage of this form
+     of scheduling. Its advantage is that it is easy to implement.
+     Deadline Scheduling
+     Most contemporary real-time operating systems are designed with the objective of
+     starting real-time tasks as rapidly as possible, and hence emphasize rapid interrupt
+     handling and task dispatching. In fact, this is not a particularly useful metric in eval-
+     uating real-time operating systems. Real-time applications are generally not con-
+     cerned with sheer speed but rather with completing (or starting) tasks at the most
+     valuable times, neither too early nor too late, despite dynamic resource demands
+     and conflicts, processing overloads, and hardware or software faults. It follows that
+     priorities provide a crude tool and do not capture the requirement of completion
+     (or initiation) at the most valuable time.
+        There have been a number of proposals for more powerful and appropriate
+     approaches to real-time task scheduling. All of these are based on having additional
+     information about each task. In its most general form, the following information
+     about each task might be used:
+     ·  Ready time: Time at which task becomes ready for execution. In the case of a
+        repetitive or periodic task, this is actually a sequence of times that is known in
+        advance. In the case of an aperiodic task, this time may be known in advance,
+        or the operating system may only be aware when the task is actually ready.
+     ·  Starting deadline: Time by which a task must begin.
+     ·  Completion deadline: Time by which a task must be completed. The typical
+        real-time application will either have starting deadlines or completion dead-
+        lines, but not both.
+
+                                       10.2 / REAL-TIME SCHEDULING                                        449
+·  Processing time: Time required to execute the task to completion. In some
+   cases, this is supplied. In others, the operating system measures an exponen-
+   tial average (as defined in Chapter 9). For still other scheduling systems, this
+   information is not used.
+·  Resource requirements: Set of resources (other than the processor) required
+   by the task while it is executing.
+·  Priority: Measures relative importance of the task. Hard real-time tasks may
+   have an "absolute" priority, with the system failing if a deadline is missed. If
+   the system is to continue to run no matter what, then both hard and soft real-
+   time tasks may be assigned relative priorities as a guide to the scheduler.
+·  Subtask structure: A task may be decomposed into a mandatory subtask and
+   an optional subtask. Only the mandatory subtask possesses a hard deadline.
+   There are several dimensions to the real-time scheduling function when dead-
+lines are taken into account: which task to schedule next, and what sort of preemp-
+tion is allowed. It can be shown, for a given preemption strategy and using either
+starting or completion deadlines, that a policy of scheduling the task with the ear-
+liest deadline minimizes the fraction of tasks that miss their deadlines [BUTT99,
+HONG89, PANW88]. This conclusion holds for both single-processor and multi-
+processor configurations.
+   The other critical design issue is that of preemption. When starting deadlines
+are specified, then a nonpreemptive scheduler makes sense. In this case, it would be
+the responsibility of the real-time task to block itself after completing the manda-
+tory or critical portion of its execution, allowing other real-time starting deadlines
+to be satisfied. This fits the pattern of Figure 10.4b. For a system with completion
+deadlines, a preemptive strategy (Figure 10.4c or 10.4d) is most appropriate. For
+example, if task X is running and task Y is ready, there may be circumstances in
+which the only way to allow both X and Y to meet their completion deadlines is to
+preempt X, execute Y to completion, and then resume X to completion.
+   As an example of scheduling periodic tasks with completion deadlines, consider
+a system that collects and processes data from two sensors, A and B. The deadline for
+collecting data from sensor A must be met every 20 ms, and that for B every 50 ms.
+It takes 10 ms, including operating system overhead, to process each sample of data
+from A and 25 ms to process each sample of data from B. Table 10.2 summarizes the
+execution profile of the two tasks. Figure 10.5 compares three scheduling techniques
+using the execution profile of Table 10.2. The first row of Figure 10.5 repeats the infor-
+mation in Table 10.2; the remaining three rows illustrate three scheduling techniques.
+   The computer is capable of making a scheduling decision every 10 ms.4 Suppose
+that, under these circumstances, we attempted to use a priority scheduling scheme.
+The first two timing diagrams in Figure 10.5 show the result. If A has higher prior-
+ity, the first instance of task B is given only 20 ms of processing time, in two 10-ms
+chunks, by the time its deadline is reached, and thus fails. If B is given higher priority,
+then A will miss its first deadline. The final timing diagram shows the use of earli-
+est-deadline scheduling. At time t = 0, both A1 and B1 arrive. Because A1 has the
+4This need not be on a 10-ms boundary if more than 10 ms has elapsed since the last scheduling decision.
+
+450  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     Table  10.2     Execution     Profile of Two Periodic            Tasks
+            Process                       Arrival Time                    Execution       Time            Ending Deadline
+            A(1)                                  0                               10                                   20
+            A(2)                                  20                              10                                   40
+            A(3)                                  40                              10                                   60
+            A(4)                                  60                              10                                   80
+            A(5)                                  80                              10                                   100
+                  ·                               ·                               ·                                    ·
+                  ·                               ·                               ·                                    ·
+                  ·                               ·                               ·                                    ·
+            B(1)                                  0                               25                                   50
+            B(2)                                  50                              25                                   100
+                  ·                               ·                               ·                                    ·
+                  ·                               ·                               ·                                    ·
+                  ·                               ·                               ·                                    ·
+                                                                          B1                                      B2
+                                                                      deadline                                deadline
+                                                  A1              A2              A3              A4              A5
+                                              deadline        deadline        deadline        deadline        deadline
+     Arrival times, execution         A1              A2              A3              A4              A5
+     times, and deadlines                 B1                                      B2
+                                   0      10      20      30      40      50      60      70      80      90      100       Time (ms)
+     Fixed-priority scheduling;       A1      B1      A2      B1      A3      B2      A4      B2      A5  B2
+     A has priority
+                                                  A1              A2      B1      A3              A4          A5, B2
+                                                                      (missed)
+     Fixed-priority scheduling;           B1              A2          A3          B2                  A5
+     B has priority
+                                                  A1              A2      B1      A3              A4          A5, B2
+                                              (missed)                                        (missed)
+     Earliest-deadline scheduling     A1      B1      A2      B1          A3  B2      A4          B2          A5
+     using completion deadlines
+                                                  A1              A2      B1      A3              A4          A5, B2
+     Figure 10.5     Scheduling of Periodic Real-Time Tasks with Completion Deadlines
+                     (Based on Table 10.2)
+
+                                                     10.2 / REAL-TIME SCHEDULING                      451
+                                  0  10  20      30  40      50      60  70         80  90  100  110       120
+               Arrival times         A   B           C       D       E
+Requirements
+               Starting deadline         B                   C           E              D        A
+               Arrival times         A   B           C       D       E
+Earliest       Service                   A                   C           E              D
+deadline
+               Starting deadline     B (missed)              C           E              D        A
+               Arrival times         A   B           C       D       E
+Earliest
+deadline       Service                           B           C           E              D        A
+with unforced
+idle times     Starting deadline         B                   C           E              D        A
+               Arrival times         A   B           C       D       E
+First-come                               A                   C           D
+first-served   Service
+(FCFS)
+               Starting deadline     B (missed)              C          E (missed)      D        A
+Figure 10.6    Scheduling of Aperiodic Real-Time     Tasks   with  Starting Deadlines
+earliest deadline, it is scheduled first. When A1 completes, B1 is given the processor.
+At t = 20, A2 arrives. Because A2 has an earlier deadline than B1, B1 is interrupted
+so that A2 can execute to completion. Then B1 is resumed at t = 30. At t = 40, A3
+arrives. However, B1 has an earlier ending deadline and is allowed to execute to
+completion at t = 45. A3 is then given the processor and finishes at t = 55.
+        In this example, by scheduling to give priority at any preemption point to the
+task with the nearest deadline, all system requirements can be met. Because the
+tasks are periodic and predictable, a static table-driven scheduling approach is used.
+        Now consider a scheme for dealing with aperiodic tasks with starting dead-
+lines. The top part of Figure 10.6 shows the arrival times and starting deadlines for
+an example consisting of five tasks each of which has an execution time of 20 ms.
+Table 10.3 summarizes the execution profile of the five tasks.
+Table 10.3        Execution Profile of Five Aperiodic Tasks
+              Process             Arrival Time       Execution Time                     Starting Deadline
+               A                     10                          20                         110
+               B                     20                          20                         20
+               C                     40                          20                         50
+               D                     50                          20                         90
+               E                     60                          20                         70
+
+452  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     A straightforward scheme is to always schedule the ready task with the earli-
+     est deadline and let that task run to completion. When this approach is used in the
+     example of Figure 10.6, note that although task B requires immediate service, the
+     service is denied. This is the risk in dealing with aperiodic tasks, especially with
+     starting deadlines. A refinement of the policy will improve performance if deadlines
+     can be known in advance of the time that a task is ready. This policy, referred to as
+     earliest deadline with unforced idle times, operates as follows: Always schedule the
+     eligible task with the earliest deadline and let that task run to completion. An eligi-
+     ble task may not be ready, and this may result in the processor remaining idle even
+     though there are ready tasks. Note that in our example the system refrains from
+     scheduling task A even though that is the only ready task. The result is that, even
+     though the processor is not used to maximum efficiency, all scheduling require-
+     ments are met. Finally, for comparison, the FCFS policy is shown. In this case, tasks
+     B and E do not meet their deadlines.
+     Rate Monotonic Scheduling
+     One of the more promising methods of resolving multitask scheduling conflicts for
+     periodic tasks is rate monotonic scheduling (RMS). The scheme was first proposed
+     in [LIU73] but has only recently gained popularity [BRIA99, SHA94]. RMS assigns
+     priorities to tasks on the basis of their periods.
+     For RMS, the highest-priority task is the one with the shortest period, the
+     second highest-priority task is the one with the second shortest period, and so on.
+     When more than one task is available for execution, the one with the shortest period
+     is serviced first. If we plot the priority of tasks as a function of their rate, the result is
+     a monotonically increasing function (Figure 10.7); hence the name "rate monotonic
+     scheduling."
+     High                                  Highest rate and
+                                           highest-priority task
+     Priority
+                                           Lowest rate and
+                                lowest-priority task
+     Low                                   Rate (Hz)
+     Figure 10.7   A Task Set with RMS [WARR91]
+
+                                                         10.2 / REAL-TIME SCHEDULING         453
+                            Cycle 1                                        Cycle 2
+P     Processing                     Idle                Processing
+   Task P execution time C                                                                   Time
+                  Task P period T
+Figure 10.8  Periodic Task Timing Diagram
+      Figure 10.8 illustrates the relevant parameters for periodic tasks. The task's
+   period, T, is the amount of time between the arrival of one instance of the task
+   and the arrival of the next instance of the task. A task's rate (in hertz) is simply
+   the inverse of its period (in seconds). For example, a task with a period of 50 ms
+   occurs at a rate of 20 Hz. Typically, the end of a task's period is also the task's hard
+   deadline, although some tasks may have earlier deadlines. The execution (or com-
+   putation) time, C, is the amount of processing time required for each occurrence of
+   the task. It should be clear that in a uniprocessor system, the execution time must
+   be no greater than the period (must have C ... T). If a periodic task is always run to
+   completion, that is, if no instance of the task is ever denied service because of insuf-
+   ficient resources, then the utilization of the processor by this task is U = C/T. For
+   example, if a task has a period of 80 ms and an execution time of 55 ms, its processor
+   utilization is 55/80 = 0.6875.
+      One measure of the effectiveness of a periodic scheduling algorithm is whether
+   or not it guarantees that all hard deadlines are met. Suppose that we have n tasks,
+   each with a fixed period and execution time. Then for it to be possible to meet all
+   deadlines, the following inequality must hold:
+                                     C1    +   C2  +  g   +  Cn      ...1             (10.1)
+                                     T1        T2            Tn
+   The sum of the processor utilizations of the individual tasks cannot exceed a value
+   of 1, which corresponds to total utilization of the processor. Equation (10.1)
+   provides a bound on the number of tasks that a perfect scheduling algorithm can
+   successfully schedule. For any particular algorithm, the bound may be lower. For
+   RMS, it can be shown that the following inequality holds:
+                               C1    +     C2  +  g   +  Cn  ... n(21/n - 1)          (10.2)
+                               T1          T2            Tn
+   Table 10.4 gives some values for this upper bound. As the number of tasks increases,
+   the scheduling bound converges to ln 2  0.693.
+      As an example, consider the case of three periodic tasks, where Ui = Ci/Ti:
+   ·  Task P1: C1           =  20; T1 = 100; U1 = 0.2
+   ·  Task P2: C2           =  40; T2 = 150; U2 = 0.267
+   ·  Task P3: C3           =  100; T3 = 350; U3 = 0.286
+
+454  CHAPTER  10  /  MULTIPROCESSOR AND         REAL-TIME SCHEDULING
+                     Table 10.4      Value  of  the  RMS  Upper Bound
+                                 n                        n(21/n - 1)
+                                 1                          1.0
+                                 2                        0.828
+                                 3                        0.779
+                                 4                        0.756
+                                 5                        0.743
+                                 6                        0.734
+                                 ·                          ·
+                                 ·                          ·
+                                 ·                          ·
+                                                          ln 2  0.693
+         The total utilization of these three tasks is 0.2 + 0.267 + 0.286 = 0.753. The
+     upper bound for the schedulability of these three tasks using RMS is
+                     C1  +       C2    +    C3  ... n(21/3 - 1) = 0.779
+                     T1          T2         T3
+     Because the total utilization required for the three tasks is less than the upper bound
+     for RMS (0.753 6 0.779), we know that if RMS is used, all tasks will be successfully
+     scheduled.
+         It can also be shown that the upper bound of Equation (10.1) holds for
+     earliest deadline scheduling. Thus, it is possible to achieve greater overall processor
+     utilization and therefore accommodate more periodic tasks with earliest deadline
+     scheduling. Nevertheless, RMS has been widely adopted for use in industrial appli-
+     cations. [SHA91] offers the following explanation:
+     1.  The performance difference is small in practice. The upper bound of Equation
+         (10.2) is a conservative one and, in practice, utilization as high as 90% is often
+         achieved.
+     2.  Most hard real-time systems also have soft real-time components, such as
+         certain noncritical displays and built-in self tests that can execute at lower
+         priority levels to absorb the processor time that is not used with RMS schedul-
+         ing of hard real-time tasks.
+     3.  Stability is easier to achieve with RMS. When a system cannot meet all dead-
+         lines because of overload or transient errors, the deadlines of essential tasks
+         need to be guaranteed provided that this subset of tasks is schedulable. In a
+         static priority assignment approach, one only needs to ensure that essential
+         tasks have relatively high priorities. This can be done in RMS by structuring
+         essential tasks to have short periods or by modifying the RMS priorities to
+         account for essential tasks. With earliest deadline scheduling, a periodic task's
+         priority changes from one period to another. This makes it more difficult to
+         ensure that essential tasks meet their deadlines.
+
+                                              10.2 / REAL-TIME SCHEDULING              455
+Priority Inversion
+Priority inversion is a phenomenon that can occur in any priority-based preemptive
+scheduling scheme but is particularly relevant in the context of real-time schedul-
+ing. The best-known instance of priority inversion involved the Mars Pathfinder
+mission. This rover robot landed on Mars on July 4, 1997 and began gathering and
+transmitting voluminous data back to Earth. But a few days into the mission, the
+lander software began experiencing total system resets, each resulting in losses of
+data. After much effort by the Jet Propulsion Laboratory (JPL) team that built the
+Pathfinder, the problem was traced to priority inversion [JONE97].
+In any priority scheduling scheme, the system should always be executing the
+task with the highest priority. Priority inversion occurs when circumstances within
+the system force a higher-priority task to wait for a lower-priority task. A simple
+example of priority inversion occurs if a lower-priority task has locked a resource
+(such as a device or a binary semaphore) and a higher-priority task attempts to lock
+that same resource. The higher-priority task will be put in a blocked state until the
+resource is available. If the lower-priority task soon finishes with the resource and
+releases it, the higher-priority task may quickly resume and it is possible that no
+real-time constraints are violated.
+A more serious condition is referred to as an unbounded priority inversion, in
+which the duration of a priority inversion depends not only on the time required to
+handle a shared resource but also on the unpredictable actions of other unrelated
+tasks. The priority inversion experienced in the Pathfinder software was unbounded
+and serves as a good example of the phenomenon. Our discussion follows that of
+[TIME02]. The Pathfinder software included the following three tasks, in decreas-
+ing order of priority:
+T1: Periodically checks the health of the spacecraft systems and software
+T2: Processes image data
+T3: Performs an occasional test on equipment status
+After T1 executes, it reinitializes a timer to its maximum value. If this timer
+ever expires, it is assumed that the integrity of the lander software has somehow
+been compromised. The processor is halted, all devices are reset, the software is
+completely reloaded, the spacecraft systems are tested, and the system starts over.
+This recovery sequence does not complete until the next day. T1 and T3 share a
+common data structure, protected by a binary semaphore s. Figure 10.9a shows the
+sequence that caused the priority inversion:
+t1: T3 begins executing.
+t2: T3 locks semaphore s and enters its critical section.
+t3: T1, which has a higher priority than T3, preempts T3 and begins executing.
+t4: T1 attempts to enter its critical section but is blocked because the semaphore
+is locked by T3; T3 resumes execution in its critical section.
+t5: T2, which has a higher priority than T3, preempts T3 and begins executing.
+t6: T2 is suspended for some reason unrelated to T1 and T3; T3 resumes.
+t7: T3 leaves its critical section and unlocks the semaphore. T1 preempts T3,
+locks the semaphore, and enters its critical section.
+
+456  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+                             Blocked by T3
+                         (attempt to lock s)                              s locked
+     T1
+     T2
+                         Preempted           Preempted                    s unlocked
+         s   locked          by T1               by T2
+     T3
+         t1          t2  t3              t4  t5                           t6        t7  t8
+                                                     Time
+                             (a) Unbounded priority inversion
+                                             s locked
+                  Blocked by T3                  by T1
+             (attempt to lock s)                         s unlocked
+     T1
+     T2
+         s locked        Preempted           s unlocked
+             by T3           by T1
+     T3
+         t1          t2  t3              t4  t5  t6        t7
+                                         (b) Use of priority inheritance
+             Normal execution                           Execution in      critical  section
+     Figure 10.9     Priority Inversion
+     In this set of circumstances, T1 must wait for both T3 and T2 to complete and fails to
+     reset the timer before it expires.
+     In practical systems, two alternative approaches are used to avoid unbounded
+     priority inversion: priority inheritance protocol and priority ceiling protocol.
+     The basic idea of priority inheritance is that a lower-priority task inherits
+     the priority of any higher-priority task pending on a resource they share. This
+     priority change takes place as soon as the higher-priority task blocks on the
+
+                                                    10.3 / LINUX SCHEDULING                    457
+      resource; it should end when the resource is released by the lower-priority task.
+      Figure 10.9b shows that priority inheritance resolves the problem of unbounded
+      priority inversion illustrated in Figure 10.9a. The relevant sequence of events is
+      as follows:
+         t1: T3 begins executing.
+         t2: T3 locks semaphore s and enters its critical section.
+         t3: T1, which has a higher priority than T3, preempts T3 and begins executing.
+         t4: T1 attempts to enter its critical section but is blocked because the sema-
+         phore is locked by T3. T3 is immediately and temporarily assigned the same
+         priority as T1. T3 resumes execution in its critical section.
+         t5: T2 is ready to execute but, because T3 now has a higher priority, T2 is unable
+         to preempt T3.
+         t6: T3 leaves its critical section and unlocks the semaphore: its priority level is
+         downgraded to its previous default level. T1 preempts T3, locks the sema-
+         phore, and enters its critical section.
+         t7: T1 is suspended for some reason unrelated to T2, and T2 begins executing.
+      This was the approach taken to solving the Pathfinder problem.
+         In the priority ceiling approach, a priority is associated with each resource.
+      The priority assigned to a resource is one level higher than the priority of its highest-
+      priority user. The scheduler then dynamically assigns this priority to any task that
+      accesses the resource. Once the task finishes with the resource, its priority returns
+      to normal.
+10.3  LINUX SCHEDULING
+      For Linux 2.4 and earlier, Linux provided a real-time scheduling capability
+      coupled with a scheduler for non-real-time processes that made use of the tra-
+      ditional UNIX scheduling algorithm described in Section 9.3. Linux 2.6 includes
+      essentially the same real-time scheduling capability as previous releases and a sub-
+      stantially revised scheduler for non-real-time processes. We examine these two
+      areas in turn.
+      Real-Time Scheduling
+      The three Linux scheduling classes are
+      ·  SCHED_FIFO: First-in-first-out real-time threads
+      ·  SCHED_RR: Round-robin real-time threads
+      ·  SCHED_OTHER: Other, non-real-time threads
+         Within each class, multiple priorities may be used, with priorities in the real-time
+      classes higher than the priorities for the SCHED_OTHER class. The default values are as
+      follows: Real-time priority classes range from 0 to 99 inclusively, and SCHED_OTHER
+      classes range from 100 to 139. A lower number equals a higher priority.

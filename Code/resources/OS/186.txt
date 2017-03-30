@@ -1,0 +1,317 @@
+Types of Threads
+164  CHAPTER 4 / THREADS
+                           Time
+                                      I/O   Request              Time quantum
+                                   request  complete                  expires
+     Thread A (Process 1)
+     Thread B (Process 1)
+     Thread C (Process 2)             Time quantum
+                                            expires
+                                                      Process
+                                                      created
+                          Blocked                    Ready                     Running
+     Figure 4.4      Multithreading Example on a Uniprocessor
+     On a uniprocessor, multiprogramming enables the interleaving of multiple
+     threads within multiple processes. In the example of Figure 4.4, three threads in
+     two processes are interleaved on the processor. Execution passes from one thread
+     to another either when the currently running thread is blocked or when its time slice
+     is exhausted.3
+     THREAD SYNCHRONIZATION        All of the threads of a process share the same address
+     space and other resources, such as open files. Any alteration of a resource by
+     one thread affects the environment of the other threads in the same process. It is
+     therefore necessary to synchronize the activities of the various threads so that they
+     do not interfere with each other or corrupt data structures. For example, if two
+     threads each try to add an element to a doubly linked list at the same time, one
+     element may be lost or the list may end up malformed.
+     The issues raised and the techniques used in the synchronization of threads
+     are, in general, the same as for the synchronization of processes. These issues and
+     techniques are the subject of Chapters 5 and 6.
+4.2  TYPES OF THREADS
+     User-Level and Kernel-Level Threads
+     There are two broad categories of thread implementation: user-level threads
+     (ULTs) and kernel-level threads (KLTs).4 The latter are also referred to in the lit-
+     erature as kernel-supported threads or lightweight processes.
+     USER-LEVEL      THREADS  In   a  pure  ULT       facility,  all  of  the           work  of  thread
+     management is done by the application and the kernel is not aware of the existence
+     of threads. Figure 4.5a illustrates the pure ULT approach. Any application can be
+     3In this example, thread C begins to run after thread A exhausts its time quantum, even though thread B
+     is also ready to run. The choice between B and C is a scheduling decision, a topic covered in Part Four.
+     4The acronyms ULT and KLT are not widely used but are introduced for conciseness.
+
+                                                         4.2 / TYPES OF THREADS        165
+Threads               User                               User       Threads       User
+library               space                              space      library       space
+                     Kernel                              Kernel                   Kernel
+                      space                              space                    space
+            P
+                                             P                   P             P
+(a) Pure user-level          (b) Pure kernel-level               (c) Combined
+User-level thread    Kernel-level thread  P     Process
+Figure 4.5  User-Level and Kernel-Level Threads
+programmed to be multithreaded by using a threads library, which is a package of
+routines for ULT management. The threads library contains code for creating and
+destroying threads, for passing messages and data between threads, for scheduling
+thread execution, and for saving and restoring thread contexts.
+            By default, an application begins with a single thread and begins running in
+that thread. This application and its thread are allocated to a single process man-
+aged by the kernel. At any time that the application is running (the process is in
+the Running state), the application may spawn a new thread to run within the
+same process. Spawning is done by invoking the spawn utility in the threads library.
+Control is passed to that utility by a procedure call. The threads library creates a
+data structure for the new thread and then passes control to one of the threads
+within this process that is in the Ready state, using some scheduling algorithm.
+When control is passed to the library, the context of the current thread is saved,
+and when control is passed from the library to a thread, the context of that thread
+is restored. The context essentially consists of the contents of user registers, the
+program counter, and stack pointers.
+            All of the activity described in the preceding paragraph takes place in user
+space and within a single process. The kernel is unaware of this activity. The kernel
+continues to schedule the process as a unit and assigns a single execution state
+(Ready, Running, Blocked, etc.) to that process. The following examples should
+clarify the relationship between thread scheduling and process scheduling. Suppose
+that process B is executing in its thread 2; the states of the process and two ULTs
+that are part of the process are shown in Figure 4.6a. Each of the following is a
+possible occurrence:
+1.          The application executing in thread 2 makes a system call that blocks B. For
+            example, an I/O call is made. This causes control to transfer to the kernel. The
+            kernel invokes the I/O action, places process B in the Blocked state, and switches
+            to another process. Meanwhile, according to the data structure maintained by
+
+166
+     (a)                                                                (b)
+                 Thread 1                           Thread 2                        Thread 1                           Thread 2
+          Ready            Running           Ready             Running       Ready            Running           Ready             Running
+                 Blocked                              Blocked                       Blocked                              Blocked
+                                  Process B                                                          Process B
+                           Ready             Running                                          Ready             Running
+                                    Blocked                                                            Blocked
+     (c)                                                                (d)
+                 Thread 1                           Thread 2                        Thread 1                           Thread 2
+          Ready            Running           Ready             Running       Ready            Running           Ready             Running
+                 Blocked                              Blocked                       Blocked                              Blocked
+                                  Process B                                                          Process B
+                           Ready             Running                                          Ready             Running
+                                    Blocked                                                            Blocked
+     Figure 4.6  Examples of the Relationships between User-Level Thread States and Process States
+
+                                             4.2 / TYPES OF THREADS                 167
+    the threads library, thread 2 of process B is still in the Running state. It is impor-
+    tant to note that thread 2 is not actually running in the sense of being executed
+    on a processor; but it is perceived as being in the Running state by the threads
+    library. The corresponding state diagrams are shown in Figure 4.6b.
+2.  A clock interrupt passes control to the kernel, and the kernel determines
+    that the currently running process (B) has exhausted its time slice. The
+    kernel places process B in the Ready state and switches to another process.
+    Meanwhile, according to the data structure maintained by the threads library,
+    thread 2 of process B is still in the Running state. The corresponding state
+    diagrams are shown in Figure 4.6c.
+3.  Thread 2 has reached a point where it needs some action performed by thread
+    1 of process B. Thread 2 enters a Blocked state and thread 1 transitions from
+    Ready to Running. The process itself remains in the Running state. The
+    corresponding state diagrams are shown in Figure 4.6d.
+    In cases 1 and 2 (Figures 4.6b and 4.6c), when the kernel switches control
+back to process B, execution resumes in thread 2. Also note that a process can be
+interrupted, either by exhausting its time slice or by being preempted by a higher-
+priority process, while it is executing code in the threads library. Thus, a process
+may be in the midst of a thread switch from one thread to another when inter-
+rupted. When that process is resumed, execution continues within the threads
+library, which completes the thread switch and transfers control to another thread
+within that process.
+    There are a number of advantages to the use of ULTs instead of KLTs,
+including the following:
+1.  Thread switching does not require kernel mode privileges because all of the
+    thread management data structures are within the user address space of a
+    single process. Therefore, the process does not switch to the kernel mode to
+    do thread management. This saves the overhead of two mode switches (user
+    to kernel; kernel back to user).
+2.  Scheduling can be application specific. One application may benefit most
+    from a simple round-robin scheduling algorithm, while another might benefit
+    from a priority-based scheduling algorithm. The scheduling algorithm can be
+    tailored to the application without disturbing the underlying OS scheduler.
+3.  ULTs can run on any OS. No changes are required to the underlying kernel
+    to support ULTs. The threads library is a set of application-level functions
+    shared by all applications.
+    There are two distinct disadvantages of ULTs compared to KLTs:
+1.  In a typical OS, many system calls are blocking. As a result, when a ULT
+    executes a system call, not only is that thread blocked, but also all of the
+    threads within the process are blocked.
+2.  In a pure ULT strategy, a multithreaded application cannot take advantage
+    of multiprocessing. A kernel assigns one process to only one processor at a
+    time. Therefore, only a single thread within a process can execute at a time.
+    In effect, we have application-level multiprogramming within a single process.
+
+168  CHAPTER 4 / THREADS
+             While this multiprogramming can result in a significant speedup of the appli-
+             cation, there are applications that would benefit from the ability to execute
+             portions of code simultaneously.
+             There are ways to work around these two problems. For example, both prob-
+           lems can be overcome by writing an application as multiple processes rather than
+           multiple threads. But this approach eliminates the main advantage of threads: Each
+           switch becomes a process switch rather than a thread switch, resulting in much
+           greater overhead.
+             Another way to overcome the problem of blocking threads is to use a tech-
+           nique referred to as jacketing. The purpose of jacketing is to convert a blocking
+           system call into a nonblocking system call. For example, instead of directly calling
+           a system I/O routine, a thread calls an application-level I/O jacket routine. Within
+           this jacket routine is code that checks to determine if the I/O device is busy. If it is,
+           the thread enters the Blocked state and passes control (through the threads library)
+           to another thread. When this thread later is given control again, the jacket routine
+           checks the I/O device again.
+           KERNEL-LEVEL       THREADS    In a pure KLT facility, all of the work of thread
+           management is done by the kernel. There is no thread management code in the
+           application level, simply an application programming interface (API) to the kernel
+           thread facility. Windows is an example of this approach.
+             Figure 4.5b depicts the pure KLT approach. The kernel maintains context
+           information for the process as a whole and for individual threads within the process.
+           Scheduling by the kernel is done on a thread basis. This approach overcomes the
+           two principal drawbacks of the ULT approach. First, the kernel can simultaneously
+           schedule multiple threads from the same process on multiple processors. Second,
+           if one thread in a process is blocked, the kernel can schedule another thread of
+           the same process. Another advantage of the KLT approach is that kernel routines
+           themselves can be multithreaded.
+             The principal disadvantage of the KLT approach compared to the ULT
+           approach is that the transfer of control from one thread to another within the same
+           process requires a mode switch to the kernel. To illustrate the differences, Table 4.1
+           shows the results of measurements taken on a uniprocessor VAX computer running
+           a UNIX-like OS. The two benchmarks are as follows: Null Fork, the time to create,
+           schedule, execute, and complete a process/thread that invokes the null procedure
+           (i.e., the overhead of forking a process/thread); and Signal-Wait, the time for a
+           process/thread to signal a waiting process/thread and then wait on a condition (i.e.,
+           the overhead of synchronizing two processes/threads together). We see that there is
+           an order of magnitude or more of difference between ULTs and KLTs and similarly
+           between KLTs and processes.
+Table 4.1    Thread and Process Operation Latencies (s)
+Operation                     User-Level Threads         Kernel-Level Threads  Processes
+Null Fork                     34                                     948       11,300
+Signal Wait                   37                                     441       1,840
+
+                                                                     4.2 / TYPES OF THREADS        169
+                Thus, on the face of it, while there is a significant speedup by using KLT mul-
+           tithreading compared to single-threaded processes, there is an additional signifi-
+           cant speedup by using ULTs. However, whether or not the additional speedup is
+           realized depends on the nature of the applications involved. If most of the thread
+           switches in an application require kernel mode access, then a ULT-based scheme
+           may not perform much better than a KLT-based scheme.
+           COMBINED       APPROACHES  Some operating systems provide a combined ULT/
+           KLT facility (Figure 4.5c). In a combined system, thread creation is done
+           completely in user space, as is the bulk of the scheduling and synchronization of
+           threads within an application. The multiple ULTs from a single application are
+           mapped onto some (smaller or equal) number of KLTs. The programmer may
+           adjust the number of KLTs for a particular application and processor to achieve
+           the best overall results.
+                In a combined approach, multiple threads within the same application can
+           run in parallel on multiple processors, and a blocking system call need not block
+           the entire process. If properly designed, this approach should combine the advan-
+           tages of the pure ULT and KLT approaches while minimizing the disadvantages.
+                Solaris is a good example of an OS using this combined approach. The current
+           Solaris version limits the ULT/KLT relationship to be one-to-one.
+           Other Arrangements
+           As we have said, the concepts of resource allocation and dispatching unit have
+           traditionally been embodied in the single concept of the process--that is, as a 1 : 1
+           relationship between threads and processes. Recently, there has been much inter-
+           est in providing for multiple threads within a single process, which is a many-to-
+           one relationship. However, as Table 4.2 shows, the other two combinations have
+           also been investigated, namely, a many-to-many relationship and a one-to-many
+           relationship.
+           MANY-TO-MANY RELATIONSHIP               The idea of having a many-to-many relationship
+           between threads and processes has been explored in the experimental operating
+           system TRIX [PAZZ92, WARD80]. In TRIX, there are the concepts of domain
+Table 4.2  Relationship between Threads and Processes
+Threads: Processes                    Description                                Example Systems
+           1:1            Each thread of execution is a unique process with its  Traditional UNIX
+                          own address space and resources.                       implementations
+           M:1            A process defines an address space and dynamic         Windows NT, Solaris,
+                          resource ownership. Multiple threads may be created    Linux, OS/2, OS/390,
+                          and executed within that process.                      MACH
+           1:M            A thread may migrate from one process environment      Ra (Clouds),
+                          to another. This allows a thread to be easily moved    Emerald
+                          among distinct systems.
+M:N                       Combines attributes of M:1 and 1:M cases.              TRIX
+
+170  CHAPTER 4 / THREADS
+     and thread. A domain is a static entity, consisting of an address space and "ports"
+     through which messages may be sent and received. A thread is a single execution
+     path, with an execution stack, processor state, and scheduling information.
+         As with the multithreading approaches discussed so far, multiple threads
+     may execute in a single domain, providing the efficiency gains discussed earlier.
+     However, it is also possible for a single user activity, or application, to be per-
+     formed in multiple domains. In this case, a thread exists that can move from one
+     domain to another.
+         The use of a single thread in multiple domains seems primarily motivated by
+     a desire to provide structuring tools for the programmer. For example, consider a
+     program that makes use of an I/O subprogram. In a multiprogramming environ-
+     ment that allows user-spawned processes, the main program could generate a new
+     process to handle I/O and then continue to execute. However, if the future progress
+     of the main program depends on the outcome of the I/O operation, then the main
+     program will have to wait for the other I/O program to finish. There are several
+     ways to implement this application:
+     1.  The entire program can be implemented as a single process. This is a rea-
+         sonable and straightforward solution. There are drawbacks related to
+         memory management. The process as a whole may require considerable
+         main memory to execute efficiently, whereas the I/O subprogram requires
+         a relatively small address space to buffer I/O and to handle the relatively
+         small amount of program code. Because the I/O program executes in the
+         address space of the larger program, either the entire process must remain
+         in main memory during the I/O operation or the I/O operation is subject
+         to swapping. This memory management effect would also exist if the main
+         program and the I/O subprogram were implemented as two threads in the
+         same address space.
+     2.  The main program and I/O subprogram can be implemented as two separate
+         processes. This incurs the overhead of creating the subordinate process. If the
+         I/O activity is frequent, one must either leave the subordinate process alive,
+         which consumes management resources, or frequently create and destroy the
+         subprogram, which is inefficient.
+     3.  Treat the main program and the I/O subprogram as a single activity that is to
+         be implemented as a single thread. However, one address space (domain)
+         could be created for the main program and one for the I/O subprogram.
+         Thus, the thread can be moved between the two address spaces as execu-
+         tion proceeds. The OS can manage the two address spaces independently,
+         and no process creation overhead is incurred. Furthermore, the address
+         space used by the I/O subprogram could also be shared by other simple I/O
+         programs.
+         The experiences of the TRIX developers indicate that the third option has
+     merit and may be the most effective solution for some applications.
+     ONE-TO-MANY    RELATIONSHIP          In the field of distributed operating systems
+     (designed to control distributed computer systems), there has been interest in the
+
+                                    4.3 / MULTICORE AND MULTITHREADING                       171
+     concept of a thread as primarily an entity that can move among address spaces.5 A
+     notable example of this research is the Clouds operating system, and especially its
+     kernel, known as Ra [DASG92]. Another example is the Emerald system [STEE95].
+     A thread in Clouds is a unit of activity from the user's perspective. A process
+     is a virtual address space with an associated process control block. Upon creation,
+     a thread starts executing in a process by invoking an entry point to a program in
+     that process. Threads may move from one address space to another and actually
+     span computer boundaries (i.e., move from one computer to another). As a thread
+     moves, it must carry with it certain information, such as the controlling terminal,
+     global parameters, and scheduling guidance (e.g., priority).
+     The Clouds approach provides an effective way of insulating both users and
+     programmers from the details of the distributed environment. A user's activity may
+     be represented as a single thread, and the movement of that thread among comput-
+     ers may be dictated by the OS for a variety of system-related reasons, such as the
+     need to access a remote resource, and load balancing.
+4.3  MULTICORE AND MULTITHREADING
+     The use of a multicore system to support a single application with multiple threads,
+     such as might occur on a workstation, a video-game console, or a personal computer
+     running a processor-intense application, raises issues of performance and applica-
+     tion design. In this section, we first look at some of the performance implications
+     of a multithreaded application on a multicore system and then describe a specific
+     example of an application designed to exploit multicore capabilities.
+     Performance of Software on Multicore
+     The potential performance benefits of a multicore organization depend on the
+     ability to effectively exploit the parallel resources available to the application. Let
+     us focus first on a single application running on a multicore system. Amdahl's law
+     (see Appendix E) states that:
+     Speedup =  time to execute program on a single processor                 =  1
+                time to execute program on N parallel processors                 (1 - f ) +                  f
+                                                                                                             N
+     The law assumes a program in which a fraction (1 - f) of the execution time
+     involves code that is inherently serial and a fraction f that involves code that is infi-
+     nitely parallelizable with no scheduling overhead.
+     This law appears to make the prospect of a multicore organization attractive.
+     But as Figure 4.7a shows, even a small amount of serial code has a noticeable impact.
+     If only 10% of the code is inherently serial ( f = 0.9), running the program on a
+     multicore system with eight processors yields a performance gain of only a factor
+     of 4.7. In addition, software typically incurs overhead as a result of communication
+     5The movement of processes or threads among address spaces, or thread migration, on different machines
+     has become a hot topic in recent years. Chapter 18 explores this topic.

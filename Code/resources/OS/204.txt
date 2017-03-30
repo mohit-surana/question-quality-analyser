@@ -1,0 +1,189 @@
+Solaris Thread and SMP Management
+182  CHAPTER 4 / THREADS
+4.5  SOLARIS THREAD AND SMP MANAGEMENT
+     Solaris implements multilevel thread support designed to provide considerable
+     flexibility in exploiting processor resources.
+     Multithreaded Architecture
+     Solaris makes use of four separate thread-related concepts:
+     ·  Process: This is the normal UNIX process and includes the user's address
+        space, stack, and process control block.
+     ·  User-level threads: Implemented through a threads library in the address
+        space of a process, these are invisible to the OS. A user-level thread (ULT)7 is
+        a user-created unit of execution within a process.
+     ·  Lightweight processes: A lightweight process (LWP) can be viewed as a map-
+        ping between ULTs and kernel threads. Each LWP supports ULT and maps
+        to one kernel thread. LWPs are scheduled by the kernel independently and
+        may execute in parallel on multiprocessors.
+     ·  Kernel threads: These are the fundamental entities that can be scheduled and
+        dispatched to run on one of the system processors.
+        Figure 4.13 illustrates the relationship among these four entities. Note that
+     there is always exactly one kernel thread for each LWP. An LWP is visible within a
+     process to the application. Thus, LWP data structures exist within their respective
+     process address space. At the same time, each LWP is bound to a single dispatchable
+     kernel thread, and the data structure for that kernel thread is maintained within the
+     kernel's address space.
+                                             Process
+                              User                       User
+                              thread                     thread
+                              Lightweight                Lightweight
+                              process (LWP)            process (LWP)
+        syscall()                                                        syscall()
+                              Kernel                     Kernel
+                              thread                     thread
+                                           System calls
+                                             Kernel
+                                             Hardware
+        Figure 4.13           Processes and Threads in Solaris [MCDO07]
+     7Again, the acronym ULT is unique to this book and is not found in the Solaris literature.
+
+                             4.5 / SOLARIS THREAD AND SMP MANAGEMENT                       183
+   A process may consist of a single ULT bound to a single LWP. In this case, there
+is a single thread of execution, corresponding to a traditional UNIX process. When
+concurrency is not required within a single process, an application uses this process
+structure. If an application requires concurrency, its process contains multiple threads,
+each bound to a single LWP, which in turn are each bound to a single kernel thread.
+   In addition, there are kernel threads that are not associated with LWPs. The
+kernel creates, runs, and destroys these kernel threads to execute specific system
+functions. The use of kernel threads rather than kernel processes to implement
+system functions reduces the overhead of switching within the kernel (from a
+process switch to a thread switch).
+Motivation
+The three-level thread structure (ULT, LWP, kernel thread) in Solaris is intended
+to facilitate thread management by the OS and to provide a clean interface to appli-
+cations. The ULT interface can be a standard thread library. A defined ULT maps
+onto a LWP, which is managed by the OS and which has defined states of execution,
+defined subsequently. An LWP is bound to a kernel thread with a one-to-one corre-
+spondence in execution states. Thus, concurrency and execution are managed at the
+level of the kernel thread.
+   In addition, an application has access to hardware through an application pro-
+gramming interface consisting of system calls. The API allows the user to invoke
+kernel services to perform privileged tasks on behalf of the calling process, such as
+read or write a file, issue a control command to a device, create a new process or
+thread, allocate memory for the process to use, and so on.
+Process Structure
+Figure 4.14 compares, in general terms, the process structure of a traditional UNIX
+system with that of Solaris. On a typical UNIX implementation, the process struc-
+ture includes the process ID; the user IDs; a signal dispatch table, which the kernel
+uses to decide what to do when sending a signal to a process; file descriptors, which
+describe the state of files in use by this process; a memory map, which defines the
+address space for this process; and a processor state structure, which includes the
+kernel stack for this process. Solaris retains this basic structure but replaces the pro-
+cessor state block with a list of structures containing one data block for each LWP.
+   The LWP data structure includes the following elements:
+·  An LWP identifier
+·  The priority of this LWP and hence the kernel thread that supports it
+·  A signal mask that tells the kernel which signals will be accepted
+·  Saved values of user-level registers (when the LWP is not running)
+·  The kernel stack for this LWP, which includes system call arguments,   results,
+   and error codes for each call level
+·  Resource usage and profiling data
+·  Pointer to the corresponding kernel thread
+·  Pointer to the process structure
+
+184  CHAPTER 4 / THREADS
+     UNIX process structure                            Solaris process structure
+                Process ID                                       Process ID
+                User IDs                                         User IDs
+Signal dispatch table                               Signal dispatch table
+                            Memory map                                       Memory map
+                            Priority
+                            Signal mask
+                            Registers
+                            STACK
+     File descriptors                                  File descriptors
+                            Processor state
+                                                       LWP 2                 LWP 1
+                                                       LWP ID                LWP ID
+                                                       Priority              Priority
+                                                    Signal mask             Signal mask
+                                                    Registers               Registers
+                                                       STACK                 STACK
+Figure 4.14     Process Structure in Traditional UNIX and Solaris [LEWI96]
+     Thread Execution
+     Figure 4.15 shows a simplified view of both thread execution states. These states
+     reflect the execution status of both a kernel thread and the LWP bound to it. As
+     mentioned, some kernel threads are not associated with an LWP; the same execu-
+     tion diagram applies. The states are as follows:
+             ·  RUN: The thread is runnable; that is, the thread is ready to execute.
+             ·  ONPROC: The thread is executing on a processor.
+             ·  SLEEP: The thread is blocked.
+             ·  STOP: The thread is stopped.
+             ·  ZOMBIE: The thread has terminated.
+             ·  FREE: Thread resources have been released and the thread is              awaiting
+                removal from the OS thread data structure.
+                A thread moves from ONPROC to RUN if it is preempted by a higher-priority
+     thread or because of time slicing. A thread moves from ONPROC to SLEEP if it
+
+                             4.5  /  SOLARIS THREAD  AND   SMP  MANAGEMENT           185
+IDL                                  PINNED
+thread_create()                         intr()
+                    swtch()
+RUN                                  ONPROC     syscall()       SLEEP
+                    preempt()
+                                             wakeup()
+                    STOP                        ZOMBIE                    FREE
+     prun()                    pstop()  exit()                  reap()
+Figure 4.15  Solaris Thread States
+is blocked and must await an event to return the RUN state. Blocking occurs if the
+thread invokes a system call and must wait for the system service to be performed.
+A thread enters the STOP state if its process is stopped; this might be done for
+debugging purposes.
+Interrupts as Threads
+Most operating systems contain two fundamental forms of concurrent activity:
+processes and interrupts. Processes (or threads) cooperate with each other and
+manage the use of shared data structures by means of a variety of primitives
+that enforce mutual exclusion (only one process at a time can execute certain
+code or access certain data) and that synchronize their execution. Interrupts are
+synchronized by preventing their handling for a period of time. Solaris unifies
+these two concepts into a single model, namely kernel threads and the mechanisms
+for scheduling and executing kernel threads. To do this, interrupts are converted
+to kernel threads.
+The motivation for converting interrupts to threads is to reduce overhead.
+Interrupt handlers often manipulate data shared by the rest of the kernel. Therefore,
+while a kernel routine that accesses such data is executing, interrupts must be
+blocked, even though most interrupts will not affect that data. Typically, the way
+this is done is for the routine to set the interrupt priority level higher to block inter-
+rupts and then lower the priority level after access is completed. These operations
+take time. The problem is magnified on a multiprocessor system. The kernel must
+protect more objects and may need to block interrupts on all processors.
+
+186  CHAPTER 4 / THREADS
+         The solution in Solaris can be summarized as follows:
+     1.  Solaris employs a set of kernel threads to handle interrupts. As with any kernel
+         thread, an interrupt thread has its own identifier, priority, context, and stack.
+     2.  The kernel controls access to data structures and synchronizes among inter-
+         rupt threads using mutual exclusion primitives, of the type discussed in
+         Chapter 5. That is, the normal synchronization techniques for threads are used
+         in handling interrupts.
+     3.  Interrupt threads are assigned higher priorities than all other types of kernel
+         threads.
+         When an interrupt occurs, it is delivered to a particular processor and the
+     thread that was executing on that processor is pinned. A pinned thread cannot
+     move to another processor and its context is preserved; it is simply suspended until
+     the interrupt is processed. The processor then begins executing an interrupt thread.
+     There is a pool of deactivated interrupt threads available, so that a new thread crea-
+     tion is not required. The interrupt thread then executes to handle the interrupt.
+     If the handler routine needs access to a data structure that is currently locked in
+     some fashion for use by another executing thread, the interrupt thread must wait for
+     access to that data structure. An interrupt thread can only be preempted by another
+     interrupt thread of higher priority.
+         Experience with Solaris interrupt threads indicates that this approach provides
+     superior performance to the traditional interrupt-handling strategy [KLEI95].
+4.6  LINUX PROCESS AND THREAD MANAGEMENT
+     Linux Tasks
+     A process, or task, in Linux is represented by a task_struct data structure. The
+     task_struct data structure contains information in a number of categories:
+     ·   State: The execution state of the process (executing, ready, suspended,
+         stopped, zombie). This is described subsequently.
+     ·   Scheduling information: Information needed by Linux to schedule processes.
+         A process can be normal or real time and has a priority. Real-time processes
+         are scheduled before normal processes, and within each category, relative pri-
+         orities can be used. A counter keeps track of the amount of time a process is
+         allowed to execute.
+     ·   Identifiers: Each process has a unique process identifier and also has user and
+         group identifiers. A group identifier is used to assign resource access privi-
+         leges to a group of processes.
+     ·   Interprocess communication: Linux supports the IPC mechanisms found in
+         UNIX SVR4, described in Chapter 6.
+     ·   Links: Each process includes a link to its parent process, links to its siblings
+         (processes with the same parent), and links to all of its children.

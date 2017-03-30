@@ -1,0 +1,280 @@
+Authentication
+640  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+         To guard against the baneful influence exerted by strangers is therefore
+         an elementary dictate of savage prudence. Hence before strangers are
+         allowed to enter a district, or at least before they are permitted to mingle
+         freely with the inhabitants, certain ceremonies are often performed by
+         the natives of the country for the purpose of disarming the strangers
+         of their magical powers, or of disinfecting, so to speak, the tainted
+         atmosphere by which they are supposed to be surrounded.
+                                     --THE GOLDEN BOUGH, Sir James George Frazer
+      LEARNING OBJECTIVES
+      After studying this chapter, you should be able to:
+      ·     Define and compare three methods of user authentication.
+      ·     Compare and contrast two methods of access control.
+      ·     Explain the basic principles and techniques of intrusion detection.
+      ·     Explain the basic principles and techniques of malware defense.
+      ·     Understand how to defend against buffer overflow attacks.
+      ·     Explain the file system used in Windows 7.
+      This chapter introduces common measures used to counter the security threats
+      discussed in Chapter 14.
+15.1  AUTHENTICATION
+      User authentication was introduced in Section 3.6. Note that user authentication is
+      distinct from message authentication. Message authentication is a procedure that
+      allows communicating parties to verify that the contents of a received message have
+      not been altered and that the source is authentic. This chapter is concerned solely
+      with user authentication.
+      Password-Based Authentication
+      A widely used line of defense against intruders is the password system. Virtually all
+      multiuser systems, network-based servers, Web-based e-commerce sites, and other
+      similar services require that a user provide not only a name or identifier (ID) but
+      also a password. The system compares the password to a previously stored pass-
+      word for that user ID, maintained in a system password file. The password serves
+      to authenticate the ID of the individual logging on to the system. In turn, the ID
+      provides security in the following ways:
+         ·  The ID determines whether the user is authorized to gain access to a system.
+            In some systems, only those who already have an ID filed on the system are
+            allowed to gain access.
+
+                                                     15.1 / AUTHENTICATION             641
+·  The ID determines the privileges accorded to the user. A few users may have
+   supervisory or "superuser" status that enables them to read files and perform
+   functions that are especially protected by the operating system. Some systems
+   have guest or anonymous accounts, and users of these accounts have more
+   limited privileges than others.
+·  The ID is used in what is referred to as discretionary access control. For exam-
+   ple, by listing the IDs of the other users, a user may grant permission to them
+   to read files owned by that user.
+THE USE OF HASHED PASSWORDS           A widely used password security technique is
+the use of hashed passwords and a salt value. This scheme is found on virtually all
+UNIX variants as well as on a number of other operating systems. The following
+procedure is employed (Figure 15.1a). To load a new password into the system,
+the user selects or is assigned a password. This password is combined with a fixed-
+length salt value [MORR79]. In older implementations, this value is related to the
+time at which the password is assigned to the user. Newer implementations use a
+pseudorandom or random number. The password and salt serve as inputs to a hashing
+algorithm to produce a fixed-length hash code. The hash algorithm is designed to
+be slow to execute to thwart attacks. The hashed password is then stored, together
+with a plaintext copy of the salt, in the password file for the corresponding user
+ID. The hashed-password method has been shown to be secure against a variety of
+cryptanalytic attacks [WAGN00].
+   When a user attempts to log on to a UNIX system, the user provides an ID
+and a password (Figure 15.1b). The operating system uses the ID to index into the
+password file and retrieve the plaintext salt and the encrypted password. The salt
+and user-supplied password are used as input to the encryption routine. If the result
+matches the stored value, the password is accepted.
+   The salt serves three purposes:
+·  It prevents duplicate passwords from being visible in the password file. Even
+   if two users choose the same password, those passwords will be assigned
+   different salt values. Hence, the hashed passwords of the two users will
+   differ.
+·  It greatly increases the difficulty of offline dictionary attacks. For a salt of
+   length b bits, the number of possible passwords is increased by a factor of 2b,
+   increasing the difficulty of guessing a password in a dictionary attack.
+·  It becomes nearly impossible to find out whether a person with passwords on
+   two or more systems has used the same password on all of them.
+   To see the second point, consider the way that an offline dictionary attack
+would work. The attacker obtains a copy of the password file. Suppose first that the
+salt is not used. The attacker's goal is to guess a single password. To that end, the
+attacker submits a large number of likely passwords to the hashing function. If any
+of the guesses matches one of the hashes in the file, then the attacker has found a
+password that is in the file. But faced with the UNIX scheme, the attacker must take
+each guess and submit it to the hash function once for each salt value in the diction-
+ary file, multiplying the number of guesses that must be checked.
+
+642  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+                               Password                    Password file
+           Salt                                           User ID   Salt   Hash code
+                    Slow hash                  Load
+                    function
+                               (a) Loading a new password
+                               Password file
+           User ID             User ID   Salt  Hash code
+                                                                    Salt
+                    Select                                                                Password
+                                                                           Slow hash
+                                                                           function
+                                                          Hashed password  Compare
+                               (b) Verifying a password
+     Figure 15.1            UNIX Password Scheme
+     There are two threats to the UNIX password scheme. First, a user can gain
+     access on a machine using a guest account or by some other means and then run a
+     password guessing program, called a password cracker, on that machine. The attacker
+     should be able to check many thousands of possible passwords with little resource
+     consumption. Second, if an opponent is able to obtain a copy of the password file,
+     then a cracker program can be run on another machine at leisure. This enables the
+     opponent to run through millions of possible passwords in a reasonable period.
+     UNIX  IMPLEMENTATIONS               Since       the  original  development       of  UNIX,     most
+     implementations have relied on the following password scheme. Each user selects a
+
+                                                             15.1 / AUTHENTICATION       643
+password of up to eight printable characters in length. This is converted into a 56-bit
+value (using 7-bit ASCII) that serves as the key input to an encryption routine. The
+hash routine, known as crypt(3), is based on DES. A 12-bit salt value is used. The
+modified DES algorithm is executed with a data input consisting of a 64-bit block
+of zeros. The output of the algorithm then serves as input for a second encryption.
+This process is repeated for a total of 25 encryptions. The resulting 64-bit output
+is then translated into an 11-character sequence. The modification of the DES
+algorithm converts it into a one-way hash function. The crypt(3) routine is designed
+to discourage guessing attacks. Software implementations of DES are slow compared
+to hardware versions, and the use of 25 iterations multiplies the time required by 25.
+This particular implementation is now considered woefully inadequate. For
+example, [PERR03] reports the results of a dictionary attack using a supercom-
+puter. The attack was able to process over 50 million password guesses in about
+80 minutes. Further, the results showed that for about $10,000 anyone should be
+able to do the same in a few months using one uniprocessor machine. Despite its
+known weaknesses, this UNIX scheme is still often required for compatibility with
+existing account management software or in multivendor environments.
+There are other, much stronger, hash/salt schemes available for UNIX. The
+recommended hash function for many UNIX systems, including Linux, Solaris, and
+FreeBSD, is based on the MD5 secure hash algorithm (which is similar to, but not
+as secure as, SHA-1).1 The MD5 crypt routine uses a salt of up to 48 bits and effec-
+tively has no limitations on password length. It produces a 128-bit hash value. It is
+also far slower than crypt(3). To achieve the slowdown, MD5 crypt uses an inner
+loop with 1,000 iterations.
+Probably the most secure version of the UNIX hash/salt scheme was devel-
+oped for OpenBSD, another widely used open source UNIX. This scheme, reported
+in [PROV99], uses a hash function based on the Blowfish symmetric block cipher.
+The hash function, called Bcrypt, is quite slow to execute. Bcrypt allows passwords
+of up to 55 characters in length and requires a random salt value of 128 bits, to
+produce a 192-bit hash value. Bcrypt also includes a cost variable; an increase in
+the cost variable causes a corresponding increase in the time required to perform a
+Bcyrpt hash. The cost assigned to a new password is configurable, so that adminis-
+trators can assign a higher cost to privileged users.
+Token-Based Authentication
+Objects that a user possesses for the purpose of user authentication are called
+tokens. In this subsection, we examine two types of tokens that are widely used;
+these are cards that have the appearance and size of bank cards.
+MEMORY CARDS  Memory cards can store but not process data. The most common
+such card is the bank card with a magnetic stripe on the back. A magnetic stripe
+can store only a simple security code, which can be read (and unfortunately
+reprogrammed) by an inexpensive card reader. There are also memory cards that
+include an internal electronic memory.
+1See Appendix K for a discussion of secure hash algorithms.
+
+644  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+        Memory cards can be used alone for physical access, such as a hotel room. For
+     computer user authentication, such cards are typically used with some form of pass-
+     word or personal identification number (PIN). A typical application is an automatic
+     teller machine (ATM).
+        The memory card, when combined with a PIN or password, provides signifi-
+     cantly greater security than a password alone. An adversary must gain physical
+     possession of the card (or be able to duplicate it) plus must gain knowledge of the
+     PIN. Among the potential drawbacks are the following [NIST95]:
+     ·  Requires special reader: This increases the cost of using the token and creates
+        the requirement to maintain the security of the reader's hardware and software.
+     ·  Token loss: A lost token temporarily prevents its owner from gaining system
+        access. Thus, there is an administrative cost in replacing the lost token. In
+        addition, if the token is found, stolen, or forged, then an adversary now need
+        only determine the PIN to gain unauthorized access.
+     ·  User dissatisfaction: Although users may have no difficulty in accepting the
+        use of a memory card for ATM access, its use for computer access may be
+        deemed inconvenient.
+     SMART CARDS  A wide variety of devices qualify as smart tokens. These can be
+     categorized along three dimensions that are not mutually exclusive:
+     ·  Physical characteristics: Smart tokens include an embedded microprocessor.
+        A smart token that looks like a bank card is called a smart card. Other smart
+        tokens can look like calculators, keys, or other small portable objects.
+     ·  Interface: Manual interfaces include a keypad and display for human/token
+        interaction. Smart tokens with an electronic interface communicate with a
+        compatible reader/writer.
+     ·  Authentication protocol: The purpose of a smart token is to provide a means
+        for user authentication. We can classify the authentication protocols used with
+        smart tokens into three categories:
+        -- Static: With a static protocol, the user authenticates himself or herself to the
+        token and then the token authenticates the user to the computer. The latter
+        half of this protocol is similar to the operation of a memory token.
+        -- Dynamic password generator: In this case, the token generates a unique
+        password periodically (e.g., every minute). This password is then entered
+        into the computer system for authentication, either manually by the user or
+        electronically via the token. The token and the computer system must be
+        initialized and kept synchronized so that the computer knows the password
+        that is current for this token.
+        -- Challenge-response: In this case, the computer system generates a chal-
+        lenge, such as a random string of numbers. The smart token generates a
+        response based on the challenge. For example, public-key cryptography
+        could be used and the token could encrypt the challenge string with the
+        token's private key.
+
+                                                   15.1 / AUTHENTICATION                645
+   For user authentication to computer, the most important category of smart
+token is the smart card, which has the appearance of a credit card, has an electronic
+interface, and may use any of the type of protocols just described. The remainder of
+this section discusses smart cards.
+   A smart card contains within it an entire microprocessor, including processor,
+memory, and I/O ports. Some versions incorporate a special coprocessing circuit for
+cryptographic operation to speed the task of encoding and decoding messages or
+generating digital signatures to validate the information transferred. In some cards,
+the I/O ports are directly accessible by a compatible reader by means of exposed
+electrical contacts. Other cards rely instead on an embedded antenna for wireless
+communication with the reader.
+Biometric Authentication
+A biometric authentication system attempts to authenticate an individual based on
+his or her unique physical characteristics. These include static characteristics, such
+as fingerprints, hand geometry, facial characteristics, and retinal and iris patterns;
+and dynamic characteristics, such as voiceprint and signature. In essence, biomet-
+rics is based on pattern recognition. Compared to passwords and tokens, biometric
+authentication is both technically complex and expensive. While it is used in a num-
+ber of specific applications, biometrics has yet to mature as a standard tool for user
+authentication to computer systems.
+   A number of different types of physical characteristics are either in use or
+under study for user authentication. The most common are the following:
+·  Facial characteristics: Facial characteristics are the most common means of
+   human-to-human identification; thus it is natural to consider them for iden-
+   tification by computer. The most common approach is to define characteris-
+   tics based on relative location and shape of key facial features, such as eyes,
+   eyebrows, nose, lips, and chin shape. An alternative approach is to use an
+   infrared camera to produce a face thermogram that correlates with the under-
+   lying vascular system in the human face.
+·  Fingerprints: Fingerprints have been used as a means of identification for
+   centuries, and the process has been systematized and automated particu-
+   larly for law enforcement purposes. A fingerprint is the pattern of ridges and
+   furrows on the surface of the fingertip. Fingerprints are believed to be unique
+   across the entire human population. In practice, automated fingerprint recog-
+   nition and matching system extract a number of features from the fingerprint
+   for storage as a numerical surrogate for the full fingerprint pattern.
+·  Hand geometry: Hand geometry systems identify features of the hand, includ-
+   ing shape, and lengths and widths of fingers.
+·  Retinal pattern: The pattern formed by veins beneath the retinal surface is
+   unique and therefore suitable for identification. A retinal biometric system
+   obtains a digital image of the retinal pattern by projecting a low-intensity
+   beam of visual or infrared light into the eye.
+·  Iris: Another unique physical characteristic is the detailed structure of the iris.
+
+646  CHAPTER 15 / COMPUTER SECURITY TECHNIQUES
+                             Hand                        Iris
+                             Signature  Retina
+         Cost
+                             Face       Finger
+                             Voice
+                                        Accuracy
+         Figure 15.2                Cost versus Accuracy of Various Biometric
+         Characteristics in User Authentication Schemes
+      ·  Signature: Each individual has a unique style of handwriting, and this is
+         reflected especially in the signature, which is typically a frequently written
+         sequence. However, multiple signature samples from a single individual will
+         not be identical. This complicates the task of developing a computer represen-
+         tation of the signature that can be matched to future samples.
+      ·  Voice: Whereas the signature style of an individual reflects not only the unique
+         physical attributes of the writer but also the writing habit that has developed,
+         voice patterns are more closely tied to the physical and anatomical characteris-
+         tics of the speaker. Nevertheless, there is still a variation from sample to sample
+         over time from the same speaker, complicating the biometric recognition task.
+         Figure 15.2 gives a rough indication of the relative cost and accuracy of these
+      biometric measures. The concept of accuracy does not apply to user authentication
+      schemes using smart cards or passwords. For example, if a user enters a password, it
+      either matches exactly the password expected for that user or not. In the case of bio-
+      metric parameters, the system instead must determine how closely a presented biomet-
+      ric characteristic matches a stored characteristic. Before elaborating on the concept of
+      biometric accuracy, we need to have a general idea of how biometric systems work.
+15.2  ACCESS CONTROL
+      An access control policy dictates what types of access are permitted, under what
+      circumstances, and by whom. Access control policies are generally grouped into the
+      following categories:
+      ·  Discretionary access control (DAC): Controls access based on the identity
+         of the requestor and on access rules (authorizations) stating what requestors
+         are (or are not) allowed to do. This policy is termed discretionary because an
+         entity might have access rights that permit the entity, by its own volition, to
+         enable another entity to access some resource.
+      ·  Mandatory access control (MAC): Controls access based on comparing secu-
+         rity labels (which indicate how sensitive or critical system resources are) with

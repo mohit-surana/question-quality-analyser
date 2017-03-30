@@ -1,0 +1,164 @@
+Concurrency: Mutual Exclusion and Synchronization
+                                     CHAPTER
+CONCURRENCY:
+MUTUAL EXCLUSION AND
+SYNCHRONIZATION
+     5.1  Principles of Concurrency
+          A Simple Example
+          Race Condition
+          Operating System Concerns
+          Process Interaction
+          Requirements for Mutual Exclusion
+     5.2  Mutual Exclusion: Hardware Support
+          Interrupt Disabling
+          Special Machine Instructions
+     5.3  Semaphores
+          Mutual Exclusion
+          The Producer/Consumer Problem
+          Implementation of Semaphores
+     5.4  Monitors
+          Monitor with Signal
+          Alternate Model of Monitors with Notify and Broadcast
+     5.5  Message Passing
+          Synchronization
+          Addressing
+          Message Format
+          Queueing Discipline
+          Mutual Exclusion
+     5.6  Readers/Writers Problem
+          Readers Have Priority
+          Writers Have Priority
+     5.7  Summary
+     5.8  Recommended Reading
+     5.9  Key Terms, Review Questions, and Problems
+198
+
+CHAPTER  5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION                       199
+         Designing correct routines for controlling concurrent activities proved
+         to be one of the most difficult aspects of systems programming. The
+         ad hoc techniques used by programmers of early multiprogramming
+         and real-time systems were always vulnerable to subtle programming
+         errors whose effects could be observed only when certain relatively
+         rare sequences of actions occurred.The errors are particularly difficult
+         to locate, since the precise conditions under which they appear are very
+         hard to reproduce.
+            --THE COMPUTER SCIENCE AND ENGINEERING RESEARCH STUDY, MIT Press, 1980
+LEARNING OBJECTIVES
+After studying this chapter, you should be able to:
+·           Discuss basic concepts related to concurrency, such as race conditions,
+            OS concerns, and mutual exclusion requirements.
+·           Understand hardware approaches to supporting mutual exclusion.
+·           Define and explain semaphores.
+·           Define and explain monitors.
+·           Define and explain monitors.
+·           Explain the readers/writers problem.
+The central themes of operating system design are all concerned with the manage-
+ment of processes and threads:
+         ·  Multiprogramming: The management of multiple processes within a unipro-
+            cessor system
+         ·  Multiprocessing: The management of multiple processes within a multiprocessor
+         ·  Distributed processing: The management of multiple processes executing on
+            multiple, distributed computer systems. The recent proliferation of clusters is
+            a prime example of this type of system.
+Fundamental to all of these areas, and fundamental to OS design, is concurrency.
+Concurrency encompasses a host of design issues, including communication among pro-
+cesses, sharing of and competing for resources (such as memory, files, and I/O access),
+synchronization of the activities of multiple processes, and allocation of processor time
+to processes. We shall see that these issues arise not just in multiprocessing and distrib-
+uted processing environments but even in single-processor multiprogramming systems.
+            Concurrency arises in three different contexts:
+         ·  Multiple applications: Multiprogramming was invented to allow processing
+            time to be dynamically shared among a number of active applications.
+         ·  Structured applications: As an extension of the principles of modular design
+            and structured programming, some applications can be effectively programmed
+            as a set of concurrent processes.
+
+200  CHAPTER 5 / CONCURRENCY: MUTUAL EXCLUSION AND SYNCHRONIZATION
+            ·     Operating system structure: The same structuring advantages apply to systems
+                  programs, and we have seen that operating systems are themselves often im-
+                  plemented as a set of processes or threads.
+                  Because of the importance of this topic, four chapters and an appendix focus
+           on concurrency-related issues. Chapters 5 and 6 deal with concurrency in multipro-
+           gramming and multiprocessing systems. Chapters 16 and 18 examine concurrency
+           issues related to distributed processing.
+                  This chapter begins with an introduction to the concept of concurrency and the
+           implications of the execution of multiple concurrent processes.1 We find that the basic
+           requirement for support of concurrent processes is the ability to enforce mutual exclu-
+           sion; that is, the ability to exclude all other processes from a course of action while one
+           process is granted that ability. Next, we examine some hardware mechanisms that can
+           support mutual exclusion. Then we look at solutions that do not involve busy waiting
+           and that can be supported either by the OS or enforced by language compilers. We
+           examine three approaches: semaphores, monitors, and message passing.
+                  Two classic problems in concurrency are used to illustrate the concepts and
+           compare the approaches presented in this chapter. The producer/consumer prob-
+           lem is introduced in Section 5.3 and used as a running example. The chapter closes
+           with the readers/writers problem.
+                  Our discussion of concurrency continues in Chapter 6, and we defer a discus-
+           sion of the concurrency mechanisms of our example systems until the end of that
+           chapter. Appendix A covers additional topics on concurrency. Table 5.1 lists some
+           key terms related to concurrency. A set of animations that illustrate concepts in this
+           chapter is available online. Click on the rotating globe at this book's Web site at
+           WilliamStallings.com/OS/OS7e.html for access.
+Table 5.1   Some Key Terms Related to Concurrency
+atomic operation  A function or action implemented as a sequence of one or more instructions that appears
+                  to be indivisible; that is, no other process can see an intermediate state or interrupt the
+                  operation. The sequence of instruction is guaranteed to execute as a group, or not execute
+                  at all, having no visible effect on system state. Atomicity guarantees isolation from
+                  concurrent processes.
+critical section  A section of code within a process that requires access to shared resources and that must
+                  not be executed while another process is in a corresponding section of code.
+deadlock          A situation in which two or more processes are unable to proceed because each is waiting
+                  for one of the others to do something.
+livelock          A situation in which two or more processes continuously change their states in response
+                  to changes in the other process(es) without doing any useful work.
+mutual exclusion  The requirement that when one process is in a critical section that accesses shared resources,
+                  no other process may be in a critical section that accesses any of those shared resources.
+race condition    A situation in which multiple threads or processes read and write a shared data item and
+                  the final result depends on the relative timing of their execution.
+starvation        A situation in which a runnable process is overlooked indefinitely by the scheduler;
+                  although it is able to proceed, it is never chosen.
+           1For simplicity, we generally refer to the concurrent execution of processes. In fact, as we have seen in the
+           preceding chapter, in some systems the fundamental unit of concurrency is a thread rather than a process.
+
+                                        5.1 / PRINCIPLES OF CONCURRENCY                        201
+5.1  PRINCIPLES OF CONCURRENCY
+     In a single-processor multiprogramming system, processes are interleaved in time
+     to yield the appearance of simultaneous execution (Figure 2.12a). Even though
+     actual parallel processing is not achieved, and even though there is a certain amount
+     of overhead involved in switching back and forth between processes, interleaved
+     execution provides major benefits in processing efficiency and in program structuring.
+     In a multiple-processor system, it is possible not only to interleave the execution of
+     multiple processes but also to overlap them (Figure 2.12b).
+         At first glance, it may seem that interleaving and overlapping represent funda-
+     mentally different modes of execution and present different problems. In fact, both
+     techniques can be viewed as examples of concurrent processing, and both present
+     the same problems. In the case of a uniprocessor, the problems stem from a basic
+     characteristic of multiprogramming systems: The relative speed of execution of
+     processes cannot be predicted. It depends on the activities of other processes, the
+     way in which the OS handles interrupts, and the scheduling policies of the OS. The
+     following difficulties arise:
+     1.  The sharing of global resources is fraught with peril. For example, if two processes
+         both make use of the same global variable and both perform reads and writes on
+         that variable, then the order in which the various reads and writes are executed
+         is critical. An example of this problem is shown in the following subsection.
+     2.  It is difficult for the OS to manage the allocation of resources optimally. For
+         example, process A may request use of, and be granted control of, a particular
+         I/O channel and then be suspended before using that channel. It may be unde-
+         sirable for the OS simply to lock the channel and prevent its use by other pro-
+         cesses; indeed this may lead to a deadlock condition, as described in Chapter 6.
+     3.  It becomes very difficult to locate a programming error because results are
+         typically not deterministic and reproducible (e.g., see [LEBL87, CARR89,
+         SHEN02] for a discussion of this point).
+         All of the foregoing difficulties present themselves in a multiprocessor system
+     as well, because here too the relative speed of execution of processes is unpredictable.
+     A multiprocessor system must also deal with problems arising from the simultaneous
+     execution of multiple processes. Fundamentally, however, the problems are the same
+     as those for uniprocessor systems. This should become clear as the discussion proceeds.
+     A Simple Example
+     Consider the following procedure:
+         void  echo()
+         {
+            chin   =     getchar();
+            chout     =  chin;
+            putchar(chout);
+         }

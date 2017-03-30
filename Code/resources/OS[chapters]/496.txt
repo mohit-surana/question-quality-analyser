@@ -1,0 +1,1853 @@
+I/O Management and Disk Scheduling
+PART 5 Input/Output and Files
+                                            CHAPTER
+I/O MANAGEMENT AND                                     DISK
+SCHEDULING
+     11.1   I/O Devices
+     11.2   Organization of the I/O Function
+            The Evolution of the I/O Function
+            Direct Memory Access
+     11.3   Operating System Design Issues
+            Design Objectives
+            Logical Structure of the I/O Function
+     11.4   I/O Buffering
+            Single Buffer
+            Double Buffer
+            Circular Buffer
+            The Utility of Buffering
+     11.5   Disk Scheduling
+            Disk Performance Parameters
+            Disk Scheduling Policies
+     11.6   RAID
+     11.7   Disk Cache
+            Design Considerations
+            Performance Considerations
+     11.8   UNIX SVR4 I/O
+     11.9   Linux I/O
+     11.10  Windows I/O
+     11.11  Summary
+     11.12  Recommended Reading
+     11.13  Key Terms, Review Questions, and Problems
+474
+
+                                                                    11.1 / I/O DEVICES     475
+         An artifact can be thought of as a meeting point--an"interface"in today's
+         terms between an "inner" environment, the substance and organization
+         of the artifact itself, and an "outer" environment, the surroundings in
+         which it operates. If the inner environment is appropriate to the outer
+         environment, or vice versa, the artifact will serve its intended purpose.
+                                    --THE SCIENCES OF THE ARTIFICIAL, Herbert Simon
+      LEARNING OBJECTIVES
+      After studying this chapter, you should be able to:
+      �  Summarize key categories of I/O devices on computers.
+      �  Discuss the organization of the I/O function.
+      �  Explain some of the key issues in the design of OS support for I/O.
+      �  Analyze the performance implications of various I/O buffering alternatives.
+      �  Understand the performance issues involved in magnetic disk access.
+      �  Explain the concept of RAID and describe the various levels.
+      �  Understand the performance implications of disk cache.
+      �  Describe the I/O mechanisms in UNIX, Linux, and Windows 7.
+      Perhaps the messiest aspect of operating system design is input/output. Because
+      there is such a wide variety of devices and applications of those devices, it is difficult
+      to develop a general, consistent solution.
+            We begin with a brief discussion of I/O devices and the organization of the I/O
+      function. These topics, which generally come within the scope of computer architec-
+      ture, set the stage for an examination of I/O from the point of view of the OS.
+            The next section examines operating system design issues, including design
+      objectives, and the way in which the I/O function can be structured. Then I/O
+      buffering is examined; one of the basic I/O services provided by the operating system
+      is a buffering function, which improves overall performance.
+            The next sections of the chapter are devoted to magnetic disk I/O. In contemporary
+      systems, this form of I/O is the most important and is key to the performance as per-
+      ceived by the user. We begin by developing a model of disk I/O performance and then
+      examine several techniques that can be used to enhance performance.
+            Appendix J summarizes characteristics of secondary storage devices, includ-
+      ing magnetic disk and optical memory. A set of animations that illustrate concepts
+      in this chapter is available online. Click on the rotating globe at WilliamStallings.
+      com/OS/OS7e.html for access.
+11.1  I/O DEVICES
+      As was mentioned in Chapter 1, external devices that engage in I/O with computer
+      systems can be roughly grouped into three categories:
+         �  Human readable: Suitable for communicating with the computer user.
+            Examples include printers and terminals, the latter consisting of video display,
+            keyboard, and perhaps other devices such as a mouse.
+
+476  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+             �      Machine readable: Suitable for communicating with electronic equipment.
+                    Examples are disk drives, USB keys, sensors, controllers, and actuators.
+             �      Communication: Suitable for communicating with remote devices. Examples
+                    are digital line drivers and modems.
+                    There are great differences across classes and even substantial differences
+     within each class. Among the key differences are the following:
+             �      Data rate: There may be differences of several orders of magnitude between
+                    the data transfer rates. Figure 11.1 gives some examples.
+             �      Application: The use to which a device is put has an influence on the soft-
+                    ware and policies in the OS and supporting utilities. For example, a disk used
+                    for files requires the support of file management software. A disk used as a
+                    backing store for pages in a virtual memory scheme depends on the use of
+                    virtual memory hardware and software. Furthermore, these applications have
+                    an impact on disk scheduling algorithms (discussed later in this chapter). As
+                    another example, a terminal may be used by an ordinary user or a system
+                    administrator. These uses imply different privilege levels and perhaps differ-
+                    ent priorities in the OS.
+             �      Complexity of control: A printer requires a relatively simple control interface.
+                    A disk is much more complex. The effect of these differences on the OS is
+                    filtered to some extent by the complexity of the I/O module that controls the
+                    device, as discussed in the next section.
+Gigabit ethernet
+Graphics display
+     Hard disk
+     Ethernet
+     Optical disk
+     Scanner
+     Laser printer
+     Floppy disk
+     Modem
+     Mouse
+     Keyboard
+                  101      102         103          104   105             106  107  108               109
+                                                         Data Rate (bps)
+Figure 11.1       Typical  I/O Device  Data  Rates
+
+                                 11.2 / ORGANIZATION OF THE I/O FUNCTION                   477
+      �  Unit of transfer: Data may be transferred as a stream of bytes or characters
+         (e.g., terminal I/O) or in larger blocks (e.g., disk I/O).
+      �  Data representation: Different data encoding schemes are used by different
+         devices, including differences in character code and parity conventions.
+      �  Error conditions: The nature of errors, the way in which they are reported,
+         their consequences, and the available range of responses differ widely from
+         one device to another.
+         This diversity makes a uniform and consistent approach to I/O, both from the
+      point of view of the operating system and from the point of view of user processes,
+      difficult to achieve.
+11.2  ORGANIZATION OF THE I/O FUNCTION
+      Appendix C summarizes three techniques for performing I/O:
+      �  Programmed I/O: The processor issues an I/O command, on behalf of a process,
+         to an I/O module; that process then busy waits for the operation to be completed
+         before proceeding.
+      �  Interrupt-driven I/O: The processor issues an I/O command on behalf of
+         a process. There are then two possibilities. If the I/O instruction from the
+         process is nonblocking, then the processor continues to execute instruc-
+         tions from the process that issued the I/O command. If the I/O instruction
+         is blocking, then the next instruction that the processor executes is from
+         the OS, which will put the current process in a blocked state and schedule
+         another process.
+      �  Direct memory access (DMA): A DMA module controls the exchange of data
+         between main memory and an I/O module. The processor sends a request for
+         the transfer of a block of data to the DMA module and is interrupted only
+         after the entire block has been transferred.
+         Table 11.1 indicates the relationship among these three techniques. In most
+      computer systems, DMA is the dominant form of transfer that must be supported
+      by the operating system.
+      The Evolution of the I/O Function
+      As computer systems have evolved, there has been a pattern of increasing
+      complexity and sophistication of individual components. Nowhere is this more
+Table 11.1  I/O Techniques
+                                 No Interrupts         Use of Interrupts
+I/O-to-Memory Transfer through   Programmed I/O        Interrupt-driven I/O
+Processor
+Direct I/O-to-Memory Transfer                          Direct memory access (DMA)
+
+478  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     evident than in the I/O function. The evolutionary steps can be summarized as
+     follows:
+     1.  The processor directly controls a peripheral device. This is seen in simple
+         microprocessor-controlled devices.
+     2.  A controller or I/O module is added. The processor uses programmed I/O
+         without interrupts. With this step, the processor becomes somewhat divorced
+         from the specific details of external device interfaces.
+     3.  The same configuration as step 2 is used, but now interrupts are employed. The
+         processor need not spend time waiting for an I/O operation to be performed,
+         thus increasing efficiency.
+     4.  The I/O module is given direct control of memory via DMA. It can now move
+         a block of data to or from memory without involving the processor, except at
+         the beginning and end of the transfer.
+     5.  The I/O module is enhanced to become a separate processor, with a
+         specialized instruction set tailored for I/O. The central processing unit
+         (CPU) directs the I/O processor to execute an I/O program in main
+         memory. The I/O processor fetches and executes these instructions without
+         processor intervention. This allows the processor to specify a sequence of
+         I/O activities and to be interrupted only when the entire sequence has been
+         performed.
+     6.  The I/O module has a local memory of its own and is, in fact, a computer
+         in its own right. With this architecture, a large set of I/O devices can be
+         controlled, with minimal processor involvement. A common use for such an
+         architecture has been to control communications with interactive terminals.
+         The I/O processor takes care of most of the tasks involved in controlling the
+         terminals.
+         As one proceeds along this evolutionary path, more and more of the I/O
+     function is performed without processor involvement. The central processor is
+     increasingly relieved of I/O-related tasks, improving performance. With the last
+     two steps (5 and 6), a major change occurs with the introduction of the concept of
+     an I/O module capable of executing a program.
+         A note about terminology: For all of the modules described in steps 4
+     through 6, the term direct memory access is appropriate, because all of these
+     types involve direct control of main memory by the I/O module. Also, the I/O
+     module in step 5 is often referred to as an I/O channel, and that in step 6 as an
+     I/O processor; however, each term is, on occasion, applied to both situations. In
+     the latter part of this section, we will use the term I/O channel to refer to both
+     types of I/O modules.
+     Direct Memory Access
+     Figure 11.2 indicates, in general terms, the DMA logic. The DMA unit is capable of
+     mimicking the processor and, indeed, of taking over control of the system bus just
+     like a processor. It needs to do this to transfer data to and from memory over the
+     system bus.
+
+                11.2 / ORGANIZATION OF THE I/O FUNCTION                                 479
+                                                 Data
+                                                 count
+                Data lines                       Data
+                                                 register
+                                                 Address
+   Address lines                                 register
+   Request to DMA
+   Acknowledge from DMA                          Control
+                Interrupt                        logic
+                Read
+                Write
+   Figure 11.2  Typical DMA Block Diagram
+   The DMA technique works as follows. When the processor wishes to read or
+write a block of data, it issues a command to the DMA module by sending to the
+DMA module the following information:
+�  Whether a read or write is requested, using the read or write control line
+   between the processor and the DMA module
+�  The address of the I/O device involved, communicated on the data lines
+�  The starting location in memory to read from or write to, communicated on
+   the data lines and stored by the DMA module in its address register
+�  The number of words to be read or written, again communicated via the data
+   lines and stored in the data count register
+   The processor then continues with other work. It has delegated this I/O operation
+to the DMA module. The DMA module transfers the entire block of data, one word
+at a time, directly to or from memory, without going through the processor. When the
+transfer is complete, the DMA module sends an interrupt signal to the processor. Thus,
+the processor is involved only at the beginning and end of the transfer (Figure C.4c).
+   The DMA mechanism can be configured in a variety of ways. Some possi-
+bilities are shown in Figure 11.3. In the first example, all modules share the same
+system bus. The DMA module, acting as a surrogate processor, uses programmed
+I/O to exchange data between memory and an I/O module through the DMA mod-
+ule. This configuration, while it may be inexpensive, is clearly inefficient: As with
+processor-controlled programmed I/O, each transfer of a word consumes two bus
+cycles (transfer request followed by transfer).
+   The number of required bus cycles can be cut substantially by integrating the
+DMA and I/O functions. As Figure 11.3b indicates, this means that there is a path
+between the DMA module and one or more I/O modules that does not include the
+
+480  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+      Processor          DMA  I/O                                    I/O       Memory
+                              (a) Single-bus, detached DMA
+      Processor          DMA            DMA                                    Memory
+                         I/O
+                              I/O                                    I/O
+                              (b) Single-bus, integrated DMA-I/O
+                                                   System bus
+      Processor               DMA                                              Memory
+                                                            I/O bus
+                   I/O             I/O                                    I/O
+                                   (c) I/O bus
+      Figure 11.3  Alternative DMA Configurations
+      system bus. The DMA logic may actually be a part of an I/O module, or it may be a
+      separate module that controls one or more I/O modules. This concept can be taken
+      one step further by connecting I/O modules to the DMA module using an I/O bus
+      (Figure 11.3c). This reduces the number of I/O interfaces in the DMA module
+      to one and provides for an easily expandable configuration. In all of these cases
+      (Figure 11.3b and 11.3c), the system bus that the DMA module shares with the
+      processor and main memory is used by the DMA module only to exchange data
+      with memory and to exchange control signals with the processor. The exchange of
+      data between the DMA and I/O modules takes place off the system bus.
+11.3  OPERATING SYSTEM DESIGN ISSUES
+      Design Objectives
+      Two objectives are paramount in designing the I/O facility: efficiency and gener-
+      ality. Efficiency is important because I/O operations often form a bottleneck in a
+      computing system. Looking again at Figure 11.1, we see that most I/O devices are
+
+                              11.3 / OPERATING SYSTEM DESIGN ISSUES                       481
+extremely slow compared with main memory and the processor. One way to tackle
+this problem is multiprogramming, which, as we have seen, allows some processes
+to be waiting on I/O operations while another process is executing. However, even
+with the vast size of main memory in today's machines, it will still often be the case
+that I/O is not keeping up with the activities of the processor. Swapping is used to
+bring in additional ready processes to keep the processor busy, but this in itself is an
+I/O operation. Thus, a major effort in I/O design has been schemes for improving
+the efficiency of the I/O. The area that has received the most attention, because of
+its importance, is disk I/O, and much of this chapter will be devoted to a study of
+disk I/O efficiency.
+The other major objective is generality. In the interests of simplicity and
+freedom from error, it is desirable to handle all devices in a uniform manner. This
+applies both to the way in which processes view I/O devices and to the way in
+which the OS manages I/O devices and operations. Because of the diversity of
+device characteristics, it is difficult in practice to achieve true generality. What can
+be done is to use a hierarchical, modular approach to the design of the I/O func-
+tion. This approach hides most of the details of device I/O in lower-level routines
+so that user processes and upper levels of the OS see devices in terms of general
+functions, such as read, write, open, close, lock, and unlock. We turn now to a
+discussion of this approach.
+Logical Structure of the I/O Function
+In Chapter 2, in the discussion of system structure, we emphasized the hierar-
+chical nature of modern operating systems. The hierarchical philosophy is that
+the functions of the OS should be separated according to their complexity, their
+characteristic time scale, and their level of abstraction. Following this approach
+leads to an organization of the OS into a series of layers. Each layer performs
+a related subset of the functions required of the OS. It relies on the next lower
+layer to perform more primitive functions and to conceal the details of those
+functions. It provides services to the next higher layer. Ideally, the layers should
+be defined so that changes in one layer do not require changes in other layers.
+Thus, we have decomposed one problem into a number of more manageable
+subproblems.
+In general, lower layers deal with a far shorter time scale. Some parts of the
+OS must interact directly with the computer hardware, where events can have a
+time scale as brief as a few billionths of a second. At the other end of the spectrum,
+parts of the OS communicate with the user, who issues commands at a much more
+leisurely pace, perhaps one every few seconds. The use of a set of layers conforms
+nicely to this environment.
+Applying this philosophy specifically to the I/O facility leads to the type
+of organization suggested by Figure 11.4. The details of the organization will
+depend on the type of device and the application. The three most important
+logical structures are presented in the figure. Of course, a particular operat-
+ing system may not conform exactly to these structures. However, the general
+principles are valid, and most operating systems approach I/O in approximately
+this way.
+
+482  CHAPTER  11  / I/O MANAGEMENT       AND DISK SCHEDULING
+                  User                   User                     User
+                  processes              processes                processes
+                                                                  Directory
+                                                                  management
+                  Logical                Communication            File system
+                  I/O                    architecture
+                                                                  Physical
+                                                                  organization
+                  Device                 Device                   Device
+                  I/O                    I/O                      I/O
+                  Scheduling             Scheduling               Scheduling
+                  & control              & control                & control
+                  Hardware               Hardware                 Hardware
+        (a) Local peripheral device      (b) Communications port  (c) File system
+        Figure 11.4     A Model of I/O Organization
+        Let us consider the simplest case first, that of a local peripheral device that
+     communicates in a simple fashion, such as a stream of bytes or records (Figure 11.4a).
+     The following layers are involved:
+     �  Logical I/O: The logical I/O module deals with the device as a logical resource
+        and is not concerned with the details of actually controlling the device. The
+        logical I/O module is concerned with managing general I/O functions on behalf
+        of user processes, allowing them to deal with the device in terms of a device
+        identifier and simple commands such as open, close, read, and write.
+     �  Device I/O: The requested operations and data (buffered characters, records,
+        etc.) are converted into appropriate sequences of I/O instructions, channel
+        commands, and controller orders. Buffering techniques may be used to improve
+        utilization.
+     �  Scheduling and control: The actual queueing and scheduling of I/O operations
+        occurs at this layer, as well as the control of the operations. Thus, interrupts
+
+                                                                 11.4 / I/O BUFFERING       483
+         are handled at this layer and I/O status is collected and reported. This is the
+         layer of software that actually interacts with the I/O module and hence the
+         device hardware.
+         For a communications device, the I/O structure (Figure 11.4b) looks much the
+      same as that just described. The principal difference is that the logical I/O module is
+      replaced by a communications architecture, which may itself consist of a number of
+      layers. An example is TCP/IP, which is discussed in Chapter 17.
+         Figure 11.4c shows a representative structure for managing I/O on a secondary
+      storage device that supports a file system. The three layers not previously discussed
+      are as follows:
+      �  Directory management: At this layer, symbolic file names are converted to
+         identifiers that either reference the file directly or indirectly through a file
+         descriptor or index table. This layer is also concerned with user operations
+         that affect the directory of files, such as add, delete, and reorganize.
+      �  File system: This layer deals with the logical structure of files and with the
+         operations that can be specified by users, such as open, close, read, and write.
+         Access rights are also managed at this layer.
+      �  Physical organization: Just as virtual memory addresses must be converted
+         into physical main memory addresses, taking into account the segmentation
+         and paging structure, logical references to files and records must be con-
+         verted to physical secondary storage addresses, taking into account the physi-
+         cal track and sector structure of the secondary storage device. Allocation of
+         secondary storage space and main storage buffers is generally treated at this
+         layer as well.
+         Because of the importance of the file system, we will spend some time, in this
+      chapter and the next, looking at its various components. The discussion in this chap-
+      ter focuses on the lower three layers, while the upper two layers are examined in
+      Chapter 12.
+11.4  I/O BUFFERING
+      Suppose that a user process wishes to read blocks of data from a disk one at a time,
+      with each block having a length of 512 bytes. The data are to be read into a data
+      area within the address space of the user process at virtual location 1000 to 1511.
+      The simplest way would be to execute an I/O command (something like Read_
+      Block[1000,      disk]) to the disk unit and then wait for the data to become avail-
+      able. The waiting could either be busy waiting (continuously test the device status)
+      or, more practically, process suspension on an interrupt.
+         There are two problems with this approach. First, the program is hung up
+      waiting for the relatively slow I/O to complete. The second problem is that this
+      approach to I/O interferes with swapping decisions by the OS. Virtual locations
+      1000 to 1511 must remain in main memory during the course of the block transfer.
+      Otherwise, some of the data may be lost. If paging is being used, at least the page
+      containing the target locations must be locked into main memory. Thus, although
+
+484  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     portions of the process may be paged out to disk, it is impossible to swap the proc-
+     ess out completely, even if this is desired by the operating system. Notice also that
+     there is a risk of single-process deadlock. If a process issues an I/O command, is
+     suspended awaiting the result, and then is swapped out prior to the beginning of the
+     operation, the process is blocked waiting on the I/O event, and the I/O operation is
+     blocked waiting for the process to be swapped in. To avoid this deadlock, the user
+     memory involved in the I/O operation must be locked in main memory immediately
+     before the I/O request is issued, even though the I/O operation is queued and may
+     not be executed for some time.
+     The same considerations apply to an output operation. If a block is being
+     transferred from a user process area directly to an I/O module, then the process is
+     blocked during the transfer and the process may not be swapped out.
+     To avoid these overheads and inefficiencies, it is sometimes convenient to
+     perform input transfers in advance of requests being made and to perform output
+     transfers some time after the request is made. This technique is known as buffer-
+     ing. In this section, we look at some of the buffering schemes that are supported by
+     operating systems to improve the performance of the system.
+     In discussing the various approaches to buffering, it is sometimes important
+     to make a distinction between two types of I/O devices: block oriented and stream
+     oriented. A block-oriented device stores information in blocks that are usually of
+     fixed size, and transfers are made one block at a time. Generally, it is possible to
+     reference data by its block number. Disks and USB keys are examples of block-
+     oriented devices. A stream-oriented device transfers data in and out as a stream of
+     bytes, with no block structure. Terminals, printers, communications ports, mouse
+     and other pointing devices, and most other devices that are not secondary storage
+     are stream oriented.
+     Single Buffer
+     The simplest type of support that the OS can provide is single buffering (Figure 11.5b).
+     When a user process issues an I/O request, the OS assigns a buffer in the system
+     portion of main memory to the operation.
+     For block-oriented devices, the single buffering scheme can be described
+     as follows: Input transfers are made to the system buffer. When the transfer is
+     complete, the process moves the block into user space and immediately requests
+     another block. This is called reading ahead, or anticipated input; it is done in the
+     expectation that the block will eventually be needed. For many types of compu-
+     tation, this is a reasonable assumption most of the time because data are usually
+     accessed sequentially. Only at the end of a sequence of processing will a block be
+     read in unnecessarily.
+     This approach will generally provide a speedup compared to the lack of system
+     buffering. The user process can be processing one block of data while the next block
+     is being read in. The OS is able to swap the process out because the input operation
+     is taking place in system memory rather than user process memory. This technique
+     does, however, complicate the logic in the operating system. The OS must keep
+     track of the assignment of system buffers to user processes. The swapping logic is
+     also affected: If the I/O operation involves the same disk that is used for swapping,
+
+                                                                11.4  / I/O BUFFERING  485
+                                    Operating system                  User process
+I/O device   In
+                                    (a) No buffering
+                                    Operating system                  User process
+I/O device   In                                           Move
+                                    (b) Single buffering
+                                    Operating system                  User process
+I/O device   In                                           Move
+                                    (c) Double buffering
+                                    Operating system                  User process
+I/O device   In                                           Move
+                 (d) Circular buffering
+Figure 11.5  I/O Buffering Schemes (Input)
+it hardly makes sense to queue disk writes to the same device for swapping the proc-
+ess out. This attempt to swap the process and release main memory will itself not
+begin until after the I/O operation finishes, at which time swapping the process to
+disk may no longer be appropriate.
+Similar considerations apply to block-oriented output. When data are being
+transmitted to a device, they are first copied from the user space into the system
+buffer, from which they will ultimately be written. The requesting process is now
+free to continue or to be swapped as necessary.
+[KNUT97] suggests a crude but informative performance comparison between
+single buffering and no buffering. Suppose that T is the time required to input one
+block and that C is the computation time that intervenes between input requests.
+Without buffering, the execution time per block is essentially T + C. With a single
+buffer, the time is max [C, T] + M, where M is the time required to move the data
+from the system buffer to user memory. In most cases, execution time per block is
+substantially less with a single buffer compared to no buffer.
+For stream-oriented I/O, the single buffering scheme can be used in a line-
+at-a-time fashion or a byte-at-a-time fashion. Line-at-a-time operation is appropri-
+ate for scroll-mode terminals (sometimes called dumb terminals). With this form
+
+486  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     of terminal, user input is one line at a time, with a carriage return signaling the end
+     of a line, and output to the terminal is similarly one line at a time. A line printer is
+     another example of such a device. Byte-at-a-time operation is used on forms-mode
+     terminals, when each keystroke is significant, and for many other peripherals, such
+     as sensors and controllers.
+     In the case of line-at-a-time I/O, the buffer can be used to hold a single line.
+     The user process is suspended during input, awaiting the arrival of the entire line.
+     For output, the user process can place a line of output in the buffer and continue
+     processing. It need not be suspended unless it has a second line of output to send
+     before the buffer is emptied from the first output operation. In the case of byte-at-a-
+     time I/O, the interaction between the OS and the user process follows the producer/
+     consumer model discussed in Chapter 5.
+     Double Buffer
+     An improvement over single buffering can be had by assigning two system buffers to
+     the operation (Figure 11.5c). A process now transfers data to (or from) one buffer
+     while the operating system empties (or fills) the other. This technique is known as
+     double buffering or buffer swapping.
+     For block-oriented transfer, we can roughly estimate the execution time as
+     max [C, T]. It is therefore possible to keep the block-oriented device going at full
+     speed if C ... T. On the other hand, if C 7 T, double buffering ensures that the
+     process will not have to wait on I/O. In either case, an improvement over single
+     buffering is achieved. Again, this improvement comes at the cost of increased
+     complexity.
+     For stream-oriented input, we again are faced with the two alternative modes
+     of operation. For line-at-a-time I/O, the user process need not be suspended for
+     input or output, unless the process runs ahead of the double buffers. For byte-at-a-
+     time operation, the double buffer offers no particular advantage over a single buffer
+     of twice the length. In both cases, the producer/consumer model is followed.
+     Circular Buffer
+     A double-buffer scheme should smooth out the flow of data between an I/O device
+     and a process. If the performance of a particular process is the focus of our concern,
+     then we would like for the I/O operation to be able to keep up with the process.
+     Double buffering may be inadequate if the process performs rapid bursts of I/O. In
+     this case, the problem can often be alleviated by using more than two buffers.
+     When more than two buffers are used, the collection of buffers is itself referred
+     to as a circular buffer (Figure 11.5d), with each individual buffer being one unit in
+     the circular buffer. This is simply the bounded-buffer producer/consumer model
+     studied in Chapter 5.
+     The Utility of Buffering
+     Buffering is a technique that smoothes out peaks in I/O demand. However, no
+     amount of buffering will allow an I/O device to keep pace with a process indefi-
+     nitely when the average demand of the process is greater than the I/O device can
+
+                                                           11.5 / DISK SCHEDULING                  487
+      service. Even with multiple buffers, all of the buffers will eventually fill up and the
+      process will have to wait after processing each chunk of data. However, in a multi-
+      programming environment, when there is a variety of I/O activity and a variety of
+      process activity to service, buffering is one tool that can increase the efficiency of
+      the OS and the performance of individual processes.
+11.5  DISK SCHEDULING
+      Over the last 40 years, the increase in the speed of processors and main memory has
+      far outstripped that for disk access, with processor and main memory speeds increas-
+      ing by about two orders of magnitude compared to one order of magnitude for disk.
+      The result is that disks are currently at least four orders of magnitude slower than
+      main memory. This gap is expected to continue into the foreseeable future. Thus,
+      the performance of disk storage subsystem is of vital concern, and much research
+      has gone into schemes for improving that performance. In this section, we highlight
+      some of the key issues and look at the most important approaches. Because the
+      performance of the disk system is tied closely to file system design issues, the discus-
+      sion continues in Chapter 12.
+      Disk Performance Parameters
+      The actual details of disk I/O operation depend on the computer system, the oper-
+      ating system, and the nature of the I/O channel and disk controller hardware. A
+      general timing diagram of disk I/O transfer is shown in Figure 11.6.
+      When the disk drive is operating, the disk is rotating at constant speed. To
+      read or write, the head must be positioned at the desired track and at the beginning
+      of the desired sector on that track.1 Track selection involves moving the head in a
+      movable-head system or electronically selecting one head on a fixed-head system.
+      On a movable-head system, the time it takes to position the head at the track is
+      known as seek time. In either case, once the track is selected, the disk controller
+      waits until the appropriate sector rotates to line up with the head. The time it takes
+      for the beginning of the sector to reach the head is known as rotational delay, or
+      rotational latency. The sum of the seek time, if any, and the rotational delay equals
+      the access time, which is the time it takes to get into position to read or write. Once
+      the head is in position, the read or write operation is then performed as the sector
+      moves under the head; this is the data transfer portion of the operation; the time
+      required for the transfer is the transfer time.
+      Wait for         Wait for      Seek                                    Rotational  Data
+      device           channel                                               delay       transfer
+                                                       Device busy
+      Figure 11.6  Timing of a Disk I/O Transfer
+      1See Appendix J for a discussion of disk organization and formatting.
+
+488  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     In addition to the access time and transfer time, there are several queueing
+     delays normally associated with a disk I/O operation. When a process issues an
+     I/O request, it must first wait in a queue for the device to be available. At that
+     time, the device is assigned to the process. If the device shares a single I/O channel
+     or a set of I/O channels with other disk drives, then there may be an additional
+     wait for the channel to be available. At that point, the seek is performed to begin
+     disk access.
+     In some high-end systems for servers, a technique known as rotational
+     positional sensing (RPS) is used. This works as follows: When the seek command
+     has been issued, the channel is released to handle other I/O operations. When
+     the seek is completed, the device determines when the data will rotate under
+     the head. As that sector approaches the head, the device tries to reestablish the
+     communication path back to the host. If either the control unit or the channel is
+     busy with another I/O, then the reconnection attempt fails and the device must
+     rotate one whole revolution before it can attempt to reconnect, which is called
+     an RPS miss. This is an extra delay element that must be added to the time line
+     of Figure 11.6.
+     SEEK TIME       Seek time is the time required to move the disk arm to the required
+     track. It turns out that this is a difficult quantity to pin down. The seek time consists
+     of two key components: the initial startup time and the time taken to traverse the
+     tracks that have to be crossed once the access arm is up to speed. Unfortunately, the
+     traversal time is not a linear function of the number of tracks but includes a settling
+     time (time after positioning the head over the target track until track identification
+     is confirmed).
+     Much improvement comes from smaller and lighter disk components. Some
+     years ago, a typical disk was 14 inches (36 cm) in diameter, whereas the most common
+     size today is 3.5 inches (8.9 cm), reducing the distance that the arm has to travel. A
+     typical average seek time on contemporary hard disks is under 10 ms.
+     ROTATIONAL       DELAY  Rotational delay is the time required for the addressed
+     area of the disk to rotate into a position where it is accessible by the read/write
+     head. Disks rotate at speeds ranging from 3,600 rpm (for handheld devices such as
+     digital cameras) up to, as of this writing, 15,000 rpm; at this latter speed, there is one
+     revolution per 4 ms. Thus, on the average, the rotational delay will be 2 ms.
+     TRANSFER TIME    The transfer time to or from the  disk  depends      on  the  rotation
+     speed of the disk in the following fashion:
+                                    T=            b
+                                                  rN
+     where
+     T  transfer time
+     b  number of bytes to be transferred
+     N  number of bytes on a track
+     r  rotation speed, in revolutions per second
+
+                                                             11.5 / DISK SCHEDULING     489
+     Thus, the total average access time can be expressed as
+                                  Ta = Ts +        1   +  b
+                                                   2r     rN
+where Ts is the average seek time.
+A TIMING COMPARISON         With the foregoing parameters defined, let us look at
+two different I/O operations that illustrate the danger of relying on average values.
+Consider a disk with an advertised average seek time of 4 ms, rotation speed of
+7,500 rpm, and 512-byte sectors with 500 sectors per track. Suppose that we wish to
+read a file consisting of 2,500 sectors for a total of 1.28 Mbytes. We would like to
+estimate the total time for the transfer.
+     First, let us assume that the file is stored as compactly as possible on
+the  disk.  That  is,  the  file  occupies    all  of  the   sectors  on  5  adjacent  tracks
+(5 tracks * 500 sectors/track = 2,500 sectors). This is known as sequential organiza-
+tion. The time to read the first track is as follows:
+                            Average seek                      4 ms
+                            Rotational delay                  4 ms
+                            Read 500 sectors                  8 ms
+                                                             16 ms
+     Suppose that the remaining tracks can now be read with essentially no seek
+time. That is, the I/O operation can keep up with the flow from the disk. Then, at
+most, we need to deal with rotational delay for each succeeding track. Thus, each
+successive track is read in 4 + 8 = 12 rmms. To read the entire file,
+            Total time = 16 + (4 * 12) = 64 ms = 0.064 seconds
+     Now let us calculate the time required to read the same data using random
+access rather than sequential access; that is, accesses to the sectors are distributed
+randomly over the disk. For each sector, we have:
+                            Average seek                  4   ms
+                            Rotational delay              4   ms
+                            Read 1 sector                 0.016 ms
+                                                          8.016 ms
+            Total time = 2,500 * 8.016 = 20,040 ms = 20.04 seconds
+     It is clear that the order in which sectors are read from the disk has a tremen-
+dous effect on I/O performance. In the case of file access in which multiple sectors
+are read or written, we have some control over the way in which sectors of data are
+deployed, and we shall have something to say on this subject in the next chapter.
+However, even in the case of a file access, in a multiprogramming environment,
+there will be I/O requests competing for the same disk. Thus, it is worthwhile to
+examine ways in which the performance of disk I/O can be improved over that
+achieved with purely random access to the disk.
+
+490  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     Disk Scheduling Policies
+     In the example just described, the reason for the difference in performance can be
+     traced to seek time. If sector access requests involve selection of tracks at random,
+     then the performance of the disk I/O system will be as poor as possible. To improve
+     matters, we need to reduce the average time spent on seeks.
+     Consider the typical situation in a multiprogramming environment, in which
+     the OS maintains a queue of requests for each I/O device. So, for a single disk, there
+     will be a number of I/O requests (reads and writes) from various processes in the
+     queue. If we selected items from the queue in random order, then we can expect that
+     the tracks to be visited will occur randomly, giving poor performance. This random
+     scheduling is useful as a benchmark against which to evaluate other techniques.
+     Figure 11.7 compares the performance of various scheduling algorithms for an
+     example sequence of I/O requests. The vertical axis corresponds to the tracks on the
+     disk. The horizontal axis corresponds to time or, equivalently, the number of tracks
+     traversed. For this figure, we assume that the disk head is initially located at track 100.
+     In this example, we assume a disk with 200 tracks and that the disk request queue has
+     random requests in it. The requested tracks, in the order received by the disk sched-
+     uler, are 55, 58, 39, 18, 90, 160, 150, 38, 184. Table 11.2a tabulates the results.
+     FIRST IN FIRST OUT  The simplest form of scheduling is first-in-first-out (FIFO)
+     scheduling, which processes items from the queue in sequential order. This strategy
+     has the advantage of being fair, because every request is honored and the requests are
+     honored in the order received. Figure 11.7a illustrates the disk arm movement with
+     FIFO. This graph is generated directly from the data in Table 11.2a. As can be seen,
+     the disk accesses are in the same order as the requests were originally received.
+     With FIFO, if there are only a few processes that require access and if many
+     of the requests are to clustered file sectors, then we can hope for good performance.
+     However, this technique will often approximate random scheduling in performance,
+     if there are many processes competing for the disk. Thus, it may be profitable to
+     consider a more sophisticated scheduling policy. A number of these are listed in
+     Table 11.3 and will now be considered.
+     PRIORITY  With a system based on priority (PRI), the control of the scheduling is
+     outside the control of disk management software. Such an approach is not intended
+     to optimize disk utilization but to meet other objectives within the OS. Often short
+     batch jobs and interactive jobs are given higher priority than longer jobs that require
+     longer computation. This allows a lot of short jobs to be flushed through the system
+     quickly and may provide good interactive response time. However, longer jobs
+     may have to wait excessively long times. Furthermore, such a policy could lead to
+     countermeasures on the part of users, who split their jobs into smaller pieces to beat
+     the system. This type of policy tends to be poor for database systems.
+     SHORTEST  SERVICE   TIME  FIRST  The shortest-service-time-first (SSTF) policy
+     is to select the disk I/O request that requires the least movement of the disk arm
+     from its current position. Thus, we always choose to incur the minimum seek time.
+     Of course, always choosing the minimum seek time does not guarantee that the
+
+                                                           11.5 /          DISK   SCHEDULING  491
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (a) FIFO
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (b) SSTF
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (c) SCAN
+              0
+              25
+Track number  50
+              75
+              100
+              125
+              150
+              175
+              199
+                                               Time
+                                               (d) C-SCAN
+Figure             11.7  Comparison  of  Disk  Scheduling Algorithms (see  Table  11.2)
+
+492   CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+Table 11.2  Comparison     of Disk Scheduling Algorithms
+                                                                    (c) SCAN (starting             (d) C-SCAN (starting
+                                                                    at track 100, in the           at track 100, in the
+     (a) FIFO (starting    (b) SSTF (starting                       direction of increasing        direction of increasing
+      at track 100)        at track 100)                            track number)                        track number)
+             Number                             Number                            Number           Next       Number
+Next track   of tracks     Next track           of tracks   Next track            of tracks        track      of tracks
+accessed     traversed     accessed             traversed           accessed      traversed        accessed   traversed
+     55              45    90                   10                  150             50             150        50
+     58              3     58                   32                  160             10             160        10
+     39              19    55                        3              184             24             184        24
+     18              21    39                   16                  90              94             18         166
+     90              72    38                        1              58              32             38         20
+160                  70    18                   20                  55              3              39         1
+150                  10    150                  132                 39              16             55         16
+     38           112      160                  10                  38              1              58         3
+184               146      184                  24                  18              20             90         32
+Average              55.3  Average              27.5                Average         27.8           Average    35.8
+seek                       seek                                     seek                           seek
+length                     length                                   length                         length
+         average seek time over a number of arm movements will be minimum. However,
+         this should provide better performance than FIFO. Because the arm can move in
+         two directions, a random tie-breaking algorithm may be used to resolve cases of
+         equal distances.
+Table 11.3  Disk     Scheduling Algorithms
+Name                               Description                                                Remarks
+                                               Selection according  to requestor
+RSS                        Random scheduling                                  For analysis and simulation
+FIFO                       First-in-first-out                                 Fairest of them all
+PRI                        Priority by process                                Control outside of disk queue management
+LIFO                       Last in first out                                  Maximize locality and resource utilization
+                                 Selection according to             requested item
+SSTF                       Shortest-service-time first                        High utilization, small queues
+SCAN                       Back and forth over disk                           Better service distribution
+C-SCAN                     One way with fast return                           Lower service variability
+N-step-SCAN                SCAN of N records at a time                        Service guarantee
+FSCAN                      N-step-SCAN with N = queue size                    Load sensitive
+                           at beginning of SCAN cycle
+
+                                                    11.5 / DISK SCHEDULING                 493
+Figure 11.7b and Table 11.2b show the performance of SSTF on the same
+example as was used for FIFO. The first track accessed is 90, because this is the
+closest requested track to the starting position. The next track accessed is 58 because
+this is the closest of the remaining requested tracks to the current position of 90.
+Subsequent tracks are selected accordingly.
+SCAN    With the exception of FIFO, all of the policies described so far can leave
+some request unfulfilled until the entire queue is emptied. That is, there may always
+be new requests arriving that will be chosen before an existing request. A simple
+alternative that prevents this sort of starvation is the SCAN algorithm, also known
+as the elevator algorithm because it operates much the way an elevator does.
+With SCAN, the arm is required to move in one direction only, satisfying all
+outstanding requests en route, until it reaches the last track in that direction or until
+there are no more requests in that direction. This latter refinement is sometimes
+referred to as the LOOK policy. The service direction is then reversed and the scan
+proceeds in the opposite direction, again picking up all requests in order.
+Figure 11.7c and Table 11.2c illustrate the SCAN policy. Assuming that the
+initial direction is of increasing track number, then the first track selected is 150,
+since this is the closest track to the starting track of 100 in the increasing direction.
+As can be seen, the SCAN policy behaves almost identically with the SSTF
+policy. Indeed, if we had assumed that the arm was moving in the direction of lower
+track numbers at the beginning of the example, then the scheduling pattern would
+have been identical for SSTF and SCAN. However, this is a static example in which
+no new items are added to the queue. Even when the queue is dynamically chang-
+ing, SCAN will be similar to SSTF unless the request pattern is unusual.
+Note that the SCAN policy is biased against the area most recently traversed.
+Thus it does not exploit locality as well as SSTF.
+It is not difficult to see that the SCAN policy favors jobs whose requests are
+for tracks nearest to both innermost and outermost tracks and favors the latest-
+arriving jobs. The first problem can be avoided via the C-SCAN policy, while the
+second problem is addressed by the N-step-SCAN policy.
+C-SCAN  The C-SCAN (circular SCAN) policy restricts scanning to one direction
+only. Thus, when the last track has been visited in one direction, the arm is returned
+to the opposite end of the disk and the scan begins again. This reduces the maximum
+delay experienced by new requests. With SCAN, if the expected time for a scan
+from inner track to outer track is t, then the expected service interval for sectors at
+the periphery is 2t. With C-SCAN, the interval is on the order of t + s max , where
+smax is the maximum seek time.
+Figure 11.7d and Table 11.2d illustrate C-SCAN behavior. In this case the first
+three requested tracks encountered are 150, 160, and 184. Then the scan begins
+starting at the lowest track number, and the next requested track encountered is 18.
+N-STEP-SCAN AND FSCAN           With SSTF, SCAN, and C-SCAN, it is possible that
+the arm may not move for a considerable period of time. For example, if one or a
+few processes have high access rates to one track, they can monopolize the entire
+device by repeated requests to that track. High-density multisurface disks are more
+
+494  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     likely to be affected by this characteristic than lower-density disks and/or disks with
+     only one or two surfaces. To avoid this "arm stickiness," the disk request queue
+     can be segmented, with one segment at a time being processed completely. Two
+     examples of this approach are N-step-SCAN and FSCAN.
+         The N-step-SCAN policy segments the disk request queue into subqueues of
+     length N. Subqueues are processed one at a time, using SCAN. While a queue is
+     being processed, new requests must be added to some other queue. If fewer than N
+     requests are available at the end of a scan, then all of them are processed with the
+     next scan. With large values of N, the performance of N-step-SCAN approaches
+     that of SCAN; with a value of N = 1, the FIFO policy is adopted.
+         FSCAN is a policy that uses two subqueues. When a scan begins, all of the
+     requests are in one of the queues, with the other empty. During the scan, all new
+     requests are put into the other queue. Thus, service of new requests is deferred until
+     all of the old requests have been processed.
+11.6 RAID
+     As discussed earlier, the rate in improvement in secondary storage performance
+     has been considerably less than the rate for processors and main memory. This
+     mismatch has made the disk storage system perhaps the main focus of concern in
+     improving overall computer system performance.
+         As in other areas of computer performance, disk storage designers recognize
+     that if one component can only be pushed so far, additional gains in performance
+     are to be had by using multiple parallel components. In the case of disk storage,
+     this leads to the development of arrays of disks that operate independently and
+     in parallel. With multiple disks, separate I/O requests can be handled in parallel,
+     as long as the data required reside on separate disks. Further, a single I/O request
+     can be executed in parallel if the block of data to be accessed is distributed across
+     multiple disks.
+         With the use of multiple disks, there is a wide variety of ways in which the data
+     can be organized and in which redundancy can be added to improve reliability. This
+     could make it difficult to develop database schemes that are usable on a number of
+     platforms and operating systems. Fortunately, industry has agreed on a standard-
+     ized scheme for multiple-disk database design, known as RAID (redundant array of
+     independent disks). The RAID scheme consists of seven levels,2 zero through six.
+     These levels do not imply a hierarchical relationship but designate different design
+     architectures that share three common characteristics:
+     1.  RAID is a set of physical disk drives viewed by the OS as a single logical drive.
+     2.  Data are distributed across the physical drives of an array in a scheme known
+         as striping, described subsequently.
+     3.  Redundant disk capacity is used to store parity information, which guarantees
+         data recoverability in case of a disk failure.
+     2Additional levels have been defined by some researchers and some companies, but the seven levels
+     described in this section are the ones universally agreed on.
+
+                                                                    11.6 / RAID                           495
+The details of the second and third characteristics differ for the different RAID
+levels. RAID 0 and RAID 1 do not support the third characteristic.
+The term RAID was originally coined in a paper by a group of researchers
+at the University of California at Berkeley [PATT88].3 The paper outlined vari-
+ous RAID configurations and applications and introduced the definitions of the
+RAID levels that are still used. The RAID strategy employs multiple disk drives
+and distributes data in such a way as to enable simultaneous access to data from
+multiple drives, thereby improving I/O performance and allowing easier incremen-
+tal increases in capacity.
+The unique contribution of the RAID proposal is to address effectively the
+need for redundancy. Although allowing multiple heads and actuators to operate
+simultaneously achieves higher I/O and transfer rates, the use of multiple devices
+increases the probability of failure. To compensate for this decreased reliability,
+RAID makes use of stored parity information that enables the recovery of data lost
+due to a disk failure.
+We now examine each of the RAID levels. Table 11.4 provides a rough
+guide to the seven levels. In the table, I/O performance is shown both in terms of
+data transfer capacity, or ability to move data, and I/O request rate, or ability to
+satisfy I/O requests, since these RAID levels inherently perform differently rela-
+tive to these two metrics. Each RAID level's strong point is highlighted in color.
+Figure 11.8 is an example that illustrates the use of the seven RAID schemes
+to support a data capacity requiring four disks with no redundancy. The figure
+highlights the layout of user data and redundant data and indicates the relative
+storage requirements of the various levels. We refer to this figure throughout the
+following discussion.
+Of the seven RAID levels described, only four are commonly used: RAID
+levels 0, 1, 5, and 6.
+RAID Level 0
+RAID level 0 is not a true member of the RAID family, because it does not include
+redundancy to improve performance or provide data protection. However, there
+are a few applications, such as some on supercomputers in which performance
+and capacity are primary concerns and low cost is more important than improved
+reliability.
+For RAID 0, the user and system data are distributed across all of the disks
+in the array. This has a notable advantage over the use of a single large disk: If two
+different I/O requests are pending for two different blocks of data, then there is a
+good chance that the requested blocks are on different disks. Thus, the two requests
+can be issued in parallel, reducing the I/O queueing time.
+But RAID 0, as with all of the RAID levels, goes further than simply distrib-
+uting the data across a disk array: The data are striped across the available disks.
+3In that paper, the acronym RAID stood for Redundant Array of Inexpensive Disks. The term inexpen-
+sive was used to contrast the small relatively inexpensive disks in the RAID array to the alternative, a
+single large expensive disk (SLED). The SLED is essentially a thing of the past, with similar disk technol-
+ogy being used for both RAID and non-RAID configurations. Accordingly, the industry has adopted the
+term independent to emphasize that the RAID array creates significant performance and reliability gains.
+
+496
+     Table 11.4   RAID Levels
+                                                               Disks                              Large I/O Data
+     Category         Level    Description                     Required  Data Availability        Transfer Capacity                Small I/O Request Rate
+     Striping         0        Nonredundant                    N         Lower than single disk   Very high                        Very high for both read
+                                                                                                                                   and write
+     Mirroring        1        Mirrored                        2N        Higher than RAID 2,      Higher than single disk for      Up to twice that of a single
+                                                                         3, 4, or 5; lower than   read; similar to single disk     disk for read; similar to
+                                                                         RAID 6                   for write                        single disk for write
+     Parallel access  2        Redundant via                   Nm        Much higher than single  Highest of all listed            Approximately twice that
+                               Hamming code                              disk; comparable to      alternatives                     of a single disk
+                                                                         RAID 3, 4, or 5
+                      3        Bit-interleaved                 N1        Much higher than single  Highest of all listed            Approximately twice that
+                               parity                                    disk; comparable to      alternatives                     of a single disk
+                                                                         RAID 2, 4, or 5
+     Independent      4        Block-interleaved               N1        Much higher than single  Similar to RAID 0 for read;      Similar to RAID 0 for read;
+     access                    parity                                    disk; comparable to      significantly lower than single  significantly lower than
+                                                                         RAID 2, 3, or 5          disk for write                   single disk for write
+                      5        Block-interleaved               N1        Much higher than single  Similar to RAID 0 for read;      Similar to RAID 0 for read;
+                               distributed parity                        disk; comparable to      lower than single disk for       generally lower than single
+                                                                         RAID 2, 3, or 4          write                            disk for write
+                      6        Block-interleaved               N2        Highest of all listed    Similar to RAID 0 for read;      Similar to RAID 0 for read;
+                               dual distributed                          alternatives             lower than RAID 5 for write      significantly lower than
+                               parity                                                                                              RAID 5 for write
+     Note: N, number of data disks; m, proportional to log N.
+
+strip 0      strip 1             strip 2           strip 3
+strip 4      strip 5             strip 6           strip 7
+strip 8      strip 9             strip 10          strip 11
+strip 12     strip 13            strip 14          strip 15
+(a) RAID 0 (nonredundant)
+strip 0      strip 1             strip 2           strip 3       strip 0     strip 1   strip 2   strip 3
+strip 4      strip 5             strip 6           strip 7       strip 4     strip 5   strip 6   strip 7
+strip 8      strip 9             strip 10          strip 11      strip 8     strip 9   strip 10  strip 11
+strip 12     strip 13            strip 14          strip 15      strip 12    strip 13  strip 14  strip 15
+(b) RAID 1 (mirrored)
+b0           b1                      b2            b3                 f0(b)  f1(b)     f2(b)
+(c) RAID 2 (redundancy through Hamming code)
+b0                     b1                  b2                b3              P(b)
+(d) RAID 3 (bit-interleaved parity)
+block 0      block 1                     block 2             block 3         P(0-3)
+block 4      block 5                     block 6             block 7         P(4-7)
+block 8      block 9                     block 10            block 11        P(8-11)
+block 12     block 13                    block 14            block 15        P(12-15)
+(e) RAID 4 (block-level parity)
+Figure 11.8  RAID Levels                                                                         497
+
+498  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     block 0             block 1       block 2    block 3   P(0-3)
+     block 4             block 5       block 6    P(4-7)    block 7
+     block 8             block 9       P(8-11)    block 10  block 11
+     block 12            P(12-15)  block 13       block 14  block 15
+     P(16-19)            block 16  block 17       block 18  block 19
+     (f) RAID 5 (block-level distributed parity)
+     block 0             block 1       block 2    block 3   P(0-3)    Q(0-3)
+     block 4             block 5       block 6    P(4-7)    Q(4-7)    block 7
+     block 8             block 9       P(8-11)    Q(8-11)   block 10  block 11
+     block 12            P(12-15)  Q(12-15)       block 13  block 14  block 15
+     (g) RAID 6 (dual redundancy)
+     Figure 11.8  RAID Levels (Continued)
+     This is best understood by considering Figure 11.8. All user and system data are
+     viewed as being stored on a logical disk. The logical disk is divided into strips; these
+     strips may be physical blocks, sectors, or some other unit. The strips are mapped
+     round robin to consecutive physical disks in the RAID array. A set of logically
+     consecutive strips that maps exactly one strip to each array member is referred
+     to as a stripe. In an n-disk array, the first n logical strips are physically stored as
+     the first strip on each of the n disks, forming the first stripe; the second n strips
+     are distributed as the second strips on each disk; and so on. The advantage of this
+     layout is that if a single I/O request consists of multiple logically contiguous strips,
+     then up to n strips for that request can be handled in parallel, greatly reducing the
+     I/O transfer time.
+     RAID 0 FOR HIGH DATA TRANSFER CAPACITY                 The performance of any of the
+     RAID levels depends critically on the request patterns of the host system and
+     on the layout of the data. These issues can be most clearly addressed in RAID 0,
+     where the impact of redundancy does not interfere with the analysis. First, let us
+     consider the use of RAID 0 to achieve a high data transfer rate. For applications to
+     experience a high transfer rate, two requirements must be met. First, a high transfer
+     capacity must exist along the entire path between host memory and the individual
+     disk drives. This includes internal controller buses, host system I/O buses, I/O
+     adapters, and host memory buses.
+     The second requirement is that the application must make I/O requests that
+     drive the disk array efficiently. This requirement is met if the typical request is for
+     large amounts of logically contiguous data, compared to the size of a strip. In this
+
+                                                                   11.6 / RAID               499
+case, a single I/O request involves the parallel transfer of data from multiple disks,
+increasing the effective transfer rate compared to a single-disk transfer.
+RAID 0 FOR HIGH I/O REQUEST RATE     In a transaction-oriented environment,
+the user is typically more concerned with response time than with transfer rate. For
+an individual I/O request for a small amount of data, the I/O time is dominated by
+the motion of the disk heads (seek time) and the movement of the disk (rotational
+latency).
+    In a transaction environment, there may be hundreds of I/O requests per sec-
+ond. A disk array can provide high I/O execution rates by balancing the I/O load
+across multiple disks. Effective load balancing is achieved only if there are typi-
+cally multiple I/O requests outstanding. This, in turn, implies that there are multiple
+independent applications or a single transaction-oriented application that is capable
+of multiple asynchronous I/O requests. The performance will also be influenced
+by the strip size. If the strip size is relatively large, so that a single I/O request only
+involves a single disk access, then multiple waiting I/O requests can be handled in
+parallel, reducing the queueing time for each request.
+RAID Level 1
+RAID 1 differs from RAID levels 2 through 6 in the way in which redundancy is
+achieved. In these other RAID schemes, some form of parity calculation is used
+to introduce redundancy, whereas in RAID 1, redundancy is achieved by the sim-
+ple expedient of duplicating all the data. Figure 11.8b shows data striping being
+used, as in RAID 0. But in this case, each logical strip is mapped to two separate
+physical disks so that every disk in the array has a mirror disk that contains the
+same data. RAID 1 can also be implemented without data striping, though this is
+less common.
+    There are a number of positive aspects to the RAID 1 organization:
+1.  A read request can be serviced by either of the two disks that contains the
+    requested data, whichever one involves the minimum seek time plus rotational
+    latency.
+2.  A write request requires that both corresponding strips be updated, but this
+    can be done in parallel. Thus, the write performance is dictated by the slower
+    of the two writes (i.e., the one that involves the larger seek time plus rotational
+    latency). However, there is no "write penalty" with RAID 1. RAID levels
+    2 through 6 involve the use of parity bits. Therefore, when a single strip is
+    updated, the array management software must first compute and update the
+    parity bits as well as updating the actual strip in question.
+3.  Recovery from a failure is simple. When a drive fails, the data may still be
+    accessed from the second drive.
+    The principal disadvantage of RAID 1 is the cost; it requires twice the disk
+space of the logical disk that it supports. Because of that, a RAID 1 configuration
+is likely to be limited to drives that store system software and data and other highly
+critical files. In these cases, RAID 1 provides real-time backup of all data so that in
+the event of a disk failure, all of the critical data is still immediately available.
+
+500  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     In a transaction-oriented environment, RAID 1 can achieve high I/O request
+     rates if the bulk of the requests are reads. In this situation, the performance of RAID
+     1 can approach double of that of RAID 0. However, if a substantial fraction of the I/O
+     requests are write requests, then there may be no significant performance gain over
+     RAID 0. RAID 1 may also provide improved performance over RAID 0 for data
+     transfer-intensive applications with a high percentage of reads. Improvement occurs
+     if the application can split each read request so that both disk members participate.
+     RAID Level 2
+     RAID levels 2 and 3 make use of a parallel access technique. In a parallel access
+     array, all member disks participate in the execution of every I/O request. Typically,
+     the spindles of the individual drives are synchronized so that each disk head is in the
+     same position on each disk at any given time.
+     As in the other RAID schemes, data striping is used. In the case of RAID 2
+     and 3, the strips are very small, often as small as a single byte or word. With RAID 2,
+     an error-correcting code is calculated across corresponding bits on each data disk,
+     and the bits of the code are stored in the corresponding bit positions on multiple
+     parity disks. Typically, a Hamming code is used, which is able to correct single-bit
+     errors and detect double-bit errors.
+     Although RAID 2 requires fewer disks than RAID 1, it is still rather costly.
+     The number of redundant disks is proportional to the log of the number of data
+     disks. On a single read, all disks are simultaneously accessed. The requested data
+     and the associated error-correcting code are delivered to the array controller. If
+     there is a single-bit error, the controller can recognize and correct the error instantly,
+     so that the read access time is not slowed. On a single write, all data disks and parity
+     disks must be accessed for the write operation.
+     RAID 2 would only be an effective choice in an environment in which many
+     disk errors occur. Given the high reliability of individual disks and disk drives,
+     RAID 2 is overkill and is not implemented.
+     RAID Level 3
+     RAID 3 is organized in a similar fashion to RAID 2. The difference is that RAID 3
+     requires only a single redundant disk, no matter how large the disk array. RAID 3
+     employs parallel access, with data distributed in small strips. Instead of an error-
+     correcting code, a simple parity bit is computed for the set of individual bits in the
+     same position on all of the data disks.
+     REDUNDANCY  In the event of a drive failure, the parity drive is accessed and data
+     is reconstructed from the remaining devices. Once the failed drive is replaced, the
+     missing data can be restored on the new drive and operation resumed.
+     Data reconstruction is simple. Consider an array of five drives in which X0
+     through X3 contain data and X4 is the parity disk. The parity for the ith bit is
+     calculated as follows:
+                             X4(i) = X3(i)  X2(i)  X1(i)  X0(i)
+     where  is exclusive-OR function.
+
+                                                       11.6 / RAID                     501
+Suppose that drive X1 has failed. If we add X4(i)  X1(i) to both sides of the
+preceding equation, we get
+              X1(i) = X4(i)  X3(i)  X2(i)  X0(i)
+Thus, the contents of each strip of data on X1 can be regenerated from the contents
+of the corresponding strips on the remaining disks in the array. This principle is true
+for RAID levels 3 through 6.
+In the event of a disk failure, all of the data are still available in what is referred
+to as reduced mode. In this mode, for reads, the missing data are regenerated on the
+fly using the exclusive-OR calculation. When data are written to a reduced RAID 3
+array, consistency of the parity must be maintained for later regeneration. Return to
+full operation requires that the failed disk be replaced and the entire contents of the
+failed disk be regenerated on the new disk.
+PERFORMANCE   Because data are striped in very small strips, RAID 3 can achieve
+very high data transfer rates. Any I/O request will involve the parallel transfer of
+data from all of the data disks. For large transfers, the performance improvement is
+especially noticeable. On the other hand, only one I/O request can be executed at a
+time. Thus, in a transaction-oriented environment, performance suffers.
+RAID Level 4
+RAID levels 4 through 6 make use of an independent access technique. In an inde-
+pendent access array, each member disk operates independently, so that separate
+I/O requests can be satisfied in parallel. Because of this, independent access arrays
+are more suitable for applications that require high I/O request rates and are rela-
+tively less suited for applications that require high data transfer rates.
+As in the other RAID schemes, data striping is used. In the case of RAID
+4 through 6, the strips are relatively large. With RAID 4, a bit-by-bit parity strip
+is calculated across corresponding strips on each data disk, and the parity bits are
+stored in the corresponding strip on the parity disk.
+RAID 4 involves a write penalty when an I/O write request of small size is per-
+formed. Each time that a write occurs, the array management software must update
+not only the user data but also the corresponding parity bits. Consider an array of
+five drives in which X0 through X3 contain data and X4 is the parity disk. Suppose
+that a write is performed that only involves a strip on disk X1. Initially, for each bit i,
+we have the following relationship:
+              X4(i) = X3(i)  X2(i)  X1(i)  X0(i)                              (11.1)
+After the update, with potentially altered bits indicated by a prime symbol:
+X4=(i) = X3(i)  X2(i)  X1=(i)  X0(i)
+             = X3(i)  X2(i)  X1=(i)  X0(i)  X1(i)  X1(i)
+             = X3(i)  X2(i)  X1 (i)  X0(i)  X1(i)  X1=(i)
+             = X4(i)  X1(i)  X1=(i)
+The preceding set of equations is derived as follows. The first line shows that
+a change in X1 will also affect the parity disk X4. In the second line, we add the
+
+502  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     terms [ X1(i)  X1(i)]. Because the exclusive-OR of any quantity with itself is 0,
+     this does not affect the equation. However, it is a convenience that is used to create
+     the third line, by reordering. Finally, Equation (11.1) is used to replace the first
+     four terms by X4(i).
+     To calculate the new parity, the array management software must read the old
+     user strip and the old parity strip. Then it can update these two strips with the new
+     data and the newly calculated parity. Thus, each strip write involves two reads and
+     two writes.
+     In the case of a larger size I/O write that involves strips on all disk drives, parity
+     is easily computed by calculation using only the new data bits. Thus, the parity drive
+     can be updated in parallel with the data drives and there are no extra reads or writes.
+     In any case, every write operation must involve the parity disk, which therefore
+     can become a bottleneck.
+     RAID Level 5
+     RAID 5 is organized in a similar fashion to RAID 4. The difference is that RAID
+     5 distributes the parity strips across all disks. A typical allocation is a round-robin
+     scheme, as illustrated in Figure 11.8f. For an n-disk array, the parity strip is on a
+     different disk for the first n stripes, and the pattern then repeats.
+     The distribution of parity strips across all drives avoids the potential I/O
+     bottleneck of the single parity disk found in RAID 4. Further, RAID 5 has the
+     characteristic that the loss of any one disk does not result in data loss.
+     RAID Level 6
+     RAID 6 was introduced in a subsequent paper by the Berkeley researchers
+     [KATZ89]. In the RAID 6 scheme, two different parity calculations are carried out
+     and stored in separate blocks on different disks. Thus, a RAID 6 array whose user
+     data require N disks consists of N + 2 disks.
+     Figure 11.8g illustrates the scheme. P and Q are two different data check algo-
+     rithms. One of the two is the exclusive-OR calculation used in RAID 4 and 5. But
+     the other is an independent data check algorithm. This makes it possible to regener-
+     ate data even if two disks containing user data fail.
+     The advantage of RAID 6 is that it provides extremely high data availability.
+     Three disks would have to fail within the MTTR (mean time to repair) interval to
+     cause data to be lost. On the other hand, RAID 6 incurs a substantial write penalty,
+     because each write affects two parity blocks. Performance benchmarks [EISC07]
+     show that a RAID 6 controller can suffer more than a 30% drop in overall write
+     performance compared with a RAID 5 implementation. RAID 5 and RAID 6 read
+     performance is comparable.
+11.7 DISK CACHE
+     In Section 1.6 and Appendix 1A, we summarized the principles of cache memory.
+     The term cache memory is usually used to apply to a memory that is smaller and
+     faster than main memory and that is interposed between main memory and the
+
+                                11.7 / DISK CACHE                                        503
+processor. Such a cache memory reduces average memory access time by exploiting
+the principle of locality.
+The same principle can be applied to disk memory. Specifically, a disk cache
+is a buffer in main memory for disk sectors. The cache contains a copy of some of
+the sectors on the disk. When an I/O request is made for a particular sector, a check
+is made to determine if the sector is in the disk cache. If so, the request is satisfied
+via the cache. If not, the requested sector is read into the disk cache from the disk.
+Because of the phenomenon of locality of reference, when a block of data is fetched
+into the cache to satisfy a single I/O request, it is likely that there will be future
+references to that same block.
+Design Considerations
+Several design issues are of interest. First, when an I/O request is satisfied from the
+disk cache, the data in the disk cache must be delivered to the requesting process. This
+can be done either by transferring the block of data within main memory from the disk
+cache to memory assigned to the user process, or simply by using a shared memory
+capability and passing a pointer to the appropriate slot in the disk cache. The latter
+approach saves the time of a memory-to-memory transfer and also allows shared
+access by other processes using the readers/writers model described in Chapter 5.
+A second design issue has to do with the replacement strategy. When a new
+sector is brought into the disk cache, one of the existing blocks must be replaced.
+This is the identical problem presented in Chapter 8; there the requirement was
+for a page replacement algorithm. A number of algorithms have been tried. The
+most commonly used algorithm is least recently used (LRU): Replace that block
+that has been in the cache longest with no reference to it. Logically, the cache
+consists of a stack of blocks, with the most recently referenced block on the top
+of the stack. When a block in the cache is referenced, it is moved from its exist-
+ing position on the stack to the top of the stack. When a block is brought in from
+secondary memory, remove the block that is on the bottom of the stack and push
+the incoming block onto the top of the stack. Naturally, it is not necessary actually
+to move these blocks around in main memory; a stack of pointers can be associ-
+ated with the cache.
+Another possibility is least frequently used (LFU): Replace that block in the
+set that has experienced the fewest references. LFU could be implemented by asso-
+ciating a counter with each block. When a block is brought in, it is assigned a count
+of 1; with each reference to the block, its count is incremented by 1. When replace-
+ment is required, the block with the smallest count is selected. Intuitively, it might
+seem that LFU is more appropriate than LRU because LFU makes use of more
+pertinent information about each block in the selection process.
+A simple LFU algorithm has the following problem. It may be that certain
+blocks are referenced relatively infrequently overall, but when they are referenced,
+there are short intervals of repeated references due to locality, thus building up
+high reference counts. After such an interval is over, the reference count may be
+misleading and not reflect the probability that the block will soon be referenced
+again. Thus, the effect of locality may actually cause the LFU algorithm to make
+poor replacement choices.
+
+504  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+         To overcome this difficulty with LFU, a technique known as frequency-based
+     replacement is proposed in [ROBI90]. For clarity, let us first consider a simplified
+     version, illustrated in Figure 11.9a. The blocks are logically organized in a stack, as
+     with the LRU algorithm. A certain portion of the top part of the stack is designated
+     the new section. When there is a cache hit, the referenced block is moved to the top
+     of the stack. If the block was already in the new section, its reference count is not
+     incremented; otherwise it is incremented by 1. Given a sufficiently large new sec-
+     tion, this results in the reference counts for blocks that are repeatedly re-referenced
+     within a short interval remaining unchanged. On a miss, the block with the smallest
+     reference count that is not in the new section is chosen for replacement; the least
+     recently used such block is chosen in the event of a tie.
+         The authors report that this strategy achieved only slight improvement over
+     LRU. The problem is the following:
+     1.  On a cache miss, a new block is brought into the new section, with a count of 1.
+     2.  The count remains at 1 as long as the block remains in the new section.
+     3.  Eventually the block ages out of the new section, with its count still at 1.
+     4.  If the block is not now re-referenced fairly quickly, it is very likely to be
+         replaced because it necessarily has the smallest reference count of those blocks
+         that are not in the new section. In other words, there does not seem to be a
+         sufficiently long interval for blocks aging out of the new section to build up
+         their reference counts even if they were relatively frequently referenced.
+         A further refinement addresses this problem: Divide the stack into three
+     sections: new, middle, and old (Figure 11.9b). As before, reference counts are not
+     incremented on blocks in the new section. However, only blocks in the old section
+     are eligible for replacement. Assuming a sufficiently large middle section, this allows
+                      New section                                 Old section
+         MRU                                                                   LRU
+                      Re-reference;
+                      count unchanged      Re-reference;
+                                           count : count 1
+              Miss (new block brought in)
+                      count : 1
+                                           (a) FIFO
+                      New section          Middle section         Old section
+         MRU                                                                   LRU
+                                       (b) Use of three sections
+         Figure 11.9  Frequency-Based Replacement
+
+                                                                                    11.7 / DISK CACHE              505
+                          relatively frequently referenced blocks a chance to build up their reference counts
+                          before becoming eligible for replacement. Simulation studies by the authors indicate
+                          that this refined policy is significantly better than simple LRU or LFU.
+                                 Regardless of the particular replacement strategy, the replacement can take
+                          place on demand or preplanned. In the former case, a sector is replaced only when
+                          the slot is needed. In the latter case, a number of slots are released at a time. The
+                          reason for this latter approach is related to the need to write back sectors. If a sector
+                          is brought into the cache and only read, then when it is replaced, it is not necessary
+                          to write it back out to the disk. However, if the sector has been updated, then it is
+                          necessary to write it back out before replacing it. In this latter case, it makes sense
+                          to cluster the writing and to order the writing to minimize seek time.
+                          Performance Considerations
+                          The same performance considerations discussed in Appendix 1A apply here. The
+                          issue of cache performance reduces itself to a question of whether a given miss ratio
+                          can be achieved. This will depend on the locality behavior of the disk references,
+                          the replacement algorithm, and other design factors. Principally, however, the miss
+                          ratio is a function of the size of the disk cache. Figure 11.10 summarizes results from
+                          several studies using LRU, one for a UNIX system running on a VAX [OUST85]
+                          and one for IBM mainframe operating systems [SMIT85]. Figure 11.11 shows results
+                          for simulation studies of the frequency-based replacement algorithm. A comparison
+                          of the two figures points out one of the risks of this sort of performance assessment.
+                          60
+                          50         VAX UNIX
+Disk cache miss rate (%)  40
+                          30
+                          20
+                                                                                    IBM MVS
+                          10
+                                                          IBM SVS
+                          0
+                              0      5         10     15                      20             25        30
+                                                      Cache size (megabytes)
+Figure                        11.10  Some Disk Cache Performance Results Using LRU
+
+506  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+                               70
+                               60
+                               50
+     Disk cache miss rate (%)                                                                           IBM VM
+                               40
+                               30
+                                                              IBM MVS
+                               20
+                                                    VAX UNIX
+                               10
+                               0
+                                   0             5  10        15                          20    25      30
+                                                              Cache size (megabytes)
+     Figure 11.11                     Disk Cache Performance Using Frequency-Based Replacement
+                               The figures appear to show that LRU outperforms the frequency-based replace-
+                               ment algorithm. However, when identical reference patterns using the same cache
+                               structure are compared, the frequency-based replacement algorithm is superior.
+                               Thus, the exact sequence of reference patterns, plus related design issues such as
+                               block size, will have a profound influence on the performance achieved.
+11.8                           UNIX SVR4 I/O
+                               In UNIX, each individual I/O device is associated with a special file. These are man-
+                               aged by the file system and are read and written in the same manner as user data
+                               files. This provides a clean, uniform interface to users and processes. To read from
+                               or write to a device, read and write requests are made for the special file associated
+                               with the device.
+                                      Figure 11.12 illustrates the logical structure of the I/O facility. The file subsys-
+                               tem manages files on secondary storage devices. In addition, it serves as the process
+                               interface to devices, because these are treated as files.
+                                      There are two types of I/O in UNIX: buffered and unbuffered. Buffered I/O
+                               passes through system buffers, whereas unbuffered I/O typically involves the DMA
+
+                                                          11.8 / UNIX SVR4 I/O           507
+                                 File subsystem
+                                            Buffer cache
+                                 Character  Block
+                                 Device drivers
+                 Figure 11.12               UNIX I/O Structure
+facility, with the transfer taking place directly between the I/O module and the
+process I/O area. For buffered I/O, two types of buffers are used: system buffer
+caches and character queues.
+Buffer Cache
+The buffer cache in UNIX is essentially a disk cache. I/O operations with disk are
+handled through the buffer cache. The data transfer between the buffer cache and
+the user process space always occurs using DMA. Because both the buffer cache
+and the process I/O area are in main memory, the DMA facility is used in this case
+to perform a memory-to-memory copy. This does not use up any processor cycles,
+but it does consume bus cycles.
+   To manage the buffer cache, three lists are maintained:
+�  Free list: List of all slots in the cache (a slot is referred to as a buffer in UNIX;
+   each slot holds one disk sector) that are available for allocation
+�  Device list: List of all buffers currently associated with each disk
+�  Driver I/O queue: List of buffers that are actually undergoing or waiting for
+   I/O on a particular device
+   All buffers should be on the free list or on the driver I/O queue list. A buffer,
+once associated with a device, remains associated with the device even if it is on the
+free list, until is actually reused and becomes associated with another device. These
+lists are maintained as pointers associated with each buffer rather than physically
+separate lists.
+   When a reference is made to a physical block number on a particular device, the
+OS first checks to see if the block is in the buffer cache. To minimize the search time,
+the device list is organized as a hash table, using a technique similar to the overflow
+with chaining technique discussed in Appendix F (Figure F.1b). Figure 11.13 depicts
+the general organization of the buffer cache. There is a hash table of fixed length
+that contains pointers into the buffer cache. Each reference to a (device#, block#)
+maps into a particular entry in the hash table. The pointer in that entry points to
+the first buffer in the chain. A hash pointer associated with each buffer points to
+the next buffer in the chain for that hash table entry. Thus, for all (device#, block#)
+
+508  CHAPTER  11 / I/O MANAGEMENT AND DISK     SCHEDULING
+                               Hash table                      Buffer cache  Free list pointers  Hash pointers
+              Device#, Block#
+                               Free list
+                               pointer
+              Figure 11.13     UNIX Buffer Cache Organization
+     references that map into the same hash table entry, if the corresponding block is in
+     the buffer cache, then that buffer will be in the chain for that hash table entry. Thus,
+     the length of the search of the buffer cache is reduced by a factor on the order of N,
+     where N is the length of the hash table.
+     For block replacement, a least-recently-used algorithm is used: After a buffer has
+     been allocated to a disk block, it cannot be used for another block until all other buff-
+     ers have been used more recently. The free list preserves this least-recently-used order.
+     Character Queue
+     Block-oriented devices, such as disk and USB keys, can be effectively served by the
+     buffer cache. A different form of buffering is appropriate for character-oriented
+     devices, such as terminals and printers. A character queue is either written by the
+     I/O device and read by the process or written by the process and read by the device.
+     In both cases, the producer/consumer model introduced in Chapter 5 is used. Thus,
+     character queues may only be read once; as each character is read, it is effectively
+     destroyed. This is in contrast to the buffer cache, which may be read multiple times
+     and hence follows the readers/writers model (also discussed in Chapter 5).
+     Unbuffered I/O
+     Unbuffered I/O, which is simply DMA between device and process space,
+     is always the fastest method for a process to perform I/O. A process that is
+
+                                                                    11.9  /  LINUX I/O       509
+      Table 11.5  Device I/O in UNIX
+                              Unbuffered I/O  Buffer Cache                   Character Queue
+      Disk Drive                      X       X
+      Tape Drive                      X       X
+      Terminals                                                              X
+      Communication Lines                                                    X
+      Printers                        X                                      X
+      performing unbuffered I/O is locked in main memory and cannot be swapped
+      out. This reduces the opportunities for swapping by tying up part of main mem-
+      ory, thus reducing the overall system performance. Also, the I/O device is tied up
+      with the process for the duration of the transfer, making it unavailable for other
+      processes.
+      UNIX Devices
+      Among the categories of devices recognized by UNIX are the following:
+      �  Disk drives
+      �  Tape drives
+      �  Terminals
+      �  Communication lines
+      �  Printers
+         Table 11.5 shows the types of I/O suited to each type of device. Disk drives
+      are heavily used in UNIX, are block oriented, and have the potential for reason-
+      able high throughput. Thus, I/O for these devices tends to be unbuffered or via
+      buffer cache. Tape drives are functionally similar to disk drives and use similar I/O
+      schemes.
+         Because terminals involve relatively slow exchange of characters, terminal I/O
+      typically makes use of the character queue. Similarly, communication lines require
+      serial processing of bytes of data for input or output and are best handled by char-
+      acter queues. Finally, the type of I/O used for a printer will generally depend on its
+      speed. Slow printers will normally use the character queue, while a fast printer might
+      employ unbuffered I/O. A buffer cache could be used for a fast printer. However,
+      because data going to a printer are never reused, the overhead of the buffer cache is
+      unnecessary.
+11.9  LINUX I/O
+      In general terms, the Linux I/O kernel facility is very similar to that of other UNIX
+      implementation, such as SVR4. The Linux kernel associates a special file with each
+      I/O device driver. Block, character, and network devices are recognized. In this sec-
+      tion, we look at several features of the Linux I/O facility.
+
+510  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     Disk Scheduling
+     The default disk scheduler in Linux 2.4 is known as the Linux Elevator, which is
+     a variation on the LOOK algorithm discussed in Section 11.5. For Linux 2.6, the
+     Elevator algorithm has been augmented by two additional algorithms: the deadline
+     I/O scheduler and the anticipatory I/O scheduler [LOVE04]. We examine each of
+     these in turn.
+     THE  ELEVATOR   SCHEDULER  The elevator scheduler maintains a single queue
+     for disk read and write requests and performs both sorting and merging functions
+     on the queue. In general terms, the elevator scheduler keeps the list of requests
+     sorted by block number. Thus, as the disk requests are handled, the drive moves in
+     a single direction, satisfying each request as it is encountered. This general strategy
+     is refined in the following manner. When a new request is added to the queue, four
+     operations are considered in order:
+     1.   If the request is to the same on-disk sector or an immediately adjacent sector
+          to a pending request in the queue, then the existing request and the new re-
+          quest are merged into one request.
+     2.   If a request in the queue is sufficiently old, the new request is inserted at the
+          tail of the queue.
+     3.   If there is a suitable location, the new request is inserted in sorted order.
+     4.   If there is no suitable location, the new request is placed at the tail of the
+          queue.
+     DEADLINE SCHEDULER       Operation 2 in the preceding list is intended to prevent
+     starvation of a request, but is not very effective [LOVE04]. It does not attempt to
+     service requests in a given time frame but merely stops insertion-sorting requests
+     after a suitable delay. Two problems manifest themselves with the elevator scheme.
+     The first problem is that a distant block request can be delayed for a substantial
+     time because the queue is dynamically updated. For example, consider the following
+     stream of requests for disk blocks: 20, 30, 700, 25. The elevator scheduler reorders
+     these so that the requests are placed in the queue as 20, 25, 30, 700, with 20 being the
+     head of the queue. If a continuous sequence of low-numbered block requests arrive,
+     then the request for 700 continues to be delayed.
+          An even more serious problem concerns the distinction between read and
+     write requests. Typically, a write request is issued asynchronously. That is, once
+     a process issues the write request, it need not wait for the request to actually be
+     satisfied. When an application issues a write, the kernel copies the data into an
+     appropriate buffer, to be written out as time permits. Once the data are captured
+     in the kernel's buffer, the application can proceed. However, for many read oper-
+     ations, the process must wait until the requested data are delivered to the appli-
+     cation before proceeding. Thus, a stream of write requests (e.g., to place a large
+     file on the disk) can block a read request for a considerable time and thus block a
+     process.
+          To   overcome  these  problems,     the  deadline  I/O  scheduler  makes             use
+     of three queues (Figure 11.14). Each incoming request is placed in the sorted
+
+                                                     11.9 / LINUX I/O                     511
+Sorted (elevator) queue
+Read FIFO queue
+Write FIFO queue
+Figure 11.14       The Linux Deadline I/O Scheduler
+elevator queue, as before. In addition, the same request is placed at the tail of a
+read FIFO queue for a read request or a write FIFO queue for a write request.
+Thus, the read and write queues maintain a list of requests in the sequence in
+which the requests were made. Associated with each request is an expiration
+time, with a default value of 0.5 seconds for a read request and 5 seconds for a
+write request. Ordinarily, the scheduler dispatches from the sorted queue. When
+a request is satisfied, it is removed from the head of the sorted queue and also
+from the appropriate FIFO queue. However, when the item at the head of one of
+the FIFO queues becomes older than its expiration time, then the scheduler next
+dispatches from that FIFO queue, taking the expired request, plus the next few
+requests from the queue. As each request is dispatched, it is also removed from
+the sorted queue.
+The deadline I/O scheduler scheme overcomes the starvation problem and
+also the read versus write problem.
+ANTICIPATORY I/O SCHEDULER           The original elevator scheduler and the deadline
+scheduler both are designed to dispatch a new request as soon as the existing request
+is satisfied, thus keeping the disk as busy as possible. This same policy applies to all
+of the scheduling algorithms discussed in Section 11.5. However, such a policy can
+be counterproductive if there are numerous synchronous read requests. Typically,
+an application will wait until a read request is satisfied and the data available before
+issuing the next request. The small delay between receiving the data for the last
+read and issuing the next read enables the scheduler to turn elsewhere for a pending
+request and dispatch that request.
+Because of the principle of locality, it is likely that successive reads from the
+same process will be to disk blocks that are near one another. If the scheduler were
+to delay a short period of time after satisfying a read request, to see if a new nearby
+read request is made, the overall performance of the system could be enhanced.
+This is the philosophy behind the anticipatory scheduler, proposed in [IYER01],
+and implemented in Linux 2.6.
+
+512  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+          In Linux, the anticipatory scheduler is superimposed on the deadline sched-
+     uler. When a read request is dispatched, the anticipatory scheduler causes the
+     scheduling system to delay for up to 6 ms, depending on the configuration. During
+     this small delay, there is a good chance that the application that issued the last
+     read request will issue another read request to the same region of the disk. If
+     so, that request will be serviced immediately. If no such read request occurs, the
+     scheduler resumes using the deadline scheduling algorithm.
+          [LOVE04] reports on two tests of the Linux scheduling algorithms. The first
+     test involved the reading of a 200-MB file while doing a long streaming write in
+     the background. The second test involved doing a read of a large file in the back-
+     ground while reading every file in the kernel source tree. The results are listed in
+     the following table:
+          I/O Scheduler and Kernel           Test 1                       Test 2
+          Linux elevator on 2.4              45 seconds            30 minutes, 28 seconds
+          Deadline I/O scheduler on 2.6      40 seconds                3 minutes, 30 seconds
+          Anticipatory I/O scheduler on 2.6  4.6 seconds               15 seconds
+          As can be seen, the performance improvement depends on the nature of
+     the workload. But in both cases, the anticipatory scheduler provides a dramatic
+     improvement.
+     Linux Page Cache
+     In Linux 2.2 and earlier releases, the kernel maintained a page cache for reads and
+     writes from regular file system files and for virtual memory pages, and a separate
+     buffer cache for block I/O. For Linux 2.4 and later, there is a single unified page
+     cache that is involved in all traffic between disk and main memory.
+          The page cache confers two benefits. First, when it is time to write back dirty
+     pages to disk, a collection of them can be ordered properly and written out effi-
+     ciently. Second, because of the principle of temporal locality, pages in the page
+     cache are likely to be referenced again before they are flushed from the cache, thus
+     saving a disk I/O operation.
+          Dirty pages are written back to disk in two situations:
+       �  When free memory falls below a specified threshold, the kernel reduces the
+          size of the page cache to release memory to be added to the free memory pool.
+       �  When dirty pages grow older than a specified threshold, a number of dirty
+          pages are written back to disk.
+11.10  WINDOWS I/O
+     Figure 11.15 shows the key kernel-mode components related to the Windows I/O
+     manager. The I/O manager is responsible for all I/O for the operating system and
+     provides a uniform interface that all types of drivers can call.
+
+                                                           11.10 / WINDOWS I/O         513
+                                     I/O manager
+                                     Cache
+                                     manager
+                                     File system
+                                     drivers
+                                     Network
+                                     drivers
+                                     Hardware
+                                     device drivers
+                      Figure  11.15  Windows I/O     Manager
+Basic I/O Facilities
+The I/O manager works closely with four types of kernel components:
+�  Cache manager: The cache manager handles file caching for all file systems.
+   It can dynamically increase and decrease the size of the cache devoted to a
+   particular file as the amount of available physical memory varies. The system
+   records updates in the cache only and not on disk. A kernel thread, the lazy
+   writer, periodically batches the updates together to write to disk. Writing the
+   updates in batches allows the I/O to be more efficient. The cache manager
+   works by mapping regions of files into kernel virtual memory and then relying
+   on the virtual memory manager to do most of the work to copy pages to and
+   from the files on disk.
+�  File system drivers: The I/O manager treats a file system driver as just another
+   device driver and routes I/O requests for file system volumes to the appropri-
+   ate software driver for that volume. The file system, in turn, sends I/O requests
+   to the software drivers that manage the hardware device adapter.
+�  Network drivers: Windows includes integrated networking capabilities and
+   support for remote file systems. The facilities are implemented as software
+   drivers rather than part of the Windows Executive.
+�  Hardware device drivers: These software drivers access the hardware regis-
+   ters of the peripheral devices using entry points in the Hardware Abstraction
+   Layer. A set of these routines exists for every platform that Windows supports;
+   because the routine names are the same for all platforms, the source code of
+   Windows device drivers is portable across different processor types.
+Asynchronous and Synchronous I/O
+Windows offers two modes of I/O operation: asynchronous and synchronous. The
+asynchronous mode is used whenever possible to optimize application perfor-
+mance. With asynchronous I/O, an application initiates an I/O operation and then
+can continue processing while the I/O request is fulfilled. With synchronous I/O, the
+application is blocked until the I/O operation completes.
+   Asynchronous I/O is more efficient, from the point of view of the calling
+thread, because it allows the thread to continue execution while the I/O operation is
+
+514  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     queued by the I/O manager and subsequently performed. However, the application
+     that invoked the asynchronous I/O operation needs some way to determine when
+     the operation is complete. Windows provides five different techniques for signaling
+     I/O completion:
+     �  Signaling the file object: With this approach, the event associated with a
+        file object is set when an operation on that object is complete. The thread
+        that invoked the I/O operation can continue to execute until it reaches a
+        point where it must stop until the I/O operation is complete. At that point,
+        the thread can wait until the operation is complete and then continue. This
+        technique is simple and easy to use but is not appropriate for handling
+        multiple I/O requests. For example, if a thread needs to perform multiple
+        simultaneous actions on a single file, such as reading from one portion and
+        writing to another portion of the file, with this technique the thread could
+        not distinguish between the completion of the read and the completion of
+        the write. It would simply know that one of the requested I/O operations on
+        this file had finished.
+     �  Signaling an event object: This technique allows multiple simultaneous I/O
+        requests against a single device or file. The thread creates an event for each
+        request. Later, the thread can wait on a single one of these requests or on an
+        entire collection of requests.
+     �  Asynchronous procedure call: This technique makes use of a queue associated
+        with a thread, known as the asynchronous procedure call (APC) queue. In this
+        case, the thread makes I/O requests, specifying a user-mode routine to call
+        when the I/O completes. The I/O manager places the results of each request in
+        the calling thread's APC queue. The next time the thread blocks in the kernel,
+        the APCs will be delivered, each causing the thread to return to user mode
+        and execute the specified routine.
+     �  I/O completion ports: This technique is used on a Windows server to optimize
+        the use of threads. The application creates a pool of threads for handling the
+        completion of I/O requests. Each thread waits on the completion port, and the
+        Kernel wakes threads to handle each I/O completion. One of the advantages
+        of this approach is that the application can specify a limit for how many of
+        these threads will run at the same time.
+     �  Polling: Asynchronous I/O requests write a status and transfer count into the
+        process' user virtual memory when the operation completes. A thread can just
+        check these values to see if the operation has completed.
+     Software RAID
+     Windows supports two sorts of RAID configurations, defined in [MS96] as follows:
+     �  Hardware RAID: Separate physical disks combined into one or more logical
+        disks by the disk controller or disk storage cabinet hardware.
+     �  Software RAID: Noncontiguous disk space combined into one or more logical
+        partitions by the fault-tolerant software disk driver, FTDISK.
+
+                                            11.11 / SUMMARY                            515
+       In hardware RAID, the controller interface handles the creation and regener-
+ation of redundant information. The software RAID, available on Windows Server,
+implements the RAID functionality as part of the operating system and can be used
+with any set of multiple disks. The software RAID facility implements RAID 1
+and RAID 5. In the case of RAID 1 (disk mirroring), the two disks containing the
+primary and mirrored partitions may be on the same disk controller or different
+disk controllers. The latter configuration is referred to as disk duplexing.
+Volume Shadow Copies
+Shadow copies are an efficient way of making consistent snapshots of volumes
+so that they can be backed up. They are also useful for archiving files on a per-
+volume basis. If a user deletes a file he or she can retrieve an earlier copy from
+any available shadow copy made by the system administrator. Shadow copies are
+implemented by a software driver that makes copies of data on the volume before
+it is overwritten.
+Volume Encryption
+Windows supports the encryption of entire volumes, using a feature called
+BitLocker. This is more secure than encrypting individual files, as the entire system
+works to be sure that the data is safe. Up to three different methods of supplying the
+cryptographic key can be provided, allowing multiple interlocking layers of security.
+11.11  SUMMARY
+The computer system's interface to the outside world is its I/O architecture. This
+architecture is designed to provide a systematic means of controlling interaction
+with the outside world and to provide the operating system with the information it
+needs to manage I/O activity effectively.
+       The I/O function is generally broken up into a number of layers, with lower
+layers dealing with details that are closer to the physical functions to be performed
+and higher layers dealing with I/O in a logical and generic fashion. The result is that
+changes in hardware parameters need not affect most of the I/O software.
+       A key aspect of I/O is the use of buffers that are controlled by I/O utili-
+ties rather than by application processes. Buffering smoothes out the differences
+between the internal speeds of the computer system and the speeds of I/O devices.
+The use of buffers also decouples the actual I/O transfer from the address space
+of the application process. This allows the operating system more flexibility in
+performing its memory-management function.
+       The aspect of I/O that has the greatest impact on overall system performance
+is disk I/O. Accordingly, there has been greater research and design effort in this
+area than in any other kind of I/O. Two of the most widely used approaches to
+improve disk I/O performance are disk scheduling and the disk cache.
+       At any time, there may be a queue of requests for I/O on the same disk. It is
+the object of disk scheduling to satisfy these requests in a way that minimizes the
+
+516  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     mechanical seek time of the disk and hence improves performance. The physical
+     layout of pending requests plus considerations of locality come into play.
+       A disk cache is a buffer, usually kept in main memory, that functions as a
+     cache of disk blocks between disk memory and the rest of main memory. Because
+     of the principle of locality, the use of a disk cache should substantially reduce the
+     number of block I/O transfers between main memory and disk.
+11.12  RECOMMENDED READING
+     General discussions of computer I/O can be found in most books on computer archi-
+     tecture, such as [STAL10]. [MEE96a] provides a good survey of the underlying
+     recording technology of disk and tape systems. [MEE96b] focuses on the data stor-
+     age techniques for disk and tape systems. [WIED87] contains an excellent discussion
+     of disk performance issues, including those relating to disk scheduling. [NG98] looks
+     at disk hardware performance issues. [CAO96] analyzes disk caching and disk sched-
+     uling. Good surveys of disk scheduling algorithms, with a performance analysis, are
+     [WORT94] and [SELT90].
+       [PAI00] is an instructive description of an integrated operating-system scheme
+     for I/O buffering and caching.
+       [DELL00] provides a detailed discussion of Windows NT device drivers plus a
+     good overview of the entire Windows I/O architecture.
+       An excellent survey of RAID technology, written by the inventors of the
+     RAID concept, is [CHEN94]. [CHEN96] analyzes RAID performance. Another
+     good paper is [FRIE96]. [DALT96] describes the Windows NT software RAID
+     facility in detail. [LEVE10] examines the need to move beyond RAID 6 to a triple-
+     parity configuration. [STAI10] is a good survey of the standard RAID levels plus a
+     number of common RAID enhancements.
+       CAO96   Cao, P., Felten, E., Karlin, A., and Li, K. "Implementation and Performance
+       of Integrated Application-Controlled File Caching, Prefetching, and Disk
+       Scheduling." ACM Transactions on Computer Systems, November 1996.
+       CHEN94  Chen, P., Lee, E., Gibson, G., Katz, R., and Patterson, D. "RAID: High-
+       Performance, Reliable Secondary Storage." ACM Computing Surveys, June 1994.
+       CHEN96  Chen,  S.,  and  Towsley,  D.  "A  Performance  Evaluation        of  RAID
+       Architectures." IEEE Transactions on Computers, October 1996.
+       DALT96  Dalton, W., et al. Windows NT Server 4: Security, Troubleshooting, and
+       Optimization. Indianapolis, IN: New Riders Publishing, 1996.
+       DELL00  Dekker, E., and Newcomer, J. Developing Windows NT Device Drivers: A
+       Programmer's Handbook. Reading, MA: Addison Wesley, 2000.
+       FRIE96  Friedman, M. "RAID Keeps Going and Going and..." IEEE Spectrum,
+       April 1996.
+       LEVE10  Leventhal, A. "Triple-Parity RAID and Beyond." Communications of the
+       ACM, January 2010.
+       MEE96a  Mee, C., and Daniel, E. eds. Magnetic Recording Technology. New York:
+       McGraw Hill, 1996.
+
+                       11.13 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                          517
+           MEE96b      Mee, C., and Daniel, E. eds. Magnetic Storage Handbook. New York:
+                  McGraw Hill, 1996.
+           NG98    Ng, S. "Advances in Disk Technology: Performance Issues." Computer, May 1989.
+           PAI00   Pai, V., Druschel, P., and Zwaenepoel, W. "IO-Lite: A Unified I/O Buffering
+                  and Caching System." ACM Transactions on Computer Systems, February 2000.
+           SELT90     Seltzer, M., Chen, P., and Ousterhout, J. "Disk Scheduling Revisited."
+                  Proceedings, USENIX Winter Technical Conference, January 1990.
+           STAI10     Staimer, M. "Alternatives to RAID." Storage Magazine, May 2010.
+           STAL10     Stallings, W. Computer Organization and Architecture, 8th ed. Upper Saddle
+                  River, NJ: Prentice Hall, 2010.
+           WIED87      Wiederhold,        G.  File  Organization  for  Database   Design.  New  York:
+                  McGraw-Hill, 1987.
+           WORT94      Worthington, B., Ganger, G., and Patt, Y. "Scheduling Algorithms for
+                  Modern Disk Drives." ACM SiGMETRICS, May 1994.
+11.13      KEY TERMS,  REVIEW QUESTIONS,                               AND PROBLEMS
+Key Terms
+block                    input/output (I/O)                            redundant array of
+block-oriented device    I/O buffer                                    independent disks
+circular buffer          I/O channel                                   removable disk
+device I/O               I/O processor                                 rotational delay
+direct memory access     logical I/O                                   sector
+disk access time         magnetic disk                                 seek time
+disk cache               nonremovable disk                             stream-oriented device
+gap                      programmed I/O                                track
+hard disk                read/write head                               transfer time
+interrupt-driven I/O
+       Review Questions
+       11.1       List and briefly define three techniques for performing I/O.
+       11.2       What is the difference between logical I/O and device I/O?
+       11.3       What is the difference between block-oriented devices and stream-oriented devices?
+                  Give a few examples of each.
+       11.4       Why would you expect improved performance using a double buffer rather than a
+                  single buffer for I/O?
+       11.5       What delay elements are involved in a disk read or write?
+       11.6       Briefly define the disk scheduling policies illustrated in Figure 11.7.
+       11.7       Briefly define the seven RAID levels.
+       11.8       What is the typical disk sector size?
+
+518  CHAPTER 11 / I/O MANAGEMENT AND DISK SCHEDULING
+     Problems
+     11.1   Consider a program that accesses a single I/O device and compare unbuffered I/O to
+            the use of a buffer. Show that the use of the buffer can reduce the running time by at
+            most a factor of two.
+     11.2   Generalize the result of Problem 11.1 to the case in which a program refers to n devices.
+     11.3   a.  Perform the same type of analysis as that of Table 11.2 for the following sequence
+                of disk track requests: 27, 129, 110, 186, 147, 41, 10, 64, 120. Assume that the
+                disk head is initially positioned over track 100 and is moving in the direction of
+                decreasing track number.
+            b.  Do the same analysis, but now assume that the disk head is moving in the direction
+                of increasing track number.
+     11.4   Consider a disk with N tracks numbered from 0 to (N - 1) and assume that requested
+            sectors are distributed randomly and evenly over the disk. We want to calculate the
+            average number of tracks traversed by a seek.
+            a.  Calculate the probability of a seek of length j when the head is currently posi-
+                tioned over track t. (Hint: This is a matter of determining the total number of
+                combinations, recognizing that all track positions for the destination of the seek
+                are equally likely.)
+            b.  Calculate the probability of a seek of length K, for an arbitrary current position
+                of the head. (Hint: This involves the summing over all possible combinations of
+                movements of K tracks.)
+            c.  Calculate the average number of tracks traversed by a seek, using the formula for
+                expected value
+                                                       N-1
+                                               E[x] =  ai *    Pr [x = i]
+                                                       i=0
+                                          n       n(n + 1)     n           n(n + 1)(2n + 1)
+                Hint: Use the equalities a     =       2    ;  a i2  =     6                 .
+                                          i=1                  i=1
+            d.  Show that for large values of N, the average number of tracks traversed by a seek
+                approaches N/3.
+     11.5   The following equation was suggested both for cache memory and disk cache memory:
+                                               TS = TC + M * TD
+            Generalize this equation to a memory hierarchy with N levels instead of just 2.
+     11.6   For the frequency-based replacement algorithm (Figure 11.9), define Fnew, Fmiddle,
+            and Fold as the fraction of the cache that comprises the new, middle, and old sections,
+            respectively. Clearly, Fnew + Fmiddle + Fold = 1. Characterize the policy when
+            a.  Fold  =  1  -  Fnew
+            b.  Fold = 1/(cache size)
+     11.7   Calculate how much disk space (in sectors, tracks, and surfaces) will be required to
+            store 300,000 120-byte logical records if the disk is fixed sector with 512 bytes/
+            sector, with 96 sectors/track, 110 tracks per surface, and 8 usable surfaces. Ignore
+            any file header record(s) and track indexes, and assume that records cannot span
+            two sectors.
+     11.8   Consider the disk system described in Problem 11.7, and assume that the disk rotates
+            at 360 rpm. A processor reads one sector from the disk using interrupt-driven I/O,
+            with one interrupt per byte. If it takes 2.5 s to process each interrupt, what percent-
+            age of the time will the processor spend handling I/O (disregard seek time)?
+     11.9   Repeat the preceding problem using DMA, and assume one interrupt per sector.
+     11.10  A 32-bit computer has two selector channels and one multiplexor channel. Each selec-
+            tor channel supports two magnetic disk and two magnetic tape units. The multiplexor
+
+       11.13 / KEY TERMS, REVIEW QUESTIONS, AND PROBLEMS                 519
+       channel has two line printers, two card readers, and ten VDT terminals connected to
+       it. Assume the following transfer rates:
+       Disk drive                                800 Kbytes/s
+       Magnetic tape drive                       200 Kbytes/s
+       Line printer                              6.6 Kbytes/s
+       Card reader                               1.2 Kbytes/s
+       VDT                                       1 Kbyte/s
+       Estimate the maximum aggregate I/O transfer rate in this system.
+11.11  It should be clear that disk striping can improve the data transfer rate when the strip
+       size is small compared to the I/O request size. It should also be clear that RAID 0
+       provides improved performance relative to a single large disk, because multiple I/O
+       requests can be handled in parallel. However, in this latter case, is disk striping neces-
+       sary? That is, does disk striping improve I/O request rate performance compared to a
+       comparable disk array without striping?
+11.12  Consider a 4-drive, 200 GB-per-drive RAID array. What is the available data storage
+       capacity for each of the RAID levels, 0, 1, 3, 4, 5, and 6?
+
+                                       CHAPTER
+FILE MANAGEMENT
+     12.1   Overview
+            Files and File Systems
+            File Structure
+            File Management Systems
+     12.2   File Organization and Access
+            The Pile
+            The Sequential File
+            The Indexed Sequential File
+            The Indexed File
+            The Direct or Hashed File
+     12.3   B-Trees
+     12.4   File Directories
+            Contents
+            Structure
+            Naming
+     12.5   File Sharing
+            Access Rights
+            Simultaneous Access
+     12.6   Record Blocking
+     12.7   Secondary Storage Management
+            File Allocation
+            Free Space Management
+            Volumes
+            Reliability
+     12.8   File System Security
+     12.9   UNIX File Management
+     12.10  Linux Virtual File System
+     12.11  Windows File System
+     12.12  Summary
+     12.13  Recommended Reading
+     12.14  Key Terms, Review Questions, and Problems
+520

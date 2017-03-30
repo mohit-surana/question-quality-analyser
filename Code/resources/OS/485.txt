@@ -1,0 +1,155 @@
+UNIX FreeBSD Scheduling
+                                                          10.5 / UNIX FREEBSD SCHEDULING           463
+      priority if it blocks on an event or resource. The time quantum allocated to a time-
+      sharing process depends on its priority, ranging from 100 ms for priority 0 to 10 ms
+      for priority 59. Each real-time process has a fixed priority and a fixed time quantum.
+10.5  UNIX FREEBSD SCHEDULING
+      The UNIX FreeBSD scheduler is designed to provide a more efficient operation
+      than previous UNIX schedulers under heavy load and when used on a multiproces-
+      sor or multicore platform. The scheduler is quite complex and here we present an
+      overview of the most significant design features; for more detail, see [MCKU05]
+      and [ROBE03].
+      Priority Classes
+      The underlying priority mechanism in the FreeBSD 5.1 scheduler is similar to that
+      of UNIX SVR4. For FreeBSD, five priority classes are defined (Table 10.5); the
+      first two classes are for kernel-mode thread and the remaining classes for user-mode
+      threads. Kernel threads execute code that is complied into the kernel's load image
+      and operate with the kernel's privileged execution code.
+            The highest-priority threads are referred to as bottom-half kernel. Threads in
+      this class run in the kernel are scheduled based on interrupt priorities. These pri-
+      orities are set when the corresponding devices are configured and do not change.
+      Top-half kernel threads also run in the kernel and execute various kernel functions.
+      These priorities are set based on predefined priorities and never change.
+            The next lower priority class is referred to as real-time user. A thread with a
+      real-time priority is not subject to priority degradation. That is, a real-time thread
+      maintains the priority it began with and does not drop to a lower priority as a result
+      of using resources. Next comes the time-sharing user priority class. For threads in
+      this class, priority is periodically recalculated based on a number of parameters,
+      including the amount of processor time used, the amount of memory resources
+      held, and other resource consumption parameters. The lowest range of priorities is
+      referred to as the idle user class. This class is intended for applications that will only
+      consume processor time when no other threads are ready to execute.
+      Table 10.5  FreeBSD Thread Scheduling Classes
+      Priority Class  Thread Type         Description
+      0­63            Bottom-half kernel  Scheduled by interrupts. Can block to await a resource.
+      64­127          Top-half kernel     Runs until blocked or done. Can block to await a resource.
+      128­159         Real-time user      Allowed to run until blocked or until a higher-priority
+                                          thread becomes available. Preemptive scheduling.
+      160­223         Time-sharing user   Adjusts priorities based on processor usage.
+      224­255         Idle user           Only run when there are no time sharing or real-time
+                                          threads to run.
+      Note: Lower number corresponds to higher priority.
+
+464  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+     SMP and Multicore Support
+     The latest version of the FreeBSD scheduler, introduced with FreeBSD 5.0, was
+     designed to provide effective scheduling for a SMP or multicore system. The new
+     scheduler meets three design goals:
+     ·   Address the need for processor affinity in SMP and multicore systems. The term
+         processor affinity refers to a scheduler that only migrates a thread (moves thread
+         from one processor to another) when necessary to avoid having an idle processor.
+     ·   Provide better support for multithreading on multicore systems.
+     ·   Improve the performance of the scheduling algorithm, so that it is no longer a
+         function of the number of threads in the system.
+         In this subsection, we look at three key features of the new scheduler: queue
+     structure, interactivity scoring, and thread migration.
+     QUEUE STRUCTURE        The previous version of the FreeBSD schedule used a single
+     global scheduling queue for all processors that it traverses once per second to
+     recalculate their priorities. The use of a single list for all threads means that the
+     performance of the scheduler is dependent on the number of tasks in the system, and
+     as the number of tasks grows, more processor time must be spent in the scheduler
+     maintaining the list.
+         The new scheduler performs scheduling independently for each processor. For
+     each processor, three queues are maintained. Each of the queues has the structure
+     shown in Figure 10.14 for SVR4. Two runqueues implement the kernel, real-time,
+     and time-sharing scheduling classes (priorities 0 through 223). The third queue is
+     only for the idle class (priorities 224 through 255).
+         The two runqueues are designated current and next. Every thread that is granted
+     a timeslice (place in the Ready state) is placed in either the current queue or the next
+     queue, as explained subsequently, at the appropriate priority for that thread. The
+     scheduler for a processor selects threads from the current queue in priority order until
+     the current queue is empty. When the current queue is empty, the scheduler swaps the
+     current and next queue and begins to schedule threads from the new current queue.
+     The use of two runqueues guarantees that each thread will be granted processor time
+     at least once every two queue switches regardless of priority, avoiding starvation.
+         Several rules determine the assignment of a thread to either the current queue
+     or the next queue:
+     1.  Kernel and real-time threads are always inserted onto the current queue.
+     2.  A time-sharing thread is assigned to the current queue if it is interactive
+         (explained in the next subsection) or to the next queue otherwise. Inserting
+         interactive threads onto the current queue results in a low interactive response
+         time for such threads, compared to other time-sharing threads that do not
+         exhibit a high degree of interactivity.
+     INTERACTIVITY  SCORING  A thread is considered to be interactive if the ratio of
+     its voluntary sleep time versus its run time is below a certain threshold. Interactive
+     threads typically have high sleep times as they wait for user input. These sleep intervals
+     are followed by bursts of processor activity as the thread processes the user's request.
+
+                                            10.5 / UNIX FREEBSD SCHEDULING   465
+                        Highest (31)
+          Real-time
+          priority
+          classes
+                        Lowest (16)
+                        Highest (15)
+          Variable
+          priority
+          classes
+                        Lowest (0)
+          Figure 10.14  Windows Thread Dispatching Priorities
+The interactivity threshold is defined in the scheduler code and is not config-
+urable. The scheduler uses two equations to compute the interactivity score of a
+thread. First, we define a scaling factor:
+                     Scaling factor =  Maximum interactivity score
+                                            2
+For threads whose sleep time exceeds their run time, the following equation
+is used:
+                     Interactivity score = Scaling factor a     run    b
+                                                                sleep
+When a thread's run time exceeds its sleep time, the following equation is used
+instead:
+                    Interactivity score = Scaling factor a 1 +  sleep     b
+                                                                run
+
+466  CHAPTER 10 / MULTIPROCESSOR AND REAL-TIME SCHEDULING
+      The result is that threads whose sleep time exceeds their run time score in the
+      lower half of the range of interactivity scores, and threads whose run time exceeds
+      their sleep time score in the upper half of the range.
+      THREAD MIGRATION  In general, it is desirable to schedule a Ready thread onto the
+      last processor that it ran on; this is called processor affinity. The alternative is to allow
+      a thread to migrate to another processor for its next execution time slice. Processor
+      affinity is significant because of local caches dedicated to a single processor. When
+      a thread is run, it may still have data in the cache of its last processor. Changing to
+      another processor means that the necessary data must be loaded into caches in the
+      new processor and cache lines from the preceding processor must be invalidated.
+      On the other hand, processor migration may allow a better load balancing and may
+      prevent idle periods on some processors while other processor have more work
+      than they can handle in a timely fashion.
+      The FreeBSD scheduler supports two mechanisms for thread migration to bal-
+      ance load: pull and push. With the pull mechanism, and idle processor steals a thread
+      from a nonidle processor. When a processor has no work to do, it sets a bit in a global
+      bit-mask indicating that it is idle. When an active processor is about to add work to
+      its own run queue, it first checks for such idle bits and if a set idle bit is found, passes
+      the thread to the idle processor. It is primarily useful when there is a light or sporadic
+      load, or in situations where processes are starting and exiting very frequently.
+      The pull mechanism is effective in preventing the waste of a processor due
+      to idleness. But it is not effective, or indeed relevant, in a situation in which every
+      processor has work to do but the load has developed in an uneven fashion. With
+      the push mechanism, a periodic scheduler task evaluates the current load situation
+      and evens it out. Twice per second, this task picks the most-loaded and least-loaded
+      processors in the system and equalizes their run queues. Push migration ensures
+      fairness among the runnable threads.
+10.6  WINDOWS SCHEDULING
+      Windows is designed to be as responsive as possible to the needs of a single user in
+      a highly interactive environment or in the role of a server. Windows implements a
+      preemptive scheduler with a flexible system of priority levels that includes round-
+      robin scheduling within each level and, for some levels, dynamic priority variation
+      on the basis of their current thread activity. Threads are the unit of scheduling in
+      Windows rather than processes.
+      Process and Thread Priorities
+      Priorities in Windows are organized into two bands, or classes: real time and vari-
+      able. Each of these bands consists of 16 priority levels. Threads requiring immediate
+      attention are in the real-time class, which includes functions such as communica-
+      tions and real-time tasks.
+      Overall, because Windows makes use of a priority-driven preemptive scheduler,
+      threads with real-time priorities have precedence over other threads. When a thread
