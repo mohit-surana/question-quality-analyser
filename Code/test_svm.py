@@ -12,7 +12,7 @@ Y_know = []
 
 with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
+        csvreader = csv.reader(all_rows[len(all_rows)*7//10:])
         for row in csvreader:
             sentence, label_cog, label_know = row
             m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)

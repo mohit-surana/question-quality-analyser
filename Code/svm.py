@@ -12,8 +12,8 @@ from sklearn.feature_extraction.text import TfidfTransformer
 
 from utils import clean
 
-PREPARE_VOCAB = False
-TRAIN_CLASSIFIER = False
+PREPARE_VOCAB = True
+TRAIN_CLASSIFIER = True
 FILTERED = True
 
 filtered_suffix = '_filtered' if FILTERED else ''
@@ -32,6 +32,7 @@ Y_know = []
 
 if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
     freq = dict()
+    '''
     with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
         csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
@@ -47,10 +48,10 @@ if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
             X.append(clean_sentence)
             Y_cog.append(mapping_cog[label_cog])
             Y_know.append(mapping_know[label_know])
-
+    '''
     with codecs.open('datasets/BCLs_Question_Dataset.csv', 'r', encoding="utf-8") as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
+        csvreader = csv.reader(all_rows)  #csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
         for row in csvreader:
             sentence, label_cog = row
             clean_sentence = clean(sentence)
@@ -103,7 +104,7 @@ def train(X, Y, model_name='svm_model'):
 
     X = tfidf.toarray()
 
-    clf = svm.LinearSVC()
+    clf = svm.SVC(kernel='rbf') #clf = svm.LinearSVC()
     clf.fit(X,Y)
     joblib.dump(transformer, 'models/tfidf_transformer%s.pkl' % (filtered_suffix, ))
     joblib.dump(clf, 'models/%s%s.pkl' % (model_name, filtered_suffix, ))
