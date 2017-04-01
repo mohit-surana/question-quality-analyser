@@ -103,14 +103,14 @@ def train(X, Y, model_name='svm_model'):
     tfidf = transformer.fit_transform(X_vec)
 
     X = tfidf.toarray()
-
+    print(X)
     clf = svm.SVC(kernel='rbf') #clf = svm.LinearSVC()
     clf.fit(X,Y)
     joblib.dump(transformer, 'models/tfidf_transformer%s.pkl' % (filtered_suffix, ))
     joblib.dump(clf, 'models/%s%s.pkl' % (model_name, filtered_suffix, ))
 
     '''
-    # MOHIT, don't cry when you see this, you're code is still here. :P
+    # MOHIT, don't cry when you see this, your code is still here. :P
     clf.fit(X[:(7*len(X))//10], Y[:(7*len(X))//10])
 
     joblib.dump(transformer, 'models/tfidf_transformer%s.pkl' % (filtered_suffix, ))
