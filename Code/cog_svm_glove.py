@@ -4,8 +4,12 @@ import csv
 from utils import clean
 import re
 import pickle
+from collections import defaultdict
 from sklearn.externals import joblib
 from sklearn import svm
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
@@ -14,7 +18,7 @@ X_trans = []
 Y_cog = []
 Y_know = []
 FILTERED = False
-TRAIN_SVM_GLOVE = False
+TRAIN_SVM_GLOVE = True
 
 filtered_suffix = '_filtered' if FILTERED else ''
 
@@ -24,6 +28,10 @@ def train(X, Y, model_name = 'svm_model_glove'):
     joblib.dump(clf, 'models/%s%s.pkl' % (model_name, filtered_suffix, ))
     
 def test():
+    global X_test
+    classify = pickle.load(open('models/glove_svm_model.pkl', 'rb'))
+    X_test = []
+    X = []
     with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
         csvreader = csv.reader(all_rows[len(all_rows)*7//10:])
@@ -33,14 +41,18 @@ def test():
             sentence = m.groups()[2]
             label_cog = label_cog.split('/')[0]
             label_know = label_know.split('/')[0]
-            clean_sentence = clean(sentence, return_as_list = False)
+            clean_sentence = clean(sentence)
             X.append(clean_sentence)
             Y_cog.append(mapping_cog[label_cog])
             Y_know.append(mapping_know[label_know])
-            X_trans.extend(obj.transform([clean(sentence)]))
+            X_test.extend(clean_sentence)
+            #X_test.extend(obj.transform([clean(sentence)]))
             
-
-    get_labels_batch(X) #probs, labels = get_labels_batch(X)
+    #X_test = np.array(X_test)
+    #print(X_test.tolist()[0])
+    prediction = classify.predict(X_test)
+    classify.score(X_test, Y_cog)
+    #get_labels_batch(X)#get_labels_batch(X_test) #probs, labels = get_labels_batch(X)
     #print('Accuracy:', svm.get_prediction(labels, Y_cog)*100, '%')
     #for x, xt in zip(X, X_trans):
     #    print(x, xt)    
@@ -50,6 +62,7 @@ def get_labels_batch(questions, model_name='svm_model_glove'):
     #CHANGE THINGS HERE 
     labels = []
     probabs = []
+    '''
     for question in questions:
         
         clf = joblib.load('models/%s%s.pkl' % (model_name, filtered_suffix, ))
@@ -58,7 +71,11 @@ def get_labels_batch(questions, model_name='svm_model_glove'):
 
         label = clf.predict(question)
         print(label)
-        '''
+    '''
+    clf = joblib.load('models/%s%s.pkl' % (model_name, filtered_suffix, ))
+    probs = clf.decision_function(questions[0])
+    print(probs)
+    '''
         labels.append(label)
         probs = np.exp(probs) / np.sum(np.exp(probs))
     
@@ -84,7 +101,9 @@ class TfidfEmbeddingVectorizer(object):
         self.word2weight = None
         self.dim = len(word2vec.items())
 
+    
     def fit(self, X, y):
+        '''
         tfidf = TfidfVectorizer(analyzer=lambda x: x)
         tfidf.fit(X)
         # if a word was never seen - it must be at least as infrequent
@@ -95,62 +114,77 @@ class TfidfEmbeddingVectorizer(object):
             lambda: max_idf,
             [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
 
+        
+        '''
         return self
-
     def transform(self, X):
-        return np.array([
+        print('transforming, Tfidf')
+        return [
                 np.mean([self.word2vec[w] * self.word2weight[w]
-                         for w in words if w in self.word2vec] or
-                        [np.zeros(self.dim)], axis=0)
+                        for w in words if w in self.word2vec] or
+                      [np.zeros(self.dim)], axis=0)
                 for words in X
-            ])
+            ]#np.array([
+                #np.mean([self.word2vec[w] * self.word2weight[w]
+                 #        for w in words if w in self.word2vec] or
+                  #      [np.zeros(self.dim)], axis=0)
+                #for words in X
+            #])
+        print('done transforming')
 
 if __name__ == '__main__':            
 
     with open("models/glove.6B.50d.txt", "rb") as lines:
-        w2v = {line.split()[0]: np.array(map(float, line.split()[1:]))
-               for line in lines}
-        obj = TfidfEmbeddingVectorizer(w2v)
-    
-    with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
-        all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
-        for row in csvreader:
-            sentence, label_cog, label_know = row
-            m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
-            sentence = m.groups()[2]
-            label_cog = label_cog.split('/')[0]
-            label_know = label_know.split('/')[0]
-            clean_sentence = clean(sentence, return_as_list = False)
-            X.append(clean_sentence)
-            Y_cog.append(mapping_cog[label_cog])
-            Y_know.append(mapping_know[label_know])
-            X_trans.extend(obj.transform([clean(sentence)]))
-    
-    with codecs.open('datasets/BCLs_Question_Dataset.csv', 'r', encoding="utf-8") as csvfile:
-        all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows)  #csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
-        for row in csvreader:
-            sentence, label_cog = row
-            clean_sentence = clean(sentence)
-            X.append(clean_sentence)
-            Y_cog.append(mapping_cog[label_cog])
-            # TODO: Label
-            Y_know.append(1)
-            X_trans.extend(obj.transform([clean(sentence)]))
-            
-    domain_keywords = pickle.load(open('resources/domain.pkl', 'rb'))
-    for key in domain_keywords:
-        for word in domain_keywords[key]:            
-            X.append([word])
-            Y_cog.append(mapping_cog[key])
-            X_trans.extend(obj.transform([clean(word)]))
-    
-    print('Glove converison done')
-    
+            w2v = {line.split()[0]: np.array(map(float, line.split()[1:]))
+                   for line in lines}
+            #obj = TfidfEmbeddingVectorizer(w2v)
     if TRAIN_SVM_GLOVE:
-        train(X_trans, Y_cog)
-    print('Training done')
+        with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
+            all_rows = csvfile.read().splitlines()[1:]
+            csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
+            for row in csvreader:
+                sentence, label_cog, label_know = row
+                m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+                sentence = m.groups()[2]
+                label_cog = label_cog.split('/')[0]
+                label_know = label_know.split('/')[0]
+                clean_sentence = clean(sentence)
+                X.append(clean_sentence)
+                Y_cog.append(mapping_cog[label_cog])
+                Y_know.append(mapping_know[label_know])
+                X_trans.extend(clean_sentence)
+                #X_trans.extend(obj.transform([clean(sentence)]))
+        
+        with codecs.open('datasets/BCLs_Question_Dataset.csv', 'r', encoding="utf-8") as csvfile:
+            all_rows = csvfile.read().splitlines()[1:]
+            csvreader = csv.reader(all_rows)  #csvreader = csv.reader(all_rows[:len(all_rows)*7//10])
+            for row in csvreader:
+                sentence, label_cog = row
+                clean_sentence = clean(sentence)
+                X.append(clean_sentence)
+                Y_cog.append(mapping_cog[label_cog])
+                # TODO: Label
+                Y_know.append(1)
+                X_trans.extend(clean_sentence)
+                #X_trans.extend(obj.transform([clean(sentence)]))
+                
+        domain_keywords = pickle.load(open('resources/domain.pkl', 'rb'))
+        for key in domain_keywords:
+            for word in domain_keywords[key]:            
+                X.append([word])
+                Y_cog.append(mapping_cog[key])
+                X_trans.extend([word])
+                #X_trans.extend(obj.transform([clean(word)]))
+        
+        clf = svm.SVC(kernel='linear')
+        classify = Pipeline([ ("word2vec vectorizer", TfidfEmbeddingVectorizer(w2v)), ('svc', clf) ])
+        classify.fit(X_trans, Y_cog)
+        pickle.dump('models/glove_svm_model.pkl', classify)
+        print('Glove conversion done')
+        #X_trans = np.array(X_trans)
+        #print(X_trans.tolist()[0])
+        #train(X_trans, Y_cog)
+        print('Training done')
     print('Testing Started')
     test()
     print('Testing Ended')
