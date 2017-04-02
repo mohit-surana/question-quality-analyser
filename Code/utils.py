@@ -5,6 +5,7 @@ import nltk
 from nltk import word_tokenize
 from nltk.corpus import stopwords
 #if not word in stopwords.words('english'): # Loss of crucial words
+from sklearn.externals import joblib
 
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
@@ -13,7 +14,7 @@ import platform
 porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
-
+classify = joblib.load('models/glove_svm_model.pkl')
 
 if(platform.system() == 'Windows'):
     stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
@@ -48,3 +49,11 @@ def clean_no_stopwords(text, as_list=True):
         return tokens
     else:
         return ' '.join(tokens)
+        
+def get_glove_vector(questions):
+    print('Formatting questions')
+    for i in range(len(questions)):
+        questions[i] = word_tokenize(questions[i].lower())
+    print('Transforming')
+    print(questions)
+    return classify.named_steps['word2vec vectorizer'].transform(questions, mean=False)        
