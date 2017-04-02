@@ -4,19 +4,19 @@ import string
 import nltk 
 from nltk import word_tokenize
 from nltk.corpus import stopwords
-#if not word in stopwords.words('english'): # Loss of crucial words
 from sklearn.externals import joblib
 
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
 import platform
+from qfilter_train import tokenizer
+import dill
 import pickle
 
 porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
-classify = joblib.load('models/glove_svm_model.pkl')
 
 if(platform.system() == 'Windows'):
     stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
@@ -54,6 +54,8 @@ def clean_no_stopwords(text, as_list=True):
 
         
 def get_glove_vector(questions):
+    classify = joblib.load('models/glove_svm_model.pkl')
+
     print('Formatting questions')
     for i in range(len(questions)):
         questions[i] = word_tokenize(questions[i].lower())
@@ -63,8 +65,9 @@ def get_glove_vector(questions):
 
 
 def get_filtered_questions(questions, what_type='os'):
-    from qfilter_train import f
-    
+    questions = 'Figure 6.17 shows another solution to the dining philosophers problem using monitors. Compare to Figure 6.14 and report your conclusions.'
+    what_type = 'os'
+
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 
     try:
@@ -79,6 +82,7 @@ def get_filtered_questions(questions, what_type='os'):
 
     if type(questions) != list:
         questions = [questions]
+
     sklearn_tfidf = pickle.load(open('models/tfidf_filterer_%s.pkl' %what_type.lower(), 'rb'))
     tfidf_matrix = sklearn_tfidf.transform(questions)
     feature_names = sklearn_tfidf.get_feature_names()
@@ -91,30 +95,30 @@ def get_filtered_questions(questions, what_type='os'):
         word_dict = {w : s for w, s in [(feature_names[j], s) for (j, s) in tfidf_scores]}
 
         new_question = ''
-        question = re.split('([.!?])', questions[i])
-        question2 = []
+        question = re.sub(' [^a-z]*? ', ' ', questions[i].lower())
+        question = re.split('([.!?])', question)
+
+        sentences = []
         for k in range(len(question) - 1):
             if re.search('[!.?]', question[k + 1]):
-                question2.append(question[k] + question[k + 1])
+                sentences.append(question[k] + question[k + 1])
             elif re.search('[!.?]', question[k]):
                 continue
             elif question[k] != '':
-                question2.append(question[k])
+                sentences.append(question[k].strip())
 
-        question = question2
-
-        if len(question) >= 3:
-            question2 = question[0] + question[-2]
-            question2 += question[-1] if 'hint' not in question[-1] else ''
-            questions[i] = question2
-
-        for word in questions[i].lower().split():
+        if len(sentences) >= 3:
+            q = sentences[0] + ' ' + sentences[-2]
+            q += ' ' + sentences[-1] if 'hint' not in sentences[-1] else ''
+            questions[i] = q
+        
+        for word in re.sub('[^a-z ]', '', questions[i].lower()).split():
             try:
-                if (word_dict[word] < 1 or word in keywords) and word not in t_stopwords:
+                if (word_dict[word] < 0.25 or word in keywords) and word not in t_stopwords:
                     new_question += word + ' '
             except:
                 pass
 
-        new_questions.append(new_question)
+        new_questions.append(new_question.strip())
 
     return new_questions if len(new_questions) > 1 else new_questions[0]

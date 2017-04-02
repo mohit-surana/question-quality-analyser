@@ -19,18 +19,14 @@ def clean_no_stemma_stopwords(text, as_list=True):
     else:
         return ' '.join(tokens) 
 
-def f(doc):
+def tokenizer(doc):
     return doc.lower().split(" ")
 
 if __name__ == '__main__':
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K' 
 
-    textbook = 'OS'
-
-    TRAIN = True
-
-
+    textbook = 'ADA'
 
     print('Loading corpus data')
     stopwords = set(stopwords.words('english'))
@@ -45,7 +41,7 @@ if __name__ == '__main__':
         keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
     stopwords = stopwords - keywords
 
-    if textbook == 'ADA':
+    if textbook == 'OS':
         questions = [clean_no_stemma_stopwords(q, as_list=False) for q in json.load(open('resources/os_questions.json'))]
     else:
         questions = []
@@ -71,8 +67,7 @@ if __name__ == '__main__':
                                     strip_accents='unicode',  
                                     use_idf=True, 
                                     smooth_idf=False, 
-                                    sublinear_tf=True, 
-                                    tokenizer=f)
+                                    sublinear_tf=True)
     tfidf_matrix = sklearn_tfidf.fit_transform(questions + contents)
 
     pickle.dump(sklearn_tfidf, open('models/tfidf_filterer_%s.pkl' %textbook.lower(), 'wb'))
@@ -81,7 +76,10 @@ if __name__ == '__main__':
 
     new_questions = []
 
-    print()
+    try:
+        print()
+    except:
+        print
 
     for i in range(0, len(questions)):
         feature_index = tfidf_matrix[i,:].nonzero()[1]
@@ -89,26 +87,26 @@ if __name__ == '__main__':
         word_dict = {w : s for w, s in [(feature_names[j], s) for (j, s) in tfidf_scores]}
 
         new_question = ''
-        question = re.split('([.!?])', questions[i])
-        question2 = []
+        question = re.sub(' [^a-z]*? ', ' ', questions[i].lower())
+        question = re.split('([.!?])', question)
+
+        sentences = []
         for k in range(len(question) - 1):
             if re.search('[!.?]', question[k + 1]):
-                question2.append(question[k] + question[k + 1])
+                sentences.append(question[k] + question[k + 1])
             elif re.search('[!.?]', question[k]):
                 continue
             elif question[k] != '':
-                question2.append(question[k])
+                sentences.append(question[k].strip())
 
-        question = question2
-
-        if len(question) >= 3:
-            question2 = question[0] + question[-2]
-            question2 += question[-1] if 'hint' not in question[-1] else ''
-            questions[i] = question2
-
+        if len(sentences) >= 3:
+            q = sentences[0] + ' ' + sentences[-2]
+            q += ' ' + sentences[-1] if 'hint' not in sentences[-1] else ''
+            questions[i] = q
+        
         for word in questions[i].lower().split():
             try:
-                if (word_dict[word] < 0.25 or word in keywords) and word not in stopwords:
+                if (word_dict[word] < 0.20 or word in keywords) and word not in stopwords:
                     new_question += word + ' '
             except:
                 pass
