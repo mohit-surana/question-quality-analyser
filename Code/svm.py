@@ -9,6 +9,7 @@ import sys
 from sklearn import svm
 from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfTransformer
+from keras.preprocessing import sequence
 
 from utils import clean
 

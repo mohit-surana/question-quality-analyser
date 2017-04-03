@@ -1,7 +1,8 @@
 import re
 import string
-
+import csv
 import nltk 
+import numpy as np
 from nltk import word_tokenize
 from nltk.corpus import stopwords
 from sklearn.externals import joblib
@@ -13,10 +14,14 @@ import platform
 from qfilter_train import tokenizer
 import dill
 import pickle
+import random
 
 porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
+
+mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
+mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
 if(platform.system() == 'Windows'):
     stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
@@ -64,10 +69,7 @@ def get_glove_vector(questions):
     return classify.named_steps['word2vec vectorizer'].transform(questions, mean=False)        
 
 
-def get_filtered_questions(questions, what_type='os'):
-    questions = 'Figure 6.17 shows another solution to the dining philosophers problem using monitors. Compare to Figure 6.14 and report your conclusions.'
-    what_type = 'os'
-
+def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 
     try:
@@ -80,7 +82,7 @@ def get_filtered_questions(questions, what_type='os'):
         keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
     t_stopwords = t_stopwords - keywords
 
-    if type(questions) != list:
+    if type(questions) != type([]):
         questions = [questions]
 
     sklearn_tfidf = pickle.load(open('models/tfidf_filterer_%s.pkl' %what_type.lower(), 'rb'))
@@ -94,7 +96,6 @@ def get_filtered_questions(questions, what_type='os'):
         tfidf_scores = zip(feature_index, [tfidf_matrix[i, x] for x in feature_index])
         word_dict = {w : s for w, s in [(feature_names[j], s) for (j, s) in tfidf_scores]}
 
-        new_question = ''
         question = re.sub(' [^a-z]*? ', ' ', questions[i].lower())
         question = re.split('([.!?])', question)
 
@@ -111,10 +112,11 @@ def get_filtered_questions(questions, what_type='os'):
             q = sentences[0] + ' ' + sentences[-2]
             q += ' ' + sentences[-1] if 'hint' not in sentences[-1] else ''
             questions[i] = q
-        
+
+        new_question = ''
         for word in re.sub('[^a-z ]', '', questions[i].lower()).split():
             try:
-                if (word_dict[word] < 0.25 or word in keywords) and word not in t_stopwords:
+                if word.isalpha() and (word_dict[word] < threshold or word in keywords) and word not in t_stopwords:
                     new_question += word + ' '
             except:
                 pass
@@ -122,3 +124,71 @@ def get_filtered_questions(questions, what_type='os'):
         new_questions.append(new_question.strip())
 
     return new_questions if len(new_questions) > 1 else new_questions[0]
+
+def get_data_for_cognitive_classifiers(threshold=0.25, what_type='os', split=0.7, include_keywords=True, keep_dup=False):
+    X = []
+    Y_cog = []
+    Y_know = []
+
+    with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+        all_rows = csvfile.read().splitlines()[1:]
+        csvreader = csv.reader(all_rows)
+        for row in csvreader:
+            sentence, label_cog, label_know = row
+            m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+            sentence = m.groups()[2]
+            label_cog = label_cog.split('/')[0]
+            clean_sentence = clean(sentence, return_as_list=False, stem=False)
+            X.append(clean_sentence)
+            Y_cog.append(mapping_cog[label_cog])
+
+    with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='utf-8') as csvfile:
+        all_rows = csvfile.read().splitlines()[1:]
+        csvreader = csv.reader(all_rows) 
+        for row in csvreader:
+            sentence, label_cog = row
+            clean_sentence = clean(sentence, return_as_list=False, stem=False)
+            X.append(clean_sentence)
+            Y_cog.append(mapping_cog[label_cog])
+
+    X = get_filtered_questions(X, threshold=threshold, what_type=what_type)
+    if keep_dup:
+        X = [x.split() for x in X]
+    else:
+        X = [list(np.unique(x.split())) for x in X]
+    dataset = list(zip(X, Y_cog))
+    random.shuffle(dataset)
+    X_train = []
+    Y_train = []
+    X_test = []
+    Y_test = []
+
+    for x, y in dataset[:int(len(dataset) * split)]:
+        if len(x) == 0:
+            continue
+        X_train.append(x)
+        Y_train.append(y)
+
+    for x, y in dataset[int(len(dataset) * split):]:
+        if len(x) == 0:
+            continue
+        X_test.append(x)
+        Y_test.append(y)
+
+    if include_keywords:
+        domain_keywords = pickle.load(open('resources/domain.pkl', 'rb'))
+        for key in domain_keywords:
+            for word in domain_keywords[key]:          
+                X_train.append(clean(word, return_as_list=True, stem=False))
+                Y_train.append(mapping_cog[key])
+
+        dataset = list(zip(X_train, Y_train))
+        random.shuffle(dataset)
+        X_train = [x[0] for x in dataset]
+        Y_train = [y[1] for y in dataset]
+
+    return X_train, Y_train, X_test, Y_test
+
+
+
+        
