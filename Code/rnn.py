@@ -54,6 +54,16 @@ def sent_to_glove(questions):
 class SkillClassifier:
 	def __init__(self, input_dim=100, hidden_dim=64, dropout=0.2):
 		np.random.seed(7)
+
+		'''
+		self.model.add(LSTM(hidden_dims[0], input_shape=(None, input_dim), return_sequences=True, recurrent_dropout=dropout))
+		self.model.add(LSTM(hidden_dims[1], dropout=dropout))
+		self.model.add(Dense(NUM_CLASSES, kernel_initializer="lecun_uniform", activation='softmax'))
+
+		self.model.compile(loss='categorical_crossentropy',
+						optimizer='rmsprop',
+						metrics=['accuracy'])
+		'''
 		
 		self.model = Sequential()
 		self.model.add(LSTM(hidden_dim, input_shape=(None, input_dim), recurrent_dropout=dropout))
