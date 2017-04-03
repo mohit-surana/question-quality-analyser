@@ -10,10 +10,11 @@ from collections import defaultdict
 from sklearn.externals import joblib
 from sklearn import svm, model_selection
 from sklearn.pipeline import Pipeline
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.externals import joblib
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, f1_score
 from utils import get_filtered_questions, get_data_for_cognitive_classifiers
 
 np.random.seed(42)
@@ -47,20 +48,25 @@ gVar = None
 class TfidfEmbeddingVectorizer(object):
     def __init__(self, word2vec):
         self.word2vec = word2vec
+        self.word2weight = None
         self.dim = len(word2vec['the'])
-    
-    def _apply_weight(self, w):
-        if w in keywords:
-            for k in domain:
-                if w in domain[k]:
-                    break
-
-            return self.word2vec[w] + ((mapping_cog[k] + 1))
-        else:
-            return self.word2vec[w]
-
+        
     def fit(self, X, y):
-        # not implementing this now
+        global gVar
+        tfidf = TfidfVectorizer(norm='l2', 
+                                min_df=1,
+                                decode_error="ignore", 
+                                use_idf=True, 
+                                smooth_idf=False, 
+                                sublinear_tf=True,
+                                analyzer=lamb1)
+        tfidf.fit(X + list(keywords))
+
+        max_idf = max(tfidf.idf_)
+        gVar = max_idf
+        self.word2weight = defaultdict(lamb2,
+            [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
+    
         return self
     
     def transform(self, X, mean=True):
@@ -68,15 +74,16 @@ class TfidfEmbeddingVectorizer(object):
         temp = []
         if mean:
             return np.array([
-                np.mean([self._apply_weight(w)
-                         for w in words if w in self.word2vec] or
+                np.mean([self.word2vec[w] * self.word2weight[w]
+                         for w in words if w in self.word2vec and w in keywords] or
                         [np.zeros(self.dim)], axis=0)
-                for words in X])
+                for words in X
+            ])
         else:
             for words in X:
                 temp = []
                 for w in words:
-                    if w in self.word2vec: #and w in keywords:
+                    if w in self.word2vec and w in keywords:
                         temp.append(self.word2vec[w] * self.word2weight[w])
                     else:
                         temp.append(np.zeros(self.dim))
@@ -86,7 +93,7 @@ class TfidfEmbeddingVectorizer(object):
                
 ################ BEGIN LOADING DATA ################
 
-X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(0.15, 'ada', 0.8)
+X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(0.17, 'ada', 0.8, include_keywords=False)
 print('Loaded/Preprocessed data')
 
 vocabulary = {'the'}
@@ -115,9 +122,10 @@ if TRAIN_SVM_GLOVE:
             
     print('Loaded Glove w2v')
 
-    parameters = {'kernel': ['linear'], 'gamma': [1e-6, 1e-5, 1e-4], 'C': [0.001, 0.05, 0.1, 0.5, 1]}
+    parameters = {'estimator__kernel' : ['linear', 'poly'],
+                  'estimator__C': [5e-4, 0.001, 0.05, 0.1]}
                  
-    gscv = model_selection.GridSearchCV(svm.SVC(), parameters, n_jobs=-1)
+    gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True)), parameters, n_jobs=-1)
     clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)), 
                           ('SVC', gscv) ])
 
