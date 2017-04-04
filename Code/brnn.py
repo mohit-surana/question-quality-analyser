@@ -97,49 +97,49 @@ class BiDirectionalRNN:
 	def __init__(self, input_size, hidden_size, output_size, learning_rate=0.01):
 		self.hidden_size = hidden_size
 		self.learning_rate = learning_rate
-
+		
 		self.right = RNN(input_size, hidden_size, output_size, learning_rate, direction="right")
 		self.left = RNN(input_size, hidden_size, output_size, learning_rate, direction="left")
-
+		
 		self.by = np.zeros((output_size, 1))
 		self.mby = np.zeros_like(self.by)
-
+	
 	def forward(self, x):
 		seq_length = len(x)
-
+		
 		y_pred = []
 		dby = np.zeros_like(self.by)
 		xsl, hsl, ysl, psl = self.left.forward(x, np.zeros((self.hidden_size, 1)))
 		xsr, hsr, ysr, psr = self.right.forward(x, np.zeros((self.hidden_size, 1)))
-
+		
 		for ind in range(seq_length):
 			this_y = np.dot(self.right.Why, hsr[ind]) + np.dot(self.left.Why, hsl[ind]) + self.by
 			y_pred.append(this_y)
 		
 		return np.argmax(y_pred[-1])
-
+	
 	def train(self, training_data, validation_data, epochs=5, do_dropout=False):
 		for e in range(epochs):
 			print('Epoch {}'.format(e + 1))
-
+			
 			for x, y in zip(*training_data):
 				x = clip(x)
-
+				
 				hprevr = np.zeros((self.hidden_size, 1))
 				hprevl = np.zeros((self.hidden_size, 1))
-									
+				
 				seq_length = len(x)
-
+				
 				xsl, hsl, ysl, psl = self.left.forward(x, hprevl, do_dropout)
 				xsr, hsr, ysr, psr = self.right.forward(x, hprevr, do_dropout)
-
+				
 				y_pred = []
 				dy = []
 				dby = np.zeros_like(self.by)
 				for ind in range(seq_length):
 					this_y = np.dot(self.right.Why, hsr[ind]) + np.dot(self.left.Why, hsl[ind]) + self.by
 					y_pred.append(this_y)
-
+				
 				for ind in range(seq_length):
 					this_dy = np.exp(y_pred[ind]) / np.sum(np.exp(y_pred[ind]))
 					t = np.argmax(y)
@@ -147,32 +147,32 @@ class BiDirectionalRNN:
 					this_dy[t] -= 1
 					dy.append(this_dy)
 					dby += this_dy
-
+				
 				y_pred = np.array(y_pred)
 				dy = np.array(dy)
-
+				
 				self.mby += dby * dby
 				self.by += -self.learning_rate * dby / np.sqrt(self.mby + 1e-8) # adagrad update
-
+				
 				dWxhr, dWhhr, dWhyr, dbhr, dbyr, hprevr = self.right.backprop(xsr, hsr, ysr, psr, y, dy, do_dropout)
 				dWxhl, dWhhl, dWhyl, dbhl, dbyl, hprevl = self.left.backprop(xsl, hsl, ysl, psl, y, dy, do_dropout)
-
+				
 				self.right.update_params(dWxhr, dWhhr, dWhyr, dbhr, dbyr)
 				self.left.update_params(dWxhl, dWhhl, dWhyl, dbhl, dbyl)
-
+			
 			print("(val acc: {:.2f}%)".format(self.predict(validation_data) * 100))
-			save_model(self, e+1)
-
+			#save_model(self, e+1)
+		save_model(self)
 		print("\nTraining done.")
-
+	
 	def predict(self, testing_data, test=False):
 		correct = 0
-		predictions = {x : 0 for x in range(TYPE)}
-		outputs = {x : 0 for x in range(TYPE)}
-
-		pred_pos = {x : 0 for x in range(TYPE)}
-		pred_neg = {x : 0 for x in range(TYPE)}
-
+		predictions = {x : 0 for x in range(NUM_CLASSES)}
+		outputs = {x : 0 for x in range(NUM_CLASSES)}
+		
+		pred_pos = {x : 0 for x in range(NUM_CLASSES)}
+		pred_neg = {x : 0 for x in range(NUM_CLASSES)}
+		
 		l = 0
 		for x, y in zip(*testing_data):
 			x = clip(x)
@@ -182,26 +182,26 @@ class BiDirectionalRNN:
 			outputs[tr] += 1
 			correct = correct + 1 if op == tr else correct + 0
 			l += 1
-
+			
 			if(op == tr):
 				pred_pos[op] += 1
 			else:
 				pred_neg[op] += 1
-
+		
 		if test:
 			print('Outputs:\t', outputs)
 			print('Predictions:\t', predictions)
 			precision = {}
 			recall = {}
-			for i in range(TYPE):
+			for i in range(NUM_CLASSES):
 				precision[i] = 1 if predictions[i] == 0 else (pred_pos[i]+0.0)/predictions[i]
 				print('Precision', i, ':', precision[i])
-			for i in range(TYPE):
+			for i in range(NUM_CLASSES):
 				recall[i] = 1 if outputs[i] == 0 else (pred_pos[i]+0.0)/(outputs[i])
 				print('Recall', i, ':', recall[i])
-			for i in range(TYPE):
+			for i in range(NUM_CLASSES):
 				print('F1 Score', i, ':', (2*precision[i]*recall[i])/ (precision[i] + recall[i]))
-
+		
 		print(correct, l)
 		return (correct + 0.0) / l
 
@@ -230,11 +230,11 @@ def w2v(sentence):
 	return np.array(words)
 
 def save_model(BRNN):
-	with open('brnn_models/brnn_model_%s.pkl' % TYPE, 'wb') as f:
+	with open('models/brnn_model.pkl', 'wb') as f:
 		dill.dump(BRNN, f)
 
 def load_model():
-	with open('brnn_models/brnn_model_%s.pkl' % TYPE, 'rb') as f:
+	with open('models/brnn_model.pkl', 'rb') as f:
 		BRNN = dill.load(f)
 	return BRNN
 
@@ -258,7 +258,7 @@ with open("models/glove.6B.300d.txt", "r", encoding='utf-8') as lines:
 
 def sent_to_glove(questions):
 	questions_w2glove = []
-
+	
 	for question in questions:
 		vec = []
 		for word in question[:10]:
@@ -267,45 +267,44 @@ def sent_to_glove(questions):
 			else:
 				vec.append(np.zeros(len(w2v['the'])))
 		questions_w2glove.append(np.array(vec))
-
+	
 	return np.array(questions_w2glove)
 
 if __name__ == "__main__":
-	
 	X_data = []
 	Y_data = []
 	
 	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=0.20, what_type='ada', split=0.8, include_keywords=True, keep_dup=False)
-
+	
 	X_data = X_train + X_test
 	Y_data = Y_train + Y_test
-
+	
 	X_data = sequence.pad_sequences(sent_to_glove(X_data), maxlen=10)
 	
 	for i in range(len(Y_data)):
 		v = np.zeros(NUM_CLASSES)
 		v[Y_data[i]] = 1
 		Y_data[i] = v
-
+	
 	Y_data = np.array(Y_data)
-
+	
 	X_train = np.array(X_data[: int(len(X_data) * 0.70) ])
 	Y_train = np.array(Y_data[: int(len(X_data) * 0.70) ])
-
+	
 	X_val = np.array(X_data[int(len(X_data) * 0.70) : int(len(X_data) * 0.8)])
 	Y_val = np.array(Y_data[int(len(X_data) * 0.70) : int(len(X_data) * 0.8)])
-
+	
 	X_test = np.array(X_data[int(len(X_data) * 0.8) :])
 	Y_test = np.array(Y_data[int(len(X_data) * 0.8) :])
-
-	INPUT_SIZE = 100
+	
+	INPUT_SIZE = 300
 	HIDDEN_SIZE = 64
 	OUTPUT_SIZE = NUM_CLASSES
-
-	EPOCHS = 10
+	
+	EPOCHS = 20
 	LEARNING_RATE = 0.20
 	
-	TRAIN = False
+	TRAIN = True
 	RETRAIN = False
 	
 	BRNN = None
@@ -319,7 +318,7 @@ if __name__ == "__main__":
 	else:
 		BRNN = load_model()
 		# BRNN.predict = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE).predict
-
+	
 	accuracy = BRNN.predict((X_test, Y_test), True)
-
+	
 	print("Accuracy: {:.2f}%".format(accuracy * 100))
