@@ -215,7 +215,7 @@ class BiDirectionalRNN:
 		print(classification_report(targets, predictions))
 		# print(confusion_matrix(targets, predictions))
 		
-		return accuracy_score(targets, predictions, average="macro")
+		return accuracy_score(targets, predictions)
 
 def load_data(filename, count):
 	i = 0
