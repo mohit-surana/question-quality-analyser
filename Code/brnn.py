@@ -6,6 +6,7 @@ import pprint
 import sys
 
 from gensim.models import Word2Vec
+from keras.preprocessing import sequence
 from utils import clean_no_stopwords
 from utils import get_data_for_cognitive_classifiers
 
@@ -188,20 +189,20 @@ class BiDirectionalRNN:
 				pred_neg[op] += 1
 
 		if test:
-			print 'Outputs:\t', outputs
-			print 'Predictions:\t', predictions
+			print('Outputs:\t', outputs)
+			print('Predictions:\t', predictions)
 			precision = {}
 			recall = {}
 			for i in range(TYPE):
 				precision[i] = 1 if predictions[i] == 0 else (pred_pos[i]+0.0)/predictions[i]
-				print 'Precision', i, ':', precision[i]
+				print('Precision', i, ':', precision[i])
 			for i in range(TYPE):
 				recall[i] = 1 if outputs[i] == 0 else (pred_pos[i]+0.0)/(outputs[i])
-				print 'Recall', i, ':', recall[i]
+				print('Recall', i, ':', recall[i])
 			for i in range(TYPE):
-				print 'F1 Score', i, ':', (2*precision[i]*recall[i])/ (precision[i] + recall[i])
+				print('F1 Score', i, ':', (2*precision[i]*recall[i])/ (precision[i] + recall[i]))
 
-		print correct, l
+		print(correct, l)
 		return (correct + 0.0) / l
 
 def load_data(filename, count):
@@ -297,16 +298,9 @@ if __name__ == "__main__":
 	X_test = np.array(X_data[int(len(X_data) * 0.8) :])
 	Y_test = np.array(Y_data[int(len(X_data) * 0.8) :])
 
-
-	clf.train(train_data=(X_train, X_train, Y_train), val_data=(X_val, X_val, Y_val), epochs=10, batch_size=4)
-	print(str(clf.test(test_data=(X_test, X_test, Y_test)) * 100)[:5] + '%')
-
-	DATA_SIZE = 3000000
-	TYPE = 5
-
-	INPUT_SIZE = 64
-	HIDDEN_SIZE = 16
-	OUTPUT_SIZE = TYPE
+	INPUT_SIZE = 100
+	HIDDEN_SIZE = 64
+	OUTPUT_SIZE = NUM_CLASSES
 
 	EPOCHS = 10
 	LEARNING_RATE = 0.20
@@ -320,12 +314,12 @@ if __name__ == "__main__":
 			BRNN = load_model()
 		else:
 			BRNN = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
-		BRNN.train(training_data=(training_inputs, training_targets), validation_data=(validation_inputs, validation_targets), epochs=EPOCHS, do_dropout=True)
+		BRNN.train(training_data=(X_train, Y_train), validation_data=(X_val, Y_val), epochs=EPOCHS, do_dropout=True)
 		save_model(BRNN)
 	else:
 		BRNN = load_model()
 		# BRNN.predict = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE).predict
 
-	accuracy = BRNN.predict((testing_inputs, testing_targets), True)
+	accuracy = BRNN.predict((X_test, Y_test), True)
 
 	print("Accuracy: {:.2f}%".format(accuracy * 100))
