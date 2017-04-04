@@ -237,101 +237,10 @@ def load_model():
 		BRNN = dill.load(f)
 	return BRNN
 
-if __name__ == "__main__":
-	DATA_SIZE = 3000000
-	TYPE = 5
-
-	INPUT_SIZE = 64
-	HIDDEN_SIZE = 16
-	OUTPUT_SIZE = TYPE
-
-	model = Word2Vec.load('model%s' % INPUT_SIZE)
-
-	train_size = DATA_SIZE * 0.8
-	val_size = DATA_SIZE * 0.1
-	test_size = DATA_SIZE * 0.1
-	
-	t_i, t_t =  load_data('train.csv', train_size)
-	v_i, v_t = load_data('dev.csv', val_size)
-	ts_i, ts_t =  load_data('test.csv', test_size)
-
-	training_inputs = []
-	training_targets = []
-	for i in range(len(t_i)):
-		v = w2v(t_i[i])
-		if len(v) == 0:
-			continue
-
-		training_inputs.append(v)
-		training_targets.append(one_hot(t_t[i]))
-
-	validation_inputs = []
-	validation_targets = []
-	for i in range(len(v_i)):
-		v = w2v(v_i[i])
-		if len(v) == 0:
-			continue
-
-		validation_inputs.append(v)
-		validation_targets.append(one_hot(v_t[i]))
-
-	testing_inputs = []
-	testing_targets = []
-	for i in range(len(ts_i)):
-		v = w2v(ts_i[i])
-		if len(v) == 0:
-			continue
-
-		testing_inputs.append(v)
-		testing_targets.append(one_hot(ts_t[i]))
-
-	EPOCHS = 10
-	LEARNING_RATE = 0.20
-	
-	TRAIN = False
-	RETRAIN = False
-	
-	BRNN = None
-	if TRAIN:
-		if(RETRAIN):
-			BRNN = load_model()
-		else:
-			BRNN = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
-		BRNN.train(training_data=(training_inputs, training_targets), validation_data=(validation_inputs, validation_targets), epochs=EPOCHS, do_dropout=True)
-		save_model(BRNN)
-	else:
-		BRNN = load_model()
-		# BRNN.predict = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE).predict
-
-	accuracy = BRNN.predict((testing_inputs, testing_targets), True)
-
-	print("Accuracy: {:.2f}%".format(accuracy * 100))
-
-	while False:
-		sentence = raw_input("Enter a sentence to parse: ")
-		phrases = parser.create_phrases(parser.create_tree(sentence))
-
-		out_p = []
-		out_s = []
-
-		for phrase in phrases:
-			phrase = clean(phrase)
-			v = w2v(phrase)
-			if phrase and phrase not in out_p:
-				out_p.append(phrase)
-				if v.shape[0]:
-					out_s.append(BRNN.forward(v))
-				else:
-					out_s.append(TYPE/2)
-
-		print zip(out_p, out_s)
-
-
 NUM_CLASSES = 6
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
-
 
 with open("models/glove.6B.300d.txt", "r", encoding='utf-8') as lines:
     w2v = {}
@@ -360,44 +269,11 @@ def sent_to_glove(questions):
 
 	return np.array(questions_w2glove)
 
-class SkillClassifier:
-	def __init__(self, input_dim=100, hidden_dim=64, dropout=0.2):
-		np.random.seed(7)
-
-		'''
-		self.model.add(LSTM(hidden_dims[0], input_shape=(None, input_dim), return_sequences=True, recurrent_dropout=dropout))
-		self.model.add(LSTM(hidden_dims[1], dropout=dropout))
-		self.model.add(Dense(NUM_CLASSES, kernel_initializer="lecun_uniform", activation='softmax'))
-
-		self.model.compile(loss='categorical_crossentropy',
-						optimizer='rmsprop',
-						metrics=['accuracy'])
-		'''
-		
-		self.model = Sequential()
-		self.model.add(LSTM(hidden_dim, input_shape=(None, input_dim), recurrent_dropout=dropout))
-		self.model.add(Dense(NUM_CLASSES, kernel_initializer="lecun_uniform", activation='softmax'))
-
-		self.model.compile(loss='categorical_crossentropy',
-		                optimizer='rmsprop',
-		                metrics=['accuracy'])
-		
-	def train(self, train_data, val_data, epochs=5, batch_size=32):
-		print(self.model.summary())
-		self.model.fit([train_data[0], train_data[1]], train_data[2], epochs=epochs, shuffle=True, batch_size=batch_size, validation_data=([val_data[0], val_data[1]], val_data[2]))
-
-	def test(self, test_data):
-		return self.model.evaluate([test_data[0], test_data[1]], test_data[2], verbose=0)[1]
-		
-	def save(self):
-		self.model.save('models/rnn_model.h5')
-
 if __name__ == "__main__":
+	
 	X_data = []
 	Y_data = []
-
-	clf = SkillClassifier(input_dim=len(w2v['the']))
-
+	
 	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=0.20, what_type='ada', split=0.8, include_keywords=True, keep_dup=False)
 
 	X_data = X_train + X_test
@@ -421,7 +297,35 @@ if __name__ == "__main__":
 	X_test = np.array(X_data[int(len(X_data) * 0.8) :])
 	Y_test = np.array(Y_data[int(len(X_data) * 0.8) :])
 
+
 	clf.train(train_data=(X_train, X_train, Y_train), val_data=(X_val, X_val, Y_val), epochs=10, batch_size=4)
 	print(str(clf.test(test_data=(X_test, X_test, Y_test)) * 100)[:5] + '%')
 
-	#clf.save()
+	DATA_SIZE = 3000000
+	TYPE = 5
+
+	INPUT_SIZE = 64
+	HIDDEN_SIZE = 16
+	OUTPUT_SIZE = TYPE
+
+	EPOCHS = 10
+	LEARNING_RATE = 0.20
+	
+	TRAIN = False
+	RETRAIN = False
+	
+	BRNN = None
+	if TRAIN:
+		if(RETRAIN):
+			BRNN = load_model()
+		else:
+			BRNN = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
+		BRNN.train(training_data=(training_inputs, training_targets), validation_data=(validation_inputs, validation_targets), epochs=EPOCHS, do_dropout=True)
+		save_model(BRNN)
+	else:
+		BRNN = load_model()
+		# BRNN.predict = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE).predict
+
+	accuracy = BRNN.predict((testing_inputs, testing_targets), True)
+
+	print("Accuracy: {:.2f}%".format(accuracy * 100))
