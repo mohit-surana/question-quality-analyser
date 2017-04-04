@@ -7,10 +7,43 @@ import sys
 
 from gensim.models import Word2Vec
 from keras.preprocessing import sequence
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
 from utils import clean_no_stopwords
 from utils import get_data_for_cognitive_classifiers
 
 sys.setrecursionlimit(2 * 10 ** 7)
+
+NUM_CLASSES = 6
+
+CURSOR_UP_ONE = '\x1b[1A'
+ERASE_LINE = '\x1b[2K'
+
+with open("models/glove.6B.300d.txt", "r", encoding='utf-8') as lines:
+    w2v = {}
+  
+    for row, line in enumerate(lines):
+        try:
+            w = line.split()[0]
+            vec = np.array(list(map(float, line.split()[1:])))
+            w2v[w] = vec
+        except:
+            continue
+        finally:
+            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+
+def sent_to_glove(questions):
+	questions_w2glove = []
+	
+	for question in questions:
+		vec = []
+		for word in question[:10]:
+			if word in w2v:
+				vec.append(w2v[word])
+			else:
+				vec.append(np.zeros(len(w2v['the'])))
+		questions_w2glove.append(np.array(vec))
+	
+	return np.array(questions_w2glove)
 
 def relu(z):
 	return z * (z > 0)
@@ -166,44 +199,23 @@ class BiDirectionalRNN:
 		print("\nTraining done.")
 	
 	def predict(self, testing_data, test=False):
-		correct = 0
-		predictions = {x : 0 for x in range(NUM_CLASSES)}
-		outputs = {x : 0 for x in range(NUM_CLASSES)}
-		
-		pred_pos = {x : 0 for x in range(NUM_CLASSES)}
-		pred_neg = {x : 0 for x in range(NUM_CLASSES)}
-		
-		l = 0
+		targets = []
+		predictions = []
 		for x, y in zip(*testing_data):
 			x = clip(x)
 			tr = np.argmax(y)
 			op = self.forward(x)
-			predictions[op] += 1
-			outputs[tr] += 1
-			correct = correct + 1 if op == tr else correct + 0
-			l += 1
-			
-			if(op == tr):
-				pred_pos[op] += 1
-			else:
-				pred_neg[op] += 1
+			targets.append(tr)
+			predictions.append(op)
 		
-		if test:
-			print('Outputs:\t', outputs)
-			print('Predictions:\t', predictions)
-			precision = {}
-			recall = {}
-			for i in range(NUM_CLASSES):
-				precision[i] = 1 if predictions[i] == 0 else (pred_pos[i]+0.0)/predictions[i]
-				print('Precision', i, ':', precision[i])
-			for i in range(NUM_CLASSES):
-				recall[i] = 1 if outputs[i] == 0 else (pred_pos[i]+0.0)/(outputs[i])
-				print('Recall', i, ':', recall[i])
-			for i in range(NUM_CLASSES):
-				print('F1 Score', i, ':', (2*precision[i]*recall[i])/ (precision[i] + recall[i]))
+		print('Accuracy Score:', accuracy_score(targets, predictions))
+		print('F1 Score:', f1_score(targets, predictions, average="macro"))
+		# print(precision_score(targets, predictions, average="macro"))
+		# print(recall_score(targets, predictions, average="macro"))
+		print(classification_report(targets, predictions))
+		# print(confusion_matrix(targets, predictions))
 		
-		print(correct, l)
-		return (correct + 0.0) / l
+		return accuracy_score(targets, predictions, average="macro")
 
 def load_data(filename, count):
 	i = 0
@@ -238,38 +250,6 @@ def load_model():
 		BRNN = dill.load(f)
 	return BRNN
 
-NUM_CLASSES = 6
-
-CURSOR_UP_ONE = '\x1b[1A'
-ERASE_LINE = '\x1b[2K'
-
-with open("models/glove.6B.300d.txt", "r", encoding='utf-8') as lines:
-    w2v = {}
-  
-    for row, line in enumerate(lines):
-        try:
-            w = line.split()[0]
-            vec = np.array(list(map(float, line.split()[1:])))
-            w2v[w] = vec
-        except:
-            continue
-        finally:
-            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
-
-def sent_to_glove(questions):
-	questions_w2glove = []
-	
-	for question in questions:
-		vec = []
-		for word in question[:10]:
-			if word in w2v:
-				vec.append(w2v[word])
-			else:
-				vec.append(np.zeros(len(w2v['the'])))
-		questions_w2glove.append(np.array(vec))
-	
-	return np.array(questions_w2glove)
-
 if __name__ == "__main__":
 	X_data = []
 	Y_data = []
@@ -301,7 +281,7 @@ if __name__ == "__main__":
 	HIDDEN_SIZE = 64
 	OUTPUT_SIZE = NUM_CLASSES
 	
-	EPOCHS = 20
+	EPOCHS = 5
 	LEARNING_RATE = 0.20
 	
 	TRAIN = True
