@@ -115,5 +115,5 @@ if __name__ == "__main__":
 	clf.train(train_data=(X_train, X_train, Y_train), val_data=(X_val, X_val, Y_val), epochs=10, batch_size=4)
 	print(str(clf.test(test_data=(X_test, X_test, Y_test)) * 100)[:5] + '%')
 
-	#clf.save()
+	clf.save()
 
