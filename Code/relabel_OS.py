@@ -29,26 +29,17 @@ with codecs.open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding="u
         # NOTE: Commented the above line because the cleaning mechanism is different for knowledge and cognitive dimensions
         
         X.append(row[0])
-        if(row[6] == '' and row[4] == ''):      #Following Mohit > Shiva > Shrey
-            label_cog = row[2].split('/')[0]    #Going with Shiva's notion
-            Y_cog.append(mapping_cog[label_cog.strip()])
-        elif(row[6] == '' and row[4] != ''):
-            label_cog = row[4].split('/')[0]
-            Y_cog.append(mapping_cog[label_cog.strip()])
-        else:
-            label_cog = row[6].split('/')[0]
-            Y_cog.append(mapping_cog[label_cog.strip()])
         
-        if(row[5] == '' and row[3] == ''):
-            label_know = row[1].split('/')[0]
-            Y_know.append(mapping_know[label_know.strip()])
-        elif(row[5] == '' and row[3] != ''):
-            label_know = row[3].split('/')[0]
-            Y_cog.append(mapping_know[label_know.strip()])
-        else:
-            label_know = row[5].split('/')[0]
-            Y_cog.append(mapping_know[label_know.strip()])
+        #Following Mohit > Shiva > Shrey
+        shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0], row[4].split('/')[0], row[6].split('/')[0]
+        label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
+        label_cog = label_cog.strip()
+        Y_cog.append(mapping_cog[label_cog])
         
+        shrey_know, shiva_know, mohit_know = row[1].split('/')[0], row[3].split('/')[0], row[5].split('/')[0]
+        label_know = mohit_know if mohit_know else (shiva_know if shiva_know else shrey_know)
+        label_know = label_know.strip()
+        Y_know.append(mapping_know[label_know])
         
 train_lda = 1
 with codecs.open('datasets/OS_Exercise_Questions_Relabelled.csv', 'w', encoding="utf-8") as csvfile:
@@ -57,7 +48,7 @@ with codecs.open('datasets/OS_Exercise_Questions_Relabelled.csv', 'w', encoding=
     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
         #print(x)
         #nsq = max(Nsq.get_knowledge_probs(x, 'OS'))
-        nsq = 1     # TODO : SHIVA CHANGE IT 
+        nsq = 1     # TODO : SHIVA CHANGE IT
         if train_lda == 0:
             lda = max(docsim_lda.get_vector('y', x, 'tfidf', subject = 'OS')[1])
             train_lda = 1
