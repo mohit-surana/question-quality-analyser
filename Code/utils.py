@@ -1,20 +1,20 @@
+import csv
+import dill
 import re
 import string
-import csv
-import nltk 
+import nltk
 import numpy as np
+import pickle
+import platform
+import random
+
 from nltk import word_tokenize
 from nltk.corpus import stopwords
-from sklearn.externals import joblib
-
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
-import platform
 from qfilter_train import tokenizer
-import dill
-import pickle
-import random
+from sklearn.externals import joblib
 
 porter = PorterStemmer()
 snowball = SnowballStemmer('english')
@@ -47,7 +47,7 @@ def clean(sentence, stem=True, return_as_list=True):
     return final_sentence if return_as_list else ' '.join(final_sentence)
 
 def clean2(text):
-    tokens = [word for word in nltk.word_tokenize(text) if word.lower() not in stopwords]  
+    tokens = [word for word in nltk.word_tokenize(text) if word.lower() not in stopwords]
     return ' '.join(list(set([porter.stem(i) for i in [j for j in tokens if re.match('[a-zA-Z]', j) ]])))
 
 def clean_no_stopwords(text, as_list=True):
@@ -66,7 +66,7 @@ def get_glove_vector(questions):
         questions[i] = word_tokenize(questions[i].lower())
     print('Transforming')
     print(questions)
-    return classify.named_steps['word2vec vectorizer'].transform(questions, mean=False)        
+    return classify.named_steps['word2vec vectorizer'].transform(questions, mean=False)
 
 
 def get_filtered_questions(questions, threshold=0.25, what_type='os'):
@@ -129,7 +129,7 @@ def get_data_for_cognitive_classifiers(threshold=0.25, what_type='os', split=0.7
     X = []
     Y_cog = []
     Y_know = []
-
+    
     with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
         csvreader = csv.reader(all_rows)
@@ -144,7 +144,7 @@ def get_data_for_cognitive_classifiers(threshold=0.25, what_type='os', split=0.7
 
     with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='utf-8') as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows) 
+        csvreader = csv.reader(all_rows)
         for row in csvreader:
             sentence, label_cog = row
             clean_sentence = clean(sentence, return_as_list=False, stem=False)
@@ -178,7 +178,7 @@ def get_data_for_cognitive_classifiers(threshold=0.25, what_type='os', split=0.7
     if include_keywords:
         domain_keywords = pickle.load(open('resources/domain.pkl', 'rb'))
         for key in domain_keywords:
-            for word in domain_keywords[key]:          
+            for word in domain_keywords[key]:
                 X_train.append(clean(word, return_as_list=True, stem=False))
                 Y_train.append(mapping_cog[key])
 
@@ -188,7 +188,3 @@ def get_data_for_cognitive_classifiers(threshold=0.25, what_type='os', split=0.7
         Y_train = [y[1] for y in dataset]
 
     return X_train, Y_train, X_test, Y_test
-
-
-
-        

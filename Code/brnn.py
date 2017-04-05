@@ -216,30 +216,29 @@ def load_model():
 if __name__ == "__main__":
 	NUM_CLASSES = 6
 	INPUT_SIZE = 300
-
+	
 	CURSOR_UP_ONE = '\x1b[1A'
 	ERASE_LINE = '\x1b[2K'
-
+	
 	X_data = []
 	Y_data = []
 	
 	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=0.15, what_type='ada', split=0.8, include_keywords=True, keep_dup=False)
-
+	
 	X_data = X_train + X_test
 	Y_data = Y_train + Y_test
-
+	
 	vocabulary = {'the'}
-
+	
 	for x in X_train + X_test:
 	    vocabulary = vocabulary.union(set(x))
-
+	
 	filename = 'glove.840B.%dd.txt' %INPUT_SIZE
-
+	
 	if not os.path.exists('models/%s_saved.pkl' %filename.split('.txt')[0]):
 		print()
 		with open('models/' + filename, "r", encoding='utf-8') as lines:
 		    w2v = {}
-		  
 		    for row, line in enumerate(lines):
 		        try:
 		            w = line.split()[0]
@@ -251,9 +250,8 @@ if __name__ == "__main__":
 		            continue
 		        finally:
 		            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
-
+		
 		dill.dump(w2v, open('models/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
-
 	else:
 		w2v = dill.load(open('models/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
 	
@@ -274,13 +272,13 @@ if __name__ == "__main__":
 	
 	X_test = np.array(X_data[int(len(X_data) * 0.80) :])
 	Y_test = np.array(Y_data[int(len(X_data) * 0.80) :])
-
+	
 	print('Data Loaded/Preprocessed')
 	
 	HIDDEN_SIZE = 128
 	OUTPUT_SIZE = NUM_CLASSES
 	
-	EPOCHS = 5
+	EPOCHS = 20
 	LEARNING_RATE = 0.010
 	
 	TRAIN = True
