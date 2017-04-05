@@ -1,7 +1,7 @@
 import os
 import re
 import csv
-os.chdir('./resources/ADA')
+os.chdir('./ADA')
 
 exercise_content = []
 for filename in sorted(os.listdir('.')):

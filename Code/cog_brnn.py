@@ -223,7 +223,7 @@ if __name__ == "__main__":
 	X_data = []
 	Y_data = []
 	
-	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=0.15, what_type='ada', split=0.8, include_keywords=True, keep_dup=False)
+	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.1, 0.15, 0.2, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 	
 	X_data = X_train + X_test
 	Y_data = Y_train + Y_test
@@ -278,7 +278,7 @@ if __name__ == "__main__":
 	HIDDEN_SIZE = 128
 	OUTPUT_SIZE = NUM_CLASSES
 	
-	EPOCHS = 20
+	EPOCHS = 5
 	LEARNING_RATE = 0.010
 	
 	TRAIN = True
