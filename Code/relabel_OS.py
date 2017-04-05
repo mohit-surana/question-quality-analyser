@@ -31,12 +31,12 @@ with codecs.open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding="u
         X.append(row[0])
         
         #Following Mohit > Shiva > Shrey
-        shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0], row[4].split('/')[0], row[6].split('/')[0]
+        shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0].strip(), row[4].split('/')[0].strip(), row[6].split('/')[0].strip()
         label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
         label_cog = label_cog.strip()
         Y_cog.append(mapping_cog[label_cog])
         
-        shrey_know, shiva_know, mohit_know = row[1].split('/')[0], row[3].split('/')[0], row[5].split('/')[0]
+        shrey_know, shiva_know, mohit_know = row[1].split('/')[0].strip(), row[3].split('/')[0].strip(), row[5].split('/')[0].strip()
         label_know = mohit_know if mohit_know else (shiva_know if shiva_know else shrey_know)
         label_know = label_know.strip()
         Y_know.append(mapping_know[label_know])

@@ -125,33 +125,67 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
 
     return new_questions if len(new_questions) > 1 else new_questions[0]
 
-def get_data_for_cognitive_classifiers(threshold=0.25, what_type='os', split=0.7, include_keywords=True, keep_dup=False):
+def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada', 'os', 'bcl'], split=0.7, include_keywords=True, keep_dup=False):
     X = []
     Y_cog = []
     Y_know = []
     
-    with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
-        all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows)
-        for row in csvreader:
-            sentence, label_cog, label_know = row
-            m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
-            sentence = m.groups()[2]
-            label_cog = label_cog.split('/')[0]
-            clean_sentence = clean(sentence, return_as_list=False, stem=False)
-            X.append(clean_sentence)
-            Y_cog.append(mapping_cog[label_cog])
+    if 'ada'in what_type:
+        with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+            X_temp = []
+            Y_cog_temp = []
+            all_rows = csvfile.read().splitlines()[1:]
+            csvreader = csv.reader(all_rows)
+            for row in csvreader:
+                sentence, label_cog, label_know = row
+                m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+                sentence = m.groups()[2]
+                label_cog = label_cog.split('/')[0]
+                clean_sentence = clean(sentence, return_as_list=False, stem=False)
+                X_temp.append(clean_sentence)
+                Y_cog_temp.append(mapping_cog[label_cog])
 
-    with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='utf-8') as csvfile:
-        all_rows = csvfile.read().splitlines()[1:]
-        csvreader = csv.reader(all_rows)
-        for row in csvreader:
-            sentence, label_cog = row
-            clean_sentence = clean(sentence, return_as_list=False, stem=False)
-            X.append(clean_sentence)
-            Y_cog.append(mapping_cog[label_cog])
+        for t in threshold:
+            X_temp_2 = get_filtered_questions(X_temp, threshold=t, what_type='ada')
+            X.extend(X_temp_2)
+            Y_cog.extend(Y_cog_temp)
 
-    X = get_filtered_questions(X, threshold=threshold, what_type=what_type)
+    if 'os' in what_type:
+        with open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+            X_temp = []
+            Y_cog_temp = []
+            all_rows = csvfile.read().splitlines()[5:]
+            csvreader = csv.reader(all_rows)
+            for row in csvreader:
+                shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0], row[4].split('/')[0], row[6].split('/')[0]
+                label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
+                label_cog = label_cog.strip()                
+                clean_sentence = clean(row[0], return_as_list=False, stem=False)
+                X_temp.append(clean_sentence)
+                Y_cog_temp.append(mapping_cog[label_cog])
+
+        for t in threshold:
+            X_temp_2 = get_filtered_questions(X_temp, threshold=t, what_type='ada')
+            X.extend(X_temp_2)
+            Y_cog.extend(Y_cog_temp)
+
+    if 'bcl' in what_type:
+        with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='utf-8') as csvfile:
+            X_temp = []
+            Y_cog_temp = []
+            all_rows = csvfile.read().splitlines()[1:]
+            csvreader = csv.reader(all_rows)
+            for row in csvreader:
+                sentence, label_cog = row
+                clean_sentence = clean(sentence, return_as_list=False, stem=False)
+                X_temp.append(clean_sentence)
+                Y_cog_temp.append(mapping_cog[label_cog])
+
+        for t in threshold:
+            X_temp_2 = get_filtered_questions(X_temp, threshold=t, what_type='ada')
+            X.extend(X_temp_2)
+            Y_cog.extend(Y_cog_temp)
+
     if keep_dup:
         X = [x.split() for x in X]
     else:

@@ -6,6 +6,7 @@ import utils
 import re
 import dill
 import pickle
+import os
 from collections import defaultdict
 from sklearn.externals import joblib
 from sklearn import svm, model_selection
@@ -93,7 +94,7 @@ class TfidfEmbeddingVectorizer(object):
                
 ################ BEGIN LOADING DATA ################
 
-X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(0.17, 'ada', 0.8, include_keywords=False)
+X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0, 0.1, 0.15, 0.2], ['ada', 'os', 'bcl'], 0.8, include_keywords=False)
 print('Loaded/Preprocessed data')
 
 vocabulary = {'the'}
@@ -106,26 +107,34 @@ for x in X_train + X_test:
 if TRAIN_SVM_GLOVE:
 ################ Load Glove w2v only if training is required    #################
     print()
-    with open("models/glove.6B.100d.txt", "r", encoding='utf-8') as lines:
-        w2v = {}
-        for row, line in enumerate(lines):
-            try:
-                w = line.split()[0]
-                vec = np.array(list(map(float, line.split()[1:])))
-
-                if w in vocabulary:
+    filename = 'glove.6B.%dd.txt' %100
+    
+    if not os.path.exists('models/%s_saved.pkl' %filename.split('.txt')[0]):
+        print()
+        with open('models/' + filename, "r", encoding='utf-8') as lines:
+            w2v = {}
+            for row, line in enumerate(lines):
+                try:
+                    w = line.split()[0]
+                    if w not in vocabulary:
+                        continue
+                    vec = np.array(list(map(float, line.split()[1:])))
                     w2v[w] = vec
-            except:
-                continue
-            finally:
-                print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+                except:
+                    continue
+                finally:
+                    print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+        
+        dill.dump(w2v, open('models/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+    else:
+        w2v = dill.load(open('models/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
             
     print('Loaded Glove w2v')
 
     parameters = {'estimator__kernel' : ['linear', 'poly'],
                   'estimator__C': [5e-4, 0.001, 0.05, 0.1]}
                  
-    gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True)), parameters, n_jobs=-1)
+    gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced')), parameters, n_jobs=-1)
     clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)), 
                           ('SVC', gscv) ])
 

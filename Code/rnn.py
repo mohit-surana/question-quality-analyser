@@ -10,8 +10,9 @@ from gensim.models import Word2Vec
 from utils import get_data_for_cognitive_classifiers
 
 import numpy as np
+import dill
 import pickle
-
+import os
 import sys
 
 sys.setrecursionlimit(2 * 10 ** 7)
@@ -23,19 +24,28 @@ ERASE_LINE = '\x1b[2K'
 
 from utils import clean_no_stopwords
 
+INPUT_SIZE = 300
+filename = 'glove.840B.%dd.txt' %INPUT_SIZE
 
-with open("models/glove.6B.300d.txt", "r", encoding='utf-8') as lines:
-    w2v = {}
-  
-    for row, line in enumerate(lines):
-        try:
-            w = line.split()[0]
-            vec = np.array(list(map(float, line.split()[1:])))
-            w2v[w] = vec
-        except:
-            continue
-        finally:
-            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+if not os.path.exists('models/%s_saved.pkl' %filename.split('.txt')[0]):
+	print()
+	with open('models/' + filename, "r", encoding='utf-8') as lines:
+	    w2v = {}
+	    for row, line in enumerate(lines):
+	        try:
+	            w = line.split()[0]
+	            if w not in vocabulary:
+	            	continue
+	            vec = np.array(list(map(float, line.split()[1:])))
+	            w2v[w] = vec
+	        except:
+	            continue
+	        finally:
+	            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+	
+	dill.dump(w2v, open('models/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+else:
+	w2v = dill.load(open('models/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
 
 def sent_to_glove(questions):
 	questions_w2glove = []
@@ -52,7 +62,7 @@ def sent_to_glove(questions):
 	return np.array(questions_w2glove)
 
 class SkillClassifier:
-	def __init__(self, input_dim=100, hidden_dim=64, dropout=0.2):
+	def __init__(self, input_dim=300, hidden_dim=128, dropout=0.2):
 		np.random.seed(7)
 
 		'''
@@ -70,15 +80,15 @@ class SkillClassifier:
 		self.model.add(Dense(NUM_CLASSES, kernel_initializer="lecun_uniform", activation='softmax'))
 
 		self.model.compile(loss='categorical_crossentropy',
-		                optimizer='rmsprop',
+		                optimizer='adam',
 		                metrics=['accuracy'])
 		
 	def train(self, train_data, val_data, epochs=5, batch_size=32):
 		print(self.model.summary())
-		self.model.fit([train_data[0], train_data[1]], train_data[2], epochs=epochs, shuffle=True, batch_size=batch_size, validation_data=([val_data[0], val_data[1]], val_data[2]))
+		self.model.fit(train_data[0], train_data[1], epochs=epochs, shuffle=True, batch_size=batch_size, validation_data=(val_data[0], val_data[1]))
 
 	def test(self, test_data):
-		return self.model.evaluate([test_data[0], test_data[1]], test_data[2], verbose=0)[1]
+		return self.model.evaluate(test_data[0], test_data[1], verbose=0)[1]
 		
 	def save(self):
 		self.model.save('models/rnn_model.h5')
@@ -89,7 +99,7 @@ if __name__ == "__main__":
 
 	clf = SkillClassifier(input_dim=len(w2v['the']))
 
-	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=0.20, what_type='ada', split=0.8, include_keywords=True, keep_dup=False)
+	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.1, 0.15, 0.2, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 
 	X_data = X_train + X_test
 	Y_data = Y_train + Y_test
@@ -112,8 +122,8 @@ if __name__ == "__main__":
 	X_test = np.array(X_data[int(len(X_data) * 0.8) :])
 	Y_test = np.array(Y_data[int(len(X_data) * 0.8) :])
 
-	clf.train(train_data=(X_train, X_train, Y_train), val_data=(X_val, X_val, Y_val), epochs=10, batch_size=4)
-	print(str(clf.test(test_data=(X_test, X_test, Y_test)) * 100)[:5] + '%')
+	clf.train(train_data=(X_train, Y_train), val_data=(X_val, Y_val), epochs=10, batch_size=4)
+	print(str(clf.test(test_data=(X_test, Y_test)) * 100)[:5] + '%')
 
 	clf.save()
 
