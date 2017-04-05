@@ -57,18 +57,6 @@ def clean_no_stopwords(text, as_list=True):
     else:
         return ' '.join(tokens)
 
-        
-def get_glove_vector(questions):
-    classify = joblib.load('models/glove_svm_model.pkl')
-
-    print('Formatting questions')
-    for i in range(len(questions)):
-        questions[i] = word_tokenize(questions[i].lower())
-    print('Transforming')
-    print(questions)
-    return classify.named_steps['word2vec vectorizer'].transform(questions, mean=False)
-
-
 def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 

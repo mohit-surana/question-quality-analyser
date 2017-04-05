@@ -88,7 +88,7 @@ def calc_tf_idf(documents, tok_name):
         vocabulary.extend(final_tokens)
         vocab.append(' '.join(final_tokens))
     
-    open('resources/vocabulary_' + tok_name+'.txt', 'w').write(' ;'.join(vocabulary))
+    open('resources/TFIDF/vocabulary_' + tok_name+'.txt', 'w').write(' ;'.join(vocabulary))
 
     print('calculating idf for ', tok_name)
     for doc in docs:
@@ -102,12 +102,12 @@ def calc_tf_idf(documents, tok_name):
 tokenizer = RegexpTokenizer("[\w’]+", flags=re.UNICODE)
 def main():
     start_time = time.time()
-    fhandler_new = open('resources/keywords_enhanced.txt', 'w')
+    fhandler_new = open('resources/TFIDF/keywords_enhanced.txt', 'w')
 
-    fhandler = open('resources/keywords.txt', 'w')
-    fhandler_uni = open('resources/keywords_uni.txt', 'w')
-    fhandler_bi = open('resources/keywords_bi.txt', 'w')
-    fhandler_tri = open('resources/keywords_tri.txt', 'w')
+    fhandler = open('resources/TFIDF/keywords.txt', 'w')
+    fhandler_uni = open('resources/TFIDF/keywords_uni.txt', 'w')
+    fhandler_bi = open('resources/TFIDF/keywords_bi.txt', 'w')
+    fhandler_tri = open('resources/TFIDF/keywords_tri.txt', 'w')
     
     documents = dict()
     l =  glob.glob(r"resources\ADA-chapter\*.txt")
