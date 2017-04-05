@@ -3,21 +3,11 @@ Assessing Question Quality using Bloom's Taxonomy
 
 #TODO
 
-● Supervised k-means clustering
+● Improve the knowledge accuracy of n-squared with SVM or GaussianNB. Also compare with LSA and LDA (next)
 
-● Using X-means for divisive hierarchical clustering
+● Voting System for Skill/Knowledge classifiers
 
-● Voting System
+● [Aspirational] Test on college Question Papers
 
-● Labelling and Testing for ADA and OS questions
-
-● Get a model with 60% accuracy or higher, for both the dimensions (validated
+GOAL: Get a model with 60% accuracy or higher, for both the dimensions (validated
 with human recall).
-
-● Test on college Question Papers                        
-
-● Getting knowledge accuracy of lsa and lda (nsquared done - 55.17%)                        
-
-● Training something that can learn hardcoded knowledge dimension partitions
-
-● Refactor OS tb splitter code
