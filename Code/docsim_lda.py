@@ -9,6 +9,7 @@ from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
 
 LOG = True
+subject = 'OS'
 if(LOG):
     import logging
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -45,7 +46,7 @@ def clean(text):
 doc = dict()
 documents = list()
 listofsections = list()
-for root, dirs, files in os.walk('resources/ADA', topdown=False):
+for root, dirs, files in os.walk('resources/%s' % (subject, ), topdown=False):
         for name in files:
             filename = os.path.join(root, name)
             if '.DS_Store' not in filename and '__' not in filename:
@@ -67,20 +68,20 @@ for text in texts:
 texts = [[token for token in text if frequency[token] > 1] for text in texts]
 
 #--------------------PREPARE MODEL -------------------------------#
-def prepare_model():
+def prepare_model(subject):
     print('Preparing model')
     dictionary = corpora.Dictionary(texts)
-    dictionary.save('models/lda/dictionary.dict')  # store the dictionary, for future reference
+    dictionary.save('models/lda_%s/dictionary.dict' % (subject, ))  # store the dictionary, for future reference
     corpus = [dictionary.doc2bow(text) for text in texts]
-    corpora.MmCorpus.serialize('models/lda/corpus.mm', corpus)  # store to disk, for later use
+    corpora.MmCorpus.serialize('models/lda_%s/corpus.mm' % (subject, ), corpus)  # store to disk, for later use
 
 
-    id2word = corpora.Dictionary.load('models/lda/dictionary.dict')
-    mm = corpora.MmCorpus("models/lda/corpus.mm")
+    id2word = corpora.Dictionary.load('models/lda_%s/dictionary.dict' % (subject, ))
+    mm = corpora.MmCorpus("models/lda_%s/corpus.mm" % (subject, ))
     tfidf = models.TfidfModel(mm) # step 1 -- initialize a model
-    tfidf.save('models/lda/tfidf_model')
+    tfidf.save('models/lda_%s/tfidf_model' % (subject, ))
     corpus_tfidf = tfidf[mm]
-    corpora.MmCorpus.serialize('models/lda/corpus_tfidf.mm', corpus_tfidf)  # store to disk, for later use
+    corpora.MmCorpus.serialize('models/lda_%s/corpus_tfidf.mm' % (subject, ), corpus_tfidf)  # store to disk, for later use
 
     lda_tfidf = models.LdaModel(corpus=utils.RepeatCorpus(corpus_tfidf, 10000),
                              id2word=id2word,
@@ -98,22 +99,22 @@ def prepare_model():
                         passes=2,
                         iterations=1000)
     print('Model prepared for bow')
-    lda.save('models/lda/lda.model')
-    lda_tfidf.save('models/lda/lda_tfidf.model')
+    lda.save('models/lda_%s/lda.model' % (subject, ))
+    lda_tfidf.save('models/lda_%s/lda_tfidf.model' % (subject, ))
 
 #------------------------LOAD MODEL AND TEST ------------------------------#
-def load_model():
+def load_model(subject):
     #print('Loading model')
-    id2word = corpora.Dictionary.load('models/lda/dictionary.dict')
-    mm = corpora.MmCorpus("models/lda/corpus.mm")
-    corpus_tfidf = corpora.MmCorpus("models/lda/corpus_tfidf.mm")
-    lda = models.LdaModel.load('models/lda/lda.model')
-    lda_tfidf = models.LdaModel.load('models/lda/lda_tfidf.model')
+    id2word = corpora.Dictionary.load('models/lda_%s/dictionary.dict' % (subject, ))
+    mm = corpora.MmCorpus("models/lda_%s/corpus.mm" % (subject, ))
+    corpus_tfidf = corpora.MmCorpus("models/lda_%s/corpus_tfidf.mm" % (subject, ))
+    lda = models.LdaModel.load('models/lda_%s/lda.model' % (subject, ))
+    lda_tfidf = models.LdaModel.load('models/lda_%s/lda_tfidf.model' % (subject, ))
     index = similarities.MatrixSimilarity(lda[mm])
     index_tfidf = similarities.MatrixSimilarity(lda_tfidf[corpus_tfidf], num_features=corpus_tfidf.num_terms)
-    index.save("models/lda/simIndex.index")
-    index_tfidf.save("models/lda/simIndex_tfidf.index")
-    tfidf = models.TfidfModel.load('models/lda/tfidf_model')
+    index.save("models/lda_%s/simIndex.index" % (subject, ))
+    index_tfidf.save("models/lda_%s/simIndex_tfidf.index" % (subject, ))
+    tfidf = models.TfidfModel.load('models/lda_%s/tfidf_model' % (subject, ))
     return id2word, lda, index, lda_tfidf, index_tfidf, tfidf
 
 #----------------------TESTING-------------#
@@ -141,7 +142,7 @@ def run_all_questions():
             print()
 
 LOADED = False
-def get_vector(prep_model, new_question, do_what='tfidf'):
+def get_vector(prep_model, new_question, do_what='tfidf', subject = 'ADA'):
     global id2word, lda, index, lda_tfidf, index_tfidf, tfidf, LOADED
     finalsims = list()
     probs = [0.0] * 4
@@ -150,7 +151,7 @@ def get_vector(prep_model, new_question, do_what='tfidf'):
     if(prep_model == 'y'):
         prepare_model()
     if not LOADED:
-        id2word, lda, index, lda_tfidf, index_tfidf, tfidf = load_model()
+        id2word, lda, index, lda_tfidf, index_tfidf, tfidf = load_model(subject)
         LOADED = True
     #print('Testing')
     doc = ' '.join(clean(new_question))
@@ -263,46 +264,48 @@ Find the number of comparisons made by the sentinel version of linear search a. 
 
 Write a brute force backtracking program for playing the game Battleship on the computer.'''
 
-    TRAIN = True
+    TRAIN = False
     if TRAIN:
-        prepare_model()
+        prepare_model(subject)
 
-    queries = []
-    with open('datasets/ADA_SO_Questions.csv') as f:
-        csvreader = csv.reader(f)
-        i = 0
-        for row in csvreader:
-            queries.append(row)
-            i += 1
-            if i == 100000:
-                break
+    TEST = False
+    if TEST:
+        queries = []
+        with open('datasets/ADA_SO_Questions.csv') as f:
+            csvreader = csv.reader(f)
+            i = 0
+            for row in csvreader:
+                queries.append(row)
+                i += 1
+                if i == 100000:
+                    break
 
-    '''
-    with open('../ADA/__LSA_Filtered_Questions.csv', 'w') as f:
-        csvwriter = csv.writer(f)
-        i = 0
-        csvwriter.writerow(['Questions'])
-        for query in queries:
+        '''
+        with open('../ADA/__LSA_Filtered_Questions.csv', 'w') as f:
+            csvwriter = csv.writer(f)
+            i = 0
+            csvwriter.writerow(['Questions'])
+            for query in queries:
+                s, p = get_vector('n', query[1], 'tfidf')
+                try:
+                    if max(s) > 0.9:
+                        print(s)
+                        print('Query:', query[1], '({})'.format(max(s)))
+                        i += 1
+                except:
+                    continue
+
+                if i == 5:
+                    exit()
+        '''
+
+        '''
+        for query in queries[:5]:
             s, p = get_vector('n', query[1], 'tfidf')
-            try:
-                if max(s) > 0.9:
-                    print(s)
-                    print('Query:', query[1], '({})'.format(max(s)))
-                    i += 1
-            except:
-                continue
+            print('Query:', query[1], '({})'.format(max(s)))
+        '''
 
-            if i == 5:
-                exit()
-    '''
-
-    '''
-    for query in queries[:5]:
-        s, p = get_vector('n', query[1], 'tfidf')
-        print('Query:', query[1], '({})'.format(max(s)))
-    '''
-
-    for query in questions.split('\n\n'):
-        print('Query:', query)
-        s, p = get_vector('n', query, 'tfidf')
-        print()
+        for query in questions.split('\n\n'):
+            print('Query:', query)
+            s, p = get_vector('n', query, 'tfidf')
+            print()

@@ -20,7 +20,7 @@ class Visualize:
 		array2 = [0.1, 0.1, 0.3, 0.3, 0, 0]
 		# TODO: Requires rework
 		array1 = classifier.get_knowledge_probs(question, 'ADA')
-		# sims, array1 = docsim_lda.get_vector('n', question, 'tfidf')
+		# sims, array1 = docsim_lda.get_vector('n', question, 'tfidf', subject = 'ADA')
 		#array2 = struct_svm_ada.get_cognitive_probs(question)
 		array2 = svm.get_cognitive_probs(question)
 		nmarray = np.outer(np.array(array1), np.array(array2))

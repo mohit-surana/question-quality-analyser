@@ -43,11 +43,15 @@ def __get_knowledge_level(question, subject='ADA'):
             if rows_read == 0:
                 rows_read += 1
                 continue
-            s_no, _, section, _ = row
+            if subject == 'ADA':
+                s_no, _, section, _ = row
+            else:
+                id, s_no, level, section, pg_no = row
             X[section] = (section, rows_read - 1, 0)
             rows_read += 1
 
     section_wise_question_probs = []
+    print('all_classes', all_classes)
     for i, prob in enumerate(classifier.classify(question)):
         #print('Question:{}'.format(question[i]))
         for c, p in __probs_to_classes_dict(prob, all_classes).items():
@@ -90,6 +94,7 @@ def __probs_to_classes_dict(probs, all_classes):
     probs = sorted(probs, key=lambda x: x[1], reverse=True)
     classes = {}
     for i, p in probs:
+        print(i, p)
         classes[all_classes[i]] = p
 
     return classes
@@ -131,7 +136,7 @@ class DocumentClassifier:
                 for sentence in sentences:
                     text = self.__preprocess(sentence)
                     if text:
-                        rows.append({'text' : text, 'class' : re.search('[\d]+ (.*?)[.]', file_name).group(1) })
+                        rows.append({'text' : text, 'class' : text.split('\n')[0]})
                         index.append(count)
                         count += 1
 
@@ -142,7 +147,9 @@ class DocumentClassifier:
         self.data = self.data.reindex(np.random.permutation(self.data.index))
 
         print('\nFitting data into the classifier')
+        print(self.data)
         self.pipeline.fit(self.data['text'].values, self.data['class'].values)
+        print('Done')
 
     def classify(self, data):
         if type(data) != type([]):
@@ -160,14 +167,16 @@ if __name__ == "__main__":
 
     subject = sys.argv[1]
 
-    TRAIN = True
+    TRAIN = False
     if TRAIN:
         classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store'})
+        print('Done bro')
         classifier.save('models/%s/__Classifier.pkl' % (subject, ))
 
     classifier = pickle.load(open('models/%s/__Classifier.pkl' % (subject, ), 'rb'))
 
     all_classes = sorted(list(set(list(classifier.data['class'].values))))
+    print(all_classes)
 
     '''
     questions = ["""Having some problems implementing a quicksort sorting algorithm in java. I get a stackoverflow error when I run this program and I'm not exactly sure why. If anyone can point out the error, it would be great.""",
