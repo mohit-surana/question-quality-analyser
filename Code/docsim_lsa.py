@@ -27,7 +27,7 @@ ERASE_LINE = '\x1b[2K'
 
 regex = re.compile('[%s]' % re.escape(string.punctuation))
 
-subject = 'ADA' # sys.argv[1]
+subject = 'OS' # sys.argv[1]
 
 
 def run(tid, chunk, return_dict):    
@@ -86,7 +86,7 @@ def cosToProb(cos, gamma=1):
     return [float(c) / float(sum_cos_shifted) for c in cos_shifted]
 
 
-TRAIN = True
+TRAIN = False
 
 doc = dict()
 documents = list()
@@ -133,7 +133,7 @@ if TRAIN:
                                 onepass=False,
                                 extra_samples=300,
                                 num_topics=len(documents))
-    lsi_tfidf.save('models/lsa/%s_lsi.model')
+    lsi_tfidf.save('models/lsa/%s_lsi.model' %subject)
     print('Done training')
 
 lsi_tfidf = models.LsiModel.load('models/lsa/%s_lsi.model' %subject)
@@ -169,38 +169,40 @@ def get_values(question):
 
 
 if __name__ == '__main__':
-    queries = []
-    with open('datasets/%s_Exercise_Questions_Relabelled_v2.csv' %subject) as f:
-        csvreader = csv.reader(f)
-        i = 0
-        for row in csvreader:
-            queries.append(row[0])
-            i += 1
+    TEST = False
+    if TEST:
+        queries = []
+        with open('datasets/%s_Exercise_Questions_Relabelled_v2.csv' %subject) as f:
+            csvreader = csv.reader(f)
+            i = 0
+            for row in csvreader:
+                queries.append(row[0])
+                i += 1
 
-    manager = Manager()
-    return_dict = manager.dict()
-    #queries = queries[:100]
-    #print(queries)
-    num_procs = 8
-    procs = []
-    for chunk in [queries[i::num_procs] for i in range(num_procs)]:
-        p = multiprocessing.Process(target=run, args=(len(procs), chunk, return_dict))
-        procs.append(p)
-        p.start()
+        manager = Manager()
+        return_dict = manager.dict()
+        #queries = queries[:100]
+        #print(queries)
+        num_procs = 8
+        procs = []
+        for chunk in [queries[i::num_procs] for i in range(num_procs)]:
+            p = multiprocessing.Process(target=run, args=(len(procs), chunk, return_dict))
+            procs.append(p)
+            p.start()
 
-    results = []
-    for proc in procs:
-        proc.join()
-    #print(return_dict)
-    for v in return_dict.values():
-        results.extend(v)
-    #print(results)
+        results = []
+        for proc in procs:
+            proc.join()
+        #print(return_dict)
+        for v in return_dict.values():
+            results.extend(v)
+        #print(results)
 
-    with open('datasets/LSA_Questions_Labelled.csv', 'w') as f:
-        csvwriter = csv.writer(f)
-        csvwriter.writerows(results)
-            
-    #print("\n".join(["%.3f - %s" % (score, listofsections[i]) for i, score in sorted_similarities[:5]]))
-    #print('-' * 80)
+        with open('datasets/LSA_Questions_Labelled.csv', 'w') as f:
+            csvwriter = csv.writer(f)
+            csvwriter.writerows(results)
+                
+        #print("\n".join(["%.3f - %s" % (score, listofsections[i]) for i, score in sorted_similarities[:5]]))
+        #print('-' * 80)
     
 
