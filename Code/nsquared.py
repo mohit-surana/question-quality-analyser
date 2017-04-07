@@ -43,7 +43,10 @@ def __get_knowledge_level(question, subject='ADA'):
             if rows_read == 0:
                 rows_read += 1
                 continue
-            s_no, _, section, _ = row
+            if subject == 'ADA':
+                s_no, _, section, _ = row
+            else:
+                id, s_no, level, section, pg_no = row
             X[section] = (section, rows_read - 1, 0)
             rows_read += 1
 

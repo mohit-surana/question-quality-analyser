@@ -101,6 +101,13 @@ def prepare_model(subject):
     print('Model prepared for bow')
     lda.save('models/LDA/%s/lda.model' % (subject, ))
     lda_tfidf.save('models/LDA/%s/lda_tfidf.model' % (subject, ))
+    print('Prepare and save index similarities for Bow and Tfidf')
+
+    corpus_tfidf = corpora.MmCorpus("models/LDA/%s/corpus_tfidf.mm" % (subject, ))
+    index = similarities.MatrixSimilarity(lda[mm])
+    index_tfidf = similarities.MatrixSimilarity(lda_tfidf[corpus_tfidf], num_features=corpus_tfidf.num_terms)
+    index.save("models/LDA/%s/simIndex.index" % (subject, ))
+    index_tfidf.save("models/LDA/%s/simIndex_tfidf.index" % (subject, ))
 
 #------------------------LOAD MODEL AND TEST ------------------------------#
 def load_model(subject):
@@ -112,8 +119,8 @@ def load_model(subject):
     lda_tfidf = models.LdaModel.load('models/LDA/%s/lda_tfidf.model' % (subject, ))
     index = similarities.MatrixSimilarity(lda[mm])
     index_tfidf = similarities.MatrixSimilarity(lda_tfidf[corpus_tfidf], num_features=corpus_tfidf.num_terms)
-    index.save("models/LDA/%s/simIndex.index" % (subject, ))
-    index_tfidf.save("models/LDA/%s/simIndex_tfidf.index" % (subject, ))
+    index.load("models/LDA/%s/simIndex.index" % (subject, ))
+    index_tfidf.load("models/LDA/%s/simIndex_tfidf.index" % (subject, ))
     tfidf = models.TfidfModel.load('models/LDA/%s/tfidf_model' % (subject, ))
     return id2word, lda, index, lda_tfidf, index_tfidf, tfidf
 
