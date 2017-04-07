@@ -19,7 +19,7 @@ from sklearn.metrics import classification_report, f1_score
 from utils import get_filtered_questions, get_data_for_cognitive_classifiers
 
 np.random.seed(42)
-
+    
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K' 
 
@@ -41,11 +41,6 @@ for k in domain:
 def lamb1(x):
     return x
 
-def lamb2():
-    global gVar
-    return gVar
-
-gVar = None
 class TfidfEmbeddingVectorizer(object):
     def __init__(self, word2vec):
         self.word2vec = word2vec
@@ -64,8 +59,8 @@ class TfidfEmbeddingVectorizer(object):
         tfidf.fit(X + list(keywords))
 
         max_idf = max(tfidf.idf_)
-        gVar = max_idf
-        self.word2weight = defaultdict(lamb2,
+
+        self.word2weight = defaultdict(lambda: max_idf,
             [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
     
         return self
@@ -91,79 +86,75 @@ class TfidfEmbeddingVectorizer(object):
                 main_temp.append(temp)
         main_temp = np.array(main_temp)
         return main_temp
-               
-################ BEGIN LOADING DATA ################
 
-X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0, 0.1, 0.15, 0.2], ['ada', 'os', 'bcl'], 0.8, include_keywords=False)
-print('Loaded/Preprocessed data')
+if __name__ == '__main__':
+    ################ BEGIN LOADING DATA ################
 
-vocabulary = {'the'}
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0, 0.1, 0.15, 0.2], ['ada', 'os', 'bcl'], 0.8, include_keywords=False)
+    print('Loaded/Preprocessed data')
 
-for x in X_train + X_test:
-    vocabulary = vocabulary.union(set(x))
+    vocabulary = {'the'}
 
-################ BEGIN TRAINING CODE ################
+    ################ BEGIN TRAINING CODE ################
 
-if TRAIN_SVM_GLOVE:
-################ Load Glove w2v only if training is required    #################
-    print()
-    filename = 'glove.6B.%dd.txt' %100
-    
-    if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+    if TRAIN_SVM_GLOVE:
+    # Load Glove w2v only if training is required 
         print()
-        with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
-            w2v = {}
-            for row, line in enumerate(lines):
-                try:
-                    w = line.split()[0]
-                    if w not in vocabulary:
-                        continue
-                    vec = np.array(list(map(float, line.split()[1:])))
-                    w2v[w] = vec
-                except:
-                    continue
-                finally:
-                    print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+        filename = 'glove.6B.%dd.txt' %100
         
-        dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
-    else:
-        w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+        if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+            print()
+            with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+                w2v = {}
+                for row, line in enumerate(lines):
+                    try:
+                        w = line.split()[0]
+                        vec = np.array(list(map(float, line.split()[1:])))
+                        w2v[w] = vec
+                    except:
+                        continue
+                    finally:
+                        print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
             
-    print('Loaded Glove w2v')
-
-    parameters = {'estimator__kernel' : ['linear', 'poly'],
-                  'estimator__C': [5e-4, 0.001, 0.05, 0.1]}
-                 
-    gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced')), parameters, n_jobs=-1)
-    clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)), 
-                          ('SVC', gscv) ])
-
-    clf.fit(X_train, Y_train)
-    print('Fitting done')
-
-    print('Best params:', gscv.best_params_)
-
-    joblib.dump(clf, 'models/SVM/glove_svm_model.pkl') 
-    print('Saving done')
-
-################ BEGIN TESTING CODE ################
-if TEST_SVM_GLOVE:
-    if not TRAIN_SVM_GLOVE:
-        clf = joblib.load('models/SVM/glove_svm_model.pkl')
-
-    Y_true, Y_pred = Y_test, clf.predict(X_test)
-
-    nCorrect = 0
-    print('Incorrectly labelled data: ')
-    for i in range(len(Y_true)):
-        if Y_true[i] != Y_pred[i]:
-            print(X_test[i], '| Predicted:', Y_pred[i], '| Actual:', Y_true[i])
+            dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
         else:
-            nCorrect += 1
+            w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+                
+        print('Loaded Glove w2v')
 
-    print()
-    print('Accuracy: {:.3f}%'.format(nCorrect / len(Y_test) * 100))
+        parameters = {'estimator__kernel' : ['linear', 'poly'],
+                      'estimator__C': [0.1, 0.5]}
+                     
+        gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced')), parameters, n_jobs=-1)
+        clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)), 
+                              ('SVC', gscv) ])
 
-    print(classification_report(Y_true, Y_pred))
+        clf.fit(X_train, Y_train)
+        print('Fitting done')
 
-#print(utils.get_glove_vector(['What is horners rule?']))
+        print('Best params:', gscv.best_params_)
+
+        joblib.dump(clf, 'models/SVM/glove_svm_model.pkl') 
+        print('Saving done')
+
+    ################ BEGIN TESTING CODE ################
+    if TEST_SVM_GLOVE:
+        if not TRAIN_SVM_GLOVE:
+            clf = joblib.load('models/SVM/glove_svm_model.pkl')
+
+        Y_true, Y_pred = Y_test, clf.predict(X_test)
+
+        nCorrect = 0
+        print('Incorrectly labelled data: ')
+        for i in range(len(Y_true)):
+            if Y_true[i] != Y_pred[i]:
+                print(X_test[i], '| Predicted:', Y_pred[i], '| Actual:', Y_true[i])
+            else:
+                nCorrect += 1
+
+        print()
+        print('Accuracy: {:.3f}%'.format(nCorrect / len(Y_test) * 100))
+
+        print(classification_report(Y_true, Y_pred))
+
+    #print(utils.get_glove_vector(['What is horners rule?']))
