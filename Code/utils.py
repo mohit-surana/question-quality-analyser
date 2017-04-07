@@ -50,8 +50,10 @@ def clean2(text):
     tokens = [word for word in nltk.word_tokenize(text) if word.lower() not in stopwords]
     return ' '.join(list(set([porter.stem(i) for i in [j for j in tokens if re.match('[a-zA-Z]', j) ]])))
 
-def clean_no_stopwords(text, as_list=True):
-    tokens = [porter.stem(wordnet.lemmatize(w)) for w in text.lower().split() if w.isalpha()]
+def clean_no_stopwords(text, as_list=True, stem=True):
+    tokens = [wordnet.lemmatize(w) for w in text.lower().split() if w.isalpha()]
+    if stem:
+        tokens = [porter.stem(w) for w in tokens]
     if as_list:
         return tokens
     else:

@@ -16,7 +16,11 @@ try:
 except:
 	domain = pickle.load(open('resources/domain.pkl',  'rb'))
 
-domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])))) for k in domain.keys() } 
+domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() } 
+inverted_domain = {}
+for k in domain:
+	for v in domain[k]:
+		inverted_domain[v] = k
 
 domain_names = domain.keys()
 
@@ -29,27 +33,24 @@ mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evalua
 mapping_cog_score = {0 : 0, 1 : 10, 2 : 100, 3 : 1000, 4 : 10000, 5 : 100000}
 
 def features(question):
-	features = { 'count({})'.format(d.upper()) : sum([1 for w in question if w in domain[d]]) for d in domain_names }
+	features = { 'count({})'.format(d) : sum([1 for w in question if w in domain[d]]) for d in domain_names }
 
-	features['count(CONTEXT)'] = 0
-	features['count(KEYWORD)'] = 0
+	max_d = ''
+	for d in ['Remember', 'Understand', 'Apply', 'Analyse', 'Evaluate', 'Create']:
+		if features['count(%s)' %d] > 0:
+			max_d = d
+	if max_d != '':
+		features['class'] = max_d
+
 	for i, word in enumerate(question):
 		if word in keywords:
-			features['isKeyword({})'.format(word)] = True
-			for d in domain:
-				if word in domain[d]:
-					break
-
-			features['type({})'.format(word)] = d.upper()
-			features['count(KEYWORD)'] += 1
+			features['isKeyword(%s)' %word] = True
+			features['type(%s)' %word] = inverted_domain[word]
 		else:
-			features['isKeyword({})'.format(word)] = False
-			features['type({})'.format(word)] = 'CONTEXT'
-			features['count(CONTEXT)'] += 1
+			features['type({})'.format(word)] = None
+	
 
-		features['count({})'.format(word)] = 1 if 'count({})'.format(word) not in features else (features['count({})'.format(word)] + 1)
-
-	features['keyscore'] = sum([ (mapping_cog_score[mapping_cog[d]]) * features['count({})'.format(d.upper())] for d in domain ])
+	#features['keyscore'] = sum([ (mapping_cog_score[mapping_cog[d]]) * features['count({})'.format(d)] for d in domain ])
 	
 	return features
 
@@ -59,26 +60,53 @@ def check_for_synonyms(word):
         synonyms = synonyms.union(set(s.lemma_names()))
     return '@'.join(list(synonyms))
 
-X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.6, 0.7, 0.75, 0.8], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=True)
-print('Loaded/Preprocessed data')
+if __name__ == '__main__':
+	TRAIN = False
+	
+	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.5, 0.6, 0.75, 0.8], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False)
+	print('Loaded/Preprocessed data')
 
-X = X_train + X_test
-Y = Y_train + Y_test
-featuresets = [(features(X[i]), Y[i]) for i in range(len(X))]
+	X = X_train + X_test
+	Y = Y_train + Y_test
 
-train_percentage = 0.80
+	'''
+	ctr = { i : ([], []) for i in range(6)}
 
-train_set, test_set = featuresets[ : int(len(X) * train_percentage)], featuresets[int(len(X) * train_percentage) : ]
+	for x, y in zip(X, Y):
+		ctr[y][0].append(x)
+		ctr[y][1].append(y)
 
-classifier = MaxentClassifier.train(train_set, max_iter=15)
-print(classify.accuracy(classifier, test_set))
+	X = []
+	Y = []
+	for k in ctr:
+		X.extend(ctr[k][0])
+		Y.extend(ctr[k][1])
 
-pred = []
-actual = [x[1] for x in test_set]
-for t, l in test_set:
-	pred.append(classifier.classify(t))
+	data = list(zip(X, Y))
+	random.shuffle(data)
+	X = [t[0] for t in data]
+	Y = [t[1] for t in data]
+	'''
 
-#print(pred)
-#print(actual)
+	featuresets = [(features(X[i]), Y[i]) for i in range(len(X))]
 
-pickle.dump(classifier, open('models/MaxEnt/maxent.pkl', 'wb'))
+	train_percentage = 0.80
+
+	train_set, test_set = featuresets[ : int(len(X) * train_percentage)], featuresets[int(len(X) * train_percentage) : ]
+
+	if TRAIN:
+		classifier = MaxentClassifier.train(train_set, max_iter=100)
+		pickle.dump(classifier, open('models/MaxEnt/maxent.pkl', 'wb'))
+
+	else:
+		classifier  = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
+		pred = []
+		actual = [x[1] for x in test_set]
+		for t, l in test_set:
+			pred.append(classifier.classify(t))
+
+		print(pred)
+		print(actual)
+
+		print(classify.accuracy(classifier, test_set))
+
