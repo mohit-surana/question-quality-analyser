@@ -154,17 +154,12 @@ queries = ["How would you arrange 1000 numbers such that each number is smaller 
 
 "Write a brute force pattern matching program for playing the game Battleship on the computer."]
 '''
-def get_values(question):
+def get_values(question, subject_param):
+    global subject
+    subject = subject_param
     return_dict = dict()
     run(1, [question], return_dict)
-    #print(return_dict)
     results = return_dict[1]
-    # for v in return_dict.values():
-    #     #print(v)
-    #     if(len(v) == 0):
-    #         return 0
-    #     return v[0][1]
-
     return results[0][1]
 
 
