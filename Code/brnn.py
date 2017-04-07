@@ -103,8 +103,8 @@ class RNN:
 	def update_params(self, dWxh, dWhh, dWhy, dbh, dby):
 		# perform parameter update with Adagrad
 		for param, dparam, mem in zip([self.Wxh, self.Whh, self.Why, self.bh, self.by],
-		                            [dWxh, dWhh, dWhy, dbh, dby],
-		                            [self.mWxh, self.mWhh, self.mWhy, self.mbh, self.mby]):
+									[dWxh, dWhh, dWhy, dbh, dby],
+									[self.mWxh, self.mWhh, self.mWhy, self.mbh, self.mby]):
 			mem += dparam * dparam
 			param += -self.learning_rate * dparam / np.sqrt(mem + 1e-8) # adagrad update
 
@@ -201,9 +201,16 @@ class BiDirectionalRNN:
 			print(classification_report(targets, predictions))
 
 		return accuracy_score(targets, predictions)
-		
-		
 
+	def classify(self, X):
+		predictions = []
+		for x in X:
+			x = clip(x)
+			predictions.append(self.forward(x))
+
+		return np.array(predictions)
+		
+	
 def save_model(clf):
 	with open('models/BiRNN/brnn_model.pkl', 'wb') as f:
 		dill.dump(clf, f)
@@ -229,31 +236,26 @@ if __name__ == "__main__":
 	Y_data = Y_train + Y_test
 	
 	vocabulary = {'the'}
+		
+	filename = 'glove.6B.%dd.txt' %INPUT_SIZE
 	
-	for x in X_train + X_test:
-	    vocabulary = vocabulary.union(set(x))
-	
-	filename = 'glove.840B.%dd.txt' %INPUT_SIZE
-	
-    if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
-        print()
-        with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
-            w2v = {}
-            for row, line in enumerate(lines):
-                try:
-                    w = line.split()[0]
-                    if w not in vocabulary:
-                        continue
-                    vec = np.array(list(map(float, line.split()[1:])))
-                    w2v[w] = vec
-                except:
-                    continue
-                finally:
-                    print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
-        
-        dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
-    else:
-        w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+	if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+		print()
+		with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+			w2v = {}
+			for row, line in enumerate(lines):
+				try:
+					w = line.split()[0]
+					vec = np.array(list(map(float, line.split()[1:])))
+					w2v[w] = vec
+				except:
+					continue
+				finally:
+					print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+		
+		dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+	else:
+		w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
 	
 	X_data = sent_to_glove(X_data, w2v)
 	
