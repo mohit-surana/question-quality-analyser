@@ -57,10 +57,9 @@ with codecs.open('datasets/OS_Exercise_Questions_Relabelled.csv', 'w', encoding=
     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
         #print(x)
         nsq = max(Nsq.get_knowledge_probs(x, 'OS'))
-        #nsq = 1     # TODO : SHIVA CHANGE IT 
-        lda_label = max(lda.get_vector('n', x, 'tfidf', subject = 'OS')[1])
-        lsa_label = lsa.get_values(x)
+        lda_label = max(lda.get_vector('n', x, 'tfidf', subject_param = 'OS')[1])
+        lsa_label = lsa.get_values(x, subject_param = 'OS')
         csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda_label, lsa_label, y_cog])
         count += 1
-        if(count%10 == 0):
+        if(count % 10 == 0):
             print(count)
