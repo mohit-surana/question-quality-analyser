@@ -21,20 +21,6 @@ wordnet = WordNetLemmatizer()
 import string
 regex = re.compile('[%s]' % re.escape(string.punctuation))
 
-'''
-def clean(sentence):
-    sentence = sentence.lower()
-
-    final_sentence = []
-    for word in word_tokenize(sentence):
-        word = regex.sub(u'', word)
-        if not (word == u'' or word == ''):
-            word = wordnet.lemmatize(word)
-            word = porter.stem(word)
-            #word = snowball.stem(word)
-            final_sentence.append(word)
-    return final_sentence
-'''
 def clean(text):
     stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding="utf8").read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
     stopwords.update(['"', "'", ':', ';', '(', ')', '[', ']', '{', '}'])
@@ -53,12 +39,12 @@ for root, dirs, files in os.walk('resources/%s' % (subject, ), topdown=False):
                 f = open(filename, encoding="latin-1")
                 lines = ' '.join(clean(f.read()))
                 doc[filename] = lines
-#print(doc.values())
+
 for key, d in doc.items():
     documents.append(d)
     listofsections.append(key)
 
-#print(listofsections)
+
 stoplist = set('for a of the and to in'.split())
 texts = [[word for word in document.lower().split() if word not in stoplist]    for document in documents]
 frequency = defaultdict(int)
@@ -149,7 +135,10 @@ def run_all_questions():
             print()
 
 LOADED = False
-def get_vector(prep_model, new_question, do_what='tfidf', subject = 'ADA'):
+def get_vector(prep_model, new_question, do_what='tfidf', subject_param = 'ADA'):
+    global subject
+    subject = subject_param
+    
     global id2word, lda, index, lda_tfidf, index_tfidf, tfidf, LOADED
     finalsims = list()
     probs = [0.0] * 4
@@ -158,7 +147,7 @@ def get_vector(prep_model, new_question, do_what='tfidf', subject = 'ADA'):
     if(prep_model == 'y'):
         prepare_model()
     if not LOADED:
-        id2word, lda, index, lda_tfidf, index_tfidf, tfidf = load_model(subject)
+        id2word, lda, index, lda_tfidf, index_tfidf, tfidf = load_model(subject_param)
         LOADED = True
     #print('Testing')
     doc = ' '.join(clean(new_question))
@@ -212,7 +201,7 @@ def get_vector(prep_model, new_question, do_what='tfidf', subject = 'ADA'):
     if(do_what == 'tfidf'):
         vec_bow = id2word.doc2bow(doc.lower().split())
         vec_lda = lda_tfidf[vec_bow]
-        sims_tfidf1 = index[vec_lda]
+        sims_tfidf1 = index_tfidf[vec_lda]
         sims_tfidf = sorted(enumerate(sims_tfidf1), key=lambda item: -item[1])
         finalsims_tfidf = list()
         for i in range(len(sims_tfidf)):
@@ -277,41 +266,6 @@ Write a brute force backtracking program for playing the game Battleship on the 
 
     TEST = False
     if TEST:
-        queries = []
-        with open('datasets/ADA_SO_Questions.csv') as f:
-            csvreader = csv.reader(f)
-            i = 0
-            for row in csvreader:
-                queries.append(row)
-                i += 1
-                if i == 100000:
-                    break
-
-        '''
-        with open('../ADA/__LSA_Filtered_Questions.csv', 'w') as f:
-            csvwriter = csv.writer(f)
-            i = 0
-            csvwriter.writerow(['Questions'])
-            for query in queries:
-                s, p = get_vector('n', query[1], 'tfidf')
-                try:
-                    if max(s) > 0.9:
-                        print(s)
-                        print('Query:', query[1], '({})'.format(max(s)))
-                        i += 1
-                except:
-                    continue
-
-                if i == 5:
-                    exit()
-        '''
-
-        '''
-        for query in queries[:5]:
-            s, p = get_vector('n', query[1], 'tfidf')
-            print('Query:', query[1], '({})'.format(max(s)))
-        '''
-
         for query in questions.split('\n\n'):
             print('Query:', query)
             s, p = get_vector('n', query, 'tfidf')
