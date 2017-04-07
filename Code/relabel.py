@@ -4,10 +4,10 @@ import re
 
 from utils import clean
 
-import classifier as Nsq
-from classifier import DocumentClassifier
-import docsim_lda
-import docsim_lsa
+import nsquared as Nsq
+from nsquared import DocumentClassifier
+import lda
+import lsa
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
@@ -31,56 +31,16 @@ with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="
         Y_cog.append(mapping_cog[label_cog])
         Y_know.append(mapping_know[label_know])
 
-with codecs.open('datasets/ADA_Exercise_Questions_Relabelled.csv', 'w', encoding="utf-8") as csvfile:
+count = 0
+with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v5.csv', 'w', encoding="utf-8") as csvfile:
     csvwriter = csv.writer(csvfile)
-    # NOTE: This does not have the headers and must be appropriately handled by modifying the code
-    for x, y_cog, y_know in zip(X, Y_cog, Y_know):
-        csvwriter.writerow([x, y_cog + 6 * y_know])
-
-# stupid_count = 1
-# with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v2.csv', 'w', encoding="utf-8") as csvfile:
-#     csvwriter = csv.writer(csvfile)
-#     # NOTE: This does not have the headers and must be appropriately handled by modifying the code
-#     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
-#         #print(x)
-#         nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
-#         if stupid_count == 0:
-#             lda = max(docsim_lda.get_vector('y', x, 'tfidf')[1])
-#             stupid_count = 1
-#         else:
-#             lda = max(docsim_lda.get_vector('n', x, 'tfidf')[1])
-#         lsa = docsim_lsa.get_values(x)
-#         csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda, lsa])
-
-# stupid_count = 1
-# with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v3.csv', 'w', encoding="utf-8") as csvfile:
-#     csvwriter = csv.writer(csvfile)
-#     # NOTE: This does not have the headers and must be appropriately handled by modifying the code
-#     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
-#         #print(x)
-#         nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
-#         if stupid_count == 0:
-#             lda = max(docsim_lda.get_vector('y', x, 'tfidf')[0])
-#             stupid_count = 1
-#         else:
-#             lda = max(docsim_lda.get_vector('n', x, 'tfidf')[0])
-#         lsa = docsim_lsa.get_values(x)
-#         csvwriter.writerow([x, y_cog * 16 + 100 * y_know, nsq, lda, lsa])
-
-
-
-stupid_count = 1
-with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v4.csv', 'w', encoding="utf-8") as csvfile:
-
-    csvwriter = csv.writer(csvfile)
-    # NOTE: This does not have the headers and must be appropriately handled by modifying the code
+    csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Cognitive'])
     for x, y_cog, y_know in zip(X, Y_cog, Y_know):
         #print(x)
         nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
-        if stupid_count == 0:
-            lda = max(docsim_lda.get_vector('y', x, 'tfidf')[0])
-            stupid_count = 1
-        else:
-            lda = max(docsim_lda.get_vector('n', x, 'tfidf')[0])
-        lsa = docsim_lsa.get_values(x)
-        csvwriter.writerow([x, y_cog * 16 + 100 * y_know, nsq, lda, lsa, y_know])
+        lda_label = max(lda.get_vector('n', x, 'tfidf', subject_param = 'ADA')[1])
+        lsa_label = lsa.get_values(x, subject_param = 'ADA')
+        csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda_label, lsa_label, y_cog])
+        count += 1
+        if(count % 10 == 0):
+            print(count)
