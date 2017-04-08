@@ -115,7 +115,7 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
 
     return new_questions if len(new_questions) > 1 else new_questions[0]
 
-def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada', 'os', 'bcl'], split=0.7, include_keywords=True, keep_dup=False):
+def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada', 'os', 'bcl'], split=0.7, include_keywords=True, keep_dup=False, shuffle=True):
     X = []
     Y_cog = []
     Y_know = []
@@ -181,7 +181,10 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
     else:
         X = [list(np.unique(x.split())) for x in X]
     dataset = list(zip(X, Y_cog))
-    random.shuffle(dataset)
+    
+    if shuffle:
+        random.shuffle(dataset)
+
     X_train = []
     Y_train = []
     X_test = []
@@ -207,7 +210,10 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
                 Y_train.append(mapping_cog[key])
 
         dataset = list(zip(X_train, Y_train))
-        random.shuffle(dataset)
+        
+        if shuffle:
+            random.shuffle(dataset)
+        
         X_train = [x[0] for x in dataset]
         Y_train = [y[1] for y in dataset]
 

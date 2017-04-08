@@ -8,10 +8,14 @@ import random
 import brnn
 import os
 from brnn import BiDirectionalRNN, sent_to_glove, clip
-from utils import get_filtered_questions, clean_no_stopwords, clean
+from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
 from sklearn.externals import joblib
+from sklearn.model_selection import train_test_split
 from maxent import features
 from svm_glove import TfidfEmbeddingVectorizer
+from sklearn.decomposition import PCA
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
@@ -26,6 +30,10 @@ for k in domain:
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_cog2 = { v : k for k, v in mapping_cog.items()}
+
+LOAD_MODELS = True
+CREATE_CSV_FILE = False
+
 
 # transformation for BiRNN. This should actually become a part of the RNN for better code maintainability
 INPUT_SIZE = 300
@@ -54,99 +62,198 @@ else:
 
 print('Loaded GloVe model')
 
-################# LOADING SO[ADA] questions ################# 
+if LOAD_MODELS:
+	################ MODEL LOADING ##################
+	################# MAXENT MODEL ################# 
+	clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
+	print('Loaded MaxEnt model')
+	
+	################# SVM-GLOVE MODEL #################
+	clf_svm = joblib.load('models/SVM/glove_svm_model_81.pkl')
+	print('Loaded SVM-GloVe model')
+	
+	################# BiRNN MODEL #################
+	clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
+	print('Loaded BiRNN model')
 
-ADA_questions = []
-ADA_questions_cleaned = []
-with open('datasets/ADA_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
-	print()
-	csvreader = csv.reader(csvfile)
-	for i, row in enumerate(csvreader):
-		if i == 0 or len(row) == 0: 
-			continue
-		_, sentence, _ = row
-		clean_sentence = clean(sentence, return_as_list=False, stem=False)
-		if len(set(clean_sentence.split()).intersection(keywords)) and '?' in sentence:
-			ADA_questions.append(sentence)
-			ADA_questions_cleaned.append(clean_sentence)
-			print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} ADA questions'.format(len(ADA_questions)))
-			if len(ADA_questions) == NUM_QUESTIONS:
-				break
+if CREATE_CSV_FILE:
+	################# LOADING SO[ADA] questions ################# 
+	ADA_questions = []
+	ADA_questions_cleaned = []
+	with open('datasets/ADA_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
+		print()
+		csvreader = csv.reader(csvfile)
+		for i, row in enumerate(csvreader):
+			if i == 0 or len(row) == 0: 
+				continue
+			_, sentence, _ = row
+			clean_sentence = clean(sentence, return_as_list=False, stem=False)
+			if len(set(clean_sentence.split()).intersection(keywords)) and '?' in sentence:
+				ADA_questions.append(sentence)
+				ADA_questions_cleaned.append(clean_sentence)
+				print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} ADA questions'.format(len(ADA_questions)))
+				if len(ADA_questions) == NUM_QUESTIONS:
+					break
 
-ADA_questions_filtered = get_filtered_questions(ADA_questions_cleaned, threshold=0.25, what_type='ada')
-ADA_questions_filtered_for_maxent = get_filtered_questions(ADA_questions_cleaned, threshold=0.75, what_type='ada')
+	ADA_questions_filtered = get_filtered_questions(ADA_questions_cleaned, threshold=0.25, what_type='ada')
+	ADA_questions_filtered_for_maxent = get_filtered_questions(ADA_questions_cleaned, threshold=0.75, what_type='ada')
 
-t_ADA = list(zip(ADA_questions, ADA_questions_cleaned, ADA_questions_filtered_for_maxent, ADA_questions_filtered))
-random.shuffle(t_ADA)
-ADA_questions = [t[0] for t in t_ADA if t[-1].strip() != '']
-ADA_questions_cleaned = [t[1] for t in t_ADA if t[-1].strip() != '']
-ADA_questions_filtered_for_maxent = [t[2] for t in t_ADA if t[-1].strip() != '']
-ADA_questions_filtered = [t[3] for t in t_ADA if t[-1].strip() != '']
+	t_ADA = list(zip(ADA_questions, ADA_questions_cleaned, ADA_questions_filtered_for_maxent, ADA_questions_filtered))
+	random.shuffle(t_ADA)
+	ADA_questions = [t[0] for t in t_ADA if t[-1].strip() != '']
+	ADA_questions_cleaned = [t[1] for t in t_ADA if t[-1].strip() != '']
+	ADA_questions_filtered_for_maxent = [t[2] for t in t_ADA if t[-1].strip() != '']
+	ADA_questions_filtered = [t[3] for t in t_ADA if t[-1].strip() != '']
 
-################# LOADING SO[OS] questions ################# 
+	################# LOADING SO[OS] questions ################# 
+	OS_questions = []
+	OS_questions_cleaned = []
+	with open('datasets/OS_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
+		print()
+		csvreader = csv.reader(csvfile)
+		for i, row in enumerate(csvreader):
+			if i == 0 or len(row) == 0:
+				continue
+			_, sentence, _ = row
+			clean_sentence = clean(sentence, return_as_list=False, stem=False)
+			if len(set(clean_sentence.split()).intersection(keywords)) and '?' in sentence:
+				OS_questions.append(sentence)
+				OS_questions_cleaned.append(clean_sentence)
+				print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} OS questions'.format(len(OS_questions)))
 
-OS_questions = []
-OS_questions_cleaned = []
-with open('datasets/OS_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
-	print()
-	csvreader = csv.reader(csvfile)
-	for i, row in enumerate(csvreader):
-		if i == 0 or len(row) == 0:
-			continue
-		_, sentence, _ = row
-		clean_sentence = clean(sentence, return_as_list=False, stem=False)
-		if len(set(clean_sentence.split()).intersection(keywords)) and '?' in sentence:
-			OS_questions.append(sentence)
-			OS_questions_cleaned.append(clean_sentence)
-			print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} OS questions'.format(len(OS_questions)))
+				if len(OS_questions) == NUM_QUESTIONS:
+					break
 
-			if len(OS_questions) == NUM_QUESTIONS:
-				break
+	################ MODEL PREDICTIONS ##################
+	################# MAXENT MODEL ################# 
+	pred_maxent = []
+	for x in X_data_featureset:
+		pred_maxent.append(clf_maxent.classify(x))
+	print('MaxEnt classification complete')
+	
+	################# SVM-GLOVE MODEL #################
+	pred_svm = clf_svm.predict([x.split() for x in  X_data])
+	print('SVM-GloVe classification complete')
+	
+	################# BiRNN MODEL #################
+	pred_brnn = []
+	for x in X_data_glove:
+		pred_brnn.append(clf_brnn.forward(clip(x)))
+	print('BiRNN classification complete')
 
-OS_questions_filtered = get_filtered_questions(OS_questions_cleaned, threshold=0.25, what_type='os')
-OS_questions_filtered_for_maxent = get_filtered_questions(OS_questions_cleaned, threshold=0.75, what_type='os')
-t_OS = list(zip(OS_questions, OS_questions_cleaned, OS_questions_filtered_for_maxent, OS_questions_filtered))
-random.shuffle(t_OS)
-OS_questions = [t[0] for t in t_OS if t[-1].strip() != '']
-OS_questions_cleaned = [t[1] for t in t_OS if t[-1].strip() != '']
-OS_questions_filtered_for_maxent = [t[2] for t in t_OS if t[-1].strip() != '']
-OS_questions_filtered = [t[3] for t in t_OS if t[-1].strip() != '']
+	OS_questions_filtered = get_filtered_questions(OS_questions_cleaned, threshold=0.25, what_type='os')
+	OS_questions_filtered_for_maxent = get_filtered_questions(OS_questions_cleaned, threshold=0.75, what_type='os')
+	t_OS = list(zip(OS_questions, OS_questions_cleaned, OS_questions_filtered_for_maxent, OS_questions_filtered))
+	random.shuffle(t_OS)
+	OS_questions = [t[0] for t in t_OS if t[-1].strip() != '']
+	OS_questions_cleaned = [t[1] for t in t_OS if t[-1].strip() != '']
+	OS_questions_filtered_for_maxent = [t[2] for t in t_OS if t[-1].strip() != '']
+	OS_questions_filtered = [t[3] for t in t_OS if t[-1].strip() != '']
 
-X_data = ADA_questions_filtered + OS_questions_filtered
-X_data_for_maxent = ADA_questions_filtered_for_maxent + OS_questions_filtered_for_maxent
-X_data_featureset = [features(X_data_for_maxent[i].split()) for i in range(len(X_data_for_maxent))]
-X_data_glove = sent_to_glove(X_data, w2v) 
+	X_data = ADA_questions_filtered + OS_questions_filtered
+	X_data_for_maxent = ADA_questions_filtered_for_maxent + OS_questions_filtered_for_maxent
+	X_data_featureset = [features(X_data_for_maxent[i].split()) for i in range(len(X_data_for_maxent))]
+	X_data_glove = sent_to_glove(X_data, w2v) 
+	
+	################# DUMPING OUTPUT TO CSV #################
 
-################# MAXENT MODEL ################# 
-clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
-print('Loaded MaxEnt model')
+	with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as csvfile:
+	    csvwriter = csv.writer(csvfile)
+	    csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)'])
+	    for q, p_maxent, p_brnn, p_svm in zip(ADA_questions + OS_questions, pred_maxent, pred_brnn, pred_svm):
+	    	csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm]])
 
+
+######### GET LABEL FOR EXERCISE QUESTIONS #########
+X_train1, Y_train1, X_test1, Y_test1 = get_data_for_cognitive_classifiers(threshold=[0.15, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False, shuffle=False)
+
+X_all_data = list(zip(X_train1 + X_test1, Y_train1 + Y_test1))
+random.shuffle(X_all_data)
+X1 = [x[0] for x in X_all_data if len(x[0]) > 0]
+Y1 = [x[1] for x in X_all_data if len(x[0]) > 0]
+
+ptest_svm = clf_svm.predict(X1)
+
+ptest_brnn = []
+for x in sent_to_glove(X1, w2v) :
+	ptest_brnn.append(clf_brnn.forward(clip(x)))
+
+ptest_maxent = []
+for x in [features(X1[i]) for i in range(len(X1))]:
+	ptest_maxent.append(clf_maxent.classify(x))
+
+print('Loaded data for voting system')
+
+X = np.array(list(zip(ptest_maxent, ptest_brnn, ptest_svm)))
+Y = np.array(Y1)
+
+x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
+
+###### NEURAL NETWORK BASED VOTING SYSTEM ########
+clf = MLPClassifier(solver='adam', alpha=1e-3, hidden_layer_sizes=(32, 16), batch_size=16, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
+clf.fit(x_train, y_train)
+print('ANN training completed')
+y_real, y_pred = y_test, clf.predict(x_test)
+
+joblib.dump(clf, 'models/cog_ann_voter.pkl')
+
+print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+print('MaxEnt Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[0]) * 100))
+print('BiRNN Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[1]) * 100))
+print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[2]) * 100))
+'''
+######### PCA TO GET AGGREGATE OUTPUTS (deprecate in favour of AdaBoost) #########
+X_data = []
 pred_maxent = []
-for x in X_data_featureset:
-	pred_maxent.append(clf_maxent.classify(x))
-print('MaxEnt classification complete')
-
-################# SVM-GLOVE MODEL #################
-clf_svm = joblib.load('models/SVM/glove_svm_model_81.pkl')
-print('Loaded SVM-GloVe model')
-
-pred_svm = clf_svm.predict([x.split() for x in  X_data])
-print('SVM-GloVe classification complete')
-
-################# BiRNN MODEL #################
-clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
-print('Loaded BiRNN model')
-
+pred_svm = []
 pred_brnn = []
-for x in X_data_glove:
-	pred_brnn.append(clf_brnn.forward(clip(x)))
-print('BiRNN classification complete')
+with open('datasets/SO_Questions_Cog_Prediction.csv', 'r', encoding="utf-8") as csvfile:
+	csvreader = csv.reader(csvfile)
+	for i, row in enumerate(csvreader):
+		if i == 0:
+			continue
+		question, p_maxent, p_brnn, p_svm = row
+		X_data.append(question)
+		pred_maxent.append(mapping_cog[p_maxent])
+		pred_brnn.append(mapping_cog[p_brnn])
+		pred_svm.append(mapping_cog[p_svm])
 
-################# DUMPING OUTPUT TO CSV #################
+data = np.hstack((np.array(pred_maxent).reshape(-1, 1), 
+	              np.array(pred_brnn).reshape(-1, 1), 
+	              np.array(pred_svm).reshape(-1, 1)))
+
+pca = PCA(n_components=3)
+pca.fit_transform(data) 
+v = pca.explained_variance_ratio_
+pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
 
 with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as csvfile:
     csvwriter = csv.writer(csvfile)
-    csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)'])
-    for q, p_maxent, p_brnn, p_svm in zip(ADA_questions + OS_questions, pred_maxent, pred_brnn, pred_svm):
-    	csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm]])
+    csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)', 'Cog(Aggregate)'])
+    for q, p_maxent, p_brnn, p_svm, p_agg in zip(X_data, pred_maxent, pred_brnn, pred_svm, pred_agg):
+    	csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm], mapping_cog2[p_agg]])
 
+
+######### TEST ACCURACY OF PCA METHOD #########
+
+
+data = np.hstack((np.array(ptest_maxent).reshape(-1, 1), 
+	              np.array(ptest_brnn).reshape(-1, 1), 
+	              np.array(ptest_svm).reshape(-1, 1)))
+
+print('Predictions acquired')
+
+pca = PCA(n_components=3)
+pca.fit_transform(data) 
+v = pca.explained_variance_ratio_
+pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
+
+print('PCA fitting completed')
+
+correct = 0
+for i, p in enumerate(pred_agg):
+	if p == Y_test1[i]:
+		correct += 1
+
+print('Aggregate accuracy: {:.2f}%'.format(correct / len(Y_test1) * 100.0))
+'''
