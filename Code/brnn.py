@@ -132,6 +132,20 @@ class BiDirectionalRNN:
 			y_pred.append(this_y)
 		
 		return np.argmax(y_pred[-1])
+
+	def predict_proba(self, x):
+		seq_length = len(x)
+		
+		y_pred = []
+		dby = np.zeros_like(self.by)
+		xsl, hsl, ysl, psl = self.left.forward(x, np.zeros((self.hidden_size, 1)))
+		xsr, hsr, ysr, psr = self.right.forward(x, np.zeros((self.hidden_size, 1)))
+		
+		for ind in range(seq_length):
+			this_y = np.dot(self.right.Why, hsr[ind]) + np.dot(self.left.Why, hsl[ind]) + self.by
+			y_pred.append(this_y)
+		
+		return y_pred[-1]
 	
 	def train(self, training_data, validation_data, epochs=5, do_dropout=False):
 		for e in range(epochs):

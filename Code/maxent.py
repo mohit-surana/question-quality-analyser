@@ -9,7 +9,7 @@ import random
 import re
 
 import utils
-from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
+from utils import clean_no_stopwords, get_data_for_cognitive_classifiers, get_filtered_questions, clean
 
 try:
 	domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
@@ -30,6 +30,7 @@ for k in domain:
 
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
+mapping_cog2 = { v : k for k, v in mapping_cog.items()}
 mapping_cog_score = {0 : 0, 1 : 10, 2 : 100, 3 : 1000, 4 : 10000, 5 : 100000}
 
 def features(question):
@@ -61,7 +62,7 @@ def check_for_synonyms(word):
     return '@'.join(list(synonyms))
 
 if __name__ == '__main__':
-	TRAIN = False
+	TRAIN = True
 	
 	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.5, 0.6, 0.75, 0.8], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False)
 	print('Loaded/Preprocessed data')
@@ -96,17 +97,40 @@ if __name__ == '__main__':
 
 	if TRAIN:
 		classifier = MaxentClassifier.train(train_set, max_iter=100)
+		classifier.predict_proba = classifier.prob_classify
 		pickle.dump(classifier, open('models/MaxEnt/maxent.pkl', 'wb'))
 
-	else:
+	if not TRAIN:
 		classifier  = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
-		pred = []
-		actual = [x[1] for x in test_set]
-		for t, l in test_set:
-			pred.append(classifier.classify(t))
+	
+	pred = []
+	actual = [x[1] for x in test_set]
+	for t, l in test_set:
+		pred.append(classifier.classify(t))
 
-		print(pred)
-		print(actual)
+	print(pred)
+	print(actual)
 
-		print(classify.accuracy(classifier, test_set))
+	print(classify.accuracy(classifier, test_set))
 
+	'''
+	questions = open('datasets/ADA_v2_Exercise_Questions.txt').read().split('\n')
+
+	X_ada = []
+	X_ada_orig = []
+	for q in questions:
+		X_ada.append(clean(q, return_as_list=False, stem=False))
+		X_ada_orig.append(q)
+	X_ada = get_filtered_questions(X_ada, threshold=0.75, what_type='ada')
+
+	X_ada_features = [features(k.split()) for k in X_ada]
+
+	preds = []
+	for t in X_ada_features:
+		preds.append(classifier.classify(t))
+
+	with open('datasets/ADA_v2_Exercise_Questions_Labelled.csv', 'w', encoding="utf-8") as csvfile:
+	    csvwriter = csv.writer(csvfile)
+	    for q, p in zip(X_ada_orig, preds):
+	    	csvwriter.writerow([q, mapping_cog2[p]])
+	'''
