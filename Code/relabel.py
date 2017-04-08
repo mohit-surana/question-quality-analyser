@@ -6,8 +6,8 @@ from utils import clean
 
 import nsquared as Nsq
 from nsquared import DocumentClassifier
-import lda
-import lsa
+#import lda
+#import lsa
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}

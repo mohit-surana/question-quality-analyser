@@ -125,10 +125,13 @@ class DocumentClassifier:
 
         count = 0
         for file_name in sorted(os.listdir('resources/%s' % (self.subject, ))):
-            if not len([1 for f in skip_files if (f in file_name)]):
-                with open(os.path.join('resources', self.subject, file_name), encoding='cp1252') as f:
-                    content = f.read()
-                    sentences = nltk.sent_tokenize(content)
+            with open(os.path.join('resources', self.subject, file_name), encoding='latin-1') as f:
+                content = f.read()
+                title = content.split('\n')[0]
+                if len([1 for k in skip_files if (k in title or k in file_name)]):
+                    continue
+
+                sentences = nltk.sent_tokenize(content)
 
                 rows = []
                 index = []
@@ -140,7 +143,7 @@ class DocumentClassifier:
                         index.append(count)
                         count += 1
                 '''
-                rows.append({'text' : self.__preprocess(content), 'class' : content.split('\n')[0] })
+                rows.append({'text' : self.__preprocess(content), 'class' : title })
                 index.append(count)
                 count += 1
 
@@ -169,9 +172,9 @@ if __name__ == "__main__":
 
     subject = sys.argv[1]
 
-    TRAIN = True
+    TRAIN = False
     if TRAIN:
-        classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store'})
+        classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Recommended Reading and Web Sites', 'Recommended Reading', 'Summary', 'Exercises', 'Introduction'})
         classifier.save('models/Nsquared/%s/nsquared_para.pkl' % (subject, ))
 
     classifier = pickle.load(open('models/Nsquared/%s/nsquared_para.pkl' % (subject, ), 'rb'))
