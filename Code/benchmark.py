@@ -2,12 +2,12 @@ import csv
 import pickle
 import numpy as np
 
-import classifier
-from classifier import DocumentClassifier, get_knowledge_probs
-from docsim_lsa import clean
+import nsquared
+from nsquared import DocumentClassifier, get_knowledge_probs
+from lsa import clean
 
 CURSOR_UP_ONE = '\x1b[1A'
-ERASE_LINE = '\x1b[2K'  
+ERASE_LINE = '\x1b[2K'
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 subject = 'ADA'
 
@@ -37,7 +37,7 @@ for i, x in enumerate(x_vals):
 print('[N-squared] Accuracy: {:.3f}%'.format(float(correct_nsq) / float(len(x_vals)) * 100.0))
 
 
-lsi_tfidf = models.LsiModel.load('models/lsa/%s_lsi.model' %subject)
+lsi_tfidf = models.LsiModel.load(open('models/LSA/%s/lsi.model' %subject, 'rb'))
 corpus_lsi_tfidf = lsi_tfidf[corpus_tfidf]
 index = similarities.MatrixSimilarity(corpus_lsi_tfidf, num_features=lsi_tfidf.num_topics)
 
