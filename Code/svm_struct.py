@@ -15,7 +15,9 @@ If you get an error 13 - permission denied, run make inside svm_multiclass
 
 import codecs
 import csv
+import dill
 import numpy as np
+import os
 import pickle
 import random
 import re
@@ -23,14 +25,13 @@ import subprocess
 
 from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 from utils import clean
+from utils import get_data_for_cognitive_classifiers
 
-PREPARE_VOCAB = False
 TRAIN_CLASSIFIER = True
 FILTERED = True
-
-filtered_suffix = '_filtered' if FILTERED else ''
 
 def prepare_file(filename, X, Y):
     with open(filename, 'w') as f:
@@ -44,53 +45,46 @@ def prepare_file(filename, X, Y):
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
-X = []
-Y_cog = []
-Y_know = []
+def sent_to_glove(questions, w2v):
+	questions_w2glove = []
+	
+	for question in questions:
+		vec = []
+		for word in question:
+			if word in w2v:
+				vec.append(w2v[word])
+			else:
+				vec.append(np.zeros(len(w2v['the'])))
+		questions_w2glove.append(np.array(vec))
+	
+	return np.array(questions_w2glove)
 
-# Uncomment for python2 usage
-# reload(sys)
-# sys.setdefaultencoding('utf8')
+def transform_to_glove(X, INPUT_SIZE=300):
+    filename = 'glove.840B.%dd.txt' % INPUT_SIZE
 
-if(PREPARE_VOCAB or TRAIN_CLASSIFIER):
-    freq = dict()
-    with codecs.open('datasets/StructSVM/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
-        csvreader = csv.reader(csvfile.read().splitlines()[1:])
-        for row in csvreader:
-            sentence, label_cog, label_know = row
-            m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
-            sentence = m.groups()[2]
-            label_cog = label_cog.split('/')[0]
-            label_know = label_know.split('/')[0]
-            clean_sentence = clean(sentence)
-            for word in clean_sentence:
-                freq[word] = freq.get(word, 0) + 1
-            X.append(clean_sentence)
-            Y_cog.append(mapping_cog[label_cog])
-            Y_know.append(mapping_know[label_know])
+    if not os.path.exists('resources/GloVe/%s_saved.pkl' % filename.split('.txt')[0]):
+        print()
+        with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+            w2v = {}
+            for row, line in enumerate(lines):
+                try:
+                    w = line.split()[0]
+                    if w not in vocabulary:
+                        continue
+                    vec = np.array(list(map(float, line.split()[1:])))
+                    w2v[w] = vec
+                except:
+                    continue
+                finally:
+                    print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+        
+        dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' % filename.split('.txt')[0], 'wb'))
+    else:
+        w2v = dill.load(open('resources/GloVe/%s_saved.pkl' % filename.split('.txt')[0], 'rb'))
 
-    with codecs.open('datasets/StructSVM/BCLs_Question_Dataset.csv', 'r', encoding="utf-8") as csvfile:
-        csvreader = csv.reader(csvfile.read().splitlines())
-        for row in csvreader:
-            sentence, label_cog = row
-            clean_sentence = clean(sentence)
-            if(PREPARE_VOCAB):
-                for word in clean_sentence:
-                    freq[word] = freq.get(word, 0) + 1
-            X.append(clean_sentence)
-            Y_cog.append(mapping_cog[label_cog])
-            # TODO: Label
-            Y_know.append(1)
+    X_data = sent_to_glove(X, w2v)
+    return X_data
 
-    vocab = {word for word in freq if freq[word]> (1 if FILTERED else 0)}
-    vocab_list = list(vocab)
-    if(PREPARE_VOCAB):
-        pickle.dump(vocab, open("models/SVM/Struct/vocab%s.pkl" % (filtered_suffix, ), 'wb'))
-        pickle.dump(vocab_list, open("models/SVM/Struct/vocab_list%s.pkl" % (filtered_suffix, ), 'wb'))
-
-vocab = pickle.load(open("models/SVM/Struct/vocab%s.pkl" % (filtered_suffix, ), 'rb'))
-vocab_list = pickle.load(open("models/SVM/Struct/vocab_list%s.pkl" % (filtered_suffix, ), 'rb'))
-vocab_size = len(vocab_list)
 
 def train(X, Y, model_name='ada_cog'):
     dataset = list(zip(X,Y))
@@ -100,29 +94,40 @@ def train(X, Y, model_name='ada_cog'):
     X = np.array(X)
     Y = np.array(Y)
 
-    X_vec = []
+    '''X_vec = transform_to_glove(X)
+    print(X.shape)
+    print(len(X[0])) # List
+    print(X_vec.shape)
+    print(X_vec[0].shape)
+    print(X_vec[0][0].shape)
+    print(X_vec[0].reshape(-1, 3).shape)'''
+    
+    # for i in range(len(X_vec)):
+    #     X_vec[i] = np.average(X_vec[i].reshape(-1, 3))
+    
+    # transformer = TfidfTransformer(smooth_idf=True)
+    # tfidf = transformer.fit_transform(X_vec)
+     #joblib.save(transformer, 'models/SVM/Struct/tfidf_transformer.pkl')
+    
+    # X = tfidf.toarray()
+    
     for i in range(len(X)):
-        sentence = X[i]
-        X_vec.append(np.zeros((vocab_size, ), dtype=np.int32))
-        for j in range(len(sentence)):
-            word = sentence[j]
-            if(word in vocab):
-                X_vec[i][vocab_list.index(word)] += 1
+        X[i] = ' '.join(X[i])
+    
+    vectorizer = TfidfVectorizer()
+    X_vec = vectorizer.fit_transform(X)
+    X = X_vec.toarray()
+    
+    prepare_file('datasets/StructSVM/train_%s.dat' % (model_name, ), X[:(7*len(X))//10], Y[:(7*len(X))//10])
+    prepare_file('datasets/StructSVM/test_%s.dat' % (model_name, ), X[(7*len(X))//10:], Y[(7*len(X))//10:])
 
-    transformer = TfidfTransformer(smooth_idf=True)
-    tfidf = transformer.fit_transform(X_vec)
+    subprocess.call(['svm_multiclass/svm_multiclass_learn', '-c', '5000', 'datasets/StructSVM/train_%s.dat' % (model_name, ), 'models/SVM/Struct/model_%s.dat' % (model_name, )])
 
-    X = tfidf.toarray()
-
-    prepare_file('datasets/StructSVM/train_%s%s.dat' % (model_name, filtered_suffix), X[:(7*len(X))//10], Y[:(7*len(X))//10])
-    prepare_file('datasets/StructSVM/test_%s%s.dat' % (model_name, filtered_suffix), X[(7*len(X))//10:], Y[(7*len(X))//10:])
-
-    subprocess.call(['svm_multiclass/svm_multiclass_learn', '-c', '5000', 'datasets/StructSVM/train_%s%s.dat' % (model_name, filtered_suffix, ), 'models/SVM/Struct/model_%s%s.dat' % (model_name, filtered_suffix, )])
-
-    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/StructSVM/test_%s%s.dat' % (model_name, filtered_suffix, ), 'models/SVM/Struct/model_%s%s.dat' % (model_name, filtered_suffix, ), 'datasets/StructSVM/predictions_%s.dat' % (model_name, )])
+    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/StructSVM/test_%s.dat' % (model_name, ), 'models/SVM/Struct/model_%s.dat' % (model_name, ), 'datasets/StructSVM/predictions_%s.dat' % (model_name, )])
 
 if(TRAIN_CLASSIFIER):
-    train(X, Y_cog)
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers()
+    train(X_train + X_test, Y_train + Y_test)
 
 def get_cognitive_probs(question):
     clean_question = clean(question)
@@ -133,13 +138,14 @@ def get_cognitive_probs(question):
         if(word in vocab_list):
             vec[vocab_list.index(word)] += 1
 
-    transformer = joblib.load('models/SVM/Struct/tfidf_transformer%s.pkl' % (filtered_suffix, ))
+    transformer = joblib.load('models/SVM/Struct/tfidf_transformer.pkl')
     tfidf = transformer.fit_transform([vec])
+    
     X = tfidf.toarray()
 
     prepare_file('datasets/StructSVM/test_ada_cog_sample.dat', X, [0])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/StructSVM/test_ada_cog_sample.dat', 'models/SVM/Struct/model_ada_cog%s.dat' % (filtered_suffix, ), 'datasets/StructSVM/predictions_ada_cog_sample.dat'])
+    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/StructSVM/test_ada_cog_sample.dat', 'models/SVM/Struct/model_ada_cog.dat', 'datasets/StructSVM/predictions_ada_cog_sample.dat'])
 
     with open('datasets/StructSVM/predictions_ada_cog_sample.dat', 'r') as f:
         line = f.read().split('\n')[0]
@@ -154,21 +160,3 @@ def get_cognitive_probs(question):
             probs[i] = 0.0
 
         return probs
-
-'''
-with open('datasets/StructSVM/train_ada_know.dat', 'w') as f:
-    for i in range((7*len(X))//10):
-        f.write(str(Y_know[i] + 1) + ' '),
-        for j in range(len(X[i])):
-            if(X[i][j] != 0.0):
-                f.write('%d:%f ' % (j+1, X[i][j]))
-        f.write('\n')
-
-with open('datasets/StructSVM/test_ada_know.dat', 'w') as f:
-    for i in range((7*len(X))//10, len(X)):
-        f.write(str(Y_know[i] + 1) + ' '),
-        for j in range(len(X[i])):
-            if(X[i][j] != 0.0):
-                f.write('%d:%f ' % (j+1, X[i][j]))
-        f.write('\n')
-'''
