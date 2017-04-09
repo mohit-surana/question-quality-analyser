@@ -17,8 +17,8 @@ sns.swarmplot(data=data2, x=y, y=x2)
 y1 = 'Class'
 x1 = 'nsq'
 
-data1 = pd.read_csv('../Code/datasets/OS_Exercise_Questions_Relabelled.csv', usecols=[2, 6], names=[y1, x1])
-#print('data1', data1)
+data1 = pd.read_csv('datasets/OS_Exercise_Questions_Relabelled_v1.csv', usecols=[2, 5], names=[y1, x1])
+print('data1', data1)
 for x in data1:
     print(x)
 sns.swarmplot(data=data1, x=y1, y=x1)
