@@ -45,7 +45,7 @@ def logRegression(probs, y):
 
     # we create an instance of Neighbours Classifier and fit the data.
     logreg.fit(X_train, y_train)
-    joblib.dump(logreg, 'models/Knowledge_%s/Logreg/model.pkl' %TEST)
+    joblib.dump(logreg, 'models/__Knowledge/%s/Logreg/model.pkl' %TEST)
     preds = logreg.predict(X_test)
     print(preds)
 
@@ -83,12 +83,12 @@ def get_prob(probs, y, use='Gaussian'):
     x_combined = X_test
     if(use == 'Gaussian'):
         if LOAD_MODEL:
-            et = joblib.load('models/Knowledge_%s/Gaussian/model_50.pkl' %TEST)
+            et = joblib.load('models/__Knowledge/%s/Gaussian/model_50.pkl' %TEST)
         else:
             et = GaussianNB()
             et.fit(X_train, y_train)
             
-            joblib.dump(et, 'models/Knowledge_%s/Gaussian/model.pkl' %TEST)
+            joblib.dump(et, 'models/__Knowledge/%s/Gaussian/model.pkl' %TEST)
             
         print('Prediction on test')
         preds = et.predict(X_test)
@@ -106,7 +106,7 @@ def get_prob(probs, y, use='Gaussian'):
         C_start, C_end, C_step = -3, 15, 2
         parameters = {'C': 2. ** np.arange(C_start, C_end + C_step, C_step)}
         if LOAD_MODEL:
-            grid = joblib.load('models/Knowledge_%s/Linear/model_48.pkl' %TEST)
+            grid = joblib.load('models/__Knowledge/%s/Linear/model_48.pkl' %TEST)
         else:
             clf = svm.SVC(kernel='linear')
             grid = GridSearchCV(clf, parameters).fit(X_train, y_train)
@@ -114,7 +114,7 @@ def get_prob(probs, y, use='Gaussian'):
             print("The best parameters are %s with a score of %0.2f"
                   % (grid.best_params_, grid.best_score_))
             
-            joblib.dump(grid, 'models/Knowledge_%s/Linear/model.pkl' %TEST)
+            joblib.dump(grid, 'models/__Knowledge/%s/Linear/model.pkl' %TEST)
         print('Prediction on test')
         preds = grid.predict(X_test)
         print(preds)
@@ -130,7 +130,7 @@ def get_prob(probs, y, use='Gaussian'):
     if(use == 'Poly'):
         parameters = {'kernel': ['poly'], 'C': [0.1, 0.5, 1, 10], 'gamma': [0.001, 0.0001], 'degree': [2, 3], 'coef0': [0.0, 0.1]}
         if LOAD_MODEL:
-            grid = joblib.load('models/Knowledge_%s/Poly/model.pkl' %TEST)
+            grid = joblib.load('models/__Knowledge/%s/Poly/model.pkl' %TEST)
         else:
             clf = svm.SVC(kernel='poly')
             grid = GridSearchCV(clf, parameters, verbose = 1).fit(X_train, y_train)
@@ -138,7 +138,7 @@ def get_prob(probs, y, use='Gaussian'):
             print("The best parameters are %s with a score of %0.2f"
                   % (grid.best_params_, grid.best_score_))
             
-            joblib.dump(grid, 'models/Knowledge_%s/Poly/model.pkl' %TEST)
+            joblib.dump(grid, 'models/__Knowledge/%s/Poly/model.pkl' %TEST)
         print('Prediction on test')
         preds = grid.predict(X_test)
         print(preds)
@@ -178,7 +178,7 @@ def get_prob_rbf_svm(probs, y):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
 
     if LOAD_MODEL:
-        grid = joblib.load('models/Knowledge_%s/Rbf/model_48.pkl' %TEST)
+        grid = joblib.load('models/__Knowledge/%s/Rbf/model_48.pkl' %TEST)
     else:
         clf = svm.SVC(kernel='rbf') #, max_iter=1000)
         parameters = {'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],
@@ -191,7 +191,7 @@ def get_prob_rbf_svm(probs, y):
         print("The best parameters are %s with a score of %0.2f"
                   % (grid.best_params_, grid.best_score_))
 
-        joblib.dump(grid, 'models/Knowledge_%s/Rbf/model.pkl' %TEST)
+        joblib.dump(grid, 'models/__Knowledge/%s/Rbf/model.pkl' %TEST)
     print('Prediction on test')
     preds = grid.predict(X_test)
     print(preds)
