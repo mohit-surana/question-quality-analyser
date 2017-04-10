@@ -33,7 +33,7 @@ for unlabelled_question in unlabelled_questions:
     i += 1
     question, score = process.extract(unlabelled_question, labelled_questions, limit=1)[0]
     cog_label, know_label = '', ''
-    if(score > 95):
+    if(score > 86):
         index = labelled_questions.index(question)
         cog_label, know_label = labelled_rows[index][1], labelled_rows[index][2]
     final_rows.append((unlabelled_question, cog_label, know_label))
