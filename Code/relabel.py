@@ -6,9 +6,11 @@ from utils import clean
 import pickle
 import nsquared as Nsq
 from nsquared import DocumentClassifier
+'''
+#Dont use them
 import lda
 import lsa
-
+'''
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
@@ -37,7 +39,7 @@ if relabelType == 'ADA':
 
     count = 0
     classifier = pickle.load(open('models/Nsquared/%s/nsquared_69.pkl' % ('ADA', ), 'rb'))  
-    with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v5.csv', 'w', encoding="utf-8") as csvfile:
+    with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v6.csv', 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
         #csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Knowledge', 'Cognitive'])
         for x, y_cog, y_know in zip(X, Y_cog, Y_know):
