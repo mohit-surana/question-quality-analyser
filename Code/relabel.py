@@ -41,8 +41,10 @@ if relabelType == 'ADA':
         for x, y_cog, y_know in zip(X, Y_cog, Y_know):
             #print(x)
             nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
-            lda_label = max(lda.get_vector('n', x, 'tfidf', subject_param = 'ADA')[1])
-            lsa_label = lsa.get_values(x, subject_param = 'ADA')
+            #lda_label = max(lda.get_vector('n', x, 'tfidf', subject_param = 'ADA')[1])
+            #lsa_label = lsa.get_values(x, subject_param = 'ADA')
+            lda_label = 1
+            lsa_label = 1
             csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda_label, lsa_label, y_cog])
             count += 1
             if(count % 10 == 0):
