@@ -28,20 +28,33 @@ def vote(logreg, gaussian, linearsvc, Y1):
     '''
 know_labels = {'Factual':0, 'Conceptual':1, 'Procedural':2, 'Metacognitive':3}
 if __name__ == '__main__':
+    VOTE_SUB = 'ADA'
     questions = []
     logreg = []
     gaussian = []
     linearsvc = []
     Y1 = []
-    
-    with open('datasets/COMBINED_Exercise_Questions_Results1.csv', encoding="utf-8") as csvfile:
-        csvreader = csv.reader(csvfile.read().splitlines()[1:])
-        for row in csvreader:
-            questions.append(row[0])
-            Y1.append(know_labels.get(row[1]))
-            logreg.append(know_labels.get(row[2]))
-            gaussian.append(know_labels.get(row[3]))
-            linearsvc.append(know_labels.get(row[4]))
-            
-            
-    vote(logreg, gaussian, linearsvc, Y1)
+    if VOTE_SUB == 'ADA':
+        with open('datasets/ADA_Exercise_Questions_Results.csv', encoding="utf-8") as csvfile:
+            csvreader = csv.reader(csvfile.read().splitlines()[1:])
+            for row in csvreader:
+                questions.append(row[0])
+                Y1.append(know_labels.get(row[1]))
+                logreg.append(know_labels.get(row[2]))
+                gaussian.append(know_labels.get(row[3]))
+                linearsvc.append(know_labels.get(row[4]))
+                
+        vote(logreg, gaussian, linearsvc, Y1)
+        
+    if VOTE_SUB == 'Combined':
+        with open('datasets/COMBINED_Exercise_Questions_Results1.csv', encoding="utf-8") as csvfile:
+            csvreader = csv.reader(csvfile.read().splitlines()[1:])
+            for row in csvreader:
+                questions.append(row[0])
+                Y1.append(know_labels.get(row[1]))
+                logreg.append(know_labels.get(row[2]))
+                gaussian.append(know_labels.get(row[3]))
+                linearsvc.append(know_labels.get(row[4]))
+                
+                
+        vote(logreg, gaussian, linearsvc, Y1)
