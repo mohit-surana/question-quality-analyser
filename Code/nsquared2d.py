@@ -210,12 +210,12 @@ count_2 = 0
 count_3 = 0
 #####################  SET TEST SUBJECT  ##########################
 
-TEST = 'Combined'
+TEST = 'ADA'
 LOAD_MODEL = False
 
 #####################  SET TEST SUBJECT  ##########################
 if TEST == 'ADA':
-    with open('datasets/ADA_Exercise_Questions_Relabelled_v3.csv') as csvfile:
+    with open('datasets/ADA_Exercise_Questions_Relabelled_v6.csv') as csvfile:
         csvreader = csv.reader(csvfile)
         for row in csvreader:
             if(row[5] == '2'):
@@ -227,6 +227,7 @@ if TEST == 'ADA':
             if(row[5] == '3'):
                 count_3 += 1
             
+            
             if((row[5] == '1' and count_1 < 20) or (row[5] == '2' and count_2 < 20) or (row[5] not in ['1', '2'])):
                 questions.append(row[0])
                 labels.append(int(row[1]))
@@ -235,19 +236,19 @@ if TEST == 'ADA':
                 labels_lsa.append(row[4])
                 labels_know.append(row[5])
                 labels_cog.append(row[6])
-    print(count_0, count_1, count_2, count_3)
-
-    '''
-    print('Test on N-Squared')
-    get_prob(get_model(labels_nsq), labels)
-
-    print('\n\nTest on LDA')
-    get_prob(get_model(labels_lda), labels)
-
-    print('\n\nTest on LSA')
-    get_prob(get_model(labels_lsa), labels)
-    '''
-
+            
+            '''
+            questions.append(row[0])
+            labels.append(int(row[1]))
+            labels_nsq.append(row[2])
+            labels_lda.append(row[3])
+            labels_lsa.append(row[4])
+            labels_know.append(row[5])
+            labels_cog.append(row[6])
+            '''
+    print('\n\nTest on Knowledge domain with n-squared : Log Reg')
+    logRegression(get_model(labels_nsq), labels_know)
+    
     print('\n\nTest on Knowledge domain with n-squared : GAUSSIAN')
     get_prob(get_model(labels_nsq), labels_know, use='Gaussian')
     
@@ -260,12 +261,20 @@ if TEST == 'ADA':
     print('\n\nTest on Knowledge domain with n-squared : SVM RBF')
     get_prob_rbf_svm(get_model(labels_nsq), labels_know)
 
-    '''
-    print('\n\nTest on Cognitive domain with n-squared : GAUSSIAN')
-    get_prob_gaussian(get_model(labels_nsq), labels_cog)
-    print('\n\nTest on Cognitive domain with n-squared : SVM RBF')
-    get_prob_rbf_svm(get_model(labels_nsq), labels_cog)
-    '''
+    print('0s are:', count_0, '1s are:', count_1, '2s are:', count_2, '3s are:', count_3)
+    #global y_combined
+    
+    ##### WRITE INTO A FILE  ######
+    count = 0
+    with codecs.open('datasets/ADA_Exercise_Questions_Results.csv', 'w', encoding="utf-8") as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(['Questions', 'Manual Label', 'Log Reg', 'Gaussian', 'Linear', 'RBF', 'Polynomial'])
+        for question, label_know in zip(questions[-1*len(x_combined):], labels_know):
+            csvwriter.writerow([question, knowledge_dim[int(label_know)],
+                            knowledge_dim[int(y_combined[0][count])],
+                            knowledge_dim[int(y_combined[1][count])], knowledge_dim[int(y_combined[2][count])], knowledge_dim[int(y_combined[4][count])],
+                            knowledge_dim[int(y_combined[3][count])] ])
+            count += 1
 
 
 if TEST == 'OS':
