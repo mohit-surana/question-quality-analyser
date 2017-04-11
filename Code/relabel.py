@@ -3,16 +3,16 @@ import csv
 import re
 
 from utils import clean
-
+import pickle
 import nsquared as Nsq
 from nsquared import DocumentClassifier
-#import lda
-#import lsa
+import lda
+import lsa
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
-relabelType = 'OS'
+relabelType = 'ADA'
 
 
 X = []
@@ -34,18 +34,21 @@ if relabelType == 'ADA':
             Y_cog.append(mapping_cog[label_cog])
             Y_know.append(mapping_know[label_know])
 
+
     count = 0
+    classifier = pickle.load(open('models/Nsquared/%s/nsquared_69.pkl' % ('ADA', ), 'rb'))  
     with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v5.csv', 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Cognitive'])
+        #csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Knowledge', 'Cognitive'])
         for x, y_cog, y_know in zip(X, Y_cog, Y_know):
             #print(x)
-            nsq = max(Nsq.get_knowledge_probs(x, 'ADA'))
+
+            _, nsq = classifier.classify(x)[0]
             #lda_label = max(lda.get_vector('n', x, 'tfidf', subject_param = 'ADA')[1])
-            #lsa_label = lsa.get_values(x, subject_param = 'ADA')
             lda_label = 1
+            #lsa_label = lsa.get_values(x, subject_param = 'ADA')
             lsa_label = 1
-            csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda_label, lsa_label, y_cog])
+            csvwriter.writerow([x, y_cog + 6 * y_know, nsq, lda_label, lsa_label, y_know, y_cog])
             count += 1
             if(count % 10 == 0):
                 print(count)
