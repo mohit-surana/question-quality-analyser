@@ -42,6 +42,7 @@ if relabelType == 'ADA':
         #csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Knowledge', 'Cognitive'])
         for x, y_cog, y_know in zip(X, Y_cog, Y_know):
             #print(x)
+
             _, nsq = classifier.classify(x)[0]
             #lda_label = max(lda.get_vector('n', x, 'tfidf', subject_param = 'ADA')[1])
             lda_label = 1
