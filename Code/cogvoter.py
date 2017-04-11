@@ -257,3 +257,8 @@ for i, p in enumerate(pred_agg):
 
 print('Aggregate accuracy: {:.2f}%'.format(correct / len(Y_test1) * 100.0))
 '''
+'''
+def predict_cog_label(question):
+    nn = joblib.dump(clf, 'models/cog_ann_voter_87.pkl')
+    return nn.predict(question)
+'''    
