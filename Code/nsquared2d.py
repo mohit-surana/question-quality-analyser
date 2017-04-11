@@ -210,7 +210,7 @@ count_2 = 0
 count_3 = 0
 #####################  SET TEST SUBJECT  ##########################
 
-TEST = 'OS'
+TEST = 'Combined'
 LOAD_MODEL = False
 
 #####################  SET TEST SUBJECT  ##########################
@@ -343,7 +343,7 @@ if TEST == 'OS':
     
     ##### WRITE INTO A FILE  ######
     count = 0
-    with codecs.open('datasets/OS_Exercise_Questions_Results.csv', 'w', encoding="utf-8") as csvfile:
+    with codecs.open('datasets/OS_Exercise_Questions_Results1.csv', 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(['Questions', 'Manual Label', 'Log Reg', 'Gaussian', 'Linear', 'RBF', 'Polynomial'])
         for question, label_know in zip(questions[-1*len(x_combined):], labels_know):
@@ -359,7 +359,7 @@ if TEST == 'Combined':
     c_0 = 0
     c_1 = 0
     c_2 = 0
-    with open('datasets/OS_Exercise_Questions_Relabelled.csv', encoding="utf-8") as csvfile:
+    with open('datasets/OS_Exercise_Questions_Relabelled.csv', encoding="latin-1") as csvfile:
         csvreader = csv.reader(csvfile.read().splitlines()[1:])
         for row in csvreader:
             lab = (int(row[1]) - int(row[5]))/6
@@ -416,7 +416,7 @@ if TEST == 'Combined':
     c_0 = 0
     c_1 = 0
     c_2 = 0
-    with open('datasets/ADA_Exercise_Questions_Relabelled_v5.csv', encoding="utf-8") as csvfile:
+    with open('datasets/ADA_Exercise_Questions_Relabelled_v5.csv', encoding="latin-1") as csvfile:
         csvreader = csv.reader(csvfile.read().splitlines()[1:])
         for row in csvreader:
             lab = (int(row[1]) - int(row[5]))/6
@@ -499,10 +499,10 @@ if TEST == 'Combined':
     count = 0
     #print(len(questions))
     #print(len(questions)//4)
-    with codecs.open('datasets/COMBINED_Exercise_Questions_Results.csv', 'w', encoding="utf-8") as csvfile:
+    with codecs.open('datasets/COMBINED_Exercise_Questions_Results1.csv', 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(['Questions', 'Manual Label', 'Log Reg', 'Gaussian', 'Linear', 'RBF', 'Polynomial'])
-        for question, label_know in zip(questions[-110:], labels_know):
+        for question, label_know in zip(questions[-1*len(x_combined):], labels_know):
             csvwriter.writerow([question, knowledge_dim[int(label_know)],
                             knowledge_dim[int(y_combined[0][count])],
                             knowledge_dim[int(y_combined[1][count])], knowledge_dim[int(y_combined[2][count])], knowledge_dim[int(y_combined[4][count])],
