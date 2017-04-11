@@ -114,7 +114,8 @@ if __name__ == '__main__':
                     except:
                         continue
                     finally:
-                        print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+                        if((row + 1) % 100000 == 0):
+                            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
             
             dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
         else:
