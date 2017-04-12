@@ -23,20 +23,21 @@ with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r') as f:
 x_vals = [k[0] for k in questions]
 y_vals = [knowledge_mapping[k[1].split('/')[0]] for k in questions]
 
-
 ''' Knowledge prediction for N-squared'''
-classifier_nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
 correct_nsq = 0
 print()
 for i, x in enumerate(x_vals):
     print(CURSOR_UP_ONE + ERASE_LINE + '[N-Squared] Testing For', i)
-    y_pred = np.argmax(get_knowledge_probs(questions[0], subject))
+    y_pred = np.argmax(get_knowledge_probs(x, subject))
+    print(get_knowledge_probs(x, subject))
     if y_pred == y_vals[i]:
+        print('right')
+        print()
         correct_nsq += 1
 
 print('[N-squared] Accuracy: {:.3f}%'.format(float(correct_nsq) / float(len(x_vals)) * 100.0))
 
-
+exit()
 lsi_tfidf = models.LsiModel.load(open('models/LSA/%s/lsi.model' %subject, 'rb'))
 corpus_lsi_tfidf = lsi_tfidf[corpus_tfidf]
 index = similarities.MatrixSimilarity(corpus_lsi_tfidf, num_features=lsi_tfidf.num_topics)

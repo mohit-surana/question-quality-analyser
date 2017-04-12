@@ -21,6 +21,7 @@ from nltk import stem
 
 from nltk.stem.wordnet import WordNetLemmatizer
 from nltk.tokenize import wordpunct_tokenize
+from nltk.corpus import stopwords as stp
 
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -39,42 +40,18 @@ import sys
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 knowledge_mapping2 = {v : k for k, v in knowledge_mapping.items()}
 
+clf = None
 def __get_knowledge_level(question, subject='ADA'):
-    classifier = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
-    all_classes = sorted(list(set(list(classifier.data['class'].values))))
+    global clf
+    if not clf:
+        clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
 
-    with open('resources/%s/__Sections.csv' % (subject, ), 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        rows_read = 0
-
-        X = {}
-        for row in csvreader:
-            if rows_read == 0:
-                rows_read += 1
-                continue
-            if subject == 'ADA':
-                s_no, _, section, _ = row
-            else:
-                id, s_no, level, section, pg_no = row
-            X[section] = (section, rows_read - 1, 0)
-            rows_read += 1
-
-    section_wise_question_probs = []
-    for i, prob in enumerate(classifier.classify(question)):
-        #print('Question:{}'.format(question[i]))
-        for c, p in __probs_to_classes_dict(prob, all_classes).items():
-            X[c] = (X[c][0], X[c][1], p)
-
-        section_wise_question_probs = list(filter(lambda x: x[-1] != 0, sorted(X.values(), key=lambda x: x[2], reverse=True)))
-
-    highest_prob = section_wise_question_probs[0][-1]
-
+    cls, highest_prob = clf.classify(question)[0]
     hardcoded_matrix = [1.0, 0.6, 0.3, 0.1, 0]
 
     for i, r in enumerate(zip(hardcoded_matrix[1:], hardcoded_matrix[:-1])):
         if r[0] <= highest_prob < r[1]:
             return i, highest_prob
-
 
 def get_knowledge_probs(question, subject):
     level, highest_prob = __get_knowledge_level(question, subject)
@@ -147,13 +124,15 @@ class DocumentClassifier:
         stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
     stopwords.update(punkt)
 
+    stopwords2 = stp.words('english')
+
     def __preprocess(self, text, remove_stopwords=True):
         text = re.sub('-\n', '', text).lower()
         text = re.sub('\n', ' ', text)
         text = re.sub('[^a-z ]', '', text)
         tokens = [word for word in text.split()]  
         if remove_stopwords:
-            return ' '.join([self.wordnet.lemmatize(i) for i in tokens if i not in self.stopwords])
+            return ' '.join([self.wordnet.lemmatize(i) for i in tokens if i not in self.stopwords2])
         else:
             return ' '.join([self.wordnet.lemmatize(i) for i in tokens])
 
@@ -181,20 +160,21 @@ class DocumentClassifier:
                 if len([1 for k in skip_files if (k in title or k in file_name)]):
                     continue
 
-                sentences = nltk.sent_tokenize(content)
+                if title in self.chapter_map.values():
+                    chapter = title
+                else:
+                    chapter = self.chapter_map[self.section_map[content.split('\n')[0]]]
 
+                # training chapters one sentence at a time
                 rows_section, rows_chapter = [], []
-                for sentence in sentences:
+                for sentence in nltk.sent_tokenize(content):
                     text = self.__preprocess(sentence, remove_stopwords=True)
-                    text2 = self.__preprocess(sentence, remove_stopwords=True)
                     if text and len(text.split()) > 2:
-                        if title in self.chapter_map.values():
-                            chapter = title
-                        else:
-                            chapter = self.chapter_map[self.section_map[content.split('\n')[0]]]
-                            rows_section.append({'text' : text2, 'class' : content.split('\n')[0] })
-                        
                         rows_chapter.append({'text' : text, 'class' : chapter })
+
+                # training the sections by passing the entire body of text at once
+                if title != chapter:
+                    rows_section.append({'text' : self.__preprocess(content), 'class' : title })
 
                 self.data = self.data.append(DataFrame(rows_chapter))
                 self.section_data[chapter] = self.section_data[chapter].append(DataFrame(rows_section))
@@ -238,11 +218,11 @@ class DocumentClassifier:
         ############# Training each section classifier #############
         self.section_pipelines = {}
         for k in sorted(self.section_data.keys()):
-            print('Training [ {} ] section classifier'.format(k))
+            print('Training [ {} ] classifier'.format(k))
             self.section_pipelines[k] = Pipeline([
                                         ('vectorizer', TfidfVectorizer(sublinear_tf=True,
                                                                        max_df=0.5,
-                                                                       ngram_range=(1, 2),
+                                                                       ngram_range=(1, 3),
                                                                        stop_words='english', 
                                                                        strip_accents='unicode', 
                                                                        decode_error="ignore")),
@@ -250,11 +230,11 @@ class DocumentClassifier:
             X = self.section_data[k]['text'].values
             Y = self.section_data[k]['class'].values
             
-            x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.15)
-            self.section_pipelines[k].fit(x_train, y_train)
+            #x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.15)
+            self.section_pipelines[k].fit(X, Y)
 
-            y_real, y_pred = y_test, self.section_pipelines[k].predict(x_test)
-            print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+            #y_real, y_pred = y_test, self.section_pipelines[k].predict(x_test)
+            #print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
 
         ############# Assessing section difficulties ################
         self.section_difficulty = { k : [] for k in self.section_map }

@@ -38,8 +38,10 @@ if relabelType == 'ADA':
 
 
     count = 0
-    classifier = pickle.load(open('models/Nsquared/%s/nsquared_69.pkl' % ('ADA', ), 'rb'))  
-    with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v6.csv', 'w', encoding="utf-8") as csvfile:
+
+    classifier = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % ('ADA', ), 'rb'))  
+    with codecs.open('datasets/ADA_Exercise_Questions_Relabelled_v5.csv', 'w', encoding="utf-8") as csvfile:
+
         csvwriter = csv.writer(csvfile)
         #csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Knowledge', 'Cognitive'])
         for x, y_cog, y_know in zip(X, Y_cog, Y_know):
