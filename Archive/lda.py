@@ -9,7 +9,7 @@ from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
 
 LOG = True
-subject = 'OS'
+subject = 'ADA'
 if(LOG):
     import logging
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -260,7 +260,7 @@ Find the number of comparisons made by the sentinel version of linear search a. 
 
 Write a brute force backtracking program for playing the game Battleship on the computer.'''
 
-    TRAIN = False
+    TRAIN = True
     if TRAIN:
         prepare_model(subject)
 

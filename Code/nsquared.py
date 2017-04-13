@@ -40,12 +40,8 @@ import sys
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 knowledge_mapping2 = {v : k for k, v in knowledge_mapping.items()}
 
-clf = None
-def __get_knowledge_level(question, subject='ADA'):
-    global clf
-    if not clf:
-        clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
-
+def __get_knowledge_level(model, question, subject='ADA'):  
+    clf = model
     cls, highest_prob = clf.classify(question)[0]
     hardcoded_matrix = [1.0, 0.6, 0.3, 0.1, 0]
 
@@ -53,8 +49,8 @@ def __get_knowledge_level(question, subject='ADA'):
         if r[0] <= highest_prob < r[1]:
             return i, highest_prob
 
-def get_knowledge_probs(question, subject):
-    level, highest_prob = __get_knowledge_level(question, subject)
+def get_knowledge_probs(model, question, subject):
+    level, highest_prob = __get_knowledge_level(model, question, subject)
     #print(level, highest_prob)
     probs = [0.0] * 4
     for i in range(level):
@@ -126,15 +122,17 @@ class DocumentClassifier:
 
     stopwords2 = stp.words('english')
 
-    def __preprocess(self, text, remove_stopwords=True):
+    def __preprocess(self, text, stop_strength=0):
         text = re.sub('-\n', '', text).lower()
         text = re.sub('\n', ' ', text)
         text = re.sub('[^a-z ]', '', text)
         tokens = [word for word in text.split()]  
-        if remove_stopwords:
+        if stop_strength == 0:
+            return ' '.join([self.wordnet.lemmatize(i) for i in tokens])
+        elif stop_strength == 1:
             return ' '.join([self.wordnet.lemmatize(i) for i in tokens if i not in self.stopwords2])
         else:
-            return ' '.join([self.wordnet.lemmatize(i) for i in tokens])
+            return ' '.join([self.wordnet.lemmatize(i) for i in tokens if i not in self.stopwords])
 
     def __init__(self, subject, skip_files=[]):
         self.subject = subject
@@ -168,14 +166,18 @@ class DocumentClassifier:
                 # training chapters one sentence at a time
                 rows_section, rows_chapter = [], []
                 for sentence in nltk.sent_tokenize(content):
-                    text = self.__preprocess(sentence, remove_stopwords=True)
+                    text = self.__preprocess(sentence, stop_strength=1)
+                    if text and len(text.split()) > 2:
+                        rows_chapter.append({'text' : text, 'class' : chapter })
+
+                    text = self.__preprocess(sentence, stop_strength=2)
                     if text and len(text.split()) > 2:
                         rows_chapter.append({'text' : text, 'class' : chapter })
 
                 # training the sections by passing the entire body of text at once
                 if title != chapter:
-                    rows_section.append({'text' : self.__preprocess(content), 'class' : title })
-
+                    rows_section.append({'text' : self.__preprocess(content, stop_strength=1), 'class' : title })
+                    rows_section.append({'text' : self.__preprocess(content, stop_strength=2), 'class' : title })
                 self.data = self.data.append(DataFrame(rows_chapter))
                 self.section_data[chapter] = self.section_data[chapter].append(DataFrame(rows_section))
 
@@ -184,17 +186,18 @@ class DocumentClassifier:
         X_questions, Y_questions = get_questions(subject, skip_files, shuffle=False)
 
         '''
+        x_qtrain, x_qtest, y_qtrain, y_qtest = train_test_split(X_questions, Y_questions, test_size=0.05)
         rows = []
-        for x, y in zip(X_questions, Y_questions):
+        for x, y in zip(x_qtrain, y_qtrain):
             chapter = self.chapter_map[self.section_map[y]]
-            for sentence in nltk.sent_tokenize(x):
-                self.section_data[chapter] = self.section_data[chapter].append(DataFrame([{'text' : self.__preprocess(sentence, remove_stopwords=True), 'class' : y}]))
-        '''
+            self.section_data[chapter] = self.section_data[chapter].append(DataFrame([{'text' : self.__preprocess(x, stop_strength=1), 'class' : y}]))
+        '''        
 
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         for k in self.section_data:
             self.section_data[k] = self.section_data[k].sample(frac=1).reset_index(drop=True)
 
+        ############# Training the chapter classifier #############
         print('\nTraining chapter classifier')
         
         self.pipeline = Pipeline([
@@ -205,11 +208,11 @@ class DocumentClassifier:
                                                        decode_error="ignore")),
                         ('classifier', MultinomialNB(alpha=.01))])
 
-        ############# Training the chapter classifier #############
+        
         X = self.data['text'].values
         Y = self.data['class'].values
 
-        x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.15)
+        x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.1)
         self.pipeline.fit(x_train, y_train)
 
         y_real, y_pred = y_test, self.pipeline.predict(x_test)
@@ -229,18 +232,18 @@ class DocumentClassifier:
                                         ('classifier', MultinomialNB(alpha=.01))])
             X = self.section_data[k]['text'].values
             Y = self.section_data[k]['class'].values
-            
-            #x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.15)
-            self.section_pipelines[k].fit(X, Y)
 
-            #y_real, y_pred = y_test, self.section_pipelines[k].predict(x_test)
-            #print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+            self.section_pipelines[k].fit(X, Y)
 
         ############# Assessing section difficulties ################
         self.section_difficulty = { k : [] for k in self.section_map }
+        nCorrect, nTotal = 0, 0
         for x, y in zip(X_questions, Y_questions):
             for sentence in nltk.sent_tokenize(x):
-                x_t = self.__preprocess(sentence, remove_stopwords=True)
+                nTotal += 1
+                x_t = self.__preprocess(sentence, stop_strength=1)
+                if len(x_t.split()) < 2:
+                    continue
                 chapter = self.pipeline.predict([x_t])[0]
                 topic = self.section_pipelines[chapter].predict([x_t])[0]
                 if topic != y:
@@ -250,9 +253,12 @@ class DocumentClassifier:
                     probs_dict = probs_to_classes_dict(probs, all_chap_topics)
                     nsq_val = probs_dict[topic] # get the right n-squared value for that question from the dict lookup
                 else:
+                    nCorrect += 1
                     nsq_val = max(self.section_pipelines[chapter].predict_proba([x_t])[0])
 
                 self.section_difficulty[y].append(nsq_val)
+
+        print('Combined Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
 
         for k in self.section_difficulty:
             t = self.section_difficulty[k]
@@ -267,7 +273,7 @@ class DocumentClassifier:
 
         results = []
         for x in data:
-            x_t = self.__preprocess(x, remove_stopwords=True)
+            x_t = self.__preprocess(x, stop_strength=1)
             chapter = self.pipeline.predict([x_t])[0]
             topic = self.section_pipelines[chapter].predict([x_t])[0]
             nsq_val = max(self.section_pipelines[chapter].predict_proba([x_t])[0]) * self.section_difficulty[topic]

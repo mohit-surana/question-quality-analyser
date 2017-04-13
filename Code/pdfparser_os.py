@@ -9,7 +9,7 @@ import itertools
 from rake import Rake
 
 CHAPTER_MODE, SECTION_MODE = 0, 1
-split_mode = CHAPTER_MODE
+split_mode = SECTION_MODE
 
 pdfname = 'OS'
 
@@ -37,7 +37,9 @@ print('Chapter tree built.')
 
 
 if split_mode == CHAPTER_MODE:
-		dirname = pdfname + '[chapters]'
+	dirname = pdfname + '[chapters]'
+else:
+	dirname = pdfname	
 
 try:
 	os.stat('resources/' + dirname)
@@ -47,6 +49,7 @@ finally:
 	os.chdir('resources/' + dirname)
 
 pages = ('\n'.join(line for line in text.split('\n') if line != '')).split('\f')
+pages = ['\n'.join(p.split('\n')[1:]) for p in pages]
 
 unigram_rake = Rake('../stopwords.txt', 3, 1, 3)
 bigram_rake = Rake('../stopwords.txt', 3, 2, 3)
@@ -71,9 +74,9 @@ for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[
 		f.write(cur_topic['title'] + '\n')
 		f.write(section_text)
 
-	keywords = keywords.union(map(lambda x: x[0], unigram_rake.run(section_text2))).union(map(lambda x: x[0], bigram_rake.run(section_text2))).union(map(lambda x: x[0], trigram_rake.run(section_text2)))
+	#keywords = keywords.union(map(lambda x: x[0], unigram_rake.run(section_text2))).union(map(lambda x: x[0], bigram_rake.run(section_text2))).union(map(lambda x: x[0], trigram_rake.run(section_text2)))
 
-print >> open('__Keywords.txt', 'w'), '\n'.join(list(keywords))
+#print >> open('__Keywords.txt', 'w'), '\n'.join(list(keywords))
 
 with open('__Sections.csv', 'w') as csvfile:
 	writer = csv.writer(csvfile)

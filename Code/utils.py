@@ -218,3 +218,19 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
         Y_train = [y[1] for y in dataset]
 
     return X_train, Y_train, X_test, Y_test
+
+
+def get_knowledge_probs(prob):
+    hardcoded_matrix = [1.0, 0.6, 0.3, 0.1, 0]
+    for i, r in enumerate(zip(hardcoded_matrix[1:], hardcoded_matrix[:-1])):
+        if r[0] <= prob < r[1]:
+            break
+    level = i
+
+    probs = [0.0] * 4
+    for i in range(level):
+        # probs[i] = (i + 1) * prob / (level * (level + 1) / 2)
+        probs[i] = (i + 1) * prob / (level + 1)
+    probs[level] = prob
+
+    return probs

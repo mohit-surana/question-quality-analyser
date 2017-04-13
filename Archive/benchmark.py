@@ -23,12 +23,13 @@ with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r') as f:
 x_vals = [k[0] for k in questions]
 y_vals = [knowledge_mapping[k[1].split('/')[0]] for k in questions]
 
-''' Knowledge prediction for N-squared'''
+clf1 = pickle.load(open('models/Nsquared/%s/nsquared_90.pkl' % (subject, ), 'rb'))
+
 correct_nsq = 0
 print()
 for i, x in enumerate(x_vals):
     print(CURSOR_UP_ONE + ERASE_LINE + '[N-Squared] Testing For', i)
-    y_pred = np.argmax(get_knowledge_probs(x, subject))
+    y_pred = np.argmax(get_knowledge_probs(clf1, x, subject))
     print(get_knowledge_probs(x, subject))
     if y_pred == y_vals[i]:
         print('right')
