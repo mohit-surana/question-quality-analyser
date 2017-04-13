@@ -1,0 +1,238 @@
+Linux
+
+    History
+    Linux started out as a UNIX variant for the IBM PC (Intel 80386) architecture.
+    Linus Torvalds, a Finnish student of computer science, wrote the initial version.
+    Torvalds posted an early version of Linux on the Internet in 1991. Since then, a
+    number of people, collaborating over the Internet, have contributed to the devel-
+    opment of Linux, all under the control of Torvalds. Because Linux is free and the
+    source code is available, it became an early alternative to other UNIX workstations,
+    such as those offered by Sun Microsystems and IBM. Today, Linux is a full-featured
+    UNIX system that runs on all of these platforms and more, including Intel Pentium
+    and Itanium, and the Motorola/IBM PowerPC.
+         Key to the success of Linux has been the availability of free software packages
+    under the auspices of the Free Software Foundation (FSF). FSF's goal is stable,
+    platform-independent software that is free, high quality, and embraced by the user
+    community. FSF's GNU project3 provides tools for software developers, and the
+    3GNU is a recursive acronym for GNU's Not Unix. The GNU project is a free software set of packages
+    and tools for developing a UNIX-like operating system; it is often used with the Linux kernel.
+
+GNU Public License (GPL) is the FSF seal of approval. Torvalds used GNU tools
+in developing his kernel, which he then released under the GPL. Thus, the Linux
+distributions that you see today are the product of FSF's GNU project, Torvald's
+individual effort, and the efforts of many collaborators all over the world.
+   In addition to its use by many individual programmers, Linux has now made
+significant penetration into the corporate world. This is not only because of the
+free software, but also because of the quality of the Linux kernel. Many talented
+programmers have contributed to the current version, resulting in a technically
+impressive product. Moreover, Linux is highly modular and easily configured. This
+makes it easy to squeeze optimal performance from a variety of hardware platforms.
+Plus, with the source code available, vendors can tweak applications and utilities to
+meet specific requirements. Throughout this book, we will provide details of Linux
+kernel internals based on the most recent version, Linux 2.6.
+Modular Structure
+Most UNIX kernels are monolithic. Recall from earlier in this chapter that a mono-
+lithic kernel is one that includes virtually all of the OS functionality in one large
+block of code that runs as a single process with a single address space. All the func-
+tional components of the kernel have access to all of its internal data structures
+and routines. If changes are made to any portion of a typical monolithic OS, all the
+modules and routines must be relinked and reinstalled and the system rebooted
+before the changes can take effect. As a result, any modification, such as adding
+a new device driver or file system function, is difficult. This problem is especially
+acute for Linux, for which development is global and done by a loosely associated
+group of independent programmers.
+   Although Linux does not use a microkernel approach, it achieves many of
+the potential advantages of this approach by means of its particular modular archi-
+tecture. Linux is structured as a collection of modules, a number of which can be
+automatically loaded and unloaded on demand. These relatively independent blocks
+are referred to as loadable modules [GOYE99]. In essence, a module is an object
+file whose code can be linked to and unlinked from the kernel at runtime. Typically,
+a module implements some specific function, such as a file system, a device driver,
+or some other feature of the kernel's upper layer. A module does not execute as its
+own process or thread, although it can create kernel threads for various purposes
+as necessary. Rather, a module is executed in kernel mode on behalf of the current
+process.
+   Thus, although Linux may be considered monolithic, its modular structure
+overcomes some of the difficulties in developing and evolving the kernel.
+   The Linux loadable modules have two important characteristics:
+·  Dynamic linking: A kernel module can be loaded and linked into the kernel
+   while the kernel is already in memory and executing. A module can also be
+   unlinked and removed from memory at any time.
+·  Stackable modules: The modules are arranged in a hierarchy. Individual
+   modules serve as libraries when they are referenced by client modules higher
+   up in the hierarchy, and as clients when they reference modules further down.
+
+                 Dynamic linking [FRAN97] facilitates configuration and saves kernel memory.
+    In Linux, a user program or user can explicitly load and unload kernel modules
+    using the insmod and rmmod commands. The kernel itself monitors the need for
+    particular functions and can load and unload modules as needed. With stackable
+    modules, dependencies between modules can be defined. This has two benefits:
+           1.    Code common to a set of similar modules (e.g., drivers for similar hardware)
+                 can be moved into a single module, reducing replication.
+           2.    The kernel can make sure that needed modules are present, refraining from
+                 unloading a module on which other running modules depend, and loading any
+                 additional required modules when a new module is loaded.
+                 Figure 2.19 is an example that illustrates the structures used by Linux to
+    manage modules. The figure shows the list of kernel modules after only two modules
+    have been loaded: FAT and VFAT. Each module is defined by two tables, the mod-
+    ule table and the symbol table. The module table includes the following elements:
+              ·  *next: Pointer to the following module. All modules are organized into a
+                 linked list. The list begins with a pseudomodule (not shown in Figure 2.19).
+              ·  *name: Pointer to module name
+              ·  size: Module size in memory pages
+              ·  usecount: Module usage counter. The counter is incremented when an opera-
+                 tion involving the module's functions is started and decremented when the
+                 operation terminates.
+    Module                                             Module
+    *next                                              *next
+    *name                                              *name
+    size                                               size
+    usecount                                           usecount
+    flags                                              flags
+    nysms                                              nysms
+    ndeps                                              ndeps
+    *syms        FAT                                   *syms               VFAT
+    *deps                                              *deps
+    *refs                                              *refs
+                      Symbol_table                                               Symbol_table
+                      value                                                      value
+                      *name                                                      *name
+                      value                                                      value
+                      *name                                                      *name
+                      value                                                      value
+                      *name                                                      *name
+Figure 2.19      Example List of Linux Kernel Modules
+
+         ·   flags: Module flags
+         ·   nsyms: Number of exported symbols
+         ·   ndeps: Number of referenced modules
+         ·   *syms: Pointer to this module's symbol table.
+         ·   *deps: Pointer to list of modules that are referenced by this module.
+         ·   *refs: Pointer to list of modules that use this module.
+             The symbol table defines those symbols controlled by this module that are
+used elsewhere.
+             Figure 2.19 shows that the VFAT module was loaded after the FAT module
+and that the VFAT module is dependent on the FAT module.
+Kernel Components
+Figure 2.20, taken from [MOSB02], shows the main components of the Linux kernel
+as implemented on an IA-64 architecture (e.g., Intel Itanium). The figure shows
+several processes running on top of the kernel. Each box indicates a separate pro-
+cess, while each squiggly line with an arrowhead represents a thread of execution.4
+The kernel itself consists of an interacting collection of components, with arrows
+             Processes                                                                                   User level
+             Signals                           System calls
+                                  Processes
+                        & scheduler                          File        Network
+             Virtual                                         systems     protocols                       Kernel
+             memory
+                                  Char device              Block device  Network
+                                  drivers                    drivers     device drivers
+Traps &      Physical                          Interrupts
+faults       memory
+CPU          System               Terminal                   Disk        Network interface               Hardware
+             memory                                                      controller
+Figure 2.20  Linux Kernel Components
+4In Linux, there is no distinction between the concepts of processes and threads. However, multiple
+threads in Linux can be grouped together in such a way that, effectively, you can have a single process
+comprising multiple threads. These matters are discussed in Chapter 4.
+
+Table 2.5  Some Linux Signals
+SIGHUP        Terminal hangup                   SIGCONT    Continue
+SIGQUIT       Keyboard quit                     SIGTSTP    Keyboard stop
+SIGTRAP       Trace trap                        SIGTTOU    Terminal write
+SIGBUS        Bus error                         SIGXCPU    CPU limit exceeded
+SIGKILL       Kill signal                       SIGVTALRM  Virtual alarm clock
+SIGSEGV       Segmentation violation            SIGWINCH   Window size unchanged
+SIGPIPT       Broken pipe                       SIGPWR     Power failure
+SIGTERM       Termination                       SIGRTMIN   First real-time signal
+SIGCHLD       Child status unchanged            SIGRTMAX   Last real-time signal
+           indicating the main interactions. The underlying hardware is also depicted as a
+           set of components with arrows indicating which kernel components use or control
+           which hardware components. All of the kernel components, of course, execute on
+           the processor but, for simplicity, these relationships are not shown.
+              Briefly, the principal kernel components are the following:
+           ·  Signals: The kernel uses signals to call into a process. For example, signals are
+              used to notify a process of certain faults, such as division by zero. Table 2.5
+              gives a few examples of signals.
+           ·  System calls: The system call is the means by which a process requests a specific
+              kernel service. There are several hundred system calls, which can be roughly
+              grouped into six categories: file system, process, scheduling, interprocess com-
+              munication, socket (networking), and miscellaneous. Table 2.6 defines a few
+              examples in each category.
+           ·  Processes and scheduler: Creates, manages, and schedules processes.
+           ·  Virtual memory: Allocates and manages virtual memory for processes.
+Table 2.6  Some Linux System Calls
+                                      File system Related
+close         Close a file descriptor.
+link          Make a new name for a file.
+open          Open and possibly create a file or device.
+read          Read from file descriptor.
+write         Write to file descriptor.
+                                      Process Related
+execve        Execute program.
+exit          Terminate the calling process.
+getpid        Get process identification.
+setuid        Set user identity of the current process.
+prtrace       Provides a means by which a parent process may observe and control the execu-
+              tion of another process, and examine and change its core image and registers.
+
+Table 2.6    (continued)
+                                      Scheduling Related
+sched_getparam            Set the scheduling parameters associated with the scheduling policy for the
+                          process identified by pid.
+sched_get_priority_max    Return the maximum priority value that can be used with the scheduling
+                          algorithm identified by policy.
+sched_setscheduler        Set both the scheduling policy (e.g., FIFO) and the associated parameters for
+                          the process pid.
+sched_rr_get_interval     Write into the timespec structure pointed to by the parameter tp the round-
+                          robin time quantum for the process pid.
+sched_yield               A process can relinquish the processor voluntarily without blocking via this
+                          system call. The process will then be moved to the end of the queue for its static
+                          priority and a new process gets to run.
+                          Interprocess Communication (IPC) Related
+msgrcv                    A message buffer structure is allocated to receive a message. The system
+                          call then reads a message from the message queue specified by msqid into
+                          the newly created message buffer.
+semctl                    Perform the control operation specified by cmd on the semaphore set
+                          semid.
+semop                     Perform operations on selected members of the semaphore set semid.
+shmat                     Attach the shared memory segment identified by semid to the data segment
+                          of the calling process.
+shmctl                    Allow the user to receive information on a shared memory segment; set the
+                          owner, group, and permissions of a shared memory segment; or destroy a
+                          segment.
+                                      Socket (networking) Related
+bind                      Assigns the local IP address and port for a socket. Returns 0 for success and 1
+                          for error.
+connect                   Establish a connection between the given socket and the remote socket
+                          associated with sockaddr.
+gethostname               Return local host name.
+send                      Send the bytes contained in buffer pointed to by *msg over the given
+                          socket.
+setsockopt                Set the options on a socket
+                                            Miscellaneous
+create_module             Attempt to create a loadable module entry and reserve the kernel memory that
+                          will be needed to hold the module.
+fsync                     Copy all in-core parts of a file to disk, and waits until the device reports that all
+                          parts are on stable storage.
+query_module              Request information related to loadable modules from the kernel.
+time                      Return the time in seconds since January 1, 1970.
+vhangup                   Simulate a hangup on the current terminal. This call arranges for other users to
+                          have a "clean" tty at login time.
+
+     ·  File systems: Provides a global, hierarchical namespace for files, directories,
+        and other file related objects and provides file system functions.
+     ·  Network protocols: Supports the Sockets interface to users for the TCP/IP
+        protocol suite.
+     ·  Character device drivers: Manages devices that require the kernel to send or
+        receive data one byte at a time, such as terminals, modems, and printers.
+     ·  Block device drivers: Manages devices that read and write data in blocks, such
+        as various forms of secondary memory (magnetic disks, CD-ROMs, etc.).
+     ·  Network device drivers: Manages network interface cards and communica-
+        tions ports that connect to network devices, such as bridges and routers.
+     ·  Traps and faults: Handles traps and faults generated by the processor, such as
+        a memory fault.
+     ·  Physical memory: Manages the pool of page frames in real memory and allo-
+        cates pages for virtual memory.
+     ·  Interrupts: Handles interrupts from peripheral devices.
+2.11 

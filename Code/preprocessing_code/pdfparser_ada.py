@@ -28,7 +28,7 @@ pdfname = 'ADA'
 first_chapter = 'Introduction'
 last_chapter = 'Epilogue'
 
-process = subprocess.Popen('pdftotext -table -fixed 0 -clip resources/%s -' %(pdfname + '.pdf'), shell=True, stdout=subprocess.PIPE)
+process = subprocess.Popen('pdftotext -table -fixed 0 -clip ../resources/%s -' %(pdfname + '.pdf'), shell=True, stdout=subprocess.PIPE)
 text, _ = process.communicate()
 
 pages = ('\n'.join(line for line in text.split('\n') if line != '')).split('\f')
@@ -60,11 +60,11 @@ else:
 	dirname = pdfname
 
 try:
-	os.stat('resources/' + dirname)
+	os.stat('../resources/' + dirname)
 except:
-	os.mkdir('resources/' + dirname)
+	os.mkdir('../resources/' + dirname)
 finally:
-	os.chdir('resources/' + dirname)
+	os.chdir('../resources/' + dirname)
 
 with open('__Sections.csv', 'w') as csvfile:
 	writer = csv.writer(csvfile)

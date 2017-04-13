@@ -35,29 +35,12 @@ from sklearn.multiclass import OneVsRestClassifier
 
 from pandas import DataFrame
 
+from utils import get_questions_by_section
+
 import sys
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 knowledge_mapping2 = {v : k for k, v in knowledge_mapping.items()}
-
-def __get_knowledge_level(model, question, subject='ADA'):  
-    clf = model
-    cls, highest_prob = clf.classify(question)[0]
-    hardcoded_matrix = [1.0, 0.6, 0.3, 0.1, 0]
-
-    for i, r in enumerate(zip(hardcoded_matrix[1:], hardcoded_matrix[:-1])):
-        if r[0] <= highest_prob < r[1]:
-            return i, highest_prob
-
-def get_knowledge_probs(model, question, subject):
-    level, highest_prob = __get_knowledge_level(model, question, subject)
-    #print(level, highest_prob)
-    probs = [0.0] * 4
-    for i in range(level):
-        # probs[i] = (i + 1) * highest_prob / (level * (level + 1) / 2)
-        probs[i] = (i + 1) * highest_prob / (level + 1)
-    probs[level] = highest_prob
-    return probs
 
 def probs_to_classes(probs, all_classes):
     probs = enumerate(probs)
@@ -78,35 +61,6 @@ def probs_to_classes_dict(probs, all_classes):
         classes[all_classes[i]] = p
 
     return classes
-
-def get_questions(subject, skip_files, shuffle=True):
-    exercise_content = {}
-    for filename in sorted(os.listdir('./resources/%s' %subject)):
-        with open('./resources/%s/'%subject + filename, encoding='latin-1') as f:
-            contents = f.read()
-            title = contents.split('\n')[0].strip()
-            if len([1 for k in skip_files if (k in title or k in filename)]):
-                continue
-
-            match = re.search(r'\n[\s]*Exercises[\s]+([\d]+\.[\d]+)[\s]*(.*)', contents, flags=re.M | re.DOTALL) 
-
-            if match:
-                exercise_content[title] = '\n' + match.group(2).split('SUMMARY')[0]
-
-        X_data, Y_data = [], []
-        for e in exercise_content:
-            for question in re.split('[\n][\s]*[\d]+\.', exercise_content[e].strip(), flags=re.M | re.DOTALL):
-                if len(question) > 0:
-                    X_data.append(re.sub('\n', ' ', re.sub('1\.', '', question.strip()), flags=re.M | re.DOTALL))
-                    Y_data.append(e)
-
-    if shuffle:
-        X = list(zip(X_data, Y_data))
-        random.shuffle(X)
-        X_data = [x[0] for x in X]
-        Y_data = [x[1] for x in X]
-
-    return X_data, Y_data
 
 class DocumentClassifier:
     stemmer = stem.porter.PorterStemmer()
@@ -183,15 +137,15 @@ class DocumentClassifier:
 
                 print('Loaded and processed', file_name)
 
-        X_questions, Y_questions = get_questions(subject, skip_files, shuffle=False)
-
-        '''
-        x_qtrain, x_qtest, y_qtrain, y_qtest = train_test_split(X_questions, Y_questions, test_size=0.05)
-        rows = []
-        for x, y in zip(x_qtrain, y_qtrain):
-            chapter = self.chapter_map[self.section_map[y]]
-            self.section_data[chapter] = self.section_data[chapter].append(DataFrame([{'text' : self.__preprocess(x, stop_strength=1), 'class' : y}]))
-        '''        
+        if(subject == 'ADA'):
+            X_questions, Y_questions = get_questions_by_section(subject, skip_files, shuffle=False)
+            '''
+            x_qtrain, x_qtest, y_qtrain, y_qtest = train_test_split(X_questions, Y_questions, test_size=0.05)
+            rows = []
+            for x, y in zip(x_qtrain, y_qtrain):
+                chapter = self.chapter_map[self.section_map[y]]
+                self.section_data[chapter] = self.section_data[chapter].append(DataFrame([{'text' : self.__preprocess(x, stop_strength=1), 'class' : y}]))
+            '''        
 
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         for k in self.section_data:
@@ -236,27 +190,31 @@ class DocumentClassifier:
             self.section_pipelines[k].fit(X, Y)
 
         ############# Assessing section difficulties ################
-        self.section_difficulty = { k : [] for k in self.section_map }
-        nCorrect, nTotal = 0, 0
-        for x, y in zip(X_questions, Y_questions):
-            for sentence in nltk.sent_tokenize(x):
-                nTotal += 1
-                x_t = self.__preprocess(sentence, stop_strength=1)
-                if len(x_t.split()) < 2:
-                    continue
-                chapter = self.pipeline.predict([x_t])[0]
-                topic = self.section_pipelines[chapter].predict([x_t])[0]
-                if topic != y:
-                    chap_num = self.section_map[topic]
-                    all_chap_topics = sorted([ k for k in self.section_map if self.section_map[k] == chap_num])
-                    probs = self.section_pipelines[chapter].predict_proba([x_t])[0]
-                    probs_dict = probs_to_classes_dict(probs, all_chap_topics)
-                    nsq_val = probs_dict[topic] # get the right n-squared value for that question from the dict lookup
-                else:
-                    nCorrect += 1
-                    nsq_val = max(self.section_pipelines[chapter].predict_proba([x_t])[0])
+        if(subject == 'ADA'):
+            self.section_difficulty = { k : [] for k in self.section_map }
+            nCorrect, nTotal = 0, 0
+            for x, y in zip(X_questions, Y_questions):
+                for sentence in nltk.sent_tokenize(x):
+                    nTotal += 1
+                    x_t = self.__preprocess(sentence, stop_strength=1)
+                    if len(x_t.split()) < 2:
+                        continue
+                    chapter = self.pipeline.predict([x_t])[0]
+                    topic = self.section_pipelines[chapter].predict([x_t])[0]
+                    if topic != y:
+                        chap_num = self.section_map[topic]
+                        all_chap_topics = sorted([ k for k in self.section_map if self.section_map[k] == chap_num])
+                        probs = self.section_pipelines[chapter].predict_proba([x_t])[0]
+                        probs_dict = probs_to_classes_dict(probs, all_chap_topics)
+                        nsq_val = probs_dict[topic] # get the right n-squared value for that question from the dict lookup
+                    else:
+                        nCorrect += 1
+                        nsq_val = max(self.section_pipelines[chapter].predict_proba([x_t])[0])
 
-                self.section_difficulty[y].append(nsq_val)
+                    self.section_difficulty[y].append(nsq_val)
+
+        else: # os does not have these
+            self.section_difficulty = { k : 1 for k in self.section_map }
 
         print('Combined Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
 

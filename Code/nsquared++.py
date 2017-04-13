@@ -210,8 +210,8 @@ for x, y in zip(x_data, y_data):
 		d2v_p = cosine_similarity(d1, d2)[0][0]
 		p_list.append(d2v_p)
 
-	y_pred = np.argmax(get_knowledge_probs(abs(p_list[0])))
 	p_list.append(k)
+	y_pred = np.argmax(get_knowledge_probs(abs(p_list[0])))
 	y_probs.append(p_list)
 	if y_pred == y:
 		nCorrect += 1

@@ -1,0 +1,150 @@
+Linux Virtual File System
+
+     Linux includes a versatile and powerful file-handling facility, designed to support a
+     wide variety of file management systems and file structures. The approach taken in
+     Linux is to make use of a virtual file system (VFS), which presents a single, uniform
+     file system interface to user processes. The VFS defines a common file model that is
+     capable of representing any conceivable file system's general feature and behavior.
+     The VFS assumes that files are objects in a computer's mass storage memory that
+     share basic properties regardless of the target file system or the underlying proces-
+     sor hardware. Files have symbolic names that allow them to be uniquely identified
+     within a specific directory within the file system. A file has an owner, protection
+     against unauthorized access or modification, and a variety of other properties. A
+     file may be created, read from, written to, or deleted. For any specific file system, a
+
+              User process
+                 System call
+System calls interface
+                            Virtual file
+                            system (VFS)
+                                                          Linux kernel
+IBM JFS       DOS FS          NTFS        ext2 FS
+Page cache
+Device drivers
+              I/O request
+                                                          Hardware
+Disk controller
+Figure 12.19  Linux Virtual File System Context
+mapping module is needed to transform the characteristics of the real file system to
+the characteristics expected by the virtual file system.
+Figure 12.19 indicates the key ingredients of the Linux file system strategy. A
+user process issues a file system call (e.g., read) using the VFS file scheme. The VFS
+converts this into an internal (to the kernel) file system call that is passed to a map-
+ping function for a specific file system [e.g., IBM's Journaling File System (JFS)]. In
+most cases, the mapping function is simply a mapping of file system functional calls
+from one scheme to another. In some cases, the mapping function is more complex.
+For example, some file systems use a file allocation table (FAT), which stores the
+position of each file in the directory tree. In these file systems, directories are not
+files. For such file systems, the mapping function must be able to construct dynami-
+cally, and when needed, the files corresponding to the directories. In any case, the
+original user file system call is translated into a call that is native to the target file
+system. The target file system software is then invoked to perform the requested
+function on a file or directory under its control and secondary storage. The results
+of the operation are then communicated back to the user in a similar fashion.
+Figure 12.20 indicates the role that VFS plays within the Linux kernel. When
+a process initiates a file-oriented system call (e.g., read), the kernel calls a function
+in the VFS. This function handles the file-system-independent manipulations and
+initiates a call to a function in the target file system code. This call passes through
+a mapping function that converts the call from the VFS into a call to the target file
+
+                                                                System calls
+         System calls                  VFS                      using
+         using VFS                     system                   filesystem X             Disk I/O
+         user interface  Linux         calls   Mapping          interface                calls
+                         virtual               function                       File
+                         file                          to file                system X
+User                     system                system X
+process
+                                                                                                   Files on secondary
+                                                                                                   storage maintained
+                                                                                                   by file system X
+Figure   12.20  Linux    Virtual File  System Concept
+                system. The VFS is independent of any file system, so the implementation of a map-
+                ping function must be part of the implementation of a file system on Linux. The
+                target file system converts the file system request into device-oriented instructions
+                that are passed to a device driver by means of page cache functions.
+                         VFS is an object-oriented scheme. Because it is written in C, rather than a
+                language that supports object programming (such as C++ or Java), VFS objects are
+                implemented simply as C data structures. Each object contains both data and point-
+                ers to file-system-implemented functions that operate on data. The four primary
+                object types in VFS are as follows:
+                ·        Superblock object: Represents a specific mounted file system
+                ·        Inode object: Represents a specific file
+                ·        Dentry object: Represents a specific directory entry
+                ·        File object: Represents an open file associated with a process
+                         This scheme is based on the concepts used in UNIX file systems, as described in
+                Section 12.7. The key concepts of UNIX file system to remember are the following. A
+                file system consists of a hierarchal organization of directories. A directory is the same
+                as what is known as a folder on many non-UNIX platforms and may contain files and/
+                or other directories. Because a directory may contain other directories, a tree struc-
+                ture is formed. A path through the tree structure from the root consists of a sequence
+                of directory entries, ending in either a directory entry (dentry) or a file name. In
+                UNIX, a directory is implemented as a file that lists the files and directories contained
+                within it. Thus, file operations can be performed on either files or directories.
+                The Superblock Object
+                The superblock object stores information describing a specific file system. Typically,
+                the superblock corresponds to the file system superblock or file system control
+                block, which is stored in a special sector on disk.
+                         The superblock object consists of a number of data items. Examples include
+                the following:
+                · The device that this file system is mounted on
+                · The basic block size of the file system
+
+·  Dirty flag, to indicate that the superblock has been      changed  but not  written
+   back to disk
+·  File system type
+·  Flags, such as a read-only flag
+·  Pointer to the root of the file system directory
+·  List of open files
+·  Semaphore for controlling access to the file system
+·  List of superblock operations
+   The last item on the preceding list refers to an operations object contained
+within the superblock object. The operations object defines the object methods
+(functions) that the kernel can invoke against the superblock object. The methods
+defined for the superblock object include the following:
+·  read_inode: Read a specified inode from a mounted file system.
+·  write_inode: Write given inode to disk.
+·  put_inode: Release inode.
+·  delete_inode: Delete inode from disk.
+·  notify_change: Called when inode attributes are changed.
+·  put_super: Called by the VFS on unmount to release the given superblock.
+·  write_super: Called when the VFS decides that the superblock needs to be
+   written to disk.
+·  statfs: Obtain file system statistics.
+·  remount_fs: Called by the VFS when the file system is remounted with new
+   mount options.
+·  clear_inode: Release inode and clear any pages containing related data.
+The Inode Object
+An inode is associated with each file. The inode object holds all the information
+about a named file except its name and the actual data contents of the file. Items
+contained in an inode object include owner, group, permissions, access times for a
+file, size of data it holds, and number of links.
+   The inode object also includes an inode operations object that describes the
+file system's implemented functions that the VFS can invoke on an inode. The
+methods defined for the inode object include the following:
+·  create: Creates a new inode for a regular file associated with a dentry object
+   in some directory
+·  lookup: Searches a directory for an inode corresponding to a file name
+·  mkdir: Creates a new inode for a directory associated with a dentry object in
+   some directory
+
+     The Dentry Object
+     A dentry (directory entry) is a specific component in a path. The component may
+     be either a directory name or a file name. Dentry objects facilitate access to files
+     and directories and are used in a dentry cache for that purpose. The dentry object
+     includes a pointer to the inode and superblock. It also includes a pointer to the
+     parent dentry and pointers to any subordinate dentrys.
+     The File Object
+     The file object is used to represent a file opened by a process. The object is created
+     in response to the open() system call and destroyed in response to the close() sys-
+     tem call. The file object consists of a number of items, including the following:
+       ·  Dentry object associated with the file
+       ·  File system containing the file
+       ·  File objects usage counter
+       ·  User's user ID
+       ·  User's group ID
+       ·  File pointer, which is the current position  in    the  file  from    which   the  next
+          operation will take place
+          The file object also includes an inode operations object that describes the file
+     system's implemented functions that the VFS can invoke on a file object. The methods
+     defined for the file object include read, write, open, release, and lock.

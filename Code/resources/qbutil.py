@@ -25,8 +25,8 @@ def handler(signum, frame):
 logging.basicConfig()
 signal.signal(signal.SIGINT, handler)
 
-if not os.path.exists('resources/proxies.txt'):
-	with open('resources/proxies.txt', 'w') as f:
+if not os.path.exists('proxies.txt'):
+	with open('proxies.txt', 'w') as f:
 		null = open(os.devnull, 'w')
 		subprocess.Popen('python3.6 proxyfinder.py 1000 500', shell=True, stdout=f, stderr=null).communicate()
 
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 	num_threads = 64 if len(sys.argv) == 2 else max(5, int(sys.argv[2]))
 	tag_threads = int(0.2 * num_threads)
 
-	path = 'resources/' + sys.argv[1]
+	path = '' + sys.argv[1]
 
 	
 	with open(path + '/__ValidatedKeywords.txt', 'r') as f:

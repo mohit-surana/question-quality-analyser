@@ -1,3 +1,7 @@
+########### TODO REFACTOR THIS CODE TO ACCEPT SUBJECT AS A PARAM AND DIRECT TFIDF OUTPUT TO APPROPRIATE FILE ############
+
+'''
+
 import threading
 import time
 import re
@@ -239,3 +243,5 @@ def main():
 
 
 main()
+
+'''

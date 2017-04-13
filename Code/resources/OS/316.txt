@@ -1,0 +1,136 @@
+Windows 7 Concurrency Mechanisms
+
+     Windows provides synchronization among threads as part of the object architecture.
+     The most important methods of synchronization are Executive dispatcher objects,
+     user­mode critical sections, slim reader­writer locks, condition variables, and lock-free
+
+           operations. Dispatcher objects make use of wait functions. We first describe wait func-
+           tions and then look at the synchronization methods.
+           Wait Functions
+           The wait functions allow a thread to block its own execution. The wait functions
+           do not return until the specified criteria have been met. The type of wait func-
+           tion determines the set of criteria used. When a wait function is called, it checks
+           whether the wait criteria have been met. If the criteria have not been met, the
+           calling thread enters the wait state. It uses no processor time while waiting for the
+           criteria to be met.
+                 The most straightforward type of wait function is one that waits on a single
+           object. The WaitForSingleObject function requires a handle to one synchroni-
+           zation object. The function returns when one of the following occurs:
+              ·  The specified object is in the signaled state.
+              ·  The time-out interval elapses. The time-out interval can be set to INFINITE
+                 to specify that the wait will not time out.
+           Dispatcher Objects
+           The mechanism used by the Windows Executive to implement synchronization
+           facilities is the family of dispatcher objects, which are listed with brief descriptions
+           in Table 6.7.
+Table 6.7  Windows Synchronization Objects
+                                                        Set to Signaled State                Effect on Waiting
+Object Type      Definition                             When                                 Threads
+Notification     An announcement that a                 Thread sets the event                All released
+event            system event has occurred
+Synchronization  An announcement that a                 Thread sets the event                One thread released
+event            system event has occurred.
+Mutex            A mechanism that provides              Owning thread or other               One thread released
+                 mutual exclusion capabilities;         thread releases the
+                 equivalent to a binary semaphore       mutex
+Semaphore        A counter that regulates the number    Semaphore count drops                All released
+                 of threads that can use a resource     to zero
+Waitable timer   A counter that records the passage     Set time arrives or time             All released
+                 of time                                interval expires
+File             An instance of an opened file or       I/O operation completes              All released
+                 I/O device
+Process          A program invocation, including        Last thread terminates               All released
+                 the address space and resources
+                 required to run the program
+Thread           An executable entity within a process  Thread terminates                    All released
+Note: Shaded rows correspond to objects that exist for the sole purpose of synchronization.
+
+     The first five object types in the table are specifically designed to support
+     synchronization. The remaining object types have other uses but also may be used
+     for synchronization.
+     Each dispatcher object instance can be in either a signaled or unsignaled
+     state. A thread can be blocked on an object in an unsignaled state; the thread
+     is released when the object enters the signaled state. The mechanism is straight-
+     forward: A thread issues a wait request to the Windows Executive, using the
+     handle of the synchronization object. When an object enters the signaled state, the
+     Windows Executive releases one or all of the thread objects that are waiting on
+     that dispatcher object.
+     The event object is useful in sending a signal to a thread indicating that a par-
+     ticular event has occurred. For example, in overlapped input and output, the system
+     sets a specified event object to the signaled state when the overlapped operation
+     has been completed. The mutex object is used to enforce mutually exclusive access
+     to a resource, allowing only one thread object at a time to gain access. It there-
+     fore functions as a binary semaphore. When the mutex object enters the signaled
+     state, only one of the threads waiting on the mutex is released. Mutexes can be used
+     to synchronize threads running in different processes. Like mutexes, semaphore
+     objects may be shared by threads in multiple processes. The Windows semaphore is
+     a counting semaphore. In essence, the waitable timer object signals at a certain time
+     and/or at regular intervals.
+     Critical Sections
+     Critical sections provide a synchronization mechanism similar to that provided by
+     mutex objects, except that critical sections can be used only by the threads of a
+     single process. Event, mutex, and semaphore objects can also be used in a single-
+     process application, but critical sections provide a much faster, more efficient mech-
+     anism for mutual-exclusion synchronization.
+     The process is responsible for allocating the memory used by a critical section.
+     Typically, this is done by simply declaring a variable of type CRITICAL_SECTION.
+     Before the threads of the process can use it, initialize the critical section by using the
+     InitializeCriticalSection function.
+     A thread uses the EnterCriticalSection or TryEnterCriticalSection
+     function to request ownership of a critical section. It uses the LeaveCriticalSection
+     function to release ownership of a critical section. If the critical section is currently
+     owned by another thread, EnterCriticalSection waits indefinitely for owner-
+     ship. In contrast, when a mutex object is used for mutual exclusion, the wait functions
+     accept a specified time-out interval. The TryEnterCriticalSection function
+     attempts to enter a critical section without blocking the calling thread.
+     Critical sections use a sophisticated algorithm when trying to acquire the
+     mutex. If the system is a multiprocessor, the code will attempt to acquire a spinlock.
+     This works well in situations where the critical section is acquired for only a short
+     time. Effectively the spinlock optimizes for the case where the thread that currently
+     owns the critical section is executing on another processor. If the spinlock cannot
+     be acquired within a reasonable number of iterations, a dispatcher object is used to
+     block the thread so that the Kernel can dispatch another thread onto the processor.
+
+The dispatcher object is only allocated as a last resort. Most critical sections are
+needed for correctness, but in practice are rarely contended. By lazily allocating the
+dispatcher object the system saves significant amounts of kernel virtual memory.
+Slim Read-Writer Locks and Condition Variables
+Windows Vista added a user mode reader­writer. Like critical sections, the reader­
+writer lock enters the kernel to block only after attempting to use a spinlock. It is
+slim in the sense that it normally only requires allocation of a single pointer-sized
+piece of memory.
+    To use an SRW lock, a process declares a variable of type SRWLOCK and a calls
+InitializeSRWLock to initialize it. Threads call AcquireSRWLockExclusive or
+AcquireSRWLockShared to acquire the lock and ReleaseSRWLockExclusive
+or ReleaseSRWLockShared to release it.
+    Windows       also  has  condition  variables.       The  process  must  declare    a
+CONDITION_VARIABLE           and        initialize   it  in   some  thread   by  calling
+InitializeConditionVariable. Condition variables can be used with either crit-
+ical sections or SRW locks, so there are two methods, SleepConditionVariableCS
+and SleepConditionVariableSRW, which sleep on the specified condition and
+releases the specified lock as an atomic operation.
+    There are two wake methods, WakeConditionVariable and Wake
+AllConditionVariable, which wake one or all of the sleeping threads, respec-
+tively. Condition variables are used as follows:
+1.  Acquire exclusive lock
+2.  While (predicate() == FALSE) SleepConditionVariable()
+3.  Perform the protected operation
+4.  Release the lock
+Lock-free Synchronization
+Windows also relies heavily on interlocked operations for synchronization.
+Interlocked operations use hardware facilities to guarantee that memory locations
+can be read, modified, and written in a single atomic operation. Examples include
+InterlockedIncrement and InterlockedCompareExchange; the latter
+allows a memory location to be updated only if it hasn't changed values since
+being read.
+    Many of the synchronization primitives use interlocked operations within
+their implementation, but these operations are also available to programmers for
+situations where they want to synchronize without taking a software lock. These
+so-called lock-free synchronization primitives have the advantage that a thread can
+never be switched away from a processor, say at the end of its timeslice, while still
+holding a lock. Thus they cannot block another thread from running.
+    More complex lock-free primitives can be built out of the interlocked oper-
+ations, most notably Windows SLists, which provide a lock-free LIFO queue.
+SLists are managed using functions like InterlockedPushEntrySList and
+InterlockedPopEntrySList.
+

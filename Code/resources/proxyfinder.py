@@ -36,13 +36,13 @@ if __name__ == "__main__":
 
 	proxies = {}
 	try:
-		with open('resources/proxies.txt', 'r') as f:
+		with open('proxies.txt', 'r') as f:
 			proxies = json.load(f)
 	except:
 		proxies['http'] = []
 		proxies['https'] = []
 
-	with open('resources/proxies.txt', 'w') as f:
+	with open('proxies.txt', 'w') as f:
 		proxies['http'] = list(set(proxies['http'] + http_proxies))
 		proxies['https'] = list(set(proxies['https'] + https_proxies))
 

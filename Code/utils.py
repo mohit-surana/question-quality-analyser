@@ -20,6 +20,9 @@ porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
 
+SUBJECT_ADA = 'ADA'
+SUBJECT_OS = 'OS'
+
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
@@ -32,6 +35,8 @@ stopwords.update(['.', ',', '"', "'", '?', '!', ':', ';', '(', ')', '[', ']', '{
 regex = re.compile('[%s]' % re.escape(string.punctuation))
 #see documentation here: http://docs.python.org/2/library/string.html
 
+
+########################### PREPROCESSING UTILITY CODE ###########################
 def clean(sentence, stem=True, return_as_list=True):
     sentence = sentence.lower()
     final_sentence = []
@@ -58,6 +63,8 @@ def clean_no_stopwords(text, as_list=True, stem=True):
         return tokens
     else:
         return ' '.join(tokens)
+
+########################### SKILL: QUESTION FILTERER ###########################
 
 def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
@@ -114,6 +121,8 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
         new_questions.append(new_question.strip())
 
     return new_questions if len(new_questions) > 1 else new_questions[0]
+
+########################### SKILL: GET FILTERED DATA FROM APPROPRIATE DATASETS ###########################
 
 def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada', 'os', 'bcl'], split=0.7, include_keywords=True, keep_dup=False, shuffle=True):
     X = []
@@ -219,6 +228,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
 
     return X_train, Y_train, X_test, Y_test
 
+##################### KNOWLEDGE: CONVERT PROB TO HARDCODED VECTOR #####################
 
 def get_knowledge_probs(prob):
     hardcoded_matrix = [1.0, 0.6, 0.3, 0.1, 0]
@@ -234,3 +244,79 @@ def get_knowledge_probs(prob):
     probs[level] = prob
 
     return probs
+
+##################### KNOWLEDGE: GET QUESTIONS (relabel.py CODE) #####################
+
+def get_questions_by_section(subject='ADA', skip_files, shuffle=True):
+    exercise_content = {}
+    for filename in sorted(os.listdir('./resources/%s' %subject)):
+        with open('./resources/%s/'%subject + filename, encoding='latin-1') as f:
+            contents = f.read()
+            title = contents.split('\n')[0].strip()
+            if len([1 for k in skip_files if (k in title or k in filename)]):
+                continue
+
+            match = re.search(r'\n[\s]*Exercises[\s]+([\d]+\.[\d]+)[\s]*(.*)', contents, flags=re.M | re.DOTALL) 
+
+            if match:
+                exercise_content[title] = '\n' + match.group(2).split('SUMMARY')[0]
+
+        X_data, Y_data = [], []
+        for e in exercise_content:
+            for question in re.split('[\n][\s]*[\d]+\.', exercise_content[e].strip(), flags=re.M | re.DOTALL):
+                if len(question) > 0:
+                    X_data.append(re.sub('\n', ' ', re.sub('1\.', '', question.strip()), flags=re.M | re.DOTALL))
+                    Y_data.append(e)
+
+    if shuffle:
+        X = list(zip(X_data, Y_data))
+        random.shuffle(X)
+        X_data = [x[0] for x in X]
+        Y_data = [x[1] for x in X]
+
+    return X_data, Y_data
+
+def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
+    X_data = []
+    Y_data = []
+    if subject == SUBJECT_ADA:
+        with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
+            csvreader = csv.reader(csvfile.read().splitlines()[1:])
+            for row in csvreader:
+                sentence, label_cog, label_know = row
+                m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+                X_data.append(m.groups()[2])
+                Y_data.append(mapping_know[label_know.split('/')[0]])
+
+        if shuffle:
+            X = list(zip(X_data, Y_data))
+            random.shuffle(X)
+            X_data = [x[0] for x in X]
+            Y_data = [x[1] for x in X] 
+
+        return X_data, Y_data
+
+    elif subject == SUBJECT_OS: # return question : knowledge mapping
+        with codecs.open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
+            csvreader = csv.reader(csvfile.read().splitlines()[5:])
+            for row in csvreader:
+                X_data.append(row[0])                
+                if(row[5] == '' and row[3] == ''):  #Following Mohit > Shiva > Shrey
+                    label_know = row[1].split('/')[0]
+                    Y_data.append(mapping_know[label_know.strip()])
+                elif(row[5] == '' and row[3] != ''):
+                    label_know = row[3].split('/')[0]
+                    Y_data.append(mapping_know[label_know.strip()])
+                else:
+                    label_know = row[5].split('/')[0]
+                    Y_data.append(mapping_know[label_know.strip()])
+
+       if shuffle:
+            X = list(zip(X_data, Y_data))
+            random.shuffle(X)
+            X_data = [x[0] for x in X]
+            Y_data = [x[1] for x in X] 
+
+        return X_data, Y_data
+
+

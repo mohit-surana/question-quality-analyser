@@ -1,0 +1,110 @@
+Windows I/O
+
+     Figure 11.15 shows the key kernel-mode components related to the Windows I/O
+     manager. The I/O manager is responsible for all I/O for the operating system and
+     provides a uniform interface that all types of drivers can call.
+
+                                     I/O manager
+                                     Cache
+                                     manager
+                                     File system
+                                     drivers
+                                     Network
+                                     drivers
+                                     Hardware
+                                     device drivers
+                      Figure  11.15  Windows I/O     Manager
+Basic I/O Facilities
+The I/O manager works closely with four types of kernel components:
+·  Cache manager: The cache manager handles file caching for all file systems.
+   It can dynamically increase and decrease the size of the cache devoted to a
+   particular file as the amount of available physical memory varies. The system
+   records updates in the cache only and not on disk. A kernel thread, the lazy
+   writer, periodically batches the updates together to write to disk. Writing the
+   updates in batches allows the I/O to be more efficient. The cache manager
+   works by mapping regions of files into kernel virtual memory and then relying
+   on the virtual memory manager to do most of the work to copy pages to and
+   from the files on disk.
+·  File system drivers: The I/O manager treats a file system driver as just another
+   device driver and routes I/O requests for file system volumes to the appropri-
+   ate software driver for that volume. The file system, in turn, sends I/O requests
+   to the software drivers that manage the hardware device adapter.
+·  Network drivers: Windows includes integrated networking capabilities and
+   support for remote file systems. The facilities are implemented as software
+   drivers rather than part of the Windows Executive.
+·  Hardware device drivers: These software drivers access the hardware regis-
+   ters of the peripheral devices using entry points in the Hardware Abstraction
+   Layer. A set of these routines exists for every platform that Windows supports;
+   because the routine names are the same for all platforms, the source code of
+   Windows device drivers is portable across different processor types.
+Asynchronous and Synchronous I/O
+Windows offers two modes of I/O operation: asynchronous and synchronous. The
+asynchronous mode is used whenever possible to optimize application perfor-
+mance. With asynchronous I/O, an application initiates an I/O operation and then
+can continue processing while the I/O request is fulfilled. With synchronous I/O, the
+application is blocked until the I/O operation completes.
+   Asynchronous I/O is more efficient, from the point of view of the calling
+thread, because it allows the thread to continue execution while the I/O operation is
+
+     queued by the I/O manager and subsequently performed. However, the application
+     that invoked the asynchronous I/O operation needs some way to determine when
+     the operation is complete. Windows provides five different techniques for signaling
+     I/O completion:
+     ·  Signaling the file object: With this approach, the event associated with a
+        file object is set when an operation on that object is complete. The thread
+        that invoked the I/O operation can continue to execute until it reaches a
+        point where it must stop until the I/O operation is complete. At that point,
+        the thread can wait until the operation is complete and then continue. This
+        technique is simple and easy to use but is not appropriate for handling
+        multiple I/O requests. For example, if a thread needs to perform multiple
+        simultaneous actions on a single file, such as reading from one portion and
+        writing to another portion of the file, with this technique the thread could
+        not distinguish between the completion of the read and the completion of
+        the write. It would simply know that one of the requested I/O operations on
+        this file had finished.
+     ·  Signaling an event object: This technique allows multiple simultaneous I/O
+        requests against a single device or file. The thread creates an event for each
+        request. Later, the thread can wait on a single one of these requests or on an
+        entire collection of requests.
+     ·  Asynchronous procedure call: This technique makes use of a queue associated
+        with a thread, known as the asynchronous procedure call (APC) queue. In this
+        case, the thread makes I/O requests, specifying a user-mode routine to call
+        when the I/O completes. The I/O manager places the results of each request in
+        the calling thread's APC queue. The next time the thread blocks in the kernel,
+        the APCs will be delivered, each causing the thread to return to user mode
+        and execute the specified routine.
+     ·  I/O completion ports: This technique is used on a Windows server to optimize
+        the use of threads. The application creates a pool of threads for handling the
+        completion of I/O requests. Each thread waits on the completion port, and the
+        Kernel wakes threads to handle each I/O completion. One of the advantages
+        of this approach is that the application can specify a limit for how many of
+        these threads will run at the same time.
+     ·  Polling: Asynchronous I/O requests write a status and transfer count into the
+        process' user virtual memory when the operation completes. A thread can just
+        check these values to see if the operation has completed.
+     Software RAID
+     Windows supports two sorts of RAID configurations, defined in [MS96] as follows:
+     ·  Hardware RAID: Separate physical disks combined into one or more logical
+        disks by the disk controller or disk storage cabinet hardware.
+     ·  Software RAID: Noncontiguous disk space combined into one or more logical
+        partitions by the fault-tolerant software disk driver, FTDISK.
+
+       In hardware RAID, the controller interface handles the creation and regener-
+ation of redundant information. The software RAID, available on Windows Server,
+implements the RAID functionality as part of the operating system and can be used
+with any set of multiple disks. The software RAID facility implements RAID 1
+and RAID 5. In the case of RAID 1 (disk mirroring), the two disks containing the
+primary and mirrored partitions may be on the same disk controller or different
+disk controllers. The latter configuration is referred to as disk duplexing.
+Volume Shadow Copies
+Shadow copies are an efficient way of making consistent snapshots of volumes
+so that they can be backed up. They are also useful for archiving files on a per-
+volume basis. If a user deletes a file he or she can retrieve an earlier copy from
+any available shadow copy made by the system administrator. Shadow copies are
+implemented by a software driver that makes copies of data on the volume before
+it is overwritten.
+Volume Encryption
+Windows supports the encryption of entire volumes, using a feature called
+BitLocker. This is more secure than encrypting individual files, as the entire system
+works to be sure that the data is safe. Up to three different methods of supplying the
+cryptographic key can be provided, allowing multiple interlocking layers of security.
