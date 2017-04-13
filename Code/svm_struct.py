@@ -1,13 +1,13 @@
 '''
-python3 struct_svm_ada.py
+python3 svm_struct.py
 
-svm_multiclass/svm_multiclass_learn -c 5000 datasets/StructSVM/train_ada_cog.dat models/SVM/Struct/model_ada_cog.dat
+svm_multiclass_code/svm_multiclass_learn -c 5000 datasets/StructSVM/train_ada_cog.dat models/SVM/Struct/model_ada_cog.dat
 
-svm_multiclass/svm_multiclass_classify datasets/StructSVM/test_ada_cog.dat models/SVM/Struct/model_ada_cog.dat datasets/StructSVM/predictions_ada_cog.dat
+svm_multiclass_code/svm_multiclass_classify datasets/StructSVM/test_ada_cog.dat models/SVM/Struct/model_ada_cog.dat datasets/StructSVM/predictions_ada_cog.dat
 
-svm_multiclass/svm_multiclass_learn -c 5000 datasets/StructSVM/train_ada_know.dat models/SVM/Struct/model_ada_know.dat
+svm_multiclass_code/svm_multiclass_learn -c 5000 datasets/StructSVM/train_ada_know.dat models/SVM/Struct/model_ada_know.dat
 
-svm_multiclass/svm_multiclass_classify datasets/StructSVM/test_ada_know.dat models/SVM/Struct/model_ada_know.dat datasets/StructSVM/predictions_ada_know.dat
+svm_multiclass_code/svm_multiclass_classify datasets/StructSVM/test_ada_know.dat models/SVM/Struct/model_ada_know.dat datasets/StructSVM/predictions_ada_know.dat
 
 If you get an error 13 - permission denied, run make inside svm_multiclass
 
@@ -121,9 +121,9 @@ def train(X, Y, model_name='ada_cog'):
     prepare_file('datasets/StructSVM/train_%s.dat' % (model_name, ), X[:(7*len(X))//10], Y[:(7*len(X))//10])
     prepare_file('datasets/StructSVM/test_%s.dat' % (model_name, ), X[(7*len(X))//10:], Y[(7*len(X))//10:])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_learn', '-c', '5000', 'datasets/StructSVM/train_%s.dat' % (model_name, ), 'models/SVM/Struct/model_%s.dat' % (model_name, )])
+    subprocess.call(['svm_multiclass_code/svm_multiclass_learn', '-c', '5000', 'datasets/StructSVM/train_%s.dat' % (model_name, ), 'models/SVM/Struct/model_%s.dat' % (model_name, )])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/StructSVM/test_%s.dat' % (model_name, ), 'models/SVM/Struct/model_%s.dat' % (model_name, ), 'datasets/StructSVM/predictions_%s.dat' % (model_name, )])
+    subprocess.call(['svm_multiclass_code/svm_multiclass_classify', 'datasets/StructSVM/test_%s.dat' % (model_name, ), 'models/SVM/Struct/model_%s.dat' % (model_name, ), 'datasets/StructSVM/predictions_%s.dat' % (model_name, )])
 
 if(TRAIN_CLASSIFIER):
     X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers()
@@ -145,7 +145,7 @@ def get_cognitive_probs(question):
 
     prepare_file('datasets/StructSVM/test_ada_cog_sample.dat', X, [0])
 
-    subprocess.call(['svm_multiclass/svm_multiclass_classify', 'datasets/StructSVM/test_ada_cog_sample.dat', 'models/SVM/Struct/model_ada_cog.dat', 'datasets/StructSVM/predictions_ada_cog_sample.dat'])
+    subprocess.call(['svm_multiclass_code/svm_multiclass_classify', 'datasets/StructSVM/test_ada_cog_sample.dat', 'models/SVM/Struct/model_ada_cog.dat', 'datasets/StructSVM/predictions_ada_cog_sample.dat'])
 
     with open('datasets/StructSVM/predictions_ada_cog_sample.dat', 'r') as f:
         line = f.read().split('\n')[0]
