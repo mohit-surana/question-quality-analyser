@@ -1,3 +1,4 @@
+######################          RUN THIS FILE BEFORE 'knowvoter.py' to save the values in a csv file.       ####################
 import codecs
 import csv
 import utils
