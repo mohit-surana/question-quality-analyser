@@ -47,8 +47,6 @@ if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])
 		for row, line in enumerate(lines):
 			try:
 				w = line.split()[0]
-				if w not in vocabulary:
-					continue
 				vec = np.array(list(map(float, line.split()[1:])))
 				w2v[w] = vec
 			except:
