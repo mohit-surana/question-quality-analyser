@@ -137,7 +137,7 @@ class DocumentClassifier:
 
                 print('Loaded and processed', file_name)
 
-        if(subject == 'ADA'):
+        if subject == 'ADA':
             X_questions, Y_questions = get_questions_by_section(subject, skip_files, shuffle=False)
             '''
             x_qtrain, x_qtest, y_qtrain, y_qtest = train_test_split(X_questions, Y_questions, test_size=0.05)
@@ -145,7 +145,9 @@ class DocumentClassifier:
             for x, y in zip(x_qtrain, y_qtrain):
                 chapter = self.chapter_map[self.section_map[y]]
                 self.section_data[chapter] = self.section_data[chapter].append(DataFrame([{'text' : self.__preprocess(x, stop_strength=1), 'class' : y}]))
-            '''        
+            '''     
+        elif subject == 'OS':
+            pass # consider training questions on a chapter wise basis to improve accuracy 
 
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         for k in self.section_data:
@@ -213,17 +215,18 @@ class DocumentClassifier:
 
                     self.section_difficulty[y].append(nsq_val)
 
-        else: # os does not have these
+            print('Combined Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
+
+            for k in self.section_difficulty:
+                t = self.section_difficulty[k]
+                try:
+                    self.section_difficulty[k] = sum(t) / len(t) 
+                except ZeroDivisionError:
+                    self.section_difficulty[k] = 1
+
+        else: # os does not have section wise questions, so just keep a default difficulty [alt: apply same difficulty to all sections in a chapter]
             self.section_difficulty = { k : 1 for k in self.section_map }
 
-        print('Combined Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
-
-        for k in self.section_difficulty:
-            t = self.section_difficulty[k]
-            try:
-                self.section_difficulty[k] = sum(t) / len(t) 
-            except ZeroDivisionError:
-                self.section_difficulty[k] = 1
 
     def classify(self, data):
         if type(data) != type([]):
@@ -258,10 +261,17 @@ if __name__ == "__main__":
 
     all_classes = sorted(list(set(list(classifier.data['class'].values))))
 
-    questions = ["""Having some problems implementing a quicksort sorting algorithm in java. I get a stackoverflow error when I run this program and I'm not exactly sure why. If anyone can point out the error, it would be great.""",
-    """Give an example that shows that the approximation sequence of Newton's method may diverge. """,
-    """Find the number of comparisons made by the sentinel version of linear search  b in the worst case. in the average case if the probability of a successful search is p (0 p 1).""",
-    """ Write a brute force pattern matching program for playing the game Battleship on the computer."""]
+    if subject == 'ADA':
+        questions = ["""Having some problems implementing a quicksort sorting algorithm in java. I get a stackoverflow error when I run this program and I'm not exactly sure why. If anyone can point out the error, it would be great.""",
+        """Give an example that shows that the approximation sequence of Newton's method may diverge. """,
+        """Find the number of comparisons made by the sentinel version of linear search  b in the worst case. in the average case if the probability of a successful search is p (0 p 1).""",
+        """ Write a brute force pattern matching program for playing the game Battleship on the computer."""]
+
+    else:
+        questions = ['''List and briefly describe some of the defenses against buffer overflows that can be implemented when running existing, vulnerable programs.''',
+                    '''What is client/server computing?''',
+                    '''What distinguishes client/server computing from any other form of distributed data processing?''',
+                    '''What is the role of a communications architecture such as TCP/IP in a client/server environment?''']
     
     for i, q in enumerate(questions):
         c, p = classifier.classify(q)[0]

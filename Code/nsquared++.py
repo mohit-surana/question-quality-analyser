@@ -5,6 +5,7 @@ import pickle
 import csv
 import numpy as np
 import pprint
+import sys
 
 import gensim
 from gensim import corpora, models, similarities
@@ -23,8 +24,8 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.externals import joblib
 
-from nsquared import get_questions, DocumentClassifier
-from utils import get_knowledge_probs
+from nsquared import DocumentClassifier
+from utils import get_knowledge_probs, get_data_for_knowledge_classifiers
 
 
 
@@ -34,7 +35,12 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
 
-subject = 'ADA'
+if len(sys.argv) < 2:
+    subject = 'ADA'
+else:
+	subject = sys.argv[1]
+
+
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
@@ -86,7 +92,7 @@ for i in doc_set:
 
 MODEL = ['LDA', 'LSA', 'D2V']
 
-USE_MODELS = [MODEL[0]]
+USE_MODELS = MODEL[0:3]
 
 if MODEL[0] in USE_MODELS:
 	TRAIN_LDA = False
@@ -100,7 +106,7 @@ if MODEL[0] in USE_MODELS:
 			corpus.extend([dictionary.doc2bow(sentence.split()) for sentence in nltk.sent_tokenize(docs[k]) if len(sentence.split()) > 2])
 		corpora.MmCorpus.serialize('models/Nsquared/%s/corpus.mm' % (subject, ), corpus)
 
-		lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 10000),
+		lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 5000),
 	                          id2word=dictionary,
 	                          num_topics=len(docs),
 	                          update_every=1,
@@ -167,19 +173,12 @@ if MODEL[2] in USE_MODELS:
 	else:
 		d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
 
-clf = pickle.load(open('models/Nsquared/%s/nsquared_92.pkl' % ('ADA', ), 'rb'))
+if subject == 'ADA':
+	clf = pickle.load(open('models/Nsquared/%s/nsquared_92.pkl' % (subject, ), 'rb'))
+else:
+	clf = pickle.load(open('models/Nsquared/%s/nsquared_94.pkl' % (subject, ), 'rb'))	
 
-questions = []
-with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r') as f:
-	reader = csv.reader(f)
-	for i, row in enumerate(reader):
-		if i == 0:
-			continue
-
-		questions.append([row[0], row[-1]])
-
-x_data = [k[0] for k in questions]
-y_data = [knowledge_mapping[k[1].split('/')[0]] for k in questions]
+x_data, y_data = get_data_for_knowledge_classifiers(subject)
 
 print()
 y_probs = []

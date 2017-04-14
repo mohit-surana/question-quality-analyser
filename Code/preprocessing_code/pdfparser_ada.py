@@ -31,7 +31,7 @@ last_chapter = 'Epilogue'
 process = subprocess.Popen('pdftotext -table -fixed 0 -clip ../resources/%s -' %(pdfname + '.pdf'), shell=True, stdout=subprocess.PIPE)
 text, _ = process.communicate()
 
-pages = ('\n'.join(line for line in text.split('\n') if line != '')).split('\f')
+pages = ('\n'.join(line for line in text.decode('latin-1').split('\n') if line != '')).split('\f')
 for i, page in enumerate(pages):
 	if 'brief contents' not in page.lower() and ('contents' in page.lower() or 'table of contents' in page.lower()):
 		break
@@ -77,9 +77,9 @@ trigram_rake = Rake('../stopwords.txt', 3, 3, 2)
 
 keywords = set()
 if split_mode == CHAPTER_MODE:
-	chapter_tree = filter(lambda x: int(x['level']) in [1, -1], chapter_tree)
+	chapter_tree = list(filter(lambda x: int(x['level']) in [1, -1], chapter_tree))
 else:
-	chapter_tree = filter(lambda x: int(x['level']) in [1, 2, -1], chapter_tree)
+	chapter_tree = list(filter(lambda x: int(x['level']) in [1, 2, -1], chapter_tree))
 
 preprocessed_sections = []
 for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[1:])):

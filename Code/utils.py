@@ -7,6 +7,7 @@ import numpy as np
 import pickle
 import platform
 import random
+import codecs
 
 from nltk import word_tokenize
 from nltk.corpus import stopwords

@@ -9,7 +9,7 @@ import itertools
 from rake import Rake
 
 CHAPTER_MODE, SECTION_MODE = 0, 1
-split_mode = CHAPTER_MODE
+split_mode = SECTION_MODE
 
 pdfname = 'OS'
 
@@ -47,7 +47,7 @@ except:
 finally:
 	os.chdir('../resources/' + dirname)
 
-pages = ('\n'.join(line for line in text.split('\n') if line != '')).split('\f')
+pages = ('\n'.join(line for line in text.decode('latin-1').split('\n') if line != '')).split('\f')
 pages = ['\n'.join(p.split('\n')[1:]) for p in pages]
 
 unigram_rake = Rake('../stopwords.txt', 3, 1, 3)
@@ -56,7 +56,10 @@ trigram_rake = Rake('../stopwords.txt', 3, 3, 2)
 
 keywords = set()
 if split_mode == CHAPTER_MODE:
-	chapter_tree = filter(lambda x: x['level'] == 1, chapter_tree)
+	chapter_tree = list(filter(lambda x: int(x['level']) in [1, -1], chapter_tree))
+else:
+	chapter_tree = list(filter(lambda x: int(x['level']) in [1, 2, -1], chapter_tree))
+
 
 for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[1:])):
 	if next_topic['level'] != -1:
@@ -73,7 +76,7 @@ for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[
 	section_text = re.split('([\d]+\.[\d]+[\s]+)?' + next_topic['title'].upper().replace(' ', '[\s]+'), section_text, flags=re.M | re.DOTALL)[0]
 
 	with open(str(cur_topic['pno']) + '.txt', 'w') as f:
-		f.write(cur_topic['sno'] + cur_topic['title'] + '\n')
+		f.write(cur_topic['title'] + '\n')
 		f.write(section_text)
 
 	#keywords = keywords.union(map(lambda x: x[0], unigram_rake.run(section_text2))).union(map(lambda x: x[0], bigram_rake.run(section_text2))).union(map(lambda x: x[0], trigram_rake.run(section_text2)))
@@ -82,5 +85,5 @@ for i, (cur_topic, next_topic) in enumerate(zip(chapter_tree[:-1], chapter_tree[
 
 with open('__Sections.csv', 'w') as csvfile:
 	writer = csv.writer(csvfile)
-	writer.writerow(['Id', 'Section No.', 'Level', 'Section', 'Page No.'])
-	writer.writerows([[i, chapter_tree[i]['sno'], chapter_tree[i]['level'], chapter_tree[i]['title'], chapter_tree[i]['pno']] for i in range(len(chapter_tree[:-1]))])
+	writer.writerow(['Section No.', 'Level', 'Section', 'Page No.'])
+	writer.writerows([[chapter_tree[i]['sno'], chapter_tree[i]['level'], chapter_tree[i]['title'], chapter_tree[i]['pno']] for i in range(len(chapter_tree[:-1]))])
