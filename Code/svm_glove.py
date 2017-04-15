@@ -21,7 +21,7 @@ from utils import get_filtered_questions, get_data_for_cognitive_classifiers
 np.random.seed(42)
     
 CURSOR_UP_ONE = '\x1b[1A'
-ERASE_LINE = '\x1b[2K' 
+ERASE_LINE = '\x1b[2K'
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
@@ -49,11 +49,11 @@ class TfidfEmbeddingVectorizer(object):
         
     def fit(self, X, y):
         global gVar
-        tfidf = TfidfVectorizer(norm='l2', 
+        tfidf = TfidfVectorizer(norm='l2',
                                 min_df=1,
-                                decode_error="ignore", 
-                                use_idf=True, 
-                                smooth_idf=False, 
+                                decode_error="ignore",
+                                use_idf=True,
+                                smooth_idf=False,
                                 sublinear_tf=True,
                                 analyzer=lamb1)
         tfidf.fit(X + list(keywords))
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     ################ BEGIN TRAINING CODE ################
 
     if TRAIN_SVM_GLOVE:
-    # Load Glove w2v only if training is required 
+    # Load Glove w2v only if training is required
         print()
         filename = 'glove.6B.%dd.txt' %100
         
@@ -126,8 +126,8 @@ if __name__ == '__main__':
         parameters = {'estimator__kernel' : ['linear', 'poly'],
                       'estimator__C': [0.1, 0.5]}
                      
-        gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced')), parameters, n_jobs=-1)
-        clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)), 
+        gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True)), parameters, n_jobs=-1)
+        clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)),
                               ('SVC', gscv) ])
 
         clf.fit(X_train, Y_train)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
         print('Best params:', gscv.best_params_)
 
-        joblib.dump(clf, 'models/SVM/glove_svm_model.pkl') 
+        joblib.dump(clf, 'models/SVM/glove_svm_model.pkl')
         print('Saving done')
 
     ################ BEGIN TESTING CODE ################

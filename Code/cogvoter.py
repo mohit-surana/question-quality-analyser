@@ -21,7 +21,7 @@ CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
 domain = pickle.load(open('resources/domain.pkl',  'rb'))
-domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() } 
+domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() }
 domain_names = domain.keys()
 
 keywords = set()
@@ -62,27 +62,27 @@ print('Loaded GloVe model')
 
 if LOAD_MODELS:
 	################ MODEL LOADING ##################
-	################# MAXENT MODEL ################# 
+	################# MAXENT MODEL #################
 	clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
 	print('Loaded MaxEnt model')
 	
 	################# SVM-GLOVE MODEL #################
-	clf_svm = joblib.load('models/SVM/glove_svm_model_81.pkl')
+	clf_svm = joblib.load('models/SVM/glove_svm_model.pkl')
 	print('Loaded SVM-GloVe model')
 	
 	################# BiRNN MODEL #################
-	clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
+	clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
 	print('Loaded BiRNN model')
 
 if CREATE_CSV_FILE:
-	################# LOADING SO[ADA] questions ################# 
+	################# LOADING SO[ADA] questions #################
 	ADA_questions = []
 	ADA_questions_cleaned = []
 	with open('datasets/ADA_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
 		print()
 		csvreader = csv.reader(csvfile)
 		for i, row in enumerate(csvreader):
-			if i == 0 or len(row) == 0: 
+			if i == 0 or len(row) == 0:
 				continue
 			_, sentence, _ = row
 			clean_sentence = clean(sentence, return_as_list=False, stem=False)
@@ -103,7 +103,7 @@ if CREATE_CSV_FILE:
 	ADA_questions_filtered_for_maxent = [t[2] for t in t_ADA if t[-1].strip() != '']
 	ADA_questions_filtered = [t[3] for t in t_ADA if t[-1].strip() != '']
 
-	################# LOADING SO[OS] questions ################# 
+	################# LOADING SO[OS] questions #################
 	OS_questions = []
 	OS_questions_cleaned = []
 	with open('datasets/OS_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
@@ -123,7 +123,7 @@ if CREATE_CSV_FILE:
 					break
 
 	################ MODEL PREDICTIONS ##################
-	################# MAXENT MODEL ################# 
+	################# MAXENT MODEL #################
 	pred_maxent = []
 	for x in X_data_featureset:
 		pred_maxent.append(clf_maxent.classify(x))
@@ -151,7 +151,7 @@ if CREATE_CSV_FILE:
 	X_data = ADA_questions_filtered + OS_questions_filtered
 	X_data_for_maxent = ADA_questions_filtered_for_maxent + OS_questions_filtered_for_maxent
 	X_data_featureset = [features(X_data_for_maxent[i].split()) for i in range(len(X_data_for_maxent))]
-	X_data_glove = sent_to_glove(X_data, w2v) 
+	X_data_glove = sent_to_glove(X_data, w2v)
 	
 	################# DUMPING OUTPUT TO CSV #################
 
@@ -182,13 +182,13 @@ for x in [features(X1[i]) for i in range(len(X1))]:
 
 print('Loaded data for voting system')
 
-X = np.array(list(zip(ptest_maxent, ptest_brnn, ptest_svm)))
+X = np.array(list(zip(ptest_maxent, ptest_brnn)))
 Y = np.array(Y1)
 
 x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
 
 ###### NEURAL NETWORK BASED VOTING SYSTEM ########
-clf = MLPClassifier(solver='adam', alpha=1e-3, hidden_layer_sizes=(32, 16), batch_size=16, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
+clf = MLPClassifier(solver='adam', alpha=1e-3, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
 clf.fit(x_train, y_train)
 print('ANN training completed')
 y_real, y_pred = y_test, clf.predict(x_test)
@@ -216,12 +216,12 @@ with open('datasets/SO_Questions_Cog_Prediction.csv', 'r', encoding="utf-8") as 
 		pred_brnn.append(mapping_cog[p_brnn])
 		pred_svm.append(mapping_cog[p_svm])
 
-data = np.hstack((np.array(pred_maxent).reshape(-1, 1), 
-	              np.array(pred_brnn).reshape(-1, 1), 
+data = np.hstack((np.array(pred_maxent).reshape(-1, 1),
+	              np.array(pred_brnn).reshape(-1, 1),
 	              np.array(pred_svm).reshape(-1, 1)))
 
 pca = PCA(n_components=3)
-pca.fit_transform(data) 
+pca.fit_transform(data)
 v = pca.explained_variance_ratio_
 pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
 
@@ -235,14 +235,14 @@ with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as 
 ######### TEST ACCURACY OF PCA METHOD #########
 
 
-data = np.hstack((np.array(ptest_maxent).reshape(-1, 1), 
-	              np.array(ptest_brnn).reshape(-1, 1), 
+data = np.hstack((np.array(ptest_maxent).reshape(-1, 1),
+	              np.array(ptest_brnn).reshape(-1, 1),
 	              np.array(ptest_svm).reshape(-1, 1)))
 
 print('Predictions acquired')
 
 pca = PCA(n_components=3)
-pca.fit_transform(data) 
+pca.fit_transform(data)
 v = pca.explained_variance_ratio_
 pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
 
@@ -259,4 +259,4 @@ print('Aggregate accuracy: {:.2f}%'.format(correct / len(Y_test1) * 100.0))
 def predict_cog_label(question):
     nn = joblib.dump(clf, 'models/cog_ann_voter_87.pkl')
     return nn.predict(question)
-'''    
+'''
