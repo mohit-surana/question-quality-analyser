@@ -123,10 +123,10 @@ if __name__ == '__main__':
                 
         print('Loaded Glove w2v')
 
-        parameters = {'estimator__kernel' : ['linear', 'poly'],
-                      'estimator__C': [0.1, 0.5]}
+        parameters = {'kernel' : ['poly'],
+                      'C': [0.5]}
                      
-        gscv = model_selection.GridSearchCV(OneVsRestClassifier(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True)), parameters, n_jobs=-1)
+        gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True), parameters, n_jobs=-1)
         clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)),
                               ('SVC', gscv) ])
 

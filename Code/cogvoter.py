@@ -67,11 +67,11 @@ if LOAD_MODELS:
 	print('Loaded MaxEnt model')
 	
 	################# SVM-GLOVE MODEL #################
-	clf_svm = joblib.load('models/SVM/glove_svm_model.pkl')
+	clf_svm = joblib.load('models/SVM/glove_svm_model_83.pkl')
 	print('Loaded SVM-GloVe model')
 	
 	################# BiRNN MODEL #################
-	clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
+	clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_71.pkl', 'rb'))
 	print('Loaded BiRNN model')
 
 if CREATE_CSV_FILE:
@@ -156,10 +156,10 @@ if CREATE_CSV_FILE:
 	################# DUMPING OUTPUT TO CSV #################
 
 	with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as csvfile:
-	    csvwriter = csv.writer(csvfile)
-	    csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)'])
-	    for q, p_maxent, p_brnn, p_svm in zip(ADA_questions + OS_questions, pred_maxent, pred_brnn, pred_svm):
-	    	csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm]])
+		csvwriter = csv.writer(csvfile)
+		csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)'])
+		for q, p_maxent, p_brnn, p_svm in zip(ADA_questions + OS_questions, pred_maxent, pred_brnn, pred_svm):
+			csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm]])
 
 
 ######### GET LABEL FOR EXERCISE QUESTIONS #########
@@ -170,25 +170,39 @@ random.shuffle(X_all_data)
 X1 = [x[0] for x in X_all_data if len(x[0]) > 0]
 Y1 = [x[1] for x in X_all_data if len(x[0]) > 0]
 
-ptest_svm = clf_svm.predict(X1)
+# softmax probabilities
+ptest_svm = clf_svm.predict_proba(X1)
+for i in range(len(ptest_svm)):
+	probs = ptest_svm[i]
+	ptest_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
 
-ptest_brnn = []
-for x in sent_to_glove(X1, w2v) :
-	ptest_brnn.append(clf_brnn.forward(clip(x)))
+ptest_svm = np.array(ptest_svm)
 
 ptest_maxent = []
 for x in [features(X1[i]) for i in range(len(X1))]:
-	ptest_maxent.append(clf_maxent.classify(x))
+	p_dict = clf_maxent.prob_classify(x)._prob_dict
+	probs = np.array([pd[x] for x in range(6)])
+	probs = np.exp(probs) / np.sum(np.exp(probs))
+	ptest_maxent.append(probs)
+
+ptest_brnn = []
+for x in sent_to_glove(X1, w2v):
+	probs = clf_brnn.predict_proba(clip(x))
+	probs = [x[0] for x in probs]
+	probs = np.exp(probs) / np.sum(np.exp(probs))
+	ptest_brnn.append(probs)
+
+ptest_brnn = np.array(ptest_brnn)
 
 print('Loaded data for voting system')
 
-X = np.array(list(zip(ptest_maxent, ptest_brnn)))
+X = np.hstack((ptest_svm, ptest_maxent, ptest_brnn)) # concatenating the vectors
 Y = np.array(Y1)
 
-x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
+x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.20)
 
 ###### NEURAL NETWORK BASED VOTING SYSTEM ########
-clf = MLPClassifier(solver='adam', alpha=1e-3, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
+clf = MLPClassifier(solver='adam', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=16, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
 clf.fit(x_train, y_train)
 print('ANN training completed')
 y_real, y_pred = y_test, clf.predict(x_test)
@@ -196,9 +210,20 @@ y_real, y_pred = y_test, clf.predict(x_test)
 joblib.dump(clf, 'models/cog_ann_voter.pkl')
 
 print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
-print('MaxEnt Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[0]) * 100))
-print('BiRNN Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[1]) * 100))
-print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[2]) * 100))
+
+y_pred_svm = []
+y_pred_maxent = []
+y_pred_brnn = []
+
+for x in x_test:
+	y_pred_svm.append(np.argmax(x[:6]))
+	y_pred_maxent.append(np.argmax(x[6:12]))
+	y_pred_brnn.append(np.argmax(x[12:]))
+
+print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred_svm) * 100))
+print('MaxEnt Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred_maxent) * 100))
+print('BiRNN Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred_brnn) * 100))
+
 '''
 ######### PCA TO GET AGGREGATE OUTPUTS (deprecate in favour of AdaBoost) #########
 X_data = []
@@ -217,8 +242,8 @@ with open('datasets/SO_Questions_Cog_Prediction.csv', 'r', encoding="utf-8") as 
 		pred_svm.append(mapping_cog[p_svm])
 
 data = np.hstack((np.array(pred_maxent).reshape(-1, 1),
-	              np.array(pred_brnn).reshape(-1, 1),
-	              np.array(pred_svm).reshape(-1, 1)))
+				  np.array(pred_brnn).reshape(-1, 1),
+				  np.array(pred_svm).reshape(-1, 1)))
 
 pca = PCA(n_components=3)
 pca.fit_transform(data)
@@ -226,18 +251,18 @@ v = pca.explained_variance_ratio_
 pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
 
 with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as csvfile:
-    csvwriter = csv.writer(csvfile)
-    csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)', 'Cog(Aggregate)'])
-    for q, p_maxent, p_brnn, p_svm, p_agg in zip(X_data, pred_maxent, pred_brnn, pred_svm, pred_agg):
-    	csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm], mapping_cog2[p_agg]])
+	csvwriter = csv.writer(csvfile)
+	csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)', 'Cog(Aggregate)'])
+	for q, p_maxent, p_brnn, p_svm, p_agg in zip(X_data, pred_maxent, pred_brnn, pred_svm, pred_agg):
+		csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm], mapping_cog2[p_agg]])
 
 
 ######### TEST ACCURACY OF PCA METHOD #########
 
 
 data = np.hstack((np.array(ptest_maxent).reshape(-1, 1),
-	              np.array(ptest_brnn).reshape(-1, 1),
-	              np.array(ptest_svm).reshape(-1, 1)))
+				  np.array(ptest_brnn).reshape(-1, 1),
+				  np.array(ptest_svm).reshape(-1, 1)))
 
 print('Predictions acquired')
 
@@ -257,6 +282,6 @@ print('Aggregate accuracy: {:.2f}%'.format(correct / len(Y_test1) * 100.0))
 '''
 '''
 def predict_cog_label(question):
-    nn = joblib.dump(clf, 'models/cog_ann_voter_87.pkl')
-    return nn.predict(question)
+	nn = joblib.dump(clf, 'models/cog_ann_voter_87.pkl')
+	return nn.predict(question)
 '''
