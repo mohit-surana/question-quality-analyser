@@ -87,6 +87,48 @@ class TfidfEmbeddingVectorizer(object):
         main_temp = np.array(main_temp)
         return main_temp
 
+def train(X_train, Y_train):
+# Load Glove w2v only if training is required
+    print()
+    filename = 'glove.6B.%dd.txt' %100
+    
+    if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+        print()
+        with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+            w2v = {}
+            for row, line in enumerate(lines):
+                try:
+                    w = line.split()[0]
+                    vec = np.array(list(map(float, line.split()[1:])))
+                    w2v[w] = vec
+                except:
+                    continue
+                finally:
+                    if((row + 1) % 100000 == 0):
+                        print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+        
+        dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+    else:
+        w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+            
+    print('Loaded Glove w2v')
+
+    parameters = {'kernel' : ['poly'],
+                  'C': [0.5]}
+                 
+    gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True), parameters, n_jobs=-1)
+    clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)),
+                          ('SVC', gscv) ])
+
+    clf.fit(X_train, Y_train)
+    print('Fitting done')
+
+    print('Best params:', gscv.best_params_)
+
+    joblib.dump(clf, 'models/SVM/glove_svm_model.pkl')
+    print('Saving done')
+    return clf
+		
 if __name__ == '__main__':
     ################ BEGIN LOADING DATA ################
 
@@ -98,50 +140,12 @@ if __name__ == '__main__':
     ################ BEGIN TRAINING CODE ################
 
     if TRAIN_SVM_GLOVE:
-    # Load Glove w2v only if training is required
-        print()
-        filename = 'glove.6B.%dd.txt' %100
-        
-        if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
-            print()
-            with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
-                w2v = {}
-                for row, line in enumerate(lines):
-                    try:
-                        w = line.split()[0]
-                        vec = np.array(list(map(float, line.split()[1:])))
-                        w2v[w] = vec
-                    except:
-                        continue
-                    finally:
-                        if((row + 1) % 100000 == 0):
-                            print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
-            
-            dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
-        else:
-            w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
-                
-        print('Loaded Glove w2v')
-
-        parameters = {'kernel' : ['poly'],
-                      'C': [0.5]}
-                     
-        gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True), parameters, n_jobs=-1)
-        clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)),
-                              ('SVC', gscv) ])
-
-        clf.fit(X_train, Y_train)
-        print('Fitting done')
-
-        print('Best params:', gscv.best_params_)
-
-        joblib.dump(clf, 'models/SVM/glove_svm_model.pkl')
-        print('Saving done')
+        clf = train(X_train, Y_train)
 
     ################ BEGIN TESTING CODE ################
     if TEST_SVM_GLOVE:
         if not TRAIN_SVM_GLOVE:
-            clf = joblib.load('models/SVM/glove_svm_model.pkl')
+            clf = joblib.load('models/SVM/glove_svm_model_83.pkl')
 
         Y_true, Y_pred = Y_test, clf.predict(X_test)
 
