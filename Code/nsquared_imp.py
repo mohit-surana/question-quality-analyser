@@ -78,12 +78,13 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 
 LOAD_ALL_MODELS = True
 if LOAD_ALL_MODELS:
+    clf = pickle.load(open('models/Nsquared/%s/nsquared_92.pkl' % (subject, ), 'rb'))
     dictionary_loaded = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus_loaded = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
     lda_loaded = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
     ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
     
-def get_know_label(clf, question, subject):
+def get_know_label(question, subject):
     x = question
     p_list = []
     c, k = clf.classify([x])[0]

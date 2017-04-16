@@ -4,24 +4,13 @@ import dill
 from brnn import BiDirectionalRNN, sent_to_glove, clip
 from svm_glove import TfidfEmbeddingVectorizer
 from maxent import features
-import nsquared_imp
-#import lda
-import numpy as np
-#import struct_svm_ada
-#import svm
-
 from nsquared import DocumentClassifier
+import nsquared_imp
+import numpy as np
 from tkinter import *
 import cogvoter
 import utils
-LOAD_MODELS = True
 subject = 'ADA'
-if LOAD_MODELS:
-    
-    ################ MODEL LOADING ##################
-    ################# NSQUUARED MODEL #################
-    clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
-    print('Loaded Nsquared model')
     
 class Visualize:
 
@@ -34,7 +23,7 @@ class Visualize:
         question = question.get()
         array1 = [0.2, 0.3, 0.4, 0]
         array2 = [0.1, 0.1, 0.3, 0.3, 0, 0]
-        know_level, know_prob = nsquared_imp.get_know_label(clf, question, subject)
+        know_level, know_prob = nsquared_imp.get_know_label(question, subject)
         print(know_level, know_prob[know_level])
         array1 = utils.get_knowledge_probs_level(know_level, know_prob[know_level])
         cog_level, cog_prob = cogvoter.predict_cog_label(question)
