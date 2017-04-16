@@ -148,11 +148,9 @@ for svm_p, maxent_p, brnn_p, label in zip(svm_probs, maxent_probs, brnn_probs, y
 	maxent[label].append(maxent_p[label])
 	brnn[label].append(brnn_p[label])
 
-
 actual = {}
 for label in range(6):
 	print(label)
 	data = pandas.DataFrame({'svm': svm[label], 'maxent': maxent[label], 'brnn': brnn[label], 'actual': [1 for x in svm[label]]})
 	seaborn.pairplot(data, vars=['svm', 'maxent', 'brnn'], kind='reg')
 	plt.show()
-	break

@@ -1,9 +1,29 @@
-import platform
-import re
-import os
-import pickle
+import brnn
 import csv
+import dill
+import re
+import matplotlib.mlab as mlab
+import matplotlib.pyplot as plt
+import nltk
 import numpy as np
+import os
+import pandas
+import pickle
+import random
+import seaborn
+import scipy.stats as stats
+
+from brnn import BiDirectionalRNN, sent_to_glove, clip
+from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
+from sklearn.externals import joblib
+from sklearn.model_selection import train_test_split
+from maxent import features
+from svm_glove import TfidfEmbeddingVectorizer
+from sklearn.decomposition import PCA
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+import platform
 import pprint
 import sys
 
@@ -27,9 +47,6 @@ from sklearn.externals import joblib
 from nsquared import DocumentClassifier
 from utils import get_knowledge_probs, get_data_for_knowledge_classifiers
 
-import logging
-logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
-
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
 
@@ -43,6 +60,11 @@ CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
+
+def label2know(label):
+	for key in knowledge_mapping:
+		if(knowledge_mapping[key] == label):
+			return key
 
 skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Recommended Reading and Web Sites', 'Recommended Reading', 'Summary', 'Exercises', 'Introduction'}
 
@@ -95,82 +117,20 @@ MODEL = ['LDA', 'LSA', 'D2V']
 USE_MODELS = MODEL[0:1]
 
 if MODEL[0] in USE_MODELS:
-	TRAIN_LDA = True
-    
-	if TRAIN_LDA:
-		dictionary = corpora.Dictionary(texts)
-		dictionary.save('models/Nsquared/%s/dictionary.dict' % (subject, ))
-        
-		corpus = []
-		for k in docs:
-			corpus.extend([dictionary.doc2bow(sentence.split()) for sentence in nltk.sent_tokenize(docs[k]) if len(sentence.split()) > 2])
-		corpora.MmCorpus.serialize('models/Nsquared/%s/corpus.mm' % (subject, ), corpus)
-        
-		lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 5000),
-	                          id2word=dictionary,
-	                          num_topics=len(docs),
-	                          update_every=1,
-	                          passes=2)
-		lda.save('models/Nsquared/%s/lda.model' % (subject, ))
-        
-		print('Model training done')
-	else:
-	    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
-	    corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
-	    lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
+	dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
+	corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
+	lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
 
 if MODEL[1] in USE_MODELS:
-	TRAIN_LSA = False
-    
-	if TRAIN_LSA:
-		dictionary = corpora.Dictionary(texts)
-		dictionary.save('models/Nsquared/%s/dictionary.dict' %subject)  # store the dictionary, for future reference
-        
-		corpus = []
-		for k in docs:
-			corpus.extend([dictionary.doc2bow(sentence.split()) for sentence in nltk.sent_tokenize(docs[k])])
-		corpora.MmCorpus.serialize('models/Nsquared/%s/corpus.mm' %subject, corpus)  # store to disk, for later use
-        
-		tfidf_model = models.TfidfModel(corpus, id2word=dictionary, normalize=True)
-		tfidf_model.save('models/Nsquared/%s/tfidf.model' %subject)
-        
-		lsi_model = models.LsiModel(corpus=gensim.utils.RepeatCorpus(tfidf_model[corpus], 5000),
-									id2word=dictionary,
-									num_topics=len(docs),
-									onepass=False,
-									power_iters=2,
-									extra_samples=300)
-		lsi_model.save('models/Nsquared/%s/lsi.model' %subject)
-        
-		print('Model training done')
-	else:
-		dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' %subject)
-		corpus = corpora.MmCorpus("models/Nsquared/%s/corpus.mm" %subject)
-		tfidf_model = models.TfidfModel.load('models/Nsquared/%s/tfidf.model' %subject)
-		lsi_model = models.LsiModel.load('models/Nsquared/%s/lsi.model' %subject)
-    
+	dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' %subject)
+	corpus = corpora.MmCorpus("models/Nsquared/%s/corpus.mm" %subject)
+	tfidf_model = models.TfidfModel.load('models/Nsquared/%s/tfidf.model' %subject)
+	lsi_model = models.LsiModel.load('models/Nsquared/%s/lsi.model' %subject)
 	index = similarities.MatrixSimilarity(lsi_model[tfidf_model[corpus]], num_features=lsi_model.num_topics)
 	index.save('models/Nsquared/%s/lsi.index' %subject)
 
 if MODEL[2] in USE_MODELS:
-    
-	TRAIN_D2V = False
-    
-	if TRAIN_D2V:
-		x_train = []
-		for i, k in enumerate(docs):
-			x_train.append(models.doc2vec.LabeledSentence(docs[k].split(), [k]))
-        
-		d2v_model = models.doc2vec.Doc2Vec(size=64, alpha=0.025, min_alpha=0.025, window=2, min_count=3, dbow_words=1, workers=4)  # use fixed learning rate
-		d2v_model.build_vocab(x_train)
-		for epoch in range(10):
-		    d2v_model.train(x_train)
-		    d2v_model.alpha -= 0.002
-		    d2v_model.min_alpha = d2v_model.alpha
-        
-		d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
-	else:
-		d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
+	d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
 
 clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
 
@@ -213,16 +173,60 @@ for x, y in zip(x_data, y_data):
 	
 	nTotal += 1
 
-print('Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
+y_probs = np.array(y_probs)
 
-x_train, x_test, y_train, y_test = train_test_split(y_probs, y_data, test_size=0.20)
+nsq, lda = {}, {}
+for prob_vals, label in zip(y_probs, y_data):
+	nsq_p, lda_p = prob_vals[0], prob_vals[1]
+	if(label not in nsq):
+		nsq[label], lda[label] = list(), list()
+	nsq[label].append(nsq_p)
+	lda[label].append(lda_p)
 
-###### NEURAL NETWORK BASED SIMVAL -> KNOW MAPPING ########
-ann_clf = MLPClassifier(solver='adam', alpha=1e-3, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
-ann_clf.fit(x_train, y_train)
-print('ANN training completed')
-y_real, y_pred = y_test, ann_clf.predict(x_test)
+for label in range(3):
+	print(label)
+	data = pandas.DataFrame({'nsq': nsq[label], 'lda': lda[label]})
+	seaborn.pairplot(data, vars=['nsq', 'lda'], kind='reg')
+	# plt.show()
+plt.show()
 
-print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+print('p values')
+for label in range(3):
+	print(label2know(label) + ':', stats.kruskal(nsq[label], lda[label])[1])
 
-joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
+import matplotlib.pyplot as plt
+import scipy
+import scipy.stats
+
+for label in range(3):
+	size = len(nsq[label])
+	x = scipy.arange(size)
+	y = nsq[label]
+	h = plt.hist(y, color='b', normed=True, stacked=True, bins=8)
+	'''
+	y2 = h[0]
+	x2 = h[1]
+	x3 = []
+	for i in range(len(x2) - 1):
+		x3.append((x2[i] + x2[i+1]) / 2)
+	
+	y3 = scipy.interpolate.spline(x3, y2, np.linspace(0, 1, 100))
+	plt.plot(np.linspace(0, 1, 100), y3)
+	'''
+	hmax = max(h[0])
+	
+	dist_names = ['norm']
+	
+	for dist_name in dist_names:
+		dist = getattr(scipy.stats, dist_name)
+		param = dist.fit(y)
+		mu, var = dist.fit(y)
+		print(mu, var)
+		# pdf_fitted = dist.pdf(x, *param[:-2], loc=param[-2], scale=param[-1]) * size
+		# plt.plot(pdf_fitted, label=dist_name)
+		x = np.linspace(0, 1, size)
+		plt.plot(x, hmax * mlab.normpdf(x, mu, var**0.5))
+		plt.xlim(0, 1)
+	
+	plt.legend(loc='upper right')
+	plt.show()
