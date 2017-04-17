@@ -1,20 +1,18 @@
-from gensim import corpora, models, similarities, utils
-from collections import defaultdict
-import os
 import csv
+import io
+import logging
+import multiprocessing
+import os
+import platform
 import re
-from nltk import word_tokenize
+import string
+from collections import defaultdict
+from multiprocessing import Manager
+
+from gensim import corpora, models, similarities, utils
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
-import string
-import logging
-import sys
-import io
-import csv
-import multiprocessing
-from multiprocessing import Manager
-import platform
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
 

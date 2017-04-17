@@ -1,13 +1,10 @@
-import csv
+import os
+import sys
+
 import dill
 import numpy as np
-import pickle
-import pprint
-import sys
-import os
+from sklearn.metrics import accuracy_score, classification_report, f1_score
 
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
-from utils import clean_no_stopwords
 from utils import get_data_for_cognitive_classifiers
 
 sys.setrecursionlimit(2 * 10 ** 7)

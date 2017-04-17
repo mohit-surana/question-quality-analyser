@@ -1,12 +1,10 @@
 # Invocation: python3 hierarchical_clustering_iris.py
 
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from sklearn import datasets
 from sklearn.cluster import KMeans
-import sklearn.metrics as sm
-
-import pandas as pd
-import numpy as np
 
 # Only needed if you want to display your plots inline if using Notebook
 # change inline to auto if you have Spyder installed

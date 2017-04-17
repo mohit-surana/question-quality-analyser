@@ -1,21 +1,18 @@
 import csv
-import dill
-import re
-import nltk
-import numpy as np
+import os
 import pickle
 import random
-import brnn
-import os
-from brnn import BiDirectionalRNN, sent_to_glove, clip
-from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
+
+import dill
+import numpy as np
 from sklearn.externals import joblib
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from maxent import features
-from svm_glove import TfidfEmbeddingVectorizer
-from sklearn.decomposition import PCA
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
+
+from brnn import clip, sent_to_glove
+from maxent import features
+from utils import clean, clean_no_stopwords, get_data_for_cognitive_classifiers, get_filtered_questions
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'

@@ -1,14 +1,12 @@
 import codecs
 import csv
-import numpy as np
 import pickle
 import random
-import re
-import sys
 
+import numpy as np
 from sklearn import svm
 from sklearn.externals import joblib
-#from sklearn.feature_extraction.text import TfidfTransformer
+# from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 
 from utils import clean

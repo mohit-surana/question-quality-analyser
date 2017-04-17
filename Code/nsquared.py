@@ -4,34 +4,25 @@ hyperparam
 toggle para/section
 '''
 
-import math
 import nltk
-import numpy as np
 import os
 import pprint
 import re
 import pickle
 import csv
-import pprint
 import platform
-import random
 import copy
 
 from nltk import stem
 
 from nltk.stem.wordnet import WordNetLemmatizer
-from nltk.tokenize import wordpunct_tokenize
 from nltk.corpus import stopwords as stp
 
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
-from sklearn.naive_bayes import MultinomialNB, BernoulliNB
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.svm import SVC, LinearSVC
-from sklearn.multiclass import OneVsRestClassifier
 
 from pandas import DataFrame
 

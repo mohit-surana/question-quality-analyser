@@ -1,12 +1,12 @@
 ###### NEURAL NETWORK BASED VOTING SYSTEM ########
-import codecs
 import csv
-import utils
+
 import numpy as np
-from sklearn.model_selection import train_test_split
 from sklearn.externals import joblib
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
+
 
 def vote(logreg, gaussian, linearsvc, Y1):
     X = np.array(list(zip(logreg, gaussian, linearsvc)))

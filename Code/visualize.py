@@ -1,15 +1,9 @@
-import pickle
-from sklearn.externals import joblib
-import dill
-from brnn import BiDirectionalRNN, sent_to_glove, clip
-from svm_glove import TfidfEmbeddingVectorizer
-from maxent import features
-from nsquared import DocumentClassifier
-import nsquared_imp
-import numpy as np
 from tkinter import *
+
 import cogvoter
+import nsquared_imp
 import utils
+
 subject = 'ADA'
     
 class Visualize:

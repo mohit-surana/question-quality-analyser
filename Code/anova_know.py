@@ -1,51 +1,24 @@
-import brnn
-import csv
-import dill
+import os
+import pickle
+import platform
 import re
+import sys
+
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 import nltk
 import numpy as np
-import os
 import pandas
-import pickle
-import random
-import seaborn
 import scipy.stats as stats
-
-from brnn import BiDirectionalRNN, sent_to_glove, clip
-from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
-from sklearn.externals import joblib
-from sklearn.model_selection import train_test_split
-from maxent import features
-from svm_glove import TfidfEmbeddingVectorizer
-from sklearn.decomposition import PCA
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
-
-import platform
-import pprint
-import sys
-
-import gensim
+import seaborn
 from gensim import corpora, models, similarities
 from gensim.matutils import cossim, sparse2full
-
-import nltk
 from nltk import stem
-from nltk.stem.wordnet import WordNetLemmatizer
-from nltk.tokenize import wordpunct_tokenize
 from nltk.corpus import stopwords as stp
-
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.model_selection import train_test_split
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.externals import joblib
 
-from nsquared import DocumentClassifier
-from utils import get_knowledge_probs, get_data_for_knowledge_classifiers
+from utils import get_data_for_knowledge_classifiers, get_knowledge_probs
 
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
@@ -195,7 +168,6 @@ for label in range(3):
 	print(label2know(label) + ':', stats.kruskal(nsq[label], lda[label])[1])
 
 import matplotlib.pyplot as plt
-import scipy
 import scipy.stats
 
 for label in range(3):

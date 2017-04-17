@@ -13,18 +13,13 @@ If you get an error 13 - permission denied, run make inside svm_multiclass
 
 '''
 
-import codecs
-import csv
-import dill
-import numpy as np
 import os
-import pickle
 import random
-import re
 import subprocess
 
+import dill
+import numpy as np
 from sklearn.externals import joblib
-from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from utils import clean

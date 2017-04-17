@@ -1,25 +1,19 @@
-import brnn
-import csv
-import dill
-import re
-import matplotlib.pyplot as plt
-import nltk
-import numpy as np
 import os
-import pandas
 import pickle
 import random
-import seaborn
 
-from brnn import BiDirectionalRNN, sent_to_glove, clip
-from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
+import dill
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas
+import seaborn
 from sklearn.externals import joblib
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
+
+from brnn import clip, sent_to_glove
 from maxent import features
-from svm_glove import TfidfEmbeddingVectorizer
-from sklearn.decomposition import PCA
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
+from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'

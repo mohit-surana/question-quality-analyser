@@ -1,11 +1,8 @@
 import codecs
 import csv
+import pickle
 import re
 
-from utils import clean
-import pickle
-import nsquared as Nsq
-from nsquared import DocumentClassifier
 '''
 #Dont use them
 import lda

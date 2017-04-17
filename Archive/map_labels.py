@@ -1,7 +1,6 @@
 import csv
-import openpyxl
 
-from fuzzywuzzy import fuzz
+import openpyxl
 from fuzzywuzzy import process
 
 wb = openpyxl.load_workbook('ADA_Exercise_Questions_Labelled.xlsx', data_only=True)

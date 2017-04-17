@@ -1,22 +1,16 @@
-import numpy as np
-import codecs
-import random
-import csv
-import utils
-import re
-import dill
-import pickle
 import os
+import pickle
 from collections import defaultdict
+
+import dill
+import numpy as np
+from sklearn import model_selection, svm
 from sklearn.externals import joblib
-from sklearn import svm, model_selection
-from sklearn.pipeline import Pipeline
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.externals import joblib
-from sklearn.metrics import classification_report, f1_score
-from utils import get_filtered_questions, get_data_for_cognitive_classifiers
+from sklearn.metrics import classification_report
+from sklearn.pipeline import Pipeline
+
+from utils import get_data_for_cognitive_classifiers
 
 np.random.seed(42)
     

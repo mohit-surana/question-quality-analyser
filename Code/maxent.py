@@ -1,15 +1,10 @@
 import pickle
+
 import nltk
 import nltk.corpus
-from nltk.classify import apply_features
 from nltk import MaxentClassifier, classify
-import codecs
-import csv
-import random
-import re
 
-import utils
-from utils import clean_no_stopwords, get_data_for_cognitive_classifiers, get_filtered_questions, clean
+from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
 
 try:
 	domain = pickle.load(open('resources/domain_2.pkl',  'rb'))

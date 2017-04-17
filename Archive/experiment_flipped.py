@@ -27,7 +27,7 @@ for e in range(1, EPOCHS+1):
 
 pickle.dump(W, open("models/ADA_W_inv.pkl", 'wb'))
 
-import math
+
 def pred2label(x):
 	val = round(x)
 	'''

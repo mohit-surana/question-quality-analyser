@@ -1,19 +1,14 @@
 ######################          RUN THIS FILE BEFORE 'knowvoter.py' to save the values in a csv file.       ####################
 import codecs
 import csv
-import utils
+
 import numpy as np
-import pprint
-import nsquared as Nsq
-from nsquared import DocumentClassifier
-from sklearn.externals import joblib
-from sklearn import datasets, svm, preprocessing
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import confusion_matrix
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import confusion_matrix
 from sklearn import linear_model
+from sklearn import svm
+from sklearn.externals import joblib
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.naive_bayes import GaussianNB
 
 questions = []
 probs = []

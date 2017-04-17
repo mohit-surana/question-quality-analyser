@@ -2,9 +2,7 @@ import platform
 import re
 import os
 import pickle
-import csv
 import numpy as np
-import pprint
 import sys
 
 import gensim
@@ -17,14 +15,12 @@ from nltk.stem.wordnet import WordNetLemmatizer
 from nltk.tokenize import wordpunct_tokenize
 from nltk.corpus import stopwords as stp
 
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.externals import joblib
 
-from nsquared import DocumentClassifier
 from utils import get_knowledge_probs, get_data_for_knowledge_classifiers
 
 #import logging

@@ -4,29 +4,20 @@ hyperparam
 toggle para/section
 '''
 
-import math
-import nltk
-import numpy as np
-import os
-import pprint
-import re
-import pickle
-import random
 import csv
-import pprint
+import os
+import pickle
 import platform
+import random
+import re
+import sys
 
+import nltk
 from nltk import stem
 from nltk.stem.wordnet import WordNetLemmatizer
-
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
-from sklearn.naive_bayes import MultinomialNB, BernoulliNB
-
-from pandas import DataFrame
-
-import sys
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 knowledge_mapping2 = {v : k for k, v in knowledge_mapping.items()}

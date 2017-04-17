@@ -1,9 +1,9 @@
-from gensim import corpora, models, similarities, utils
-from collections import defaultdict
-import os
 import csv
+import os
 import re
-from nltk import word_tokenize
+from collections import defaultdict
+
+from gensim import corpora, models, similarities, utils
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer

@@ -1,16 +1,13 @@
 from __future__ import division
-import string
-import math
-import codecs
+
 import json
-import dill
-import pickle
 import os
+import pickle
 import re
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.externals import joblib
 from nltk.corpus import stopwords
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 
 def clean_no_stemma_stopwords(text, as_list=True):
     tokens = [re.sub('[^.?!a-z]', '', w) for w in text.lower().strip().split() if w.isalpha() or re.search('[.!?](?:[ ]|$)', w)]

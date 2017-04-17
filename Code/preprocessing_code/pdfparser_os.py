@@ -1,11 +1,9 @@
 # Invocation: python pdfparser_os.py
-import subprocess
-import sys
-import re
-import os
-import pprint
 import csv
-import itertools
+import os
+import re
+import subprocess
+
 from rake import Rake
 
 CHAPTER_MODE, SECTION_MODE = 0, 1

@@ -1,28 +1,21 @@
-import csv
-import keras.backend as K
 from keras.models import Sequential
-from keras.layers import *
-from keras.layers.merge import Concatenate
-from keras.layers.embeddings import Embedding
-from keras.preprocessing import sequence
-
-from gensim.models import Word2Vec
-from utils import get_data_for_cognitive_classifiers
-
-import numpy as np
-import dill
-import pickle
 import os
 import sys
+
+import dill
+import numpy as np
+from keras.layers import *
+from keras.models import Sequential
+from keras.preprocessing import sequence
+
+from utils import get_data_for_cognitive_classifiers
 
 sys.setrecursionlimit(2 * 10 ** 7)
 
 NUM_CLASSES = 6
 
 CURSOR_UP_ONE = '\x1b[1A'
-ERASE_LINE = '\x1b[2K' 
-
-from utils import clean_no_stopwords
+ERASE_LINE = '\x1b[2K'
 
 INPUT_SIZE = 300
 filename = 'glove.840B.%dd.txt' %INPUT_SIZE

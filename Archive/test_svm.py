@@ -1,8 +1,9 @@
 import codecs
-import svm
 import csv
-from utils import clean
 import re
+
+import svm
+from utils import clean
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}

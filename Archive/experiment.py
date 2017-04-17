@@ -1,17 +1,13 @@
-import classifier as Nsq
 import codecs
 import csv
-import docsim_lda
-import docsim_lsa
-import numpy as np
 import pickle
 import re
-import struct_svm_ada
-import svm
 
-from classifier import DocumentClassifier
+import classifier as Nsq
+import numpy as np
 from scipy import linalg
-from utils import clean
+
+import svm
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}

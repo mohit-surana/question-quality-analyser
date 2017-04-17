@@ -1,9 +1,9 @@
 import csv
 import pickle
-import numpy as np
 
-import nsquared
-from nsquared import DocumentClassifier, get_knowledge_probs
+import numpy as np
+from nsquared import get_knowledge_probs
+
 from lsa import clean
 
 CURSOR_UP_ONE = '\x1b[1A'

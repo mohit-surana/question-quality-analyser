@@ -1,21 +1,18 @@
+import codecs
 import csv
-import dill
-import re
-import string
-import nltk
-import numpy as np
 import pickle
 import platform
 import random
-import codecs
+import re
+import string
 
+import nltk
+import numpy as np
 from nltk import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
-from qfilter_train import tokenizer
-from sklearn.externals import joblib
 
 porter = PorterStemmer()
 snowball = SnowballStemmer('english')
