@@ -61,6 +61,7 @@ else:
 print('Loaded GloVe model')
 
 if LOAD_MODELS:
+<<<<<<< HEAD
     ################ MODEL LOADING ##################
     ################# MAXENT MODEL #################
     clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
@@ -281,10 +282,6 @@ for i, p in enumerate(pred_agg):
 print('Aggregate accuracy: {:.2f}%'.format(correct / len(Y_test1) * 100.0))
 '''
 
-'''
-def predict_cog_label(X):	
-    return nn.predict(X)
-'''
 def predict_cog_label(question):
     X1 = [question]
     nn = joblib.load('models/cog_ann_voter_87.pkl')

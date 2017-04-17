@@ -58,8 +58,8 @@ def check_for_synonyms(word):
 
 if __name__ == '__main__':
     TRAIN = True
-
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.5, 0.6, 0.75, 0.8], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False)
+    
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.15, 0.20, 0.25, 0.30, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False)
     print('Loaded/Preprocessed data')
 
     X = X_train + X_test
@@ -97,7 +97,7 @@ if __name__ == '__main__':
 
     if not TRAIN:
         classifier  = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
-
+    
     pred = []
     actual = [x[1] for x in test_set]
     for t, l in test_set:
