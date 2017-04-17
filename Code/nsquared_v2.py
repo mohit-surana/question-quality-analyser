@@ -23,8 +23,8 @@ from sklearn.externals import joblib
 
 from utils import get_knowledge_probs, get_data_for_knowledge_classifiers
 
-#import logging
-#logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+import logging
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
@@ -72,13 +72,14 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
         return ' '.join([wordnet.lemmatize(i) for i in tokens if i not in stopwords])
 
 
-LOAD_ALL_MODELS = True
-if LOAD_ALL_MODELS:
+PRELIM_LOADING = True
+if PRELIM_LOADING:
     clf = pickle.load(open('models/Nsquared/%s/nsquared_92.pkl' % (subject, ), 'rb'))
     dictionary_loaded = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus_loaded = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
     lda_loaded = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-    ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+    ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf_61_LDA.pkl' %subject)
+    print('Loaded models for visualization')
     
 def get_know_label(question, subject):
     x = question
@@ -87,7 +88,6 @@ def get_know_label(question, subject):
     cleaned_question = __preprocess(x, stop_strength=1, remove_punct=False)
 
     #Get LDA now
-    
     s1 = lda_loaded[dictionary_loaded.doc2bow(docs[c].split())]
     s2 = lda_loaded[dictionary_loaded.doc2bow(cleaned_question.split())]
     d1 = sparse2full(s1, lda_loaded.num_topics)
@@ -95,7 +95,6 @@ def get_know_label(question, subject):
     lda_p = cossim(s1, s2)
     p_list.append(lda_p)
     p_list.append(k)
-    ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
     return ann_clf_loaded.predict(p_list)[0], ann_clf_loaded.predict_proba(p_list)[0]
 
 

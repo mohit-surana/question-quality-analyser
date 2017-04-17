@@ -1,18 +1,21 @@
 import csv
-import os
+import dill
+import re
+import nltk
+import numpy as np
 import pickle
 import random
-
-import dill
-import numpy as np
+import brnn
+import os
+from brnn import BiDirectionalRNN, sent_to_glove, clip
+from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
 from sklearn.externals import joblib
-from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from sklearn.neural_network import MLPClassifier
-
-from brnn import clip, sent_to_glove
 from maxent import features
-from utils import clean, clean_no_stopwords, get_data_for_cognitive_classifiers, get_filtered_questions
+from svm_glove import TfidfEmbeddingVectorizer
+from sklearn.decomposition import PCA
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
@@ -32,6 +35,40 @@ LOAD_MODELS = True
 CREATE_CSV_FILE = False
 TRAIN = False
 TEST = False
+
+
+def predict_cog_label(question):
+    X1 = [question]
+    # softmax probabilities
+    ptest_svm = clf_svm.predict_proba(X1)
+    for i in range(len(ptest_svm)):
+        probs = ptest_svm[i]
+        ptest_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
+
+    ptest_svm = np.array(ptest_svm)
+
+    ptest_maxent = []
+    for x in [features(X1[i]) for i in range(len(X1))]:
+        p_dict = clf_maxent.prob_classify(x)._prob_dict
+        probs = np.array([p_dict[x] for x in range(6)])
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+        ptest_maxent.append(probs)
+
+    ptest_brnn = []
+    for x in sent_to_glove(X1, w2v):
+        probs = clf_brnn.predict_proba(clip(x))
+        probs = [x[0] for x in probs]
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+        ptest_brnn.append(probs)
+
+    ptest_brnn = np.array(ptest_brnn)
+
+    print('Loaded question for voting system')
+    X = np.hstack((ptest_svm, ptest_maxent, ptest_brnn)) # concatenating the vectors
+    print('data is:', X)
+    print('level', nn.predict(X)[0])
+    print('prob:', nn.predict_proba(X)[0])
+    return nn.predict(X)[0], nn.predict_proba(X)[0]
 
 
 # transformation for BiRNN. This should actually become a part of the RNN for better code maintainability
@@ -61,10 +98,9 @@ else:
 print('Loaded GloVe model')
 
 if LOAD_MODELS:
-<<<<<<< HEAD
     ################ MODEL LOADING ##################
     ################# MAXENT MODEL #################
-    clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
+    clf_maxent = pickle.load(open('models/MaxEnt/maxent_76.pkl', 'rb'))
     print('Loaded MaxEnt model')
     
     ################# SVM-GLOVE MODEL #################
@@ -75,6 +111,9 @@ if LOAD_MODELS:
     clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_71.pkl', 'rb'))
     print('Loaded BiRNN model')
 
+    ################# MLP MODEL #################
+    nn = joblib.load('models/cog_ann_voter_87.pkl')
+    print('Loaded MLP model')
 if CREATE_CSV_FILE:
     ################# LOADING SO[ADA] questions #################
     ADA_questions = []
@@ -281,38 +320,4 @@ for i, p in enumerate(pred_agg):
 
 print('Aggregate accuracy: {:.2f}%'.format(correct / len(Y_test1) * 100.0))
 '''
-
-def predict_cog_label(question):
-    X1 = [question]
-    nn = joblib.load('models/cog_ann_voter_87.pkl')
-    # softmax probabilities
-    ptest_svm = clf_svm.predict_proba(X1)
-    for i in range(len(ptest_svm)):
-        probs = ptest_svm[i]
-        ptest_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
-
-    ptest_svm = np.array(ptest_svm)
-
-    ptest_maxent = []
-    for x in [features(X1[i]) for i in range(len(X1))]:
-        p_dict = clf_maxent.prob_classify(x)._prob_dict
-        probs = np.array([p_dict[x] for x in range(6)])
-        probs = np.exp(probs) / np.sum(np.exp(probs))
-        ptest_maxent.append(probs)
-
-    ptest_brnn = []
-    for x in sent_to_glove(X1, w2v):
-        probs = clf_brnn.predict_proba(clip(x))
-        probs = [x[0] for x in probs]
-        probs = np.exp(probs) / np.sum(np.exp(probs))
-        ptest_brnn.append(probs)
-
-    ptest_brnn = np.array(ptest_brnn)
-
-    print('Loaded question for voting system')
-    X = np.hstack((ptest_svm, ptest_maxent, ptest_brnn)) # concatenating the vectors
-    print('data is:', X)
-    print('level', nn.predict(X)[0])
-    print('prob:', nn.predict_proba(X)[0])
-    return nn.predict(X)[0], nn.predict_proba(X)[0]
 
