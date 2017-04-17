@@ -1,8 +1,19 @@
+import pickle
+import dill
+import numpy as np
+
+from sklearn.externals import joblib
 from tkinter import *
 
-import cogvoter
-import nsquared_imp
-import utils
+from brnn        import BiDirectionalRNN, sent_to_glove, clip
+from svm_glove   import TfidfEmbeddingVectorizer
+from maxent      import features
+from cogvoter    import predict_cog_label, get_cog_models
+
+from nsquared    import DocumentClassifier
+from nsquared_v2 import predict_know_label, get_know_models
+
+from utils       import get_modified_prob_dist
 
 subject = 'ADA'
     
@@ -11,27 +22,27 @@ class Visualize:
     def __init__(self):
         self.array1 = []
         self.array2 = []
+        self.know_models = get_know_models(subject)
+        print('[Visualize] Knowledge models loaded')
 
-    def getProbabilities(self, root, question):
-        #Make a call to Shiva and Mohit to get required arrays: send question
+        self.cog_models = get_cog_models()
+        print('[Visualize] Cognitive models loaded')
+    def getProbabilities(self, root, question): # make a call to Shiva and Mohit to get required arrays: send question
         question = question.get()
-        array1 = [0.2, 0.3, 0.4, 0]
-        array2 = [0.1, 0.1, 0.3, 0.3, 0, 0]
-        know_level, know_prob = nsquared_imp.get_know_label(question, subject)
-        print(know_level, know_prob[know_level])
-        array1 = utils.get_knowledge_probs_level(know_level, know_prob[know_level])
-        cog_level, cog_prob = cogvoter.predict_cog_label(question)
-        print(cog_level, cog_prob[cog_level])
-        array2 = utils.get_cognitive_probs_level(cog_level, cog_prob[cog_level])
-        nmarray = np.outer(np.array(array1), np.array(array2))
-        nmarray = nmarray / np.max(np.max(nmarray))
+
+        level_know, prob_know = predict_know_label(question, self.know_models)
+        array_know = get_modified_prob_dist(prob_know)
+
+        level_cog, prob_cog = predict_cog_label(question, self.cog_models)
+        array_cog = get_modified_prob_dist(prob_cog)
+
+        nmarray = np.dot(np.array(array_know).reshape(-1, 1), np.array(array_cog).reshape(1, -1))
+
         print(question)
-        print(array1)
-        print(array2)
+        print(array_know)
+        print(array_cog)
         print(nmarray)
         self.populateTable(root, nmarray)
-
-        #return nmarray
 
     def populateTable(self, root, nmarray):
         frame=Frame(root)
