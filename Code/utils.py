@@ -62,18 +62,24 @@ def clean_no_stopwords(text, as_list=True, stem=True):
     else:
         return ' '.join(tokens)
 
-############################# SKILL: CONVERT LEVEL TO HARDCODED VECTOR ############
 
-def get_cognitive_probs_level(level, prob):
-    probs = [0.0] * 6
-    for i in range(level):
-        # probs[i] = (i + 1) * prob / (level * (level + 1) / 2)
-        probs[i] = (i + 1) * prob / (level + 1)
-    probs[level] = prob
+########################### PROB. DIST MODIFIER ###########################
+
+def get_modified_prob_dist(probs):
+    i = np.argmax(probs)
+
+    xs = 0.0
+    for j in range(i + 1, len(probs)):
+        xs += probs[j]
+        probs[j] = 0
+
+    num_xs = len(probs) - (i + 1) 
+    if num_xs > 0:
+        probs[:i + 1] +=  xs / num_xs
 
     return probs
 
-    ########################### SKILL: QUESTION FILTERER ###########################
+########################### SKILL: QUESTION FILTERER ###########################
 
 def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
@@ -256,7 +262,7 @@ def get_knowledge_probs(prob):
 
 ##################### KNOWLEDGE: CONVERT level to hardcoded vector ###############
 
-def get_knowledge_probs_level(level, prob):
+def get_knowledge_probs_level(level, probs): 
     probs = [0.0] * 4
     for i in range(level):
         # probs[i] = (i + 1) * prob / (level * (level + 1) / 2)

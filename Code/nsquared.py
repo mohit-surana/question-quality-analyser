@@ -70,7 +70,7 @@ class DocumentClassifier:
     def __preprocess(self, text, stop_strength=0):
         text = re.sub('-\n', '', text).lower()
         text = re.sub('\n', ' ', text)
-        text = re.sub('[^a-z ]', '', text)
+        text = re.sub('[^a-z.?! ]', '', text)
         tokens = [word for word in text.split()]  
         if stop_strength == 0:
             return ' '.join([self.wordnet.lemmatize(i) for i in tokens])
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     subject = sys.argv[1]
 
-    TRAIN = False
+    TRAIN = True
     if TRAIN:
         classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Recommended Reading and Web Sites', 'Recommended Reading', 'Summary', 'Exercises', 'Introduction'})
         classifier.save('models/Nsquared/%s/nsquared.pkl' % (subject, ))
