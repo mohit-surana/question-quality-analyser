@@ -82,7 +82,7 @@ if LOAD_ALL_MODELS:
     dictionary_loaded = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus_loaded = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
     lda_loaded = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-    ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+    ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf_61_LDA.pkl' %subject)
     
 def get_know_label(question, subject):
     x = question
@@ -99,7 +99,6 @@ def get_know_label(question, subject):
     lda_p = cossim(s1, s2)
     p_list.append(lda_p)
     p_list.append(k)
-    ann_clf_loaded = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
     return ann_clf_loaded.predict(p_list)[0], ann_clf_loaded.predict_proba(p_list)[0]
 
 

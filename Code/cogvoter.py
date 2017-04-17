@@ -74,7 +74,7 @@ if LOAD_MODELS:
     print('Loaded SVM-GloVe model')
     
     ################# BiRNN MODEL #################
-    clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_71.pkl', 'rb'))
+    clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
     print('Loaded BiRNN model')
 
 if CREATE_CSV_FILE:
@@ -298,6 +298,7 @@ def predict_cog_label(question):
         ptest_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
 
     ptest_svm = np.array(ptest_svm)
+    print('ptest_svm:', ptest_svm)
 
     ptest_maxent = []
     for x in [features(X1[i]) for i in range(len(X1))]:
@@ -305,15 +306,18 @@ def predict_cog_label(question):
         probs = np.array([p_dict[x] for x in range(6)])
         probs = np.exp(probs) / np.sum(np.exp(probs))
         ptest_maxent.append(probs)
-
+    print('ptest_maxent:', ptest_maxent)
     ptest_brnn = []
     for x in sent_to_glove(X1, w2v):
+        print('brnn x is:', x)
         probs = clf_brnn.predict_proba(clip(x))
+        print('probs:', probs)
         probs = [x[0] for x in probs]
         probs = np.exp(probs) / np.sum(np.exp(probs))
         ptest_brnn.append(probs)
 
     ptest_brnn = np.array(ptest_brnn)
+    print('ptest_brnn:', ptest_brnn)
 
     print('Loaded question for voting system')
     X = np.hstack((ptest_svm, ptest_maxent, ptest_brnn)) # concatenating the vectors
