@@ -24,7 +24,7 @@ domain_names = domain.keys()
 
 keywords = set()
 for k in domain:
-	keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
+    keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 mapping_cog2 = { v : k for k, v in mapping_cog.items()}
@@ -37,38 +37,38 @@ NUM_QUESTIONS = 1000
 filename = 'glove.6B.%dd.txt' %INPUT_SIZE
 
 if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
-	print()
-	with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
-		w2v = {}
-		for row, line in enumerate(lines):
-			try:
-				w = line.split()[0]
-				vec = np.array(list(map(float, line.split()[1:])))
-				w2v[w] = vec
-			except:
-				continue
-			finally:
-				print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
-	
-	dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+    print()
+    with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+        w2v = {}
+        for row, line in enumerate(lines):
+            try:
+                w = line.split()[0]
+                vec = np.array(list(map(float, line.split()[1:])))
+                w2v[w] = vec
+            except:
+                continue
+            finally:
+                print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+
+    dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
 else:
-	w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+    w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
 
 print('Loaded GloVe model')
 
 if LOAD_MODELS:
-	################ MODEL LOADING ##################
-	################# MAXENT MODEL #################
-	clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
-	print('Loaded MaxEnt model')
-	
-	################# SVM-GLOVE MODEL #################
-	clf_svm = joblib.load('models/SVM/glove_svm_model.pkl')
-	print('Loaded SVM-GloVe model')
-	
-	################# BiRNN MODEL #################
-	clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
-	print('Loaded BiRNN model')
+    ################ MODEL LOADING ##################
+    ################# MAXENT MODEL #################
+    clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
+    print('Loaded MaxEnt model')
+
+    ################# SVM-GLOVE MODEL #################
+    clf_svm = joblib.load('models/SVM/glove_svm_model.pkl')
+    print('Loaded SVM-GloVe model')
+
+    ################# BiRNN MODEL #################
+    clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
+    print('Loaded BiRNN model')
 
 ######### GET LABEL FOR EXERCISE QUESTIONS #########
 X_train1, Y_train1, X_test1, Y_test1 = get_data_for_cognitive_classifiers(threshold=[0.15, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False, shuffle=False)
@@ -82,11 +82,11 @@ ptest_svm = clf_svm.predict(X1)
 
 ptest_brnn = []
 for x in sent_to_glove(X1, w2v) :
-	ptest_brnn.append(clf_brnn.forward(clip(x)))
+    ptest_brnn.append(clf_brnn.forward(clip(x)))
 
 ptest_maxent = []
 for x in [features(X1[i]) for i in range(len(X1))]:
-	ptest_maxent.append(clf_maxent.classify(x))
+    ptest_maxent.append(clf_maxent.classify(x))
 
 print('Loaded data for voting system')
 
@@ -106,45 +106,45 @@ print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(y_real, x_test.T[2]) *
 
 svm_probs = clf_svm.predict_proba(X_test1)
 for i in range(len(svm_probs)):
-	probs = svm_probs[i]
-	svm_probs[i] = np.exp(probs) / np.sum(np.exp(probs))
+    probs = svm_probs[i]
+    svm_probs[i] = np.exp(probs) / np.sum(np.exp(probs))
 
 svm_probs = np.array(svm_probs)
 
 ptest_maxent = []
 for x in [features(X1[i]) for i in range(len(X1))]:
-	ptest_maxent.append(clf_maxent.prob_classify(x))
+    ptest_maxent.append(clf_maxent.prob_classify(x))
 
 maxent_probs = []
 for prob_dist in ptest_maxent:
-	pd = prob_dist._prob_dict
-	probs = np.array([pd[x] for x in range(6)])
-	probs = np.exp(probs) / np.sum(np.exp(probs))
-	maxent_probs.append(probs)
+    pd = prob_dist._prob_dict
+    probs = np.array([pd[x] for x in range(6)])
+    probs = np.exp(probs) / np.sum(np.exp(probs))
+    maxent_probs.append(probs)
 
 maxent_probs = np.array(maxent_probs)
 
 brnn_probs = []
 for x in sent_to_glove(X1, w2v):
-	probs = clf_brnn.predict_proba(clip(x))
-	probs = [x[0] for x in probs]
-	probs = np.exp(probs) / np.sum(np.exp(probs))
-	brnn_probs.append(probs)
+    probs = clf_brnn.predict_proba(clip(x))
+    probs = [x[0] for x in probs]
+    probs = np.exp(probs) / np.sum(np.exp(probs))
+    brnn_probs.append(probs)
 
 brnn_probs = np.array(brnn_probs)
 
 svm, maxent, brnn = {}, {}, {}
 
 for svm_p, maxent_p, brnn_p, label in zip(svm_probs, maxent_probs, brnn_probs, y_test):
-	if(label not in svm):
-		svm[label], maxent[label], brnn[label] = list(), list(), list()
-	svm[label].append(svm_p[label])
-	maxent[label].append(maxent_p[label])
-	brnn[label].append(brnn_p[label])
+    if(label not in svm):
+        svm[label], maxent[label], brnn[label] = list(), list(), list()
+    svm[label].append(svm_p[label])
+    maxent[label].append(maxent_p[label])
+    brnn[label].append(brnn_p[label])
 
 actual = {}
 for label in range(6):
-	print(label)
-	data = pandas.DataFrame({'svm': svm[label], 'maxent': maxent[label], 'brnn': brnn[label], 'actual': [1 for x in svm[label]]})
-	seaborn.pairplot(data, vars=['svm', 'maxent', 'brnn'], kind='reg')
-	plt.show()
+    print(label)
+    data = pandas.DataFrame({'svm': svm[label], 'maxent': maxent[label], 'brnn': brnn[label], 'actual': [1 for x in svm[label]]})
+    seaborn.pairplot(data, vars=['svm', 'maxent', 'brnn'], kind='reg')
+    plt.show()

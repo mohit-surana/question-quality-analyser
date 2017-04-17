@@ -513,5 +513,3 @@ if TEST == 'Combined':
                             knowledge_dim[int(y_combined[1][count])], knowledge_dim[int(y_combined[2][count])], knowledge_dim[int(y_combined[4][count])],
                             knowledge_dim[int(y_combined[3][count])] ])
             count += 1
-
-    

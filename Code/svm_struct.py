@@ -41,18 +41,18 @@ mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evalua
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
 def sent_to_glove(questions, w2v):
-	questions_w2glove = []
-	
-	for question in questions:
-		vec = []
-		for word in question:
-			if word in w2v:
-				vec.append(w2v[word])
-			else:
-				vec.append(np.zeros(len(w2v['the'])))
-		questions_w2glove.append(np.array(vec))
-	
-	return np.array(questions_w2glove)
+    questions_w2glove = []
+
+    for question in questions:
+        vec = []
+        for word in question:
+            if word in w2v:
+                vec.append(w2v[word])
+            else:
+                vec.append(np.zeros(len(w2v['the'])))
+        questions_w2glove.append(np.array(vec))
+
+    return np.array(questions_w2glove)
 
 def transform_to_glove(X, INPUT_SIZE=300):
     filename = 'glove.840B.%dd.txt' % INPUT_SIZE
