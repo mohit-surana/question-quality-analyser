@@ -294,7 +294,7 @@ if __name__ == "__main__":
     EPOCHS = 5
     LEARNING_RATE = 0.010
 
-    TRAIN = True
+    TRAIN = False
     RETRAIN = False
 
     BRNN = None

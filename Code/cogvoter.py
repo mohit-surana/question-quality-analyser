@@ -69,10 +69,12 @@ def get_cog_models():
     
     ################# BiRNN MODEL #################
     clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
+    # clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
     print('Loaded BiRNN model')
 
     ################# MLP MODEL #################
     nn = joblib.load('models/cog_ann_voter_89_sgd.pkl')
+    # nn = joblib.load('models/cog_ann_voter.pkl')
     print('Loaded MLP model')
 
     return clf_svm, clf_maxent, clf_brnn, nn

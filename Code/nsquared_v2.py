@@ -19,6 +19,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 
 from utils import get_data_for_knowledge_classifiers
+from nsquared import DocumentClassifier
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -32,7 +33,7 @@ else:
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
-TRAIN_ANN = True
+TRAIN_ANN = False
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 
@@ -71,6 +72,7 @@ def get_know_models(subject):
     nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
     lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
     ann = joblib.load('models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
+    # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
 
     dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
@@ -93,7 +95,7 @@ def predict_know_label(question, models):
     d1 = sparse2full(s1, lda.num_topics)
     d2 = sparse2full(s2, lda.num_topics)
     p_list.extend(list(d1))
-    p_list.extend(list(d2)) 
+    p_list.extend(list(d2))
     p_list.extend([k])
 
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
@@ -118,7 +120,7 @@ for i in doc_set:
 #########################################################################
 #                            MAIN BEGINS HERE                           #
 #########################################################################
-if __name__ == '__main__': 
+if __name__ == '__main__':
     MODEL = ['LDA', 'LSA', 'D2V']
 
     USE_MODELS = MODEL[0:1]
@@ -143,11 +145,14 @@ if __name__ == '__main__':
                                   num_topics=len(docs),
                                   update_every=1,
                                   passes=2)
+            # Hack to fix a big
+            lda.minimum_phi_value = 0.01
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
+            lda.minimum_phi_value = 0.01
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
@@ -180,7 +185,7 @@ if __name__ == '__main__':
             d2v_model = models.doc2vec.Doc2Vec(size=64, alpha=0.025, min_alpha=0.025, window=2, min_count=3, dbow_words=1, workers=4)  # use fixed learning rate
             d2v_model.build_vocab(x_train)
             for epoch in range(10):
-                d2v_model.train(x_train)
+                d2v_model.train(x_train, total_examples=d2v_model.corpus_count, epochs=d2v_model.iter)
                 d2v_model.alpha -= 0.002
                 d2v_model.min_alpha = d2v_model.alpha
             
@@ -232,9 +237,9 @@ if __name__ == '__main__':
             d1 = sparse2full(s1, lda.num_topics)
             d2 = sparse2full(s2, lda.num_topics)
             lda_p = cossim(s1, s2)
-            #p_list.append(lda_p) 
+            #p_list.append(lda_p)
             p_list.extend(list(d1))
-            p_list.extend(list(d2)) 
+            p_list.extend(list(d2))
         
         if MODEL[1] in USE_MODELS:
             s1 = lsi_model[tfidf_model[dictionary.doc2bow(docs[c].split())]]
@@ -244,7 +249,7 @@ if __name__ == '__main__':
             lsa_p = cossim(s1, s2)
             #p_list.append(lsa_p)
             p_list.extend(list(d1))
-            p_list.extend(list(d2)) 
+            p_list.extend(list(d2))
         
         if MODEL[2] in USE_MODELS:
             d1 = np.mean([d2v_model.infer_vector(s.split()) for s in nltk.sent_tokenize(docs[c])], axis=0).reshape(1, -1)
@@ -252,7 +257,7 @@ if __name__ == '__main__':
             d2v_p = cosine_similarity(d1, d2)[0][0]
             #p_list.append(d2v_p)
             p_list.extend(list(d1[0]))
-            p_list.extend(list(d2[0])) 
+            p_list.extend(list(d2[0]))
         
         p_list.extend([k])
         #y_pred = np.argmax(get_knowledge_probs(abs(p_list[0])))
