@@ -6,12 +6,10 @@ toggle para/section
 
 import nltk
 import os
-import pprint
 import re
 import pickle
 import csv
 import platform
-import copy
 
 from nltk import stem
 

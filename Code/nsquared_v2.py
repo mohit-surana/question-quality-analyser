@@ -1,31 +1,25 @@
-import platform
-import re
+import logging
 import os
 import pickle
-import numpy as np
+import platform
+import re
 import sys
 
-from nsquared import DocumentClassifier
-
-import gensim
+import nltk
+import numpy as np
 from gensim import corpora, models, similarities
 from gensim.matutils import cossim, sparse2full
-
-import nltk
 from nltk import stem
-from nltk.stem.wordnet import WordNetLemmatizer
-from nltk.tokenize import wordpunct_tokenize
 from nltk.corpus import stopwords as stp
-
+from nltk.stem.wordnet import WordNetLemmatizer
+from sklearn.externals import joblib
+from sklearn.metrics import accuracy_score, classification_report
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.externals import joblib
 
-from utils import get_knowledge_probs, get_data_for_knowledge_classifiers
+from utils import get_data_for_knowledge_classifiers
 
-import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 stemmer = stem.porter.PorterStemmer()

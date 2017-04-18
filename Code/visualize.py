@@ -1,8 +1,5 @@
-import pickle
-import dill
 import numpy as np
 
-from sklearn.externals import joblib
 from tkinter import *
 
 from brnn        import BiDirectionalRNN, sent_to_glove, clip
@@ -27,7 +24,8 @@ class Visualize:
 
         self.cog_models = get_cog_models()
         print('[Visualize] Cognitive models loaded')
-    def getProbabilities(self, root, question): # make a call to Shiva and Mohit to get required arrays: send question
+
+    def get_probabilities(self, root, question):  # make a call to Shiva and Mohit to get required arrays: send question
         question = question.get()
 
         level_know, prob_know = predict_know_label(question, self.know_models)
@@ -42,14 +40,14 @@ class Visualize:
         print(array_know)
         print(array_cog)
         print(nmarray)
-        self.populateTable(root, nmarray)
+        self.populate_table(root, nmarray)
 
-    def populateTable(self, root, nmarray):
-        frame=Frame(root)
+    def populate_table(self, root, nmarray):
+        frame = Frame(root)
         Grid.rowconfigure(root, 0, weight=1)
         Grid.columnconfigure(root, 0, weight=1)
         frame.grid(row=0, column=0, sticky=N+S+E+W)
-        grid=Frame(frame)
+        grid = Frame(frame)
         grid.grid(sticky=N+S+E+W, column=7, row=7)
         Grid.rowconfigure(frame, 0, weight=1)
         Grid.columnconfigure(frame, 0, weight=1)
@@ -74,31 +72,31 @@ class Visualize:
                         myCellColor = '#%02x%02x%02x' % (255 - int(var)//2, 0, 0)  # set your heatmap color
                     else:
                         myCellColor = '#%02x%02x%02x' % (255, 255,255)  # set it white
-                    l = Label(frame, text= '', relief=RIDGE, bg= myCellColor)
+                    l = Label(frame, text='', relief=RIDGE, bg= myCellColor)
                 l.grid(row=x, column=y, sticky=N+S+E+W)
 
 
 
         for x in range(1,6):
-            #Grid.columnconfigure(frame, x, weight=1, uniform=1)
+            # Grid.columnconfigure(frame, x, weight=1, uniform=1)
             Grid.rowconfigure(frame, x, weight=1, uniform=1)
 
         for y in range(1,8):
-            #Grid.rowconfigure(frame, y, weight=1, uniform=1)
+            # Grid.rowconfigure(frame, y, weight=1, uniform=1)
             Grid.columnconfigure(frame, y, weight=1, uniform=1)
 
 
-        button = Button(frame, text='Refresh', command= lambda: self.createTable(root)).grid(row=6, column=4,pady=20, sticky=N+S+E+W)
-        knowledgeLabel = Label(frame, text= 'Knowledge Dimension').grid(row=3,column=0, sticky=N+S+E+W)
-        cognitiveLabel = Label(frame, text= 'Cognitive Dimension').grid(row=0,column=4,sticky=N+S+E+W)
+        button = Button(frame, text='Refresh', command= lambda: self.create_table(root)).grid(row=6, column=4,pady=20, sticky=N+S+E+W)
+        knowledge_label = Label(frame, text='Knowledge Dimension').grid(row=3,column=0, sticky=N+S+E+W)
+        cognitive_label = Label(frame, text='Cognitive Dimension').grid(row=0,column=4,sticky=N+S+E+W)
         root.mainloop()
 
-    def createTable(self, root):
-        frame=Frame(root)
+    def create_table(self, root):
+        frame = Frame(root)
         Grid.rowconfigure(root, 0, weight=1)
         Grid.columnconfigure(root, 0, weight=1)
         frame.grid(row=0, column=0, sticky=N+S+E+W)
-        grid=Frame(frame)
+        grid = Frame(frame)
         grid.grid(sticky=N+S+E+W, column=7, row=7)
         Grid.rowconfigure(frame, 0, weight=1)
         Grid.columnconfigure(frame, 0, weight=1)
@@ -124,20 +122,20 @@ class Visualize:
 
 
         for x in range(1,6):
-            #Grid.columnconfigure(frame, x, weight=1, uniform=1)
+            # Grid.columnconfigure(frame, x, weight=1, uniform=1)
             Grid.rowconfigure(frame, x, weight=1, uniform=1)
 
         for y in range(1,8):
-            #Grid.rowconfigure(frame, y, weight=1, uniform=1)
+            # Grid.rowconfigure(frame, y, weight=1, uniform=1)
             Grid.columnconfigure(frame, y, weight=1, uniform=1)
 
         v = StringVar()
-        questionLabel = Label(frame, text= 'Enter Question').grid(row=6,column=2,pady=10, sticky=N+S+E+W)
+        question_label = Label(frame, text='Enter Question').grid(row=6,column=2,pady=10, sticky=N+S+E+W)
 
         e = Entry(frame, textvariable = v).grid(row=6, column=3,columnspan=3,pady=10, sticky=N+S+E+W)
-        button = Button(frame, text='Submit', command= lambda: self.getProbabilities(root, v), relief=RIDGE).grid(row=7, column=4,pady=20, sticky=N+S+E+W)
-        knowledgeLabel = Label(frame, text= 'Knowledge Dimension').grid(row=3,column=0, sticky=N+S+E+W)
-        cognitiveLabel = Label(frame, text= 'Cognitive Dimension').grid(row=0,column=4, sticky=N+S+E+W)
+        button = Button(frame, text='Submit', command= lambda: self.get_probabilities(root, v), relief=RIDGE).grid(row=7, column=4,pady=20, sticky=N+S+E+W)
+        knowledge_label = Label(frame, text='Knowledge Dimension').grid(row=3,column=0, sticky=N+S+E+W)
+        cognitive_label = Label(frame, text='Cognitive Dimension').grid(row=0,column=4, sticky=N+S+E+W)
 
 
         root.mainloop()
@@ -148,14 +146,14 @@ def main():
     root = Tk()
     w, h = root.winfo_screenwidth(), root.winfo_screenheight()
 
-    #root.overrideredirect(True)
+    # root.overrideredirect(True)
     root.geometry("%dx%d+0+0" % (w, h))
     root.focus_set() # <-- move focus to this widget
     root.bind("<Escape>", lambda e: e.widget.quit())
     root.wm_title = "BLOOMS TAXONOMY"
 
-    obj.createTable(root)
+    obj.create_table(root)
 
 
-#if __name__ == "__main__":
+# if __name__ == "__main__":
 main()
