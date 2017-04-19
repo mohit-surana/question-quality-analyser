@@ -76,7 +76,8 @@ def get_know_models(__subject):
         docs, texts = load_docs(__subject)
     nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (__subject, ), 'rb'))
     lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (__subject, ))
-    lda.minimum_phi_value = 0.01
+    lda.minimum_phi_value = 0
+    lda.minimum_probability = 0
     # lda.per_word_topics = False
     # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %__subject)
     ann = joblib.load('models/Nsquared/%s/know_ann_clf_65.pkl' %__subject)
@@ -158,15 +159,16 @@ if __name__ == '__main__':
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
-            lda.minimum_phi_value = 0.01
-            # lda.per_word_topics = False
+
+            lda.minimum_phi_value = 0
+            lda.minimum_probability = 0
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-            lda.minimum_phi_value = 0.01
-            # lda.per_word_topics = False
+            lda.minimum_phi_value = 0
+            lda.minimum_probability = 0
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
@@ -251,7 +253,10 @@ if __name__ == '__main__':
             d1 = sparse2full(s1, lda.num_topics)
             d2 = sparse2full(s2, lda.num_topics)
             lda_p = cossim(s1, s2)
-            #p_list.append(lda_p)
+            s1.sort(key = lambda x:-x[1])
+            
+            p_list.append(s2[s1[0][0]][1])
+            p_list.append(lda_p)
             p_list.extend(list(d1))
             p_list.extend(list(d2))
         
