@@ -76,15 +76,15 @@ def get_know_models(__subject):
         docs, texts = load_docs(__subject)
     nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (__subject, ), 'rb'))
     lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (__subject, ))
-    lda.minimum_phi_value = 0.01
     lda.minimum_phi_value = 0
     lda.minimum_probability = 0
     # lda.per_word_topics = False
     # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %__subject)
     ann = joblib.load('models/Nsquared/%s/know_ann_clf_65.pkl' %__subject)
 
-    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
-    corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
+    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (__subject, ))
+    corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (__subject, ))
+
     print('Loaded models for visualization')
 
     return nsq, lda, ann, dictionary, corpus
@@ -159,6 +159,7 @@ if __name__ == '__main__':
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
+
             lda.minimum_phi_value = 0
             lda.minimum_probability = 0
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
@@ -168,9 +169,6 @@ if __name__ == '__main__':
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
             lda.minimum_phi_value = 0
             lda.minimum_probability = 0
-            lda.minimum_phi_value = 0.01
-            # lda.per_word_topics = False
-
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
