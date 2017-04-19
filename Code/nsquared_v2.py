@@ -50,6 +50,8 @@ stopwords.update(punkt)
 
 stopwords2 = stp.words('english')
 
+docs, texts = None, None
+
 def __preprocess(text, stop_strength=0, remove_punct=True):
     text = re.sub('-\n', '', text).lower()
     text = re.sub('\n', ' ', text)
@@ -68,16 +70,21 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 
 ####################### ONE TIME MODEL LOADING #########################
 
-def get_know_models(subject):
-    nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
-    lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-    ann = joblib.load('models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
-    # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+def get_know_models(__subject):
+    global docs, texts
+    if not docs:
+        docs, texts = load_docs(__subject)
+    nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (__subject, ), 'rb'))
+    lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (__subject, ))
+    lda.minimum_phi_value = 0.01
+    lda.minimum_phi_value = 0
+    lda.minimum_probability = 0
+    # lda.per_word_topics = False
+    # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %__subject)
+    ann = joblib.load('models/Nsquared/%s/know_ann_clf_65.pkl' %__subject)
 
     dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
-    lda.minimum_phi_value = 0
-    lda.minimum_probability = 0
     print('Loaded models for visualization')
 
     return nsq, lda, ann, dictionary, corpus
@@ -102,27 +109,32 @@ def predict_know_label(question, models):
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
 
     
-docs = {}
-for file_name in sorted(os.listdir('resources/%s' % (subject, ))):
-    with open(os.path.join('resources', subject, file_name), encoding='latin-1') as f:
-        content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
-        title = content.split('\n')[0]
-        if len([1 for k in skip_files if (k in title or k in file_name)]):
-            continue
-        
-        docs[title] = __preprocess(content, stop_strength=1, remove_punct=False)
+def load_docs(__subject):
+    docs = {}
+    for file_name in sorted(os.listdir('resources/%s' % (__subject, ))):
+        with open(os.path.join('resources', __subject, file_name), encoding='latin-1') as f:
+            content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
+            title = content.split('\n')[0]
+            if len([1 for k in skip_files if (k in title or k in file_name)]):
+                continue
+            
+            docs[title] = __preprocess(content, stop_strength=1, remove_punct=False)
 
-doc_set = list(docs.values())
+    doc_set = list(docs.values())
 
-texts = []
-for i in doc_set:
-    texts.append(__preprocess(i, stop_strength=1).split())
+    texts = []
+    for i in doc_set:
+        texts.append(__preprocess(i, stop_strength=1).split())
+
+    return docs, texts
 
 #########################################################################
 #                            MAIN BEGINS HERE                           #
 #########################################################################
 if __name__ == '__main__':
     MODEL = ['LDA', 'LSA', 'D2V']
+
+    docs, texts = load_docs(subject)
 
     USE_MODELS = MODEL[0:1]
 
@@ -156,6 +168,9 @@ if __name__ == '__main__':
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
             lda.minimum_phi_value = 0
             lda.minimum_probability = 0
+            lda.minimum_phi_value = 0.01
+            # lda.per_word_topics = False
+
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
@@ -185,11 +200,11 @@ if __name__ == '__main__':
             for i, k in enumerate(docs):
                 x_train.append(models.doc2vec.LabeledSentence(docs[k].split(), [k]))
             
-            d2v_model = models.doc2vec.Doc2Vec(size=64, alpha=0.025, min_alpha=0.025, window=2, min_count=3, dbow_words=1, workers=4)  # use fixed learning rate
+            d2v_model = models.doc2vec.Doc2Vec(size=128, alpha=0.025, min_alpha=0.025, window=2, min_count=2, dbow_words=1, workers=4)  # use fixed learning rate
             d2v_model.build_vocab(x_train)
-            for epoch in range(10):
-                d2v_model.train(x_train, total_examples=d2v_model.corpus_count, epochs=d2v_model.iter)
-                d2v_model.alpha -= 0.002
+            for epoch in range(15):
+                d2v_model.train(x_train, total_examples=d2v_model.corpus_count, epochs=5)
+                d2v_model.alpha -= 0.001
                 d2v_model.min_alpha = d2v_model.alpha
             
             d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
