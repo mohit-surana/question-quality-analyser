@@ -33,7 +33,7 @@ else:
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
-TRAIN_ANN = True
+TRAIN_ANN = False
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 
@@ -78,9 +78,9 @@ def get_know_models(__subject):
     lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (__subject, ))
     lda.minimum_phi_value = 0
     lda.minimum_probability = 0
-    # lda.per_word_topics = False
+    lda.per_word_topics = False
     # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %__subject)
-    ann = joblib.load('models/Nsquared/%s/know_ann_clf_65.pkl' %__subject)
+    ann = joblib.load('models/Nsquared/%s/know_ann_clf_58_shrey.pkl' %__subject)
 
     dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (__subject, ))
     corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (__subject, ))
@@ -102,6 +102,10 @@ def predict_know_label(question, models):
     s2 = lda[dictionary.doc2bow(cleaned_question.split())]
     d1 = sparse2full(s1, lda.num_topics)
     d2 = sparse2full(s2, lda.num_topics)
+    lda_p = cossim(s1, s2)
+    s1.sort(key = lambda x:-x[1])
+    p_list.append(s2[s1[0][0]][1])
+    p_list.append(lda_p)
     p_list.extend(list(d1))
     p_list.extend(list(d2))
     p_list.extend([k])
@@ -169,6 +173,7 @@ if __name__ == '__main__':
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
             lda.minimum_phi_value = 0
             lda.minimum_probability = 0
+            lda.per_word_topics = False
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
