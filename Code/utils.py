@@ -165,7 +165,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             Y_cog.extend(Y_cog_temp)
 
     if 'os' in what_type:
-        with open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+        with open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding='latin-1') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[5:]
