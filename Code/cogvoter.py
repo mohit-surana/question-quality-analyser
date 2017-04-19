@@ -68,8 +68,8 @@ def get_cog_models():
     print('Loaded SVM-GloVe model')
     
     ################# BiRNN MODEL #################
-    clf_brnn = dill.load(open('models/BiRNN/brnn_model_shrey_71.pkl', 'rb'))
     # clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
+    clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
     print('Loaded BiRNN model')
 
     ################# MLP MODEL #################
@@ -286,21 +286,27 @@ if __name__ == '__main__':
             pred_brnn.append(mapping_cog[p_brnn])
             pred_svm.append(mapping_cog[p_svm])
 
-    data = np.hstack((np.array(pred_maxent).reshape(-1, 1),
-                      np.array(pred_brnn).reshape(-1, 1),
-                      np.array(pred_svm).reshape(-1, 1)))
+    ptest_svm = np.array(ptest_svm)
+    print('ptest_svm:', ptest_svm)
 
-    pca = PCA(n_components=3)
-    pca.fit_transform(data)
-    v = pca.explained_variance_ratio_
-    pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
+    ptest_maxent = []
+    for x in [features(X1[i]) for i in range(len(X1))]:
+        p_dict = clf_maxent.prob_classify(x)._prob_dict
+        probs = np.array([p_dict[x] for x in range(6)])
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+        ptest_maxent.append(probs)
+    print('ptest_maxent:', ptest_maxent)
+    ptest_brnn = []
+    for x in sent_to_glove(X1, w2v):
+        print('brnn x is:', x)
+        probs = clf_brnn.predict_proba(clip(x))
+        print('probs:', probs)
+        probs = [x[0] for x in probs]
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+        ptest_brnn.append(probs)
 
-    with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)', 'Cog(Aggregate)'])
-        for q, p_maxent, p_brnn, p_svm, p_agg in zip(X_data, pred_maxent, pred_brnn, pred_svm, pred_agg):
-            csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm], mapping_cog2[p_agg]])
-
+    ptest_brnn = np.array(ptest_brnn)
+    print('ptest_brnn:', ptest_brnn)
 
     ######### TEST ACCURACY OF PCA METHOD #########
 
