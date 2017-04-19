@@ -306,7 +306,7 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
     X_data = []
     Y_data = []
     if subject == SUBJECT_ADA:
-        with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
+        with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="latin-1") as csvfile:
             csvreader = csv.reader(csvfile.read().splitlines()[1:])
             for row in csvreader:
                 sentence, label_cog, label_know = row
@@ -315,7 +315,7 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
                 Y_data.append(mapping_know[label_know.split('/')[0]])
 
     elif subject == SUBJECT_OS: # return question : knowledge mapping
-        with codecs.open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding="utf-8") as csvfile:
+        with codecs.open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding="latin-1") as csvfile:
             csvreader = csv.reader(csvfile.read().splitlines()[5:])
             for row in csvreader:
                 X_data.append(row[0])
