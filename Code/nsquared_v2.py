@@ -80,7 +80,7 @@ def get_know_models(__subject):
     lda.minimum_probability = 0
     lda.per_word_topics = False
     # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %__subject)
-    ann = joblib.load('models/Nsquared/%s/know_ann_clf_58_shrey.pkl' %__subject)
+    ann = joblib.load('models/Nsquared/%s/know_ann_clf_61_shrey.pkl' %__subject)
 
     dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (__subject, ))
     corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (__subject, ))
