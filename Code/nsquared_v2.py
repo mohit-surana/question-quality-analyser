@@ -33,7 +33,7 @@ else:
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
-TRAIN_ANN = False
+TRAIN_ANN = True
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 
@@ -76,7 +76,8 @@ def get_know_models(subject):
 
     dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
-
+    lda.minimum_phi_value = 0
+    lda.minimum_probability = 0
     print('Loaded models for visualization')
 
     return nsq, lda, ann, dictionary, corpus
@@ -146,13 +147,15 @@ if __name__ == '__main__':
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
-            lda.minimum_phi_value = 0.01
+            lda.minimum_phi_value = 0
+            lda.minimum_probability = 0
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-            lda.minimum_phi_value = 0.01
+            lda.minimum_phi_value = 0
+            lda.minimum_probability = 0
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
@@ -237,7 +240,10 @@ if __name__ == '__main__':
             d1 = sparse2full(s1, lda.num_topics)
             d2 = sparse2full(s2, lda.num_topics)
             lda_p = cossim(s1, s2)
-            #p_list.append(lda_p)
+            s1.sort(key = lambda x:-x[1])
+            
+            p_list.append(s2[s1[0][0]][1])
+            p_list.append(lda_p)
             p_list.extend(list(d1))
             p_list.extend(list(d2))
         
