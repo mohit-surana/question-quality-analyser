@@ -124,6 +124,7 @@ if TEST:
     p_list = []
     know_match = []
     cog_match = []
+    matched_ques = []
     final_dict = {}
     s1 = []
     idis = []
@@ -156,6 +157,7 @@ if TEST:
             #print(ques, best_val, cleaned_question)
             know_match.append(know_labels[best_pos])
             cog_match.append(cog_labels[best_pos])
+            matched_ques.append(ques)
             #print(cleaned_question, know_labels[best_pos], cog_labels[best_pos])
             count += 1
             if(count % 10 == 0):
@@ -164,8 +166,8 @@ if TEST:
     count = 0        
     with codecs.open('datasets/ADA_SO_Questions_labelled_ShreyMohit.csv', 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
-        for i, q, k, c in zip(idis, questions, know_match, cog_match):
-            csvwriter.writerow([i, q, k, c])
+        for i, q, k, c, ques in zip(idis, questions, know_match, cog_match, matched_ques):
+            csvwriter.writerow([i, q, k, c, ques])
             count += 1
             if(count % 10 == 0):
                 print(count)    

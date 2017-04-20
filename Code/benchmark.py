@@ -14,7 +14,7 @@ print('Done 4')
 
 from nsquared    import DocumentClassifier
 print('Done 5')
-from nsquared_v2 import predict_know_label, get_know_models
+from nsquared_v2 import predict_know_label, predict_know_label_v2, get_know_models
 print('Done 6')
 
 from utils       import get_modified_prob_dist
@@ -27,6 +27,7 @@ print('[Visualize] Knowledge models loaded')
 
 cog_models = get_cog_models()
 print('[Visualize] Cognitive models loaded')
+THRESHOLD_NSQ = 0.5
 questions = []
 level_cogs = []
 level_knows = []
@@ -35,14 +36,17 @@ count = 0
 with open('datasets/ADA_SO_Questions.csv', 'r', encoding="latin-1") as f:
     reader = csv.reader(f.read().splitlines()[:200])
     for row in reader:
-        idis.append(row[0])
         question = row[1]
-        level_know, prob_know = predict_know_label(question, know_models)
-        
+        #Get know level
+        level_know, prob_know, nsquared_val = predict_know_label_v2(question, know_models)
+        print(question, nsquared_val)
+        #Get cog level
         level_cog, prob_cog = predict_cog_label(question, cog_models)
-        questions.append(question)
-        level_cogs.append(level_cog)
-        level_knows.append(level_know)
+        if(nsquared_val >= THRESHOLD_NSQ):
+            idis.append(row[0])
+            questions.append(question)
+            level_cogs.append(level_cog)
+            level_knows.append(level_know)
         count += 1
         if(count % 10 == 0):
             print(count)    
@@ -50,7 +54,6 @@ with open('datasets/ADA_SO_Questions.csv', 'r', encoding="latin-1") as f:
 count = 0        
 with codecs.open('datasets/ADA_SO_Questions_labelled.csv', 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
-        #csvwriter.writerow(['Questions', 'Manual Label', 'NSQ', 'LDA', 'LSA', 'Knowledge', 'Cognitive'])
         for i, q, k, c in zip(idis, questions, level_knows, level_cogs):
             csvwriter.writerow([i, q, k, c])
             count += 1
