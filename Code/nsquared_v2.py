@@ -111,6 +111,27 @@ def predict_know_label(question, models):
     p_list.extend([k])
 
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
+    
+def predict_know_label_v2(question, models):
+    nsq, lda, ann, dictionary, corpus = models
+    x = question
+    p_list = []
+    c, k = nsq.classify([x])[0]
+    cleaned_question = __preprocess(x, stop_strength=1, remove_punct=False)
+
+    s1 = lda[dictionary.doc2bow(docs[c].split())]
+    s2 = lda[dictionary.doc2bow(cleaned_question.split())]
+    d1 = sparse2full(s1, lda.num_topics)
+    d2 = sparse2full(s2, lda.num_topics)
+    lda_p = cossim(s1, s2)
+    s1.sort(key = lambda x:-x[1])
+    p_list.append(s2[s1[0][0]][1])
+    p_list.append(lda_p)
+    p_list.extend(list(d1))
+    p_list.extend(list(d2))
+    p_list.extend([k])
+
+    return ann.predict([p_list])[0], ann.predict_proba([p_list])[0], k
 
     
 def load_docs(__subject):
