@@ -18,7 +18,7 @@ from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
-domain = pickle.load(open('resources/domain.pkl',  'rb'))
+domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() }
 domain_names = domain.keys()
 
@@ -36,9 +36,9 @@ INPUT_SIZE = 300
 NUM_QUESTIONS = 1000
 filename = 'glove.6B.%dd.txt' %INPUT_SIZE
 
-if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])):
     print()
-    with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+    with open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + filename), "r", encoding='utf-8') as lines:
         w2v = {}
         for row, line in enumerate(lines):
             try:
@@ -50,24 +50,24 @@ if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])
             finally:
                 print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
 
-    dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+    dill.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb')
 else:
-    w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+    w2v = dill.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])), 'rb')
 
 print('Loaded GloVe model')
 
 if LOAD_MODELS:
     ################ MODEL LOADING ##################
     ################# MAXENT MODEL #################
-    clf_maxent = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
+    clf_maxent = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/MaxEnt/maxent_85.pkl'), 'rb'))
     print('Loaded MaxEnt model')
 
     ################# SVM-GLOVE MODEL #################
-    clf_svm = joblib.load('models/SVM/glove_svm_model.pkl')
+    clf_svm = joblib.load(os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model.pkl'))
     print('Loaded SVM-GloVe model')
 
     ################# BiRNN MODEL #################
-    clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
+    clf_brnn = dill.load(open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'rb'))
     print('Loaded BiRNN model')
 
 ######### GET LABEL FOR EXERCISE QUESTIONS #########
@@ -96,7 +96,7 @@ Y = np.array(Y1)
 x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
 
 ###### NEURAL NETWORK BASED VOTING SYSTEM ########
-clf = joblib.load('models/cog_ann_voter.pkl')
+clf = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
 y_real, y_pred = y_test, clf.predict(x_test)
 
 print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
