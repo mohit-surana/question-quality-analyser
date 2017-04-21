@@ -71,8 +71,8 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 def get_know_models(subject):
     nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
     lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-    ann = joblib.load('models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
-    # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+    # ann = joblib.load('models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
+    ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
     lda.minimum_phi_value = 0.01
     lda.minimum_probability = 0.01
     lda.per_word_topics = False
@@ -150,12 +150,16 @@ if __name__ == '__main__':
                                   passes=2)
             # Hack to fix a big
             lda.minimum_phi_value = 0.01
+            lda.per_word_topics = False
+            lda.minimum_probability = 0.01
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
             lda.minimum_phi_value = 0.01
+            lda.minimum_probability = 0.01
+            lda.per_word_topics = False
 
     if MODEL[1] in USE_MODELS:
         TRAIN_LSA = False
