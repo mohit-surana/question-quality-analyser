@@ -56,12 +56,12 @@ class Visualize:
         Grid.rowconfigure(frame, 0, weight=1)
         Grid.columnconfigure(frame, 0, weight=1)
         cog_values = ['', '', 'Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
-        know_values = ['', '', 'Factual', 'Conceptual', 'Procedural', 'Metacognitive']
-        
-        maxVal = np.max(nmarray)
+        know_values = ['', '', 'Factual Knowledge', 'Conceptual Knowledge', 'Procedural Knowledge', 'Metacognitive Knowledge']
 
         myWhite = '#%02x%02x%02x' % (255, 255, 255)  # set your favourite rgb color
         myTitleColor = '#%02x%02x%02x' % (255, 230, 190)  # set your favourite rgb color
+        
+        maxVal = np.max(nmarray)
 
         for x in range(1,6):
             for y in range(1,8):
@@ -75,8 +75,10 @@ class Visualize:
                 else:
                     var = nmarray[x-2, y-2] * 255
                     if(var != 0):
-                        if(nmarray[x - 2][y - 2] == maxVal):
+                        if nmarray[x - 2, y - 2] == maxVal:
                             myCellColor = '#%02x%02x%02x' % (255 - int(var)//2, 0, 0)  # set your heatmap color
+                        else:
+                            myCellColor = myWhite
                         l = Label(frame, text='{:.2f}'.format(nmarray[x - 2][y - 2]), relief=RIDGE, bg= myCellColor)
                         
                     else:
