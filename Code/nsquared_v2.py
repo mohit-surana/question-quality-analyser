@@ -73,6 +73,9 @@ def get_know_models(subject):
     lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
     ann = joblib.load('models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
     # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+    lda.minimum_phi_value = 0.01
+    lda.minimum_probability = 0.01
+    lda.per_word_topics = False
 
     dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
     corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))

@@ -73,7 +73,7 @@ def get_modified_prob_dist(probs):
         xs += probs[j]
         probs[j] = 0
 
-    num_xs = len(probs) - (i + 1) 
+    num_xs = len(probs) - (i + 1)
     if num_xs > 0:
         probs[:i + 1] +=  xs / num_xs
 
@@ -145,7 +145,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
     Y_know = []
 
     if 'ada'in what_type:
-        with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+        with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='latin-1') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[1:]
@@ -165,7 +165,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             Y_cog.extend(Y_cog_temp)
 
     if 'os' in what_type:
-        with open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+        with open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding='latin-1') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[5:]
@@ -184,7 +184,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             Y_cog.extend(Y_cog_temp)
 
     if 'bcl' in what_type:
-        with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='utf-8') as csvfile:
+        with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='latin-1') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[1:]
@@ -262,7 +262,7 @@ def get_knowledge_probs(prob):
 
 ##################### KNOWLEDGE: CONVERT level to hardcoded vector ###############
 
-def get_knowledge_probs_level(level, probs): 
+def get_knowledge_probs_level(level, probs):
     probs = [0.0] * 4
     for i in range(level):
         # probs[i] = (i + 1) * prob / (level * (level + 1) / 2)

@@ -12,7 +12,10 @@ from nsquared_v2 import predict_know_label, get_know_models
 
 from utils       import get_modified_prob_dist
 
-subject = 'ADA'
+if len(sys.argv) < 2:
+    subject = 'ADA'
+else:
+    subject = sys.argv[1]
     
 class Visualize:
 
@@ -34,15 +37,16 @@ class Visualize:
         level_cog, prob_cog = predict_cog_label(question, self.cog_models)
         array_cog = get_modified_prob_dist(prob_cog)
 
-        nmarray = np.dot(np.array(array_know).reshape(-1, 1), np.array(array_cog).reshape(1, -1))
+        
 
         print(question)
         print(array_know)
         print(array_cog)
-        print(nmarray)
-        self.populate_table(root, nmarray)
+        self.populate_table(root, array_know, array_cog)
 
-    def populate_table(self, root, nmarray):
+    def populate_table(self, root, array_know, array_cog):
+        nmarray = np.dot(np.array(array_know).reshape(-1, 1), np.array(array_cog).reshape(1, -1))
+        print(nmarray)
         frame = Frame(root)
         Grid.rowconfigure(root, 0, weight=1)
         Grid.columnconfigure(root, 0, weight=1)
@@ -52,7 +56,9 @@ class Visualize:
         Grid.rowconfigure(frame, 0, weight=1)
         Grid.columnconfigure(frame, 0, weight=1)
         cog_values = ['', '', 'Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
-        know_values = ['', '', 'Factual Knowledge', 'Conceptual Knowledge', 'Procedural Knowledge', 'Metacognitive Knowledge']
+        know_values = ['', '', 'Factual', 'Conceptual', 'Procedural', 'Metacognitive']
+        
+        maxVal = np.max(nmarray)
 
         myWhite = '#%02x%02x%02x' % (255, 255, 255)  # set your favourite rgb color
         myTitleColor = '#%02x%02x%02x' % (255, 230, 190)  # set your favourite rgb color
@@ -67,12 +73,15 @@ class Visualize:
                     else:
                         l = Label(frame, text=cog_values[y], relief=RIDGE, bg= myTitleColor)
                 else:
-                    var = nmarray[x-2,y-2]*255
+                    var = nmarray[x-2, y-2] * 255
                     if(var != 0):
-                        myCellColor = '#%02x%02x%02x' % (255 - int(var)//2, 0, 0)  # set your heatmap color
+                        if(nmarray[x - 2][y - 2] == maxVal):
+                            myCellColor = '#%02x%02x%02x' % (255 - int(var)//2, 0, 0)  # set your heatmap color
+                        l = Label(frame, text='{:.2f}'.format(nmarray[x - 2][y - 2]), relief=RIDGE, bg= myCellColor)
+                        
                     else:
                         myCellColor = '#%02x%02x%02x' % (255, 255,255)  # set it white
-                    l = Label(frame, text='', relief=RIDGE, bg= myCellColor)
+                        l = Label(frame, text='', relief=RIDGE, bg= myCellColor)
                 l.grid(row=x, column=y, sticky=N+S+E+W)
 
 
@@ -87,8 +96,9 @@ class Visualize:
 
 
         button = Button(frame, text='Refresh', command= lambda: self.create_table(root)).grid(row=6, column=4,pady=20, sticky=N+S+E+W)
-        knowledge_label = Label(frame, text='Knowledge Dimension').grid(row=3,column=0, sticky=N+S+E+W)
-        cognitive_label = Label(frame, text='Cognitive Dimension').grid(row=0,column=4,sticky=N+S+E+W)
+        knowledge_label = Label(frame, text='Knowledge Dimension\n[[{:.2f} {:.2f}]\n[{:.2f} {:.2f}]]'.format(array_know[0], array_know[1], array_know[2], array_know[3])).grid(row=3,column=0, rowspan=3, sticky=N+S+E+W)
+        cognitive_label = Label(frame, text='Cognitive Dimension\n[' + str(array_cog) + ']').grid(row=0,column=4, columnspan=2, sticky=N+S+E+W)
+
         root.mainloop()
 
     def create_table(self, root):

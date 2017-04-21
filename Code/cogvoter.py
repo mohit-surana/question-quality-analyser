@@ -68,7 +68,7 @@ def get_cog_models():
     print('Loaded SVM-GloVe model')
     
     ################# BiRNN MODEL #################
-    clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
+    clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
     # clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
     print('Loaded BiRNN model')
 
