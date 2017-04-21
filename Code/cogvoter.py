@@ -80,9 +80,11 @@ def get_cog_models():
     return clf_svm, clf_maxent, clf_brnn, nn
 
 ##################### PREDICTION WITH PARAMS ############################
-def predict_cog_label(question, models):
+def predict_cog_label(question, models, subject='ADA'):
     clf_svm, clf_maxent, clf_brnn, nn = models
+    X1 = np.array( get_filtered_questions(question, threshold=0.25, what_type=subject)[0].split() ).reshape(1, -1)
     X1 = np.array(question.split()).reshape(1, -1)
+    # X2 = np.array( get_filtered_questions(question, threshold=0.75, what_type=subject)[0].split() ).reshape(1, -1)
     
     # softmax probabilities
     ptest_svm = clf_svm.predict_proba(X1)

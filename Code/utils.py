@@ -81,13 +81,19 @@ def get_modified_prob_dist(probs):
 
 ########################### SKILL: QUESTION FILTERER ###########################
 
+domain = None
+sklearn_tfidf_ada = pickle.load(open('models/tfidf_filterer_ada.pkl', 'rb'))
+sklearn_tfidf_os = pickle.load(open('models/tfidf_filterer_os.pkl', 'rb'))
+
 def get_filtered_questions(questions, threshold=0.25, what_type='os'):
+    global domain
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 
-    try:
-        domain = pickle.load(open('resources/domain.pkl',  'rb'))
-    except:
-        domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
+    if not domain:
+        try:
+            domain = pickle.load(open('resources/domain.pkl',  'rb'))
+        except:
+            domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
 
     keywords = set()
     for k in domain:
@@ -97,7 +103,12 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     if type(questions) != type([]):
         questions = [questions]
 
-    sklearn_tfidf = pickle.load(open('models/tfidf_filterer_%s.pkl' %what_type.lower(), 'rb'))
+    sklearn_tfidf = None
+    if what_type.lower() == 'os':
+        sklearn_tfidf = sklearn_tfidf_os
+    else:
+        sklearn_tfidf = sklearn_tfidf_ada
+        
     tfidf_matrix = sklearn_tfidf.transform(questions)
     feature_names = sklearn_tfidf.get_feature_names()
 

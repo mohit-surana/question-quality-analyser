@@ -34,7 +34,7 @@ class Visualize:
         level_know, prob_know = predict_know_label(question, self.know_models)
         array_know = get_modified_prob_dist(prob_know)
 
-        level_cog, prob_cog = predict_cog_label(question, self.cog_models)
+        level_cog, prob_cog = predict_cog_label(question, self.cog_models, subject)
         array_cog = get_modified_prob_dist(prob_cog)
 
         
