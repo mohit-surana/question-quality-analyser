@@ -7,7 +7,6 @@ import sys
 
 import nltk
 import numpy as np
-import gensim
 from gensim import corpora, models, similarities
 from gensim.matutils import cossim, sparse2full
 from nltk import stem
@@ -27,10 +26,7 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
 
-if len(sys.argv) < 2:
-    subject = 'ADA'
-else:
-    subject = sys.argv[1]
+subject = 'ADA'
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
@@ -43,9 +39,9 @@ skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Rec
 punkt = {',', '"', "'", ':', ';', '(', ')', '[', ']', '{', '}', '.', '?', '!', '`', '|', '-', '=', '+', '_', '>', '<'}
 
 if(platform.system() == 'Windows'):
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 else:
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 
 stopwords.update(punkt)
 
@@ -70,15 +66,16 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 ####################### ONE TIME MODEL LOADING #########################
 
 def get_know_models(subject):
-    nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
-    lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-    ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
-    # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+    nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
+    lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
+    # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
+    ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
     lda.minimum_phi_value = 0.01
     lda.minimum_probability = 0.01
     lda.per_word_topics = False
-    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
-    corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
+
+    dictionary = corpora.Dictionary.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' % (subject, )))
+    corpus = corpora.MmCorpus(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/corpus.mm' % (subject, )))
 
     print('Loaded models for visualization')
 
@@ -105,8 +102,8 @@ def predict_know_label(question, models):
 
     
 docs = {}
-for file_name in sorted(os.listdir('resources/%s' % (subject, ))):
-    with open(os.path.join('resources', subject, file_name), encoding='latin-1') as f:
+for file_name in sorted(os.listdir(os.path.join(os.path.dirname(__file__), 'resources/%s' % (subject, )))):
+    with open(os.path.join(os.path.dirname(__file__), 'resources', subject, file_name), encoding='latin-1') as f:
         content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
         title = content.split('\n')[0]
         if len([1 for k in skip_files if (k in title or k in file_name)]):
@@ -129,34 +126,34 @@ if __name__ == '__main__':
     USE_MODELS = MODEL[0:1]
 
     dictionary = corpora.Dictionary(texts)
-    dictionary.save('models/Nsquared/%s/dictionary.dict' %subject)  # store the dictionary, for future reference
+    dictionary.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' %subject))  # store the dictionary, for future reference
 
     corpus = []
     for k in docs:
         corpus.extend([dictionary.doc2bow(sentence.split()) for sentence in nltk.sent_tokenize(docs[k])])
-    corpora.MmCorpus.serialize('models/Nsquared/%s/corpus.mm' %subject, corpus)  # store to disk, for later use
+    corpora.MmCorpus.serialize(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/corpus.mm' %subject), corpus)  # store to disk, for later use
 
     tfidf_model = models.TfidfModel(corpus, id2word=dictionary, normalize=True)
-    tfidf_model.save('models/Nsquared/%s/tfidf.model' %subject)
+    tfidf_model.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/tfidf.model' %subject))
 
     if MODEL[0] in USE_MODELS:
-        TRAIN_LDA = True
+        TRAIN_LDA = False
         
         if TRAIN_LDA:
-            lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 10000),
+            lda = models.LdaModel(corpus=corpus,
                                   id2word=dictionary,
                                   num_topics=len(docs),
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
             lda.minimum_phi_value = 0.01
-            lda.minimum_probability = 0.01
             lda.per_word_topics = False
-            lda.save('models/Nsquared/%s/lda.model' % (subject, ))
+            lda.minimum_probability = 0.01
+            lda.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
             
             print('Model training done')
         else:
-            lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
+            lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
             lda.minimum_phi_value = 0.01
             lda.minimum_probability = 0.01
             lda.per_word_topics = False
@@ -171,14 +168,14 @@ if __name__ == '__main__':
                                         onepass=False,
                                         power_iters=2,
                                         extra_samples=300)
-            lsi_model.save('models/Nsquared/%s/lsi.model' %subject)
+            lsi_model.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.model' %subject))
             
             print('Model training done')
         else:
-            lsi_model = models.LsiModel.load('models/Nsquared/%s/lsi.model' %subject)
+            lsi_model = models.LsiModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.model' %subject))
         
         index = similarities.MatrixSimilarity(lsi_model[tfidf_model[corpus]], num_features=lsi_model.num_topics)
-        index.save('models/Nsquared/%s/lsi.index' %subject)
+        index.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.index' %subject))
 
     if MODEL[2] in USE_MODELS:
         
@@ -196,12 +193,12 @@ if __name__ == '__main__':
                 d2v_model.alpha -= 0.002
                 d2v_model.min_alpha = d2v_model.alpha
             
-            d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
+            d2v_model.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/d2v.model' %subject))
         else:
-            d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
+            d2v_model = models.doc2vec.Doc2Vec.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/d2v.model' %subject))
 
 
-    clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
+    clf = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
 
     x_data, y_data = get_data_for_knowledge_classifiers(subject)
 
@@ -277,7 +274,6 @@ if __name__ == '__main__':
     #print('Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
 
     x_train, x_test, y_train, y_test = train_test_split(y_probs, y_data, test_size=0.20)
-    print(x_train[0])
 
 
     ###### NEURAL NETWORK BASED SIMVAL -> KNOW MAPPING ########
@@ -285,25 +281,12 @@ if __name__ == '__main__':
         ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 8), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
         ann_clf.fit(x_train, y_train)
         print('ANN training completed')
-        joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
+        joblib.dump(ann_clf, os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
 
     else:
-        ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+        ann_clf = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
     print(classification_report(y_real, y_pred))
 
     print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
-
-ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
-ann_clf.fit(x_train, y_train)
-print('ANN training completed')
-joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
-
-y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
-
-print(classification_report(y_real, y_pred))
-
-print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
-
-
