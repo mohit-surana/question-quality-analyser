@@ -18,12 +18,10 @@ print('[Visualize] Cognitive models loaded')
 
 
 def get_probabilities(question):
-    question = question.get()
-
-    level_know, prob_know = predict_know_label(question, self.know_models)
+    level_know, prob_know = predict_know_label(question, know_models)
     array_know = get_modified_prob_dist(prob_know)
 
-    level_cog, prob_cog = predict_cog_label(question, self.cog_models, subject)
+    level_cog, prob_cog = predict_cog_label(question, cog_models, subject)
     array_cog = get_modified_prob_dist(prob_cog)
 
     nmarray = np.dot(np.array(array_know).reshape(-1, 1), np.array(array_cog).reshape(1, -1))

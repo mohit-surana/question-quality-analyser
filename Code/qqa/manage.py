@@ -3,6 +3,8 @@ import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+import numpy as np
+
 from nsquared import DocumentClassifier
 from svm_glove import TfidfEmbeddingVectorizer
 
