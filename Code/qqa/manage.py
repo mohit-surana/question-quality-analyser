@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 import os
 import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from nsquared import DocumentClassifier
+from svm_glove import TfidfEmbeddingVectorizer
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "qqa.settings")

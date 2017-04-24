@@ -23,11 +23,7 @@ from utils import get_data_for_knowledge_classifiers, get_knowledge_probs
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
 
-if len(sys.argv) < 2:
-    subject = 'ADA'
-else:
-    subject = sys.argv[1]
-
+subject = 'ADA'
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'

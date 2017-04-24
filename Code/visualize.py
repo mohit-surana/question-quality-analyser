@@ -12,10 +12,7 @@ from nsquared_v2 import predict_know_label, get_know_models
 
 from utils       import get_modified_prob_dist
 
-if len(sys.argv) < 2:
-    subject = 'ADA'
-else:
-    subject = sys.argv[1]
+subject = 'ADA'
     
 class Visualize:
 
