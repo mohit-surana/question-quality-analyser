@@ -25,7 +25,7 @@ def classify(request):
     question = request.POST.get("question", "Why is the world round?")
     know = [0.4, 0.6, 0, 0]
     cog = [0.2, 0.3, 0.5, 0, 0, 0]
-    combined = np.dot(np.array(know).reshape(-1, 1), np.array(cog).reshape(1, -1))
+    combined = 100 * np.dot(np.array(know).reshape(-1, 1), np.array(cog).reshape(1, -1))
     combined = utils.convert_ndarray_to_list(combined)
     # know, cog, combined = classifier.get_probabilities(question, subject)
     return JsonResponse({'question': question, 'know': know, 'cog': cog, 'combined': combined})
