@@ -20,7 +20,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
-domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
+domain = pickle.load(open('resources/domain.pkl',  'rb'))
 domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() }
 domain_names = domain.keys()
 
@@ -36,9 +36,9 @@ INPUT_SIZE = 300
 NUM_QUESTIONS = 1000
 filename = 'glove.6B.%dd.txt' %INPUT_SIZE
 
-if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])):
+if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
     print()
-    with open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + filename), "r", encoding='utf-8') as lines:
+    with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
         w2v = {}
         for row, line in enumerate(lines):
             try:
@@ -51,41 +51,47 @@ if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%
                 if((row + 1) % 100000 == 0):
                     print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
     
-    dill.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
+    dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
 else:
-    w2v = dill.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
+    w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
 
 print('Loaded GloVe model')
 
 ####################### ONE TIME MODEL LOADING #########################
-def get_cog_models():
+def get_cog_models(load_ann=True):
     ################# MAXENT MODEL #################
-    clf_maxent = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/MaxEnt/maxent_76.pkl'), 'rb'))
+    clf_maxent = pickle.load(open('models/MaxEnt/maxent_76.pkl', 'rb'))
     print('Loaded MaxEnt model')
     
     ################# SVM-GLOVE MODEL #################
-    clf_svm = joblib.load(os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model_83.pkl'))
+    clf_svm = joblib.load('models/SVM/glove_svm_model_83.pkl')
     print('Loaded SVM-GloVe model')
     
     ################# BiRNN MODEL #################
-    clf_brnn = dill.load(open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'rb'))
-    # clf_brnn = dill.load(open('models/BiRNN/brnn_model.pkl', 'rb'))
+    clf_brnn = dill.load(open('models/BiRNN/brnn_model_6B-300_72.pkl', 'rb'))
     print('Loaded BiRNN model')
 
-    ################# MLP MODEL #################
-    nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter_89_sgd.pkl'))
-    # nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
-    print('Loaded MLP model')
+    nn = None
+    if load_ann:
+        ################# MLP MODEL #################
+        nn = joblib.load('models/cog_ann_voter_87_adam.pkl')
+        print('Loaded MLP model')
 
     return clf_svm, clf_maxent, clf_brnn, nn
 
 ##################### PREDICTION WITH PARAMS ############################
 def predict_cog_label(question, models, subject='ADA'):
     clf_svm, clf_maxent, clf_brnn, nn = models
-    X1 = np.array( get_filtered_questions(question, threshold=0.25, what_type=subject)[0].split() ).reshape(1, -1)
+    question2 = get_filtered_questions(question, threshold=0.15, what_type=subject.lower()) # svm and birnn
+    if len(question2) > 0:
+        question = question2[0]
     X1 = np.array(question.split()).reshape(1, -1)
-    # X2 = np.array( get_filtered_questions(question, threshold=0.75, what_type=subject)[0].split() ).reshape(1, -1)
-    
+
+    question2 = get_filtered_questions(question, threshold=0.75, what_type=subject.lower()) # maxEnt
+    if len(question2) > 0:
+        question = question2[0]
+    X2 = np.array(question.split()).reshape(1, -1)
+
     # softmax probabilities
     ptest_svm = clf_svm.predict_proba(X1)
     for i in range(len(ptest_svm)):
@@ -94,7 +100,7 @@ def predict_cog_label(question, models, subject='ADA'):
     ptest_svm = np.array(ptest_svm)
 
     ptest_maxent = []
-    for x in [features(X1[i]) for i in range(len(X1))]:
+    for x in [features(X2[i]) for i in range(len(X1))]:
         p_dict = clf_maxent.prob_classify(x)._prob_dict
         probs = np.array([p_dict[x] for x in range(6)])
         probs = np.exp(probs) / np.sum(np.exp(probs))
@@ -120,13 +126,13 @@ if __name__ == '__main__':
     CREATE_CSV_FILE = False
 
     ################ MODEL LOADING ##################
-    clf_svm, clf_maxent, clf_brnn, nn = get_cog_models()
+    clf_svm, clf_maxent, clf_brnn, _ = get_cog_models(load_ann=False)
 
     if CREATE_CSV_FILE:
         ################# LOADING SO[ADA] questions #################
         ADA_questions = []
         ADA_questions_cleaned = []
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_SO_Questions.csv'), 'r', encoding='utf-8') as csvfile:
+        with open('datasets/ADA_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
             print()
             csvreader = csv.reader(csvfile)
             for i, row in enumerate(csvreader):
@@ -154,7 +160,7 @@ if __name__ == '__main__':
         ################# LOADING SO[OS] questions #################
         OS_questions = []
         OS_questions_cleaned = []
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_SO_Questions.csv'), 'r', encoding='utf-8') as csvfile:
+        with open('datasets/OS_SO_Questions.csv', 'r', encoding='utf-8') as csvfile:
             print()
             csvreader = csv.reader(csvfile)
             for i, row in enumerate(csvreader):
@@ -202,7 +208,7 @@ if __name__ == '__main__':
         X_data_glove = sent_to_glove(X_data, w2v)
         
         ################# DUMPING OUTPUT TO CSV #################
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/SO_Questions_Cog_Prediction.csv'), 'w', encoding="utf-8") as csvfile:
+        with open('datasets/SO_Questions_Cog_Prediction.csv', 'w', encoding="utf-8") as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)'])
             for q, p_maxent, p_brnn, p_svm in zip(ADA_questions + OS_questions, pred_maxent, pred_brnn, pred_svm):
@@ -254,7 +260,7 @@ if __name__ == '__main__':
     print('ANN training completed')
     y_real, y_pred = y_test, clf.predict(x_test)
 
-    joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
+    joblib.dump(clf, 'models/cog_ann_voter.pkl')
 
     print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
 
@@ -277,7 +283,7 @@ if __name__ == '__main__':
     pred_maxent = []
     pred_svm = []
     pred_brnn = []
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/SO_Questions_Cog_Prediction.csv'), 'r', encoding="utf-8") as csvfile:
+    with open('datasets/SO_Questions_Cog_Prediction.csv', 'r', encoding="utf-8") as csvfile:
         csvreader = csv.reader(csvfile)
         for i, row in enumerate(csvreader):
             if i == 0:
@@ -288,21 +294,27 @@ if __name__ == '__main__':
             pred_brnn.append(mapping_cog[p_brnn])
             pred_svm.append(mapping_cog[p_svm])
 
-    data = np.hstack((np.array(pred_maxent).reshape(-1, 1),
-                      np.array(pred_brnn).reshape(-1, 1),
-                      np.array(pred_svm).reshape(-1, 1)))
+    ptest_svm = np.array(ptest_svm)
+    print('ptest_svm:', ptest_svm)
 
-    pca = PCA(n_components=3)
-    pca.fit_transform(data)
-    v = pca.explained_variance_ratio_
-    pred_agg = np.array(list(map(round, np.sum(data * v, axis=1))))
+    ptest_maxent = []
+    for x in [features(X1[i]) for i in range(len(X1))]:
+        p_dict = clf_maxent.prob_classify(x)._prob_dict
+        probs = np.array([p_dict[x] for x in range(6)])
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+        ptest_maxent.append(probs)
+    print('ptest_maxent:', ptest_maxent)
+    ptest_brnn = []
+    for x in sent_to_glove(X1, w2v):
+        print('brnn x is:', x)
+        probs = clf_brnn.predict_proba(clip(x))
+        print('probs:', probs)
+        probs = [x[0] for x in probs]
+        probs = np.exp(probs) / np.sum(np.exp(probs))
+        ptest_brnn.append(probs)
 
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/SO_Questions_Cog_Prediction.csv'), 'w', encoding="utf-8") as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['Question', 'Cog(MaxEnt)', 'Cog(BiRNN)', 'Cog(SVM-GloVe)', 'Cog(Aggregate)'])
-        for q, p_maxent, p_brnn, p_svm, p_agg in zip(X_data, pred_maxent, pred_brnn, pred_svm, pred_agg):
-            csvwriter.writerow([q, mapping_cog2[p_maxent], mapping_cog2[p_brnn], mapping_cog2[p_svm], mapping_cog2[p_agg]])
-
+    ptest_brnn = np.array(ptest_brnn)
+    print('ptest_brnn:', ptest_brnn)
 
     ######### TEST ACCURACY OF PCA METHOD #########
 

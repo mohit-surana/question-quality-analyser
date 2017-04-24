@@ -12,7 +12,10 @@ from nsquared_v2 import predict_know_label, get_know_models
 
 from utils       import get_modified_prob_dist
 
-subject = 'ADA'
+if len(sys.argv) < 2:
+    subject = 'ADA'
+else:
+    subject = sys.argv[1]
     
 class Visualize:
 
@@ -31,7 +34,7 @@ class Visualize:
         level_know, prob_know = predict_know_label(question, self.know_models)
         array_know = get_modified_prob_dist(prob_know)
 
-        level_cog, prob_cog = predict_cog_label(question, self.cog_models, subject)
+        level_cog, prob_cog = predict_cog_label(question, self.cog_models)
         array_cog = get_modified_prob_dist(prob_cog)
 
         
@@ -57,8 +60,6 @@ class Visualize:
 
         myWhite = '#%02x%02x%02x' % (255, 255, 255)  # set your favourite rgb color
         myTitleColor = '#%02x%02x%02x' % (255, 230, 190)  # set your favourite rgb color
-        
-        maxVal = np.max(nmarray)
 
         for x in range(1,6):
             for y in range(1,8):
@@ -72,10 +73,7 @@ class Visualize:
                 else:
                     var = nmarray[x-2, y-2] * 255
                     if(var != 0):
-                        if nmarray[x - 2, y - 2] == maxVal:
-                            myCellColor = '#%02x%02x%02x' % (255 - int(var)//2, 0, 0)  # set your heatmap color
-                        else:
-                            myCellColor = myWhite
+                        myCellColor = '#%02x%02x%02x' % (255 - int(var)//2, 0, 0)  # set your heatmap color
                         l = Label(frame, text='{:.2f}'.format(nmarray[x - 2][y - 2]), relief=RIDGE, bg= myCellColor)
                         
                     else:
