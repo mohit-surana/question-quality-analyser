@@ -65,7 +65,12 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 
 ####################### ONE TIME MODEL LOADING #########################
 
-def get_know_models(subject):
+def get_know_models(__subject):
+
+    global subject
+    subject = __subject
+    load_texts(subject)
+
     nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
     lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
     # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
@@ -83,7 +88,9 @@ def get_know_models(subject):
     
 ##################### PREDICTION WITH PARAMS ############################
 
-def predict_know_label(question, models):
+def predict_know_label(question, models, subject='ADA'):
+    load_texts(subject)
+
     nsq, lda, ann, dictionary, corpus = models
     x = question
     p_list = []
@@ -100,27 +107,30 @@ def predict_know_label(question, models):
 
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
 
-    
-docs = {}
-for file_name in sorted(os.listdir(os.path.join(os.path.dirname(__file__), 'resources/%s' % (subject, )))):
-    with open(os.path.join(os.path.dirname(__file__), 'resources', subject, file_name), encoding='latin-1') as f:
-        content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
-        title = content.split('\n')[0]
-        if len([1 for k in skip_files if (k in title or k in file_name)]):
-            continue
-        
-        docs[title] = __preprocess(content, stop_strength=1, remove_punct=False)
 
-doc_set = list(docs.values())
+def load_texts(subject):
+    global docs, texts
+    docs = {}
+    for file_name in sorted(os.listdir(os.path.join(os.path.dirname(__file__), 'resources/%s' % (subject, )))):
+        with open(os.path.join(os.path.dirname(__file__), 'resources', subject, file_name), encoding='latin-1') as f:
+            content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
+            title = content.split('\n')[0]
+            if len([1 for k in skip_files if (k in title or k in file_name)]):
+                continue
 
-texts = []
-for i in doc_set:
-    texts.append(__preprocess(i, stop_strength=1).split())
+            docs[title] = __preprocess(content, stop_strength=1, remove_punct=False)
+
+    doc_set = list(docs.values())
+
+    texts = []
+    for i in doc_set:
+        texts.append(__preprocess(i, stop_strength=1).split())
 
 #########################################################################
 #                            MAIN BEGINS HERE                           #
 #########################################################################
 if __name__ == '__main__':
+    load_texts(subject)
     MODEL = ['LDA', 'LSA', 'D2V']
 
     USE_MODELS = MODEL[0:1]

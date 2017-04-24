@@ -16,7 +16,7 @@ print('[Visualize] Cognitive models loaded')
 
 
 def get_probabilities(question, subject):
-    level_know, prob_know = predict_know_label(question, know_models[subject])
+    level_know, prob_know = predict_know_label(question, know_models[subject], subject)
     array_know = get_modified_prob_dist(prob_know)
 
     level_cog, prob_cog = predict_cog_label(question, cog_models, subject)
