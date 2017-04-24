@@ -1,7 +1,11 @@
-def convert_ndarray_to_list(array):
+def convert_2darray_to_list(array):
     l = []
     for x in array:
-        l.append(list())
-        for y in x:
-            l[-1].append(round(y, 2))
+        l.append(convert_1darray_to_list(x))
+    return l
+
+def convert_1darray_to_list(array):
+    l = []
+    for x in array:
+        l.append(round(x, 2))
     return l
