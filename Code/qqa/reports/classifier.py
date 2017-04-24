@@ -9,16 +9,14 @@ from nsquared import DocumentClassifier
 from nsquared_v2 import predict_know_label, get_know_models
 from utils import get_modified_prob_dist
 
-subject = 'ADA'
-
-know_models = get_know_models(subject)
+know_models = {'ADA': get_know_models('ADA'), 'OS': get_know_models('OS')}
 print('[Visualize] Knowledge models loaded')
 cog_models = get_cog_models()
 print('[Visualize] Cognitive models loaded')
 
 
-def get_probabilities(question):
-    level_know, prob_know = predict_know_label(question, know_models)
+def get_probabilities(question, subject):
+    level_know, prob_know = predict_know_label(question, know_models[subject])
     array_know = get_modified_prob_dist(prob_know)
 
     level_cog, prob_cog = predict_cog_label(question, cog_models, subject)
@@ -26,4 +24,4 @@ def get_probabilities(question):
 
     nmarray = np.dot(np.array(array_know).reshape(-1, 1), np.array(array_cog).reshape(1, -1))
 
-    return nmarray
+    return array_know, array_cog, nmarray
