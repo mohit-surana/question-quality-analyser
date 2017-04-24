@@ -26,7 +26,7 @@ Y_know = []
 TRAIN_SVM_GLOVE = True
 TEST_SVM_GLOVE = True
 
-domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
+domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
 
 keywords = set()
 for k in domain:
@@ -86,9 +86,9 @@ def train(X_train, Y_train):
     print()
     filename = 'glove.6B.%dd.txt' %100
     
-    if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])):
         print()
-        with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+        with open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + filename), "r", encoding='utf-8') as lines:
             w2v = {}
             for row, line in enumerate(lines):
                 try:
@@ -101,9 +101,9 @@ def train(X_train, Y_train):
                     if((row + 1) % 100000 == 0):
                         print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
         
-        dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+        dill.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
     else:
-        w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+        w2v = dill.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
             
     print('Loaded Glove w2v')
 
@@ -119,7 +119,7 @@ def train(X_train, Y_train):
 
     print('Best params:', gscv.best_params_)
 
-    joblib.dump(clf, 'models/SVM/glove_svm_model.pkl')
+    joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model.pkl'))
     print('Saving done')
     return clf
 		
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     ################ BEGIN TESTING CODE ################
     if TEST_SVM_GLOVE:
         if not TRAIN_SVM_GLOVE:
-            clf = joblib.load('models/SVM/glove_svm_model_83.pkl')
+            clf = joblib.load(os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model_83.pkl'))
 
         Y_true, Y_pred = Y_test, clf.predict(X_test)
 

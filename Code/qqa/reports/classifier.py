@@ -1,6 +1,6 @@
+import sys
 import os
-os.chdir('../..')
-print(os.getcwd())
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import numpy as np
 
@@ -29,5 +29,3 @@ def get_probabilities(question):
     nmarray = np.dot(np.array(array_know).reshape(-1, 1), np.array(array_cog).reshape(1, -1))
 
     return nmarray
-
-os.chdir('../..')

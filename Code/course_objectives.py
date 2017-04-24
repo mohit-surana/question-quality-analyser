@@ -20,7 +20,7 @@ def get_probabilities(question):
 
 if __name__ == '__main__':
     chapter_knowledge_levels = {}
-    with open('resources/OS[chapters]/__CourseObjectives.txt') as f:
+    with open(os.path.join(os.path.dirname(__file__), 'resources/OS[chapters]/__CourseObjectives.txt')) as f:
         lines = f.read().split('\n')
         chapter_name = ''
         for line in lines:

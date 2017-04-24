@@ -223,11 +223,11 @@ class BiDirectionalRNN:
 
 
 def save_model(clf):
-    with open('models/BiRNN/brnn_model.pkl', 'wb') as f:
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'wb') as f:
         dill.dump(clf, f)
 
 def load_model():
-    with open('models/BiRNN/brnn_model.pkl', 'rb') as f:
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'rb') as f:
         clf = dill.load(f)
     return clf
 
@@ -250,9 +250,9 @@ if __name__ == "__main__":
 
     filename = 'glove.6B.%dd.txt' %INPUT_SIZE
 
-    if not os.path.exists('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]):
+    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])):
         print()
-        with open('resources/GloVe/' + filename, "r", encoding='utf-8') as lines:
+        with open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + filename), "r", encoding='utf-8') as lines:
             w2v = {}
             for row, line in enumerate(lines):
                 try:
@@ -264,9 +264,9 @@ if __name__ == "__main__":
                 finally:
                     print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
 
-        dill.dump(w2v, open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'wb'))
+        dill.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
     else:
-        w2v = dill.load(open('resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0], 'rb'))
+        w2v = dill.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
 
     X_data = sent_to_glove(X_data, w2v)
 

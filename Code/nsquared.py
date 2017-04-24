@@ -58,9 +58,9 @@ class DocumentClassifier:
     punkt = {',', '"', "'", ':', ';', '(', ')', '[', ']', '{', '}', '.', '?', '!', '`', '|', '-', '=', '+', '_', '>', '<'}
 
     if(platform.system() == 'Windows'):
-        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
     else:
-        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+        stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
     stopwords.update(punkt)
 
     stopwords2 = stp.words('english')
@@ -69,7 +69,7 @@ class DocumentClassifier:
         text = re.sub('-\n', '', text).lower()
         text = re.sub('\n', ' ', text)
         text = re.sub('[^a-z.?! ]', '', text)
-        tokens = [word for word in text.split()]  
+        tokens = [word for word in text.split()]
         if stop_strength == 0:
             return ' '.join([self.wordnet.lemmatize(i) for i in tokens])
         elif stop_strength == 1:
@@ -81,7 +81,7 @@ class DocumentClassifier:
         self.subject = subject
 
         self.chapter_map = []
-        with open('resources/%s/__Sections.csv' %subject) as f:
+        with open(os.path.join(os.path.dirname(__file__), 'resources/%s/__Sections.csv' %subject)) as f:
             rows = f.read().splitlines()
             csvreader = csv.reader(rows)
             for row in csvreader:
@@ -94,9 +94,9 @@ class DocumentClassifier:
         self.data = DataFrame({'text': [], 'class': []})
         self.section_data = { k : DataFrame({'text': [], 'class': []}) for k in self.chapter_map.values() }
 
-        for file_name in sorted(os.listdir('resources/%s' % (self.subject, ))):
-            with open(os.path.join('resources', self.subject, file_name), encoding='latin-1') as f:
-                content = f.read() #re.split('\n[\s]*Exercise', f.read())[0] 
+        for file_name in sorted(os.listdir(os.path.join(os.path.dirname(__file__), 'resources/%s' % (self.subject, )))):
+            with open(os.path.join(os.path.dirname(__file__), 'resources', self.subject, file_name), encoding='latin-1') as f:
+                content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
                 title = content.split('\n')[0]
                 if len([1 for k in skip_files if (k in title or k in file_name)]):
                     continue
@@ -134,9 +134,9 @@ class DocumentClassifier:
             for x, y in zip(x_qtrain, y_qtrain):
                 chapter = self.chapter_map[self.section_map[y]]
                 self.section_data[chapter] = self.section_data[chapter].append(DataFrame([{'text' : self.__preprocess(x, stop_strength=1), 'class' : y}]))
-            '''     
+            '''
         elif subject == 'OS':
-            pass # consider training questions on a chapter wise basis to improve accuracy 
+            pass # consider training questions on a chapter wise basis to improve accuracy
 
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         for k in self.section_data:
@@ -146,10 +146,10 @@ class DocumentClassifier:
         print('\nTraining chapter classifier')
         
         self.pipeline = Pipeline([
-                        ('vectorizer', TfidfVectorizer(sublinear_tf=True, 
+                        ('vectorizer', TfidfVectorizer(sublinear_tf=True,
                                                        ngram_range=(1, 2),
-                                                       stop_words='english', 
-                                                       strip_accents='unicode', 
+                                                       stop_words='english',
+                                                       strip_accents='unicode',
                                                        decode_error="ignore")),
                         ('classifier', MultinomialNB(alpha=.01))])
 
@@ -171,8 +171,8 @@ class DocumentClassifier:
                                         ('vectorizer', TfidfVectorizer(sublinear_tf=True,
                                                                        max_df=0.5,
                                                                        ngram_range=(1, 3),
-                                                                       stop_words='english', 
-                                                                       strip_accents='unicode', 
+                                                                       stop_words='english',
+                                                                       strip_accents='unicode',
                                                                        decode_error="ignore")),
                                         ('classifier', MultinomialNB(alpha=.01))])
             X = self.section_data[k]['text'].values
@@ -209,7 +209,7 @@ class DocumentClassifier:
             for k in self.section_difficulty:
                 t = self.section_difficulty[k]
                 try:
-                    self.section_difficulty[k] = sum(t) / len(t) 
+                    self.section_difficulty[k] = sum(t) / len(t)
                 except ZeroDivisionError:
                     self.section_difficulty[k] = 1
 
@@ -244,9 +244,9 @@ if __name__ == "__main__":
     TRAIN = True
     if TRAIN:
         classifier = DocumentClassifier(subject=subject, skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Recommended Reading and Web Sites', 'Recommended Reading', 'Summary', 'Exercises', 'Introduction'})
-        classifier.save('models/Nsquared/%s/nsquared.pkl' % (subject, ))
+        classifier.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )))
 
-    classifier = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
+    classifier = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
 
     all_classes = sorted(list(set(list(classifier.data['class'].values))))
 

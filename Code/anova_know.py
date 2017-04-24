@@ -44,9 +44,9 @@ skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Rec
 punkt = {',', '"', "'", ':', ';', '(', ')', '[', ']', '{', '}', '.', '?', '!', '`', '|', '-', '=', '+', '_', '>', '<'}
 
 if(platform.system() == 'Windows'):
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 else:
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 
 stopwords.update(punkt)
 
@@ -70,8 +70,8 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 
 
 docs = {}
-for file_name in sorted(os.listdir('resources/%s' % (subject, ))):
-    with open(os.path.join('resources', subject, file_name), encoding='latin-1') as f:
+for file_name in sorted(os.listdir(os.path.join(os.path.dirname(__file__), 'resources/%s' % (subject, )))):
+    with open(os.path.join(os.path.dirname(__file__), 'resources', subject, file_name), encoding='latin-1') as f:
         content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
         title = content.split('\n')[0]
         if len([1 for k in skip_files if (k in title or k in file_name)]):
@@ -90,22 +90,22 @@ MODEL = ['LDA', 'LSA', 'D2V']
 USE_MODELS = MODEL[0:1]
 
 if MODEL[0] in USE_MODELS:
-    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (subject, ))
-    corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (subject, ))
-    lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
+    dictionary = corpora.Dictionary.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' % (subject, )))
+    corpus = corpora.MmCorpus(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/corpus.mm' % (subject, )))
+    lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
 
 if MODEL[1] in USE_MODELS:
-    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' %subject)
-    corpus = corpora.MmCorpus("models/Nsquared/%s/corpus.mm" %subject)
-    tfidf_model = models.TfidfModel.load('models/Nsquared/%s/tfidf.model' %subject)
-    lsi_model = models.LsiModel.load('models/Nsquared/%s/lsi.model' %subject)
+    dictionary = corpora.Dictionary.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' %subject))
+    corpus = corpora.MmCorpus(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/corpus.mm' %subject))
+    tfidf_model = models.TfidfModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/tfidf.model' %subject))
+    lsi_model = models.LsiModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.model' %subject))
     index = similarities.MatrixSimilarity(lsi_model[tfidf_model[corpus]], num_features=lsi_model.num_topics)
-    index.save('models/Nsquared/%s/lsi.index' %subject)
+    index.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.index' %subject))
 
 if MODEL[2] in USE_MODELS:
-    d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
+    d2v_model = models.doc2vec.Doc2Vec.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/d2v.model' %subject))
 
-clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
+clf = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb')))
 
 x_data, y_data = get_data_for_knowledge_classifiers(subject)
 
