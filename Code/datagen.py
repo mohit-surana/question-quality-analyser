@@ -2,6 +2,8 @@ import csv
 import os
 import random
 
+random.seed(42)
+
 cog2label = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
 label2cog = { v : k for k, v in cog2label.items()}
 
