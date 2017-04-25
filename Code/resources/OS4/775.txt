@@ -1,0 +1,54 @@
+Resiliency
+             Resiliency techniques focus on minimizing the cost of reexecution when faults
+             occur. The basis for resiliency is the property that failures in a distributed system
+             are partial, rather than total, so some parts of a distributed computation, or
+
+
+
+                       Chapter 19  Recovery and Fault Tolerance                           755
+the results computed by them, may survive a failure. Use of such results after
+recovery would reduce reexecution, and may even avoid it. Consider a distributed
+transaction that is initiated in node Ni and involves computations in nodes Nj and
+Nk. It has a transaction manager in each of these nodes. The transaction would
+be aborted if the transaction manager in node Nj does not respond to the prepare
+message from the coordinator in node Ni because of the failure of node Nj or link
+(Ni, Nj). The aborted transaction would have to be reexecuted at some other time.
+Much of the reexecution would be wasteful if node Nj had already completed the
+computation, but was simply unable to participate in commit processing because
+of a link fault.
+A nested transaction Tik is an atomic transaction that is a part of another
+transaction Ti. Transactions Ti and Tik have a parent­child relationship; the
+transaction controller of Ti initiates Tik and assigns it a unique id. The nested
+transaction can commit or abort just like an atomic transaction, except for one
+difference--when it reaches the commit point, a tentative commit is performed
+for it. A tentative commit is an intermediate stage between not committed and
+committed. The log of the nested transaction is written in stable storage; however,
+it is not processed at this time. The actual commit of the nested transaction, which
+involves processing of the log, is held in abeyance until the parent transaction com-
+mits. When a parent transaction reaches its commit point, it is committed by using
+a two-phase commit protocol to ensure that all its child transactions can commit.
+Resiliency using nested transactions is implemented as follows: Consider a
+transaction Ti that executes in node Ni and initiates a nested transaction Tik
+in node Nj . Let node Nj crash and recover sometime after Tik has performed a
+tentative commit. The transaction coordinator, which is in node Ni, may find that
+the nested transaction Tik is taking too long to complete, or that the transaction
+manager in node Nj is not responding to its prepare message, so it may decide to
+initiate Tik once again--either in node Nj itself, or in another node. If it reinitiates
+Tik in node Nj , the transaction manager in node Nj would check whether Tik was
+initiated there in the past and had performed a tentative commit. If so, it would
+not reinitiate Tik because it already has Tik's results in the log; it would simply
+use Tik's results when the parent transaction Ti commits. Thus, reexecution of
+Tik would be avoided.
+If the transaction coordinator of Ti decided to reinitiate the nested transac-
+tion in another node, it would assign another id to the new nested transaction,
+say, Til . Now, transaction Tik of node Nj has become an orphan because its parent
+transaction is no longer interested in it. If it has not performed a tentative commit,
+it should be prevented from performing it in future. If it has performed a tentative
+commit, care should be taken not to include it in the 2PC when the results of Ti
+are committed so that data consistency is not harmed through duplicate actions.
+To implement this aspect, the transaction coordinator for Ti maintains a list of
+ids of nested transactions in which it is currently interested. When it initiates
+nested transaction Tik, it would add Tik's id to the list, and when it reinitiates
+the nested transaction with the id Til , it would delete Tik from this list and add
+Til to it. When Tik wishes to perform a tentative commit, its transaction man-
+ager would check with the transaction coordinator whether Tik's id is present

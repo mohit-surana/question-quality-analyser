@@ -1,0 +1,135 @@
+The Virtual Memory Manager
+The virtual memory manager uses two data structures--the page table, whose
+entry format is shown in Figure 12.3, and the free frames list. The ref info and
+modified fields in a page table entry are typically set by the paging hardware. All
+other fields are set by the virtual memory manager itself. Table 12.4 summarizes
+the functions of the virtual memory manager. We discuss the first four func-
+tions in this section. Other functions--page replacement, allocation of memory
+to processes, and implementation of page sharing--are discussed in the next few
+sections.
+Management of the Logical Address Space of a Process                The virtual memory
+manager manages the logical address space of a process through the following
+subfunctions:
+1. Organize a copy of the instructions and data of the process in its swap space.
+2. Maintain the page table.
+3. Perform page-in and page-out operations.
+4. Perform process initiation.
+As mentioned earlier in Section 12.2, a copy of the entire logical address space
+of a process is maintained in the swap space of the process. When a reference to
+a page leads to a page fault, the page is loaded from the swap space by using a
+page-in operation. When a dirty page is to be removed from memory, a page-out
+operation is performed to copy it from memory into a disk block in the swap
+Table 12.4     Functions     of the Virtual Memory Manager
+Function                     Description
+Manage logical address       Set up the swap space of a process. Organize its logical
+space                        address space in memory through page-in and page-out
+                             operations, and maintain its page table.
+Manage memory                Keep track of occupied and free page frames in memory.
+Implement memory             Maintain the information needed for memory
+protection                   protection.
+Collect page reference       Paging hardware provides information concerning page
+information                  references. This information is maintained in
+                             appropriate data structures for use by the page
+                             replacement algorithm.
+Perform page replacement     Perform replacement of a page when a page fault arises
+                             and all page frames in memory, or all page frames
+                             allocated to a process, are occupied.
+Allocate physical memory     Decide how much memory should be allocated to a
+                             process and revise this decision from time to time to suit
+                             the needs of the process and the OS.
+Implement page sharing       Arrange sharing of pages be processes.
+
+
+
+436  Part 3  Memory Management
+                   space. Thus the copy of a page in the swap space is current if that page is not in
+                   memory, or it is in memory but it has not been modified since it was last loaded.
+                   For other pages the copy in the swap space is stale (i.e., outdated), whereas that
+                   in memory is current.
+                   One issue in swap space management is size of the swap space of a process.
+                   Most virtual memory implementations permit the logical address space of a pro-
+                   cess to grow dynamically during its operation. This can happen for a variety of
+                   reasons. The size of stack or PCD data areas may grow (see Section 11.4.2), or the
+                   process may dynamically link more modules or may perform memory mapping
+                   of files (see Section 12.7). An obvious approach to handling dynamic growth of
+                   address spaces is to allocate swap space dynamically and noncontiguously. How-
+                   ever, this approach faces the problem that the virtual memory manager may run
+                   out of swap space during operation of a process.
+                   To initiate a process, only the page containing its start address, i.e., address
+                   of its first instruction, need managers to be loaded in memory. Other pages are
+                   brought in on demand. Details of the page table and the page-in and page-out
+                   operations have been described earlier in Section 12.2.
+                   Management of Memory   The free frames list is maintained at all times. A page
+                   frame is taken off the free list to load a new page, and a frame is added to it when
+                   a page-out operation is performed. All page frames allocated to a process are
+                   added to the free list when the process terminates.
+                   Protection  During process creation, the virtual memory manager constructs its
+                   page table and puts information concerning the start address of the page table
+                   and its size in the PCB of the process. The virtual memory manager records access
+                   privileges of the process for a page in the prot info field of its page table entry.
+                   During dispatching of the process, the kernel loads the page-table start address of
+                   the process and its page-table size into registers of the MMU. During translation
+                   of a logical address (pi, bi), the MMU ensures that the entry of page pi exists in
+                   the page table and contains appropriate access privileges in the prot info field.
+                   Collection of Information for Page Replacement       The ref info field of the page
+                   table entry of a page indicates when the page was last referenced, and the modified
+                   field indicates whether it has been modified since it was last loaded in memory.
+                   Page reference information is useful only so long as a page remains in memory;
+                   it is reinitialized the next time a page-in operation is performed for the page.
+                   Most computers provide a single bit in the ref info field to collect page reference
+                   information. This information is not adequate to select the best candidate for
+                   page replacement. Hence the virtual memory manager may periodically reset the
+                   bit used to store this information. We discuss this aspect in Section 12.4.1.
+·
+     Example 12.4  Page Replacement
+                   The memory of a computer consists of eight page frames. A process P1 consists
+                   of five pages numbered 0 to 4. Only pages 1, 2, and 3 are in memory at the
+                   moment; they occupy page frames 2, 7, and 4, respectively. Remaining page
+
+
+
+                                                                                     Chapter  12  Virtual  Memory  437
+          Memory                                       Memory
+     0                                            0
+     1                                            1
+     2                    Valid  Page     Misc    2                     Valid  Page     Misc
+     3                    bit    frame #  info    3                     bit    frame #  info
+     4                 0  0                       4                0    0
+     5                 1  1      2        t4, m   5                1    0
+     6                 2  1      7        t11     6                2    1      7        t11
+                       3  1      4        t9                       3    1      4        t9
+                                                                                        t12
+     7                 4  0                       7                4    1      2
+                          Page table of P1                              Page table of P1
+     (a)                                          (b)
+   Figure 12.13  Data  structures of the virtual  memory manager:  (a)  before and (b) after  a page
+   replacement.
+   frames have been allocated to other processes and no free page frames are left
+   in the system.
+        Figure 12.13(a) illustrates the situation in the system at time instant t1+1,
+   i.e., a little after t11. Only the page table of P1 is shown in the figure since
+   process P1 has been scheduled. Contents of the ref info and modified fields
+   are shown in the misc info field. Pages 1, 2, and 3 were last referenced at time
+   instants t4, t11, and t9, respectively. Page 1 was modified sometime after it
+   was last loaded. Hence the misc info field of its page table entry contains the
+   information t4, m.
+        At time instant t12, process P1 gives rise to a page fault for page 4. Since all
+   page frames in memory are occupied, the virtual memory manager decides to
+   replace page 1 of the process. The mark m in the misc info field of page 1's page
+   table entry indicates that it was modified since it was last loaded, so a page-out
+   operation is necessary. The page frame # field of the page table entry of page
+   1 indicates that the page exists in page frame 2. The virtual memory manager
+   performs a page-out operation to write the contents of page frame 2 into the
+   swap area reserved for page 1 of P1, and modifies the valid bit in the page table
+   entry of page 1 to indicate that it is not present in memory. A page-in operation
+   is now initiated for page 4 of P1. At the end of the operation, the page table
+   entry of page 4 is modified to indicate that it exists in memory in page frame 2.
+   Execution of P1 is resumed. It now makes a reference to page 4, and so the
+   page reference information of page 4 indicates that it was last referenced at t12.
+   Figure 12.13(b) indicates the page table of P1 at time instant t1+2.
+                                                                                                  ·
+12.3.1 Overview of Operation of the Virtual Memory Manager
+The  virtual     memory   manager         makes   two  important        decisions       during    its
+operation:
+·    When a page fault occurs during operation of some process proci, it decides
+     which page should be replaced.

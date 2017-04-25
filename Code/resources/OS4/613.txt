@@ -1,0 +1,298 @@
+Case Studies
+             14.13.1 Unix
+             Unix supports two types of devices--block devices and character devices. Block
+             devices are random-access devices that are capable of reading or writing blocks
+             of data, such as various kinds of disks, while character devices are serial-access
+             devices such as keyboards, printers and mice. A block device can also be used
+             as a serial device. Unix files are simply sequences of characters, and so are I/O
+             devices, so Unix treats I/O devices as files. Thus a device has a file name, has an
+             entry in the directory hierarchy, and is accessed by using the same calls as files,
+             viz. open, close, read and write.
+             The Unix IOCS consists of two main components--device drivers and a
+             buffer cache. These are described in the following sections.
+             14.13.1.1 Device Drivers
+             A Unix device driver is structured into two parts called the top half and the bottom
+             half. The top half consists of routines that initiate I/O operations on a device in
+             response to open, close, read, or write calls issued by a process, while the bottom
+             half consists of the interrupt handler for the device class serviced by the driver.
+             Thus the top half corresponds to the I/O scheduler and I/O initiator modules in
+
+
+
+                                                         Chapter 14  Implementation of File Operations  593
+Figure 14.13, while the bottom half corresponds to the I/O completion handler
+and error recovery modules.
+A device driver has an interface consisting of a set of predefined entry points
+into the device driver routines. Some of these are:
+1. <ddname>_init : Device driver initialization routine
+2. <ddname>_read/write : Routines to read or write a character
+3. <ddname>_int : Interrupt handler routine
+The <ddname>_init routine is called at system boot time. It initializes various
+flags used by the device driver. It also checks for the presence of various devices,
+sets flags to indicate their presence, and may allocate buffers to them. Character
+I/O is performed by invoking the <ddname>_read and <ddname>_write rou-
+tines. The device driver has to provide a strategy routine for block data transfers,
+which is roughly equivalent to the I/O scheduler shown in Figure 14.13. A call
+on the strategy routine takes the address of an I/O control block as a parameter.
+The strategy routine adds this I/O control block to an IOQ, and initiates the I/O
+operation if possible. If immediate initiation is not possible, the I/O operation is
+initiated subsequently when an I/O completion interrupt occurs.
+14.13.1.2 Buffer Cache
+The buffer cache is a disk cache as described in Section 14.12. It is organized
+as a pool of buffers, where each buffer is the same size as a disk block. Each
+buffer has a header containing three items of information: A (device address, disk
+block address) pair gives the address of the disk block that is present in the buffer,
+a status flag indicates whether I/O is in progress for the buffer, and a busy flag
+indicates whether some process is currently accessing the contents of the buffer.
+A hash table is used to speed up the search for a required disk block (see
+Figure 14.25). The hash table consists of a number of buckets, where each bucket
+points to a list of buffers. When a disk block with address aaa is loaded into a
+buffer with the address bbb, aaa is hashed with function h to compute a bucket
+number e = h(aaa) in the hash table. The buffer is now entered in the list of
+buffers in the eth bucket. Thus, the list contains all buffers that hold disk blocks
+whose addresses hash into the eth bucket.
+                          Hash table       Buffers
+               Bucket #1              9    25        13
+               Bucket #2              6    18
+               Bucket #3              11   3             Free list
+                                                         pointer
+               Bucket #4              4
+Figure  14.25  Unix buffer cache.
+
+
+
+594  Part 4  File Systems
+                          The following procedure is used when a process Pi performs a read operation
+                   on some file alpha:
+                      1.  Form the pair (device address, disk block address) for the byte required by Pi.
+                      2.  Hash disk block address to obtain a bucket number. Search the buffers in the
+                          bucket to check whether a buffer has a matching pair in its header.
+                      3.  If there is no buffer with a matching header, allocate a free buffer, put the
+                          (device address, disk block address) information in its header, enter the buffer
+                          in the list of the appropriate bucket, set its status flag to "I/O in progress,"
+                          queue the buffer for I/O, and put Pi to sleep on completion of I/O.
+                      4.  If a buffer with matching header exists, return to Pi with its address if flags
+                          indicate that the I/O operation on the buffer is complete and the buffer is
+                          "not busy." Otherwise, put Pi to sleep on completion of a read operation on
+                          the buffer or buffer "not busy" condition.
+                      5.  If free buffers exist, check whether the next disk block allocated to alpha is
+                          already present in a buffer. If not, allocate a free buffer to it and queue it for
+                          a read operation.
+                   This procedure does not allocate buffers on a per-process basis, so processes
+                   that concurrently access a file can share the file data present in a buffer. This
+                   arrangement facilitates Unix file sharing semantics (see Section 13.14.1). At the
+                   same time, prefetching of data is performed on a per-process basis by initiating
+                   an I/O for the next disk block of the file (see Step 5), which provides buffering on
+                   a per-process basis. The benefits of blocking of records are inherent in the fact
+                   that a complete disk block is read/written when any byte in it is accessed.
+                          Buffers in the buffer pool are reused on an LRU basis as follows: All buffers
+                   are entered in a free list. A buffer is moved to the end of the list whenever its
+                   contents are referenced. Thus the least recently used buffers move toward the
+                   head of the free list. In Step 3, the buffer at the head of the free list is allocated
+                   unless it contains some modified data that is yet to be written into the disk block.
+                   In that case, a write operation for the buffer is queued and the next buffer in the
+                   list is allocated.
+·
+     Example 14.7  Unix Buffer Cache
+                   Figure 14.25 illustrates the Unix buffer cache. Disk blocks 9, 25 and 13 hash
+                   into the first entry of the hash table; hence they are entered in the linked list
+                   starting on this entry. Similarly 6, 18 and 11, 3 form the linked lists starting
+                   on the second and third entries of the hash table. All buffers are also entered
+                   in the free list. If a process accesses some data residing in disk block 18, the
+                   buffer containing block 18 is moved to the end of the free list. If the process
+                   now accesses data in disk block 21, the first buffer in the free list, i.e., the buffer
+                   containing block 13, is allocated if its contents have not been modified since
+                   it was loaded. The buffer is added to an appropriate list in the hash table after
+                   block 21 is loaded in it. It is also moved to the end of the free list.
+                   ·
+
+
+
+                                                    Chapter 14  Implementation of File Operations  595
+    The effectiveness of the Unix buffer cache has been extensively studied. A
+1989 study reported that a 60 MB cache on an HP system provided a hit ratio of
+0.99 and a 16 MB cache on another system provided a hit ratio of 0.9. Thus a
+comparatively small memory commitment to the buffer cache can provide a high
+hit ratio.
+14.13.2 Linux
+The organization of Linux IOCS is analogous to that of Unix IOCS. Thus, block-
+and character-type I/O devices are supported by individual device drivers, devices
+are treated like files, and a buffer cache is used to speed up file processing. However,
+many IOCS specifics are different. We list some of them before discussing details
+of disk scheduling in Linux 2.6.
+1.  Linux kernel modules--which include device drivers--are dynamically load-
+    able, so a device driver has to be registered with the kernel when loaded and
+    deregistered before being removed from memory.
+2.  For devices, the vnode data structure of the virtual file system (VFS) (see
+    Section 13.13) contains pointers to device-specific functions for the file
+    operations open, close, read, and write.
+3.  Each buffer in the disk cache has a buffer header that is allocated in a slab
+    of the slab allocator (see Section 11.11).
+4.  Dirty buffers in the disk cache are written to the cache when the cache is too
+    full, when a buffer has been in the cache for a long time, or when a file directs
+    the file system to write out its buffers in the interest of reliability.
+    I/O scheduling in Linux 2.6 uses some innovations to improve I/O scheduling
+performance. A read operation needs to be issued to the disk when a process makes
+a read call and the required data does not already exist in the buffer cache. The
+process would get blocked until the read operation is completed. On the other
+hand, when a process makes a write call, the data to be written is copied into
+a buffer and the actual write operation takes place sometime later. Hence the
+process issuing a write call does not get blocked; it can go on to issue more write
+calls. Therefore, to provide better response times to processes, the IOCS performs
+read operations at a higher priority than write operations.
+    The I/O scheduler maintains a list of pending I/O operations and schedules
+from this list. When a process makes a read or a write call, the IOCS checks
+whether the same operation on some adjoining data is pending. If this check suc-
+ceeds, it combines the new operation with the pending operation, which reduces
+the number of disk operations and the movement of disk heads, thereby improving
+disk throughput.
+    Linux 2.6 provides four I/O schedulers. The system administrator can choose
+the one that best suits the workload in a specific installation. The no-op scheduler
+is simply an FCFS scheduler. The deadline scheduler uses Look scheduling as its
+basis but also incorporates a feature to avoid large delays. It implements Look
+scheduling by maintaining a scheduling list of requests sorted by track numbers
+and selecting a request based on the current position of disk heads. However,
+
+
+
+596  Part 4  File Systems
+             Look scheduling faces a problem when a process performs a large number of
+             write operations in one part of the disk--I/O operations in other parts of the disk
+             would be delayed. If a delayed operation is a read, it would cause considerable
+             delays in the requesting process. To prevent such delays, the scheduler assigns
+             a deadline of 0.5 second to a read operation and a deadline of 5 seconds to a
+             write operation, and maintains two queues--one for read requests and one for
+             write requests--according to deadlines. It normally schedules requests from the
+             scheduling list; however, if the deadline of a request at the head of the read or write
+             queue expires, it schedules this request, and a couple of more requests from its
+             queue, out of sequence before resuming normal scheduling. The completely fair
+             queuing scheduler maintains a separate queue of I/O requests for each process and
+             performs round robin between these queues. This approach avoids large delays
+             for processes.
+             A process that performs synchronous I/O is blocked until its I/O operation
+             completes. Such a process typically issues the next I/O operation immediately
+             after waking up. When Look scheduling is used, the disk heads would most
+             probably have passed over the track that contains the data involved in the next
+             I/O operation, so the next I/O operation of the process would get serviced only in
+             the next scan of the disk. This causes delays in the process and may cause more
+             movement of the disk heads. The anticipatory scheduler addresses this problem.
+             After completing an I/O operation, it waits a few milliseconds before issuing the
+             next I/O operation. This way, if the process that was activated when the previous
+             I/O operation completed issues another I/O operation in close proximity to the
+             previous operation that operation may also be serviced in the same scan of the
+             disk.
+             14.13.3 File Processing in Windows
+             The schematic of Figure 14.26 shows the file processing arrangement used in
+             Windows. The cache manager performs file caching. The I/O manager provides
+             generic services that can be used to implement subsystem-specific I/O operations
+             through a set of device drivers, and also performs management of I/O buffers.
+             As described in Section 4.8.4, subsystem DLLs linked to a user application invoke
+             functions in the I/O manager to obtain subsystem-specific I/O behavior. The VM
+             manager was described in Section 12.8.4.
+             The file cache is organized as a set of cache blocks, each of size 256 KB.
+             The part of a file held in a cache block is called a view. A virtual address control
+             block (VACB) describes each view; it contains the virtual address associated with
+             the view, the offset of its first byte in the file, and the number of read or write
+             operations currently accessing the view. Presence of the virtual address and file
+             offset information in the VACB helps in implementing file sharing semantics--it
+             ensures that processes making concurrent accesses to a file would see the result of
+             the latest update operation irrespective of whether the file was memory-mapped
+             or accessed directly. The cache manager sets up a VACB index array for a file
+             when the file is opened. For a sequential file, the index array would contain only
+             one pointer that points to the VACB covering the current offset into the file. For
+
+
+
+                                                       Chapter 14   Implementation of File Operations  597
+                                                       User
+                                                       application
+                                                       DLL
+               Cache         I/O request       File
+        manager                                system
+                                               driver
+        Data          Cache                                         Driver
+        transfer  flushing                                          stacks
+                             Data              Disk
+                  VM         transfer          Driver
+        manager
+                             Page
+                             loading                   I/O manager
+Figure  14.26     File processing in Windows.
+a random file, the VACB index array would contain pointers to VACBs that cover
+several recent accesses made to the file.
+An I/O operation is performed by a layered device driver. It is represented
+as a linked list of device drivers called a driver stack. When a thread requests an
+I/O operation, the I/O manager constructs an I/O request packet (IRP) for it and
+passes it to the first device driver in the appropriate driver stack. The device driver
+may perform the complete I/O operation itself, write a status code in the IRP,
+and pass it back to the I/O manager. Alternatively, it may decide on additional
+actions required to complete the I/O operation, write their information in the
+IRP, and pass the IRP to the next device driver in the stack, and so on, until
+the I/O operation actually gets implemented. This model permits device drivers
+to be added to provide additional features in the I/O subsystem. For example,
+a device driver could be added between the file system driver, which we discuss
+in the following, and the disk driver to perform disk mirroring. Such a driver is
+called a filter driver. Drivers such as the disk driver are called function drivers.
+They contain functionalities for initialization, scheduling, and initiation of I/O
+operations; interrupt servicing; and dynamic addition of new devices to facilitate
+the plug-and-play capability.
+A file system is also implemented as a file system driver (FSD). It invokes
+other drivers that implement the functionalities of the access method and the
+device drivers. This arrangement permits many file systems to coexist in the host.
+The I/O manager thus provides the functionalities of a virtual file system (see
+Section 13.13). When a subsystem DLL linked to a thread requests a file oper-
+ation, the I/O manager invokes an appropriate file system driver to handle the
+request. The request typically contains the byte offset of the file data involved
+in the I/O operation. The file system driver consults the file map table for the
+concerned file, which is accessible from the file's base file record in the master file
+table (MFT), to convert the byte offset within the file into a byte offset within
+
+
+
+598  Part 4  File Systems
+             a data block on a device and invokes the device driver for it. If the concerned
+             device is a RAID, the device driver is actually a volume manager, which manages
+             the RAID. It converts the byte offset within a data block into one or more units
+             containing a disk number, sector number, and a byte offset and passes the request
+             to the disk driver. Windows supports striped volumes, which are level 0 RAID
+             systems, mirrored volumes, which are level 1 RAID systems, and level 5 RAID
+             systems in this manner. It supports spanned volumes described in section 13.14.4
+             analogously.
+             When a thread makes a request to read from a file, the I/O manager passes
+             this request to the file system driver, which passes it to the cache manager. The
+             cache manager consults the VACB index array for the file and determines whether
+             the required bytes of the file are a part of some view in the cache. If not, it allocates
+             a cache block, creates a view that covers the required bytes from the file in the
+             cache block, and constructs a VACB for it. This operation involves reading the
+             relevant part of the file into the cache block. The cache manager now copies
+             the required data from the cache block into the caller's address space. Converse
+             actions are performed at a write request. If a page fault arises while copying data
+             to or from the caller's address space, the virtual memory manager invokes the
+             disk driver through the file system to read the required page into the memory.
+             This operation is performed in a noncached manner. Thus, a file system must
+             support both cached and noncached file I/O. To facilitate efficient manipulation
+             of metadata, the file system driver uses kernel-level read/write operations, which
+             access the data directly in the cache instead of first copying it to/from the logical
+             address space of the file system driver.
+             The cache manager keeps information about the last few I/O requests on
+             a file. If it can detect a pattern from them, such as sequential accesses to the
+             file, it prefetches the next few data blocks according to this pattern. It also
+             accepts hints from user applications concerning the nature of file processing
+             activities and uses them for the same purpose. File updates take place in an
+             asynchronous manner. The data to be written into a file is reflected into the view
+             of the file held in the cache manager. Once every second, the lazy writer, which
+             is a system thread created by the cache manager, queues one-quarter of the dirty
+             pages in the cache for writing on a disk and nudges the virtual memory manager
+             to write out the data.
+             Recall that an OS typically finds out the devices connected to it at boot time
+             and builds its device data structures accordingly. This arrangement is restrictive,
+             as it requires rebooting of the system when a device is to be connected to it or
+             disconnected from it. Windows supports a plug-and-play (PnP) capability which
+             permits devices to be connected and disconnected to the system dynamically. It is
+             achieved by coordinating the operation of I/O hardware, the operating system and
+             the concerned device driver. The hardware cooperates with the boot software to
+             construct the initial list of devices connected to the system, and also coordinates
+             with the PnP manager when devices are added or disconnected. The PnP manager
+             loads a device driver for a new device if necessary, determines the resources such
+             as specific interrupt numbers that may be required for its operation, and ensures
+             the absence of conflicts by assigning or reassigning required resources. It now

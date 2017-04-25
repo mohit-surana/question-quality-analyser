@@ -1,0 +1,212 @@
+Allocation of Disk Space
+             As mentioned in Section 13.5, a disk may contain many file systems, each in its
+             own partition of the disk. The file system knows which partition a file belongs
+             to, but the IOCS does not. Hence disk space allocation is performed by the file
+             system.
+                Early file systems adapted the contiguous memory allocation model (see
+             Section 11.6) by allocating a single contiguous disk area to a file when it was
+             created. This model was simple to implement. It also provided data access effi-
+             ciency by reducing disk head movement during sequential access to data in a
+             file. However, contiguous allocation of disk space led to external fragmentation.
+             Interestingly, it also suffered from internal fragmentation because the file system
+             found it prudent to allocate some extra disk space to allow for expansion of a file.
+             Contiguity of disk space also necessitated complicated arrangements to avoid use
+             of bad disk blocks: The file system identified bad disk blocks while formatting
+             the disk and noted their addresses. It then allocated substitute disk blocks for the
+             bad ones and built a table showing addresses of bad blocks and their substitutes.
+             During a read/write operation, the IOCS checked whether the disk block to be
+             accessed was a bad block. If it was, it obtained the address of the substitute disk
+             block and accessed it.
+                Modern file systems adapt the noncontiguous memory allocation model (see
+             Section 11.7) to disk space allocation. In this approach, a chunk of disk space is
+             allocated on demand, i.e., when the file is created or when its size grows because of
+             an update operation. The file system has to address three issues for implementing
+             this approach:
+             ·  Managing free disk space: Keep track of free disk space and allocate from it
+                when a file requires a new disk block.
+             ·  Avoiding excessive disk head movement: Ensure that data in a file is not dis-
+                persed to different parts of a disk, as it would cause excessive movement of
+                the disk heads during file processing.
+             ·  Accessing file data: Maintain information about the disk space allocated to
+                a file and use it to find the disk block that contains required data.
+                The file system can maintain a free list of disk space and allocate from it
+             when a file requires a new disk block. Alternatively, it can use a table called the
+             disk status map (DSM) to indicate the status of disk blocks. The DSM has one
+             entry for each disk block, which indicates whether the disk block is free or has
+             been allocated to a file. This information can be maintained in a single bit, and
+             so a DSM is also called a bit map. Figure 13.12 illustrates a DSM. A 1 in an entry
+             indicates that the corresponding disk block is allocated. The DSM is consulted
+             every time a new disk block has to be allocated to a file.
+                To avoid dispersing file data to different parts of a disk, file systems confine
+             the disk space allocation for a file either to consecutive disk blocks, which form
+             an extent, also called a cluster, or consecutive cylinders in a disk, which form
+             cylinder groups (see Section 14.3.2). Use of a disk status map, rather than a free
+
+
+
+                                                                                         Chapter  13  File  Systems  499
+                      Disk block address          didi + 2
+                      Disk block status           011100101 ...
+                                                                Disk block
+                                                            is allocated
+                                                                Disk block
+                                                                 is free
+Figure  13.12  Disk status map (DSM).
+        File          Location
+        name             info                                                Free  list pointer
+        alpha                                                                      Data
+        beta                                      1              -        2        Metadata
+                                                  3                       4
+                                                  5                       6
+                                                  7         --            8
+               Directory
+Figure  13.13  Linked allocation of disk  space.
+list, has the advantage that it allows the file system to readily pick disk blocks
+from an extent or cylinder group.
+We discuss two fundamental approaches to noncontiguous disk space allo-
+cation. They differ in the manner they maintain information about disk space
+allocated to a file.
+13.7.1 Linked Allocation
+A file is represented by a linked list of disk blocks. Each disk block has two
+fields in it--data and metadata. The data field contains the data written into the
+file, while the metadata field is the link field, which contains the address of the
+next disk block allocated to the file. Figure 13.13 illustrates linked allocation. The
+location info field of the directory entry of file alpha points to the first disk block
+of the file. Other blocks are accessed by following the pointers in the list of disk
+blocks. The last disk block contains null information in its metadata field. Thus,
+file alpha consists of disk blocks 3 and 2, while file beta consists of blocks 4, 5,
+and 7. Free space on the disk is represented by a free list in which each free disk
+block contains a pointer to the next free disk block. When a disk block is needed
+to store new data added to a file, a disk block is taken off the free list and added
+to the file's list of disk blocks. To delete a file, the file's list of disk blocks is simply
+added to the free list.
+Linked allocation is simple to implement, and incurs a low allocation/
+deallocation overhead. It also supports sequential files quite efficiently. However,
+files with nonsequential organization cannot be accessed efficiently. Reliability
+is also poor since corruption of the metadata field in a disk block may lead to
+
+
+
+500  Part 4  File Systems and I/O Management
+                     File       Location
+                     name       info                       1  free
+                     alpha      3                          2  end                 1      -  2
+                     beta       4                          3  2
+                                                           4  5                   3         4
+                                                           5  7
+                                                           6  free                5         6
+                                                           7  end                 7  --     8
+                                                           8  free
+                            Directory                      File allocation table
+             Figure  13.14  File Allocation Table  (FAT).
+             loss of data in the entire file. Similarly, operation of the file system may be dis-
+             rupted if a pointer in the free list is corrupted. We discuss these reliability issues
+             in Section 13.11.
+             File Allocation Table (FAT)           MS-DOS uses a variant of linked allocation that
+             stores the metadata separately from the file data. A file allocation table (FAT)
+             of a disk is an array that has one element corresponding to every disk block
+             in the disk. For a disk block that is allocated to a file, the corresponding FAT
+             element contains the address of the next disk block. Thus the disk block and its
+             FAT element together form a pair that contains the same information as the disk
+             block in a classical linked allocation scheme.
+             The directory entry of a file contains the address of its first disk block. The
+             FAT element corresponding to this disk block contains the address of the second
+             disk block, and so on. The FAT element corresponding to the last disk block con-
+             tains a special code to indicate that the file ends on that disk block. Figure 13.14
+             illustrates the FAT for the disk of Figure 13.13. The file alpha consists of disk
+             blocks 3 and 2. Hence the directory entry of alpha contains 3. The FAT entry
+             for disk block 3 contains 2, and the FAT entry for disk block 2 indicates that the
+             file ends on that disk block. The file beta consists of blocks 4, 5, and 7. The FAT
+             can also be used to store free space information. The list of free disk blocks can
+             be stored as if it were a file, and the address of the first free disk block can be held
+             in a free list pointer. Alternatively, some special code can be stored in the FAT
+             element corresponding to a free disk block, e.g. the code "free" in Figure 13.14.
+             Use of the FAT rather than the classical linked allocation involves a per-
+             formance penalty, since the FAT has to be accessed to obtain the address of
+             the next disk block. To overcome this problem, the FAT is held in memory
+             during file processing. Use of the FAT provides higher reliability than classi-
+             cal linked allocation because corruption of a disk block containing file data leads
+             to limited damage. However, corruption of a disk block used to store the FAT is
+             disastrous.
+             13.7.2 Indexed Allocation
+             In indexed allocation, an index called the file map table (FMT) is maintained
+             to note the addresses of disk blocks allocated to a file. In its simplest form, an
+
+
+
+                                                                   Chapter 13             File  Systems  501
+        File   Location
+        name   info
+        alpha                                                      -
+        beta                                         fmtalpha
+                                                               --
+               Directory                             fmtbeta
+Figure  13.15  Indexed allocation  of  disk  space.
+FMT can be an array containing disk block addresses. Each disk block contains a
+single field--the data field. The location info field of a file's directory entry points
+to the FMT for the file (see Figure 13.15). In the following discussion we use the
+notation fmtalpha for the FMT of the file alpha. If the size of the file alpha
+grows, the DSM is searched to locate a free block, and the address of the block
+is added to fmtalpha. Deallocation is performed when alpha is deleted. All disk
+blocks pointed to by fmtalpha are marked free before fmtalpha and the directory
+entry of alpha are erased.
+The reliability problem is less severe in indexed allocation than in linked
+allocation because corruption of an entry in an FMT leads to only limited damage.
+Compared with linked allocation, access to sequential-access files is less efficient
+because the FMT of a file has to be accessed to obtain the address of the next disk
+block. However, access to records in a direct-access file is more efficient since the
+address of the disk block that contains a specific record can be obtained directly
+from the FMT. For example, if address calculation analogous to (13.1)­(13.2)
+shows that a required record exists in the ith disk block of a file, its address can
+be obtained from the ith entry of the FMT.
+For a small file, the FMT can be stored in the directory entry of the file; it is
+both convenient and efficient. For a medium or large file, the FMT will not fit into
+the directory entry. A two-level indexed allocation depicted in Figure 13.16 may
+be used for such FMTs. In this organization, each entry of the FMT contains the
+address of an index block. An index block does not contain data; it contains entries
+that contain addresses of data blocks. To access the data block, we first access an
+entry of the FMT and obtain the address of an index block. We then access an
+entry of the index block to obtain the address of the data block. This arrangement
+resembles a multilevel page table (see Section 12.2.3). The index blocks resemble
+pages of a page table for the file, and the FMT resembles a higher-level page table.
+Such an FMT is compact; hence even FMTs of large files may fit into a directory
+entry. However, access to data blocks is slower since two levels of indirection are
+involved.
+Some file systems use a hybrid FMT organization that includes some of the
+features of both classical and multilevel indexed allocation. Figure 13.17 shows
+such an organization. The first few entries in the FMT, say n entries, point to
+
+
+
+502  Part 4  File Systems and I/O Management
+                                              ...                   Data
+                                                                    blocks
+                                              FMT
+                                                            Index
+                                                            blocks
+             Figure  13.16  A  two-level FMT organization.
+                               1                            Data
+                                                   ...      blocks
+                               n
+                               m                                    Data
+                                                                    blocks
+                                              FMT
+                                                            Index
+                                                            blocks
+             Figure  13.17  A  hybrid organization of FMT.
+             data blocks as in the conventional indexed allocation. Other entries point to
+             index blocks. The advantage of this arrangement is that small files containing n
+             or fewer data blocks continue to be accessible efficiently, as their FMT does not
+             use index blocks. Medium and large files suffer a marginal degradation of their
+             access performance because of multiple levels of indirection. The Unix file system
+             uses a variation of the hybrid FMT organization.
+             13.7.3 Performance Issues
+             Two performance issues are associated with the use of a disk block as the unit
+             of disk space allocation--size of the metadata, i.e., the control data of the file
+             system; and efficiency of accessing file data. Both issues can be addressed by using
+             a larger unit of allocation of disk space. Hence modern file systems tend to use an
+             extent, also called a cluster, as a unit of disk space allocation. An extent is a set
+             of consecutive disk blocks. Use of large extents provides better access efficiency.
+             However, it causes more internal fragmentation. To get the best of both worlds,
+             file systems prefer to use variable extent sizes. Their metadata contains the size
+             of an extent along with its address.

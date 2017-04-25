@@ -1,0 +1,233 @@
+Capabilities
+                   Dennis and Van Horn (1966) proposed the concept of a capability for use in
+                   sharing and protection. A capability is a token representing some access privileges
+                   for an object, where an object is any hardware or software entity in the system,
+                   e.g., a laser printer, a CPU, a file, a program, or a data structure of a program.
+                   A capability is possessed by a process. Its possession gives the process a right to
+                   access the object in a manner that is consistent with the access privileges in the
+                   capability.
+                      Figure 15.11 shows the format of a capability. It consists of two fields--object
+                   id and access privileges. Each object has an unique object id in the system. The
+
+
+
+                                                                           Chapter 15  Security and Protection  631
+                                        Object  Access
+                                            id  privileges
+Figure 15.11 Format of a capability.
+                                P1
+                                                Object            Object
+                        Object  Access          id                address
+                        id      privileges
+        dcap   (alpha)                          alpha
+                        alpha        r
+                            C_list1             Object table               alpha
+                                                            (OT)
+Figure  15.12  Capability-based addressing.
+access privileges field typically contains a bit-encoded access descriptor. A pro-
+cess may possess many capabilities. These are stored in the capability list (C-list)
+discussed earlier in Section 15.6.4.
+When some process Pi creates an object Oi, the OS forms a capability for Oi
+that contains the entire set of access privileges defined in the system, and passes
+this capability to Pi. Using this capability, Pi can request the OS to create subset
+capabilities for Oi that contain fewer access privileges. It can also make copies
+of the capability for Oi that it received from the OS. Thus, many capabilities
+for Oi may exist in the system. Process Pi can share the object Oi with other
+processes by passing capabilities for Oi to other processes. Thus, each process
+possesses capabilities for the objects it owns, and some capabilities passed to it by
+other processes. All these capabilities are obtained through legal means--none
+can be stolen or fraudulently created by a process. This is why a capability is often
+described as an unforgeable token that confers access privileges onto its holder.
+We use the notation Capk(obji) to refer to a capability for obji. The subscript
+of Cap is used simply to distinguish between different capabilities for an object.
+It does not have any other significance. For simplicity, we omit the subscript in
+contexts where a single capability of an object is involved.
+15.7.1 Capability-Based Computer Systems
+A capability-based computer system implements capability-based addressing and
+protection for all objects in the system, ranging from long-life objects like files
+to short-life objects like data structures and copies of programs in memory.
+Many capability-based systems were built for research; the Intel iapx-432 was
+a capability-based commercial system.
+Figure 15.12 is a schematic diagram of capability-based addressing of objects.
+The system does not explicitly associate "memory" with processes; it associates
+C-lists with processes. Each object has an unique id. The object table (OT) is a
+
+
+
+632  Part 4  File  Systems and I/O Management
+                   systemwide table that contains location information for all objects in the system.
+                   The object address field of an OT entry indicates the address of the object in the
+                   computer's primary or secondary memory. Access to an object is implemented
+                   as follows: A process P1 performs an operation <opi> on an object by using an
+                   instruction of the form
+                                                   <opi >  dCap(obji )                    (15.1)
+                   where dCap(obji) is the displacement of Cap(obji) in P1's C-list. The CPU locates
+                   the capability in P1's C-list using the displacement, and verifies that the operation
+                   <opi> is consistent with access privileges in the capability. The object id in the
+                   capability, that is, alpha, is now used to locate alpha's entry in the OT and
+                   the object address found there is used to implement <opi>. Capability-based
+                   addressing can be made more efficient by using buffers analogous to address
+                   translation buffers (see Section 12.2.2) and special cache memories for address
+                   translation.
+                   The capabilities in a C-list may be used to access objects existing anywhere
+                   in the system, i.e., in memory or on disk; the location of an object is immaterial
+                   to a process. This feature permits the OS to move objects around in memory for
+                   better memory management, or move them between memory and disk for cost-
+                   effective access performance, without affecting the manner in which a program
+                   accesses the objects. Thus, long-life objects like files and short-life objects like
+                   data structures can be accessed in a uniform manner.
+                   Operations on Objects and Capabilities  A process may be given some capabilities
+                   by the OS by default when it is created. It may also inherit some capabilities from
+                   its parent process. When the process performs the operation "create a new object,"
+                   the CPU creates a new object and creates a new entry in the OT for it. It puts the
+                   object id and address of the newly created object in the entry. It now creates a
+                   capability containing the entire set of access privileges for the object and puts it
+                   in the C-list of Pi. It also puts dCap(obji) in a register of the CPU. Process Pi saves
+                   the contents of this register for use while accessing obji in future.
+                   All operations performed by a process are subject to access privileges con-
+                   tained in its C-list. The operation of creating an object may itself be subject to
+                   an access privilege; if so, the OS would confer this access privilege through one
+                   of the default capabilities it gives to each process. Table 15.8 lists the operations
+                   a process can perform on objects and capabilities. Thus, a process can create,
+                   modify, destroy, copy, or execute an object if it possesses a capability with the
+                   appropriate access privileges.
+                   Operations on a capability are also subject to access privileges in it. For
+                   example, a process may be able to create a subset capability of Cap(obji) only
+                   if Cap(obji) contains the access privilege "create subset capability." This feature
+                   controls the operations that processes can perform on capabilities. Sharing of
+                   objects occurs when a process passes a capability for an object to another process.
+                   The process receiving the capability enters it in its C-list. Sharing is implicit in
+                   the fact that both C-lists contain a capability for the object. Protection is implicit
+                   in the fact that these capabilities may confer different access privileges on the
+                   processes.
+
+
+
+                                                               Chapter 15  Security   and  Protection  633
+Table 15.8     Permissible   Operations on Objects and Capabilities
+Operations on  objects
+                             ·  Create an object
+                             ·  Read or modify the object
+                             ·  Destroy the object
+                             ·  Copy the object
+                             ·  Execute the object
+Operations on  capabilities
+                             ·  Make a copy of the capability
+                             ·  Create a "subset" capability
+                             ·  Use the capability as a parameter in a function/
+                                procedure call
+                             ·  Pass the capability for use by another process
+                             ·  Delete the capability
+Protection of Capabilities   Protection using capabilities is based on the funda-
+mental assumption that capabilities cannot be forged or tampered with. This
+assumption would be invalid if a process could access its C-list and modify the
+capabilities existing in it. For example, process P1 of Figure 15.12 could alter the
+access privileges field of the capability for alpha to give itself a "write" access
+privilege, and then use the modified capability to modify object alpha. Such tam-
+pering of capabilities is prevented by ensuring that arbitrary operations cannot
+be performed on capabilities. It is implemented using two approaches--tagged
+architectures and capability segments.
+In a computer with a tagged architecture, the run-time representation of
+an entity consists of two fields--a tag field and a value field. The tag field
+describes the type of the entity. The CPU is designed to perform only those
+operations on an entity that are consistent with its tag. This way, only the
+six operations on capabilities that are mentioned in Table 15.8 can be performed
+on a capability, which ensures that a capability cannot be tampered with. In
+a computer using capability segments, data objects and their capabilities are
+stored in different segments, and instructions in the CPU are designed to access
+their operands from an appropriate segment. Only the six operations on capa-
+bilities that are mentioned in Table 15.8 would take their operands from the
+capability segment. This way, arbitrary operations cannot be performed on a
+capability.
+15.7.2 Software Capabilities
+The OS for a non-capability-based computer can implement capabilities in the
+software. The arrangement of objects and capabilities can be analogous to the
+arrangement shown in Figure 15.12. However, manipulation and protection of
+objects cannot be performed by the CPU of the system; it is now performed by
+a component of the kernel called an object manager (OM). A program indicates
+its object manipulation requirements to the object manager by making a call
+
+
+
+634  Part 4  File  Systems and I/O Management
+                                                  Object      Access
+                                                  id          privileges  Number
+                   Figure  15.13  An Amoeba-like capability.
+                   OM (<opi>, Cap(obji)). This call has the same effect as instruction (15.1). The
+                   object manager implements <opi> only if Cap(obji) contains the necessary access
+                   privileges for performing it.
+                       Two important issues in software capabilities are: A process may be able to
+                   bypass the capability-based protection arrangement while accessing objects, and
+                   it may be able to tamper with or fabricate capabilities. How can we prevent a pro-
+                   cess from manipulating objects without going through the object manager? One
+                   way to achieve it is to hide objects from the view of user processes by encrypting
+                   the object table. Now processes will not know the locations of objects. Hence
+                   they will have to depend on the object manager to perform object manipulation.
+                   Tampering with capabilities can also be prevented by using encryption. As an
+                   example, we describe a simplified version of the capability protection scheme
+                   used in the distributed operating system Amoeba.
+                   Capabilities in Amoeba      An object obji, is assigned an encryption key keyi when
+                   it is created. The encryption key is stored in the object table entry of obji. The
+                   Amoeba capability has the format shown in Figure 15.13. The number field con-
+                   tains information that is used to protect the capability. A capability for obji is
+                   created using the following procedure:
+                   1.  The object id and access privileges fields of the capability are set appropriately.
+                   2.  The encryption key keyi is obtained from the object table entry of obji.
+                       Contents of the access privileges field are now concatenated with keyi and
+                       the resulting string is encrypted using keyi. We denote this operation as
+                       Ekeyi (access privileges . keyi), where "." denotes concatenation. The result
+                       of the encryption step is stored in the number field of the capability.
+                       To manipulate obji, a process must submit a capability for obji to the object
+                   manager. The object manager verifies the validity of this capability as follows:
+                   1. The encryption key keyi is obtained from the object table entry of obji.
+                   2. The string access privileges is obtained from the capability and Ekeyi (access
+                       privileges . keyi) is compared with the number field in the capability.
+                       The comparison in Step 2 would fail if the object id or access privileges field
+                   of a capability has been tampered with, so the object manager aborts the process
+                   if the comparison fails.
+                   Comparison with Capability-Based Systems               The major strength of software
+                   capabilities--their independence from the underlying hardware--is also their
+
+
+
+                                                              Chapter 15     Security and Protection  635
+major weakness. Operations such as creation of subset capabilities, which are
+performed by the hardware of a capability-based system, need to be performed
+in the software. Each of these involves a system call to invoke the object manager.
+In addition, prevention of tampering requires validation of a capability before
+use. These requirements lead to substantial time overhead.
+15.7.3 Problem Areas in the Use of Capabilities
+Use of capabilities has three practical problems:
+·  Need for garbage collection: When can an object be destroyed?
+·  Confinement      of  capabilities:  How  to  ensure  that  processes  do  not  pass
+   capabilities to other processes indiscriminately?
+·  Revocation of capabilities: How to cancel a capability or withdraw the access
+   privileges conferred by it?
+Garbage Collection      The owner of an object may prepare subset capabilities for an
+object and pass them to other processes so that they can access the object. Before
+destroying such an object, the owner must know that no process is currently using
+the object. This information can be gained only through synchronization of the
+owner with all users of an object. This approach is impractical when objects are
+created and used at a high rate or when objects with long lifetimes are shared. Two
+problems can arise if objects are destroyed without collecting such information.
+Dangling pointers can exist--that is, an object may be destroyed while some
+capabilities still exist for it--or an object may exist long after capabilities for it
+have been destroyed. Preventing both these situations requires use of expensive
+garbage collection techniques.
+Confinement of Capabilities     Confinement implies restricting the use of a capa-
+bility to a given set of processes. Lack of confinement implies proliferation of
+capabilities throughout the system due to indiscriminate passing of capabilities.
+It complicates garbage collection and prolongs the life of an object. It can also
+undermine protection by violating the need-to-know principle. Confinement can
+be achieved by making the passing of a capability itself an access right: If process
+Pi turns off the "pass" access right in a capability while passing it to Pj, Pj will
+not be able to pass the capability to any other process.
+Revocation of Capabilities   Revocation of all capabilities for an object is the most
+difficult problem in a capability-based system, since there is no way to know which
+processes hold capabilities for the object and there is no method of nullifying a
+capability. However, revocation is possible in the case of software capabilities
+because they are protected through encryption. In Amoeba, all existing capabil-
+ities of an object would be invalidated when the encryption key assigned to the
+object is changed. To selectively revoke some capabilities of an object, the owner
+can invalidate all capabilities of the object by changing the encryption key and
+then issue fresh capabilities to only some processes. However, it is an expensive and

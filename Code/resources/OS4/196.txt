@@ -1,0 +1,238 @@
+Synchronization Approaches
+In this section we discuss how the critical sections and indivisible operations
+required for process synchronization can be implemented.
+6.5.1 Looping versus Blocking
+A critical section for {ds} and an indivisible signaling operation on {ds} have the
+same basic requirement--processes should not be able to execute some sequences
+
+
+
+176  Part 2  Process Management
+             of instructions concurrently or in parallel. Hence both could be implemented
+             through mutual exclusion as follows:
+                                 while (some process is in a critical section on {ds} or
+                                          is executing an indivisible operation using {ds})
+                                 { do nothing }
+                                          Critical section or
+                                          indivisible operation
+                                                    using {ds}
+             In the while loop, the process checks if some other process is in a critical section
+             for the same data, or is executing an indivisible operation using the same data. If
+             so, it keeps looping until the other process finishes. This situation is called a busy
+             wait because it keeps the CPU busy in executing a process even as the process does
+             nothing! The busy wait ends only when the process finds that no other process is
+             in a critical section or executing an indivisible operation.
+             A busy wait in a process has several adverse consequences. An implementa-
+             tion of critical sections employing busy waits cannot provide the bounded wait
+             property because when many processes are in a busy wait for a CS, the implemen-
+             tation cannot control which process would gain entry to a CS when the process
+             currently in CS exits. In a time-sharing OS, a process that gets into a busy wait
+             to gain entry to a CS would use up its time slice without entering the CS, which
+             would degrade the system performance.
+             In an OS using priority-based scheduling, a busy wait can result in a situation
+             where processes wait for each other indefinitely. Consider the following situation:
+             A high-priority process Pi is blocked on an I/O operation and a low-priority
+             process Pj enters a critical section for data item ds. When Pi's I/O operation
+             completes, Pj is preempted and Pi is scheduled. If Pi now tries to enter a critical
+             section for ds using the while loop described earlier, it would face a busy wait.
+             This busy wait denies the CPU to Pj, hence it is unable to complete its execution
+             of the critical section and exit. In turn, this situation prevents Pi from entering its
+             critical section. Processes Pi and Pj now wait for each other indefinitely. Because
+             a high-priority process waits for a process with a low priority, this situation is
+             called priority inversion. The priority inversion problem is typically addressed
+             through the priority inheritance protocol, wherein a low-priority process that holds
+             a resource temporarily acquires the priority of the highest-priority process that
+             needs the resource. In our example, process Pj would temporarily acquire the
+             priority of process Pi, which would enable it to get scheduled and exit from its
+             critical section. However, use of the priority inheritance protocol is impractical
+             in these situations because it would require the kernel to know minute details of
+             the operation of processes.
+             To avoid busy waits, a process waiting for entry to a critical section should be
+             put into the blocked state. Its state should be changed to ready only when it can
+
+
+
+                                                       Chapter 6    Process Synchronization  177
+be allowed to enter the CS. This approach can be realized through the following
+outline:
+             if (some process is in a critical section on {ds} or
+             is executing an indivisible operation using {ds})
+             then make a system call to block itself;
+                          Critical section or
+                          indivisible operation
+                          using {ds}
+In this approach, the kernel must activate the blocked process when no other pro-
+cess is operating in a critical section on {ds} or executing an indivisible operation
+using {ds}.
+When a critical section or an indivisible operation is realized through any of
+the above outlines, a process wishing to enter a CS has to check whether any other
+process is inside a CS, and accordingly decide whether to loop (or block). This
+action itself involves executing a few instructions in a mutually exclusive way to
+avoid a race condition (see Section 6.4), so how is that to be done? Actually, it
+can be done in two ways. In the first approach, called the algorithmic approach,
+a complex arrangement of checks is used in concurrent processes to avoid race
+conditions. We shall discuss the features of this approach, and its drawbacks, in
+Section 6.8. The second approach uses some features in computer hardware to
+simplify this check. We discuss this approach in the next section.
+6.5.2 Hardware Support for Process Synchronization
+Process synchronization involves executing some sequences of instructions in a
+mutually exclusive manner. On a uniprocessor system, this can be achieved by dis-
+abling interrupts while a process executes such a sequence of instructions, so that
+it will not be preempted. However, this approach involves the overhead of system
+calls to disable interrupts and enable them again, and also delays processing of
+interrupts, which can lead to undesirable consequences for system performance
+or user service. It is also not applicable to multiprocessor systems. For these rea-
+sons, operating systems implement critical sections and indivisible operations
+through indivisible instructions provided in computers, together with shared vari-
+ables called lock variables. In this section, we use illustrations of the looping
+approach to process synchronization; however, the techniques discussed here are
+equally applicable to the blocking approach to process synchronization. Note that
+indivisible instructions merely assist in implementing critical sections; the proper-
+ties of CS implementation summarized in Table 6.1 have to be ensured separately
+by enabling processes to enter CS in an appropriate manner (see Exercise 6.12).
+Indivisible Instructions  Since the mid-1960s, computer systems have provided
+special features in their hardware to prevent race conditions while accessing a
+memory location containing shared data. The basic theme is that all accesses
+to a memory location made by one instruction should be implemented without
+permitting another CPU to access the same location. Two popular techniques
+
+
+
+178  Part 2  Process Management
+             used for this purpose are locking the memory bus during an instruction (e.g.,
+             in Intel 80x86 processors) and providing special instructions that perform some
+             specific operations on memory locations in a race-free manner (e.g., in IBM/370
+             and M68000 processors). We will use the term indivisible instruction as a generic
+             term for all such instructions.
+             Use of a Lock Variable           A lock variable is a two-state variable that is used to
+             bridge the semantic gap (see Definition 4.1) between critical sections or indi-
+             visible operations, on the one hand, and indivisible instructions provided in a
+             computer system, on the other. To implement critical sections for a data item ds,
+             an application associates a lock variable with ds. The lock variable has only two
+             possible values--open and closed. When a process wishes to execute a critical
+             section for ds, it tests the value of the lock variable. If the lock is open, it closes
+             the lock, executes the critical section, and opens the lock while exiting from the
+             critical section. To avoid race conditions in setting the value of the lock variable,
+             an indivisible instruction is used to test and close the lock. Lock variables assist
+             in implementing indivisible operations in a similar manner.
+             Figure 6.8 illustrates how a critical section or an indivisible operation is imple-
+             mented by using an indivisible instruction and a lock variable. The indivisible
+             instruction performs the actions indicated in the dashed box: if the lock is closed,
+             it loops back to itself; otherwise, it closes the lock. In the following, we illustrate
+             use of two indivisible instructions--called test-and-set and swap instructions--to
+             implement critical sections and indivisible operations.
+             Test-and-Set (TS) Instruction    This indivisible instruction performs two actions.
+             It "tests" the value of a memory byte and sets the condition code field (i.e., the
+             flags field) of the PSW to indicate whether the value was zero or nonzero. It also
+             sets all bits in the byte to 1s. No other CPU can access the memory byte until both
+             actions are complete. This instruction can be used to implement the statements
+             enclosed in the dashed box in Figure 6.8.
+             Figure 6.9 is a segment of an IBM/370 assembly language program for imple-
+             menting a critical section or an indivisible operation. LOCK is a lock variable used
+             with the convention that a nonzero value implies that the lock is closed, and a zero
+             implies that it is open. The first line in the assembly language program declares
+             LOCK and initializes it to 0. The TS instruction sets the condition code according
+             to the value of LOCK and then sets the value of LOCK to closed. Thus, the condition
+             code indicates if the lock was closed before the TS instruction was executed. The
+             branch instruction BC   7,       ENTRY_TEST checks the condition code and loops
+                                 entry_test:  if lock = closed        Performed by
+                                              then goto entry_test;   an indivisible
+                                              lock := closed;         instruction
+                                              {Critical section or
+                                              indivisible operation}
+                                              lock := open;
+             Figure 6.8  Implementing a critical section or indivisible operation by using a lock variable.
+
+
+
+                                                                              Chapter 6     Process Synchronization  179
+        LOCK             DC      X`00'                 Lock    is   initialized        to   open
+        ENTRY_TEST       TS      LOCK                  Test-and-set       lock
+                         BC      7,  ENTRY_TEST        Loop    if   lock  was   closed
+                        ...                            {  Critical     section      or
+                                                          indivisible         operation     }
+                         MVI     LOCK,  X`00'          Open    the    lock(by   moving      0s)
+Figure  6.9   Implementing a critical section or indivisible operation by using test-and-set.
+TEMP                DS       1                      Reserve      one   byte   for   TEMP
+LOCK                DC       X`00'                  Lock   is    initialized       to  open
+                    MVI      TEMP,     X`FF'        X`FF'    is  used     to  close    the     lock
+ENTRY_TEST          SWAP     LOCK,     TEMP
+                    COMP     TEMP,     X`00'        Test   old   value    of   lock
+                    BC       7,  ENTRY_TEST         Loop   if    lock  was    closed
+                    ...                             {  Critical       section   or
+                                                       indivisible        operation      }
+                    MVI      LOCK,     X`00'        Open   the   lock
+Figure 6.10   Implementing   a critical section or  indivisible operation by using a swap
+instruction.
+back to the TS instruction if the lock was closed. This way a process that finds
+the lock closed would execute the loop in a busy wait until lock was opened. The
+MVI instruction puts 0s in all bits of LOCK; i.e., it opens the lock. This action
+would enable only one of the processes looping at ENTRY_TEST to proceed.
+Swap Instruction        The swap instruction exchanges contents of two memory
+locations. It is an indivisible instruction; no other CPU can access either of
+the locations during swapping. Figure 6.10 shows how a critical section or an
+indivisible operation can be implemented by using the swap instruction. (For
+convenience, we use the same coding conventions as used for the TS instruc-
+tion.) The temporary location TEMP is initialized to a nonzero value. The SWAP
+instruction swaps its contents with LOCK. This action closes the lock. The old
+value of LOCK is now available in TEMP. It is tested to find whether the lock was
+already closed. If so, the process loops on the swap instruction until the lock is
+opened. The process executing the critical section or indivisible operation opens
+the lock at the end of the operation. This action enables one process to get past
+the BC instruction and enter the critical section or the indivisible operation.
+Many computers provide a Compare-and-swap instruction. This instruc-
+tion has three operands. If the first two operands are equal, it copies the third
+operand's value into the second operand's location; otherwise, it copies the
+second operand's value into the first operand's location. It is easy to rewrite
+the program of Figure 6.10 by using the instruction Compare-and-swap
+first_opd,    LOCK,           third_opd       where       the    values   of   first_opd          and
+third_opd correspond to the open and closed values of the lock. In effect,
+this instruction closes the lock and puts its old value in first_opd.
+
+
+
+180  Part 2  Process Management
+             6.5.3 Algorithmic Approaches, Synchronization Primitives,
+                      and Concurrent Programming Constructs
+             Historically, implementation of process synchronization has gone through three
+             important stages--algorithmic approaches, synchronization primitives, and con-
+             current  programming     constructs.  Each  stage    in  its  history  solved  practical
+             difficulties that were faced in the previous stage.
+                  Algorithmic approaches were largely confined to implementing mutual exclu-
+             sion. They did not use any special features in computer architecture, programming
+             languages, or the kernel to achieve mutual exclusion; instead they depended on
+             a complex arrangement of checks to ensure that processes accessed shared data
+             in a mutually exclusive manner. Thus the algorithmic approaches were inde-
+             pendent of hardware and software platforms. However, correctness of mutual
+             exclusion depended on correctness of these checks, and was hard to prove because
+             of logical complexity of the checks. This problem inhibited development of large
+             applications. Since the algorithmic approaches worked independently of the ker-
+             nel, they could not employ the blocking approach to process synchronization
+             (see Section 6.5.1), so they used the looping approach and suffered from all
+             its drawbacks.
+                  A set of synchronization primitives were developed to overcome deficiencies of
+             the algorithmic approach. Each primitive was a simple operation that contributed
+             to process synchronization; it was implemented by using indivisible instructions
+             in the hardware and support from the kernel for blocking and activation of pro-
+             cesses. The primitives possessed useful properties for implementing both mutual
+             exclusion and indivisible operations, and it was hoped that these properties could
+             be used to construct proofs of correctness of a concurrent program. However,
+             experience showed that these primitives could be used haphazardly, a property
+             that caused its own difficulties with correctness of programs. Most modern oper-
+             ating systems provide the wait and signal primitives of semaphores; however, they
+             are employed only by system programmers because of the problems mentioned
+             above.
+                  The next important step in the history of process synchronization was
+             the development of concurrent programming constructs, which provided data
+             abstraction and encapsulation features specifically suited to the construction of
+             concurrent programs. They had well-defined semantics that were enforced by
+             the language compiler. Effectively, concurrent programming constructs incorpo-
+             rated functions that were analogous to those provided by the synchronization
+             primitives, but they also included features to ensure that these functions could
+             not be used in a haphazard or indiscriminate manner. These properties helped
+             in ensuring correctness of programs, which made construction of large appli-
+             cations practical. Most modern programming languages provide a concurrent
+             programming construct called a monitor.
+                  We discuss algorithmic approaches to process synchronization in Section 6.8,
+             and  semaphores     and  synchronization    primitives   for  mutual   exclusion     in
+             Section 6.9. Section 6.10 describes monitors.

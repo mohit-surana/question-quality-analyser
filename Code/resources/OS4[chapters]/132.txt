@@ -1,0 +1,2350 @@
+Processes and Threads
+
+
+                                   Chapte                                                     r  5
+Processes and Threads
+T he concept of a process helps us understand how programs execute in an
+       operating system. A process is an execution of a program using a set of
+       resources. We emphasize "an" because several executions of the same pro-
+gram may be present in the operating system at the same time; these executions
+constitute different processes. That happens when users initiate independent exe-
+cutions of the program, each on its own data. It also happens when a program
+that is coded with concurrent programming techniques is being executed. The
+kernel allocates resources to processes and schedules them for use of the CPU.
+This way, it realizes execution of sequential and concurrent programs uniformly.
+     A thread is also an execution of a program but it functions in the environment
+of a process--that is, it uses the code, data, and resources of a process. It is possible
+for many threads to function in the environment of the same process; they share its
+code, data, and resources. Switching between such threads requires less overhead
+than switching between processes.
+     In this chapter, we discuss how the kernel controls processes and threads--
+how it keeps track of their states, and how it uses the state information to organize
+their operation. We also discuss how a program may create concurrent processes
+or threads, and how they may interact with one another to achieve a common
+goal.
+5.1    PROCESSES AND PROGRAMS                                                              ·
+A program is a passive entity that does not perform any actions by itself; it has to
+be executed if the actions it calls for are to take place. A process is an execution of
+a program. It actually performs the actions specified in a program. An operating
+system shares the CPU among processes. This is how it gets user programs to
+execute.
+5.1.1 What Is a Process?
+To understand what is a process, let us discuss how the OS executes a program.
+Program P shown in Figure 5.1(a) contains declarations of a file info and a
+variable item, and statements that read values from info, use them to perform
+some calculations, and print a result before coming to a halt. During execution,
+                                                                                                    111
+
+
+
+112  Part 2  Process Management
+             Figure 5.1  A program and an abstract view of its execution.
+             instructions of this program use values in its data area and the stack to perform
+             the intended calculations. Figure 5.1(b) shows an abstract view of its execution.
+             The instructions, data, and stack of program P constitute its address space. To
+             realize execution of P, the OS allocates memory to accommodate P's address
+             space, allocates a printer to print its results, sets up an arrangement through
+             which P can access file info, and schedules P for execution. The CPU is shown
+             as a lightly shaded box because it is not always executing instructions of P--the
+             OS shares the CPU between execution of P and executions of other programs.
+             Following the above discussion, we can define a process as follows:
+             Definition 5.1 Process  An execution of a program using resources allocated
+             to it.
+             When a user initiates execution of a program, the OS creates a new process
+             and assigns a unique id to it. It now allocates some resources to the process--
+             sufficient memory to accommodate the address space of the program, and some
+             devices such as a keyboard and a monitor to facilitate interaction with the user.
+             The process may make system calls during its operation to request additional
+             resources such as files. We refer to the address space of the program and resources
+             allocated to it as the address space and resources of the process, respectively.
+             Accordingly, a process comprises six components:
+                                 (id, code, data, stack, resources, CPU state)                  (5.1)
+             where   id is the unique id assigned by the OS
+                     code is the code of the program (it is also called the text of a program)
+                     data is the data used in the execution of the program, including data
+                         from files
+                     stack contains parameters of functions and procedures called during
+                         execution of the program, and their return addresses
+
+
+
+                                                           Chapter 5  Processes     and  Threads  113
+resources is the set of resources allocated by the OS
+CPU state is composed of contents of the PSW and the general-purpose
+registers (GPRs) of the CPU (we assume that the stack pointer is
+maintained in a GPR)
+The CPU state (Section 2.2.1) contains information that indicates which
+instruction in the code would be executed next, and other information--such
+as contents of the condition code field (also called the flags field) of the PSW--
+that may influence its execution. The CPU state changes as the execution of the
+program progresses. We use the term operation of a process for execution of a
+program. Thus a process operates when it is scheduled.
+5.1.2 Relationships between Processes and Programs
+A program consists of a set of functions and procedures. During its execution,
+control flows between the functions and procedures according to the logic of the
+program. Is an execution of a function or procedure a process? This doubt leads to
+the obvious question: what is the relationship between processes and programs?
+The OS does not know anything about the nature of a program, including
+functions and procedures in its code. It knows only what it is told through system
+calls. The rest is under control of the program. Thus functions of a program may
+be separate processes, or they may constitute the code part of a single process.
+We discuss examples of these situations in the following.
+Table 5.1 shows two kinds of relationships that can exist between pro-
+cesses and programs. A one-to-one relationship exists when a single execution
+of a sequential program is in progress, for example, execution of program P in
+Figure 5.1. A many-to-one relationship exists between many processes and a
+program in two cases: Many executions of a program may be in progress at the
+same time; processes representing these executions have a many-to-one relation-
+ship with the program. During execution, a program may make a system call to
+request that a specific part of its code should be executed concurrently, i.e., as
+a separate activity occurring at the same time. The kernel sets up execution of
+the specified part of the code and treats it as a separate process. The new pro-
+cess and the process representing execution of the program have a many-to-one
+relationship with the program. We call such a program a concurrent program.
+Processes that coexist in the system at some time are called concurrent pro-
+cesses. Concurrent processes may share their code, data and resources with other
+Table 5.1     Relationships between Processes and Programs
+Relationship          Examples
+One-to-one            A single execution of a sequential program.
+Many-to-one           Many simultaneous executions of a program,
+                      execution of a concurrent program.
+
+
+
+114  Part 2  Process Management
+             processes; they     have  opportunities  to  interact  with  one    another     during      their
+             execution.
+             5.1.3 Child Processes
+             The kernel initiates an execution of a program by creating a process for it. For
+             lack of a technical term for this process, we will call it the primary process for the
+             program execution. The primary process may make system calls as described in
+             the previous section to create other processes--these processes become its child
+             processes, and the primary process becomes their parent. A child process may itself
+             create other processes, and so on. The parent­child relationships between these
+             processes can be represented in the form of a process tree, which has the primary
+             process as its root. A child process may inherit some of the resources of its parent;
+             it could obtain additional resources during its operation through system calls.
+             Typically, a process creates one or more child processes and delegates some
+             of its work to each of them. It is called multitasking within an application. It
+             has the three benefits summarized in Table 5.2. Creation of child processes has
+             the same benefits as the use of multiprogramming in an OS--the kernel may
+             be able to interleave operation of I/O-bound and CPU-bound processes in the
+             application, which may lead to a reduction in the duration, i.e., running time, of
+             an application. It is called computation speedup. Most operating systems permit
+             a parent process to assign priorities to child processes. A real-time application
+             can assign a high priority to a child process that performs a critical function to
+             ensure that its response requirement is met. We shall elaborate on this aspect later
+             in Example 5.1.
+             The third benefit, namely, guarding a parent process against errors in a child
+             process, arises as follows: Consider a process that has to invoke an untrusted code.
+             Table 5.2           Benefits of  Child  Processes
+             Benefit                                 Explanation
+             Computation speedup                     Actions that the primary process of an
+                                                     application would have performed sequentially if
+                                                     it did not create child processes, would be
+                                                     performed concurrently when it creates child
+                                                     processes. It may reduce the duration, i.e.,
+                                                     running time, of the application.
+             Priority for critical                   A child process that performs a critical function
+             functions                               may be assigned a high priority; it may help to
+                                                     meet the real-time requirements of an
+                                                     application.
+             Guarding a parent process               The kernel aborts a child process if an error
+             against errors                          arises during its operation. The parent process is
+                                                     not affected by the error; it may be able to
+                                                     perform a recovery action.
+
+
+
+                                                            Chapter 5       Processes    and Threads       115
+If the untrusted code were to be included in the code of the process, an error in
+the untrusted code would compel the kernel to abort the process; however, if the
+process were to create a child process to execute the untrusted code, the same error
+would lead to the abort of the child process, so the parent process would not come
+to any harm. The OS command interpreter uses this feature to advantage. The
+command interpreter itself runs as a process, and creates a child process whenever
+it has to execute a user program. This way, its own operation is not harmed by
+malfunctions in the user program.
+Example 5.1 illustrates how the data logging system of Section 3.7 benefits
+from use of child processes.
+                                                                                                           ·
+Child Processes in a Real-Time Application                                               Example      5.1
+The real-time data logging application of Section 3.7 receives data samples
+from a satellite at the rate of 500 samples per second and stores them in
+a file. We assume that each sample arriving from the satellite is put into
+a special register of the computer. The primary process of the application,
+which we will call the data_logger process, has to perform the following three
+functions:
+1.  Copy the sample from the special register into memory.
+2.  Copy the sample from memory into a file.
+3.  Perform some analysis of a sample and record its results into another file
+    used for future processing.
+    It creates three child processes named copy_sample, record_sample, and
+housekeeping, leading to the process tree shown in Figure 5.2(a). Note that a
+process is depicted by a circle and a parent­child relationship is depicted by
+an arrow. As shown in Figure 5.2(b), copy_sample copies the sample from the
+register into a memory area named buffer_area that can hold, say, 50 samples.
+record_sample writes a sample from buffer_area into a file. housekeeping ana-
+lyzes a sample from buffer_area and records its results in another file. Arrival
+of a new sample causes an interrupt, and a programmer-defined interrupt ser-
+vicing routine is associated with this interrupt. The kernel executes this routine
+whenever a new sample arrives. It activates copy_sample.
+    Operation of the three processes can overlap as follows: copy_sample can
+copy a sample into buffer_area, record_sample can write a previous sample
+to the file, while housekeeping can analyze it and write its results into the
+other file. This arrangement provides a smaller worst-case response time of
+the application than if these functions were to be executed sequentially. So
+long as buffer_area has some free space, only copy_sample has to complete
+before the next sample arrives. The other processes can be executed later. This
+possibility is exploited by assigning the highest priority to copy_sample.
+                                                                                      ·
+
+
+
+116  Part 2  Process Management
+                                                                                        register
+                                                                       buffer  copy_
+                                                                       _ area  sample
+                                          data_
+                                          logger                               record_
+                                                                               sample
+                                                                               house-
+                                                                               keeping
+                     copy_       record_  housekeeping
+                     sample      sample
+                                                                               Memory
+                     (a)                                               (b)
+             Figure  5.2  Real-time application of Section  3.7:  (a)  process tree; (b) processes.
+                 To facilitate use of child processes, the kernel provides operations for:
+             1.  Creating a child process and assigning a priority to it
+             2.  Terminating a child process
+             3.  Determining the status of a child process
+             4.  Sharing, communication, and synchronization between processes
+                 Their use can be described as follows: In Example 5.1, the data_logger
+             process creates three child processes. The copy_sample and record_sample pro-
+             cesses share buffer_area. They need to synchronize their operation such that
+             process record_sample would copy a sample out of buffer_area only after process
+             copy_sample has written it there. The data_logger process could be programmed
+             to either terminate its child processes before itself terminating, or terminate itself
+             only after it finds that all its child processes have terminated.
+             5.1.4 Concurrency and Parallelism
+             Parallelism is the quality of occurring at the same time. Two events are parallel
+             if they occur at the same time, and two tasks are parallel if they are performed
+             at the same time. Concurrency is an illusion of parallelism. Thus, two tasks are
+             concurrent if there is an illusion that they are being performed in parallel, whereas,
+             in reality, only one of them may be performed at any time.
+                 In an OS, concurrency is obtained by interleaving operation of processes
+             on the CPU, which creates the illusion that these processes are operating at the
+
+
+
+                                                                   Chapter 5   Processes  and  Threads  117
+same time. Parallelism is obtained by using multiple CPUs, as in a multiprocessor
+system, and operating different processes on these CPUs.
+       How does mere concurrency provide any benefits? We have seen several
+examples of this earlier in Chapter 3. In Section 3.5 we discussed how the through-
+put of a multiprogramming OS increases by interleaving operation of processes
+on a CPU, because an I/O operation in one process overlaps with a computational
+activity of another process. In Section 3.6, we saw how interleaved operation of
+processes created by different users in a time-sharing system makes each user
+think that he has a computer to himself, although it is slower than the real com-
+puter being used. In Section 5.1.2 and in Example 5.1, we saw that interleaving
+of processes may lead to computation speedup.
+       Parallelism can provide better throughput in an obvious way because pro-
+cesses can operate on multiple CPUs. It can also provide computation speedup;
+however, the computation speedup provided by it is qualitatively different from
+that provided through concurrency--when concurrency is employed, speedup is
+obtained by overlapping I/O activities of one process with CPU activities of
+other processes, whereas when parallelism is employed, CPU and I/O activ-
+ities  in  one  process  can  overlap  with  the    CPU  and  I/O  activities  of  other
+processes.
+       Computation speedup of an application through concurrency and paral-
+lelism would depend on several factors:
+·      Inherent parallelism within the application: Does the application have activi-
+       ties that can progress independently of one another?
+·      Overhead of concurrency and parallelism: The overhead of setting up and
+       managing concurrency should not predominate over the benefits of per-
+       forming activities concurrently, e.g., if the chunks of work sought to be
+       performed concurrently are too small, the overhead of concurrency may
+       swamp its contributions to computation speedup.
+·      Model of concurrency and parallelism supported by the OS: How much over-
+       head does the model incur, and how much of the inherent parallelism within
+       an application can be exploited through it.
+       We have so far discussed one model of concurrency and parallelism, namely
+the process model. In Section 5.3, we introduce an alternative model called the
+thread model, and discuss its properties.
+5.2    IMPLEMENTING PROCESSES                                                                           ·
+In the operating system's view, a process is a unit of computational work. Hence
+the kernel's primary task is to control operation of processes to provide effective
+utilization of the computer system. Accordingly, the kernel allocates resources
+to a process, protects the process and its resources from interference by other
+processes, and ensures that the process gets to use the CPU until it completes its
+operation.
+
+
+
+118  Part 2  Process Management
+                                                          Event
+                                                       Context save
+                                                      Event handling
+                                                       Scheduling
+                                                       Dispatching
+                                                      Exit from kernel
+             Figure 5.3  Fundamental   functions  of  the kernel for controlling  processes.
+                 The kernel is activated when an event, which is a situation that requires
+             the kernel's attention, leads to either a hardware interrupt or a system call
+             (see Section 2.3). The kernel now performs four fundamental functions to control
+             operation of processes (see Figure 5.3):
+             1.  Context save: Saving CPU state and information concerning resources of
+                 the process whose operation is interrupted.
+             2.  Event handling: Analyzing the condition that led to an interrupt, or the
+                 request by a process that led to a system call, and taking appropriate actions.
+             3.  Scheduling: Selecting the process to be executed next on the CPU.
+             4.  Dispatching:     Setting  up     access  to     resources        of  the  scheduled  process
+                 and     loading  its  saved      CPU  state     in  the  CPU         to  begin  or  resume  its
+                 operation.
+                 The kernel performs the context save function to save information concern-
+             ing the interrupted process. It is followed by execution of an appropriate event
+             handling routine, which may inhibit further operation of the interrupted pro-
+             cess, e.g., if this process has made a system call to start an I/O operation, or
+             may enable operation of some other process, e.g., if the interrupt was caused
+             by completion of its I/O operation. The kernel now performs the scheduling
+             function to select a process and the dispatching function to begin or resume its
+             operation.
+                 As discussed earlier in Sections 3.5.1 and 3.6, to perform scheduling an
+             operating system must know which processes require the CPU at any moment.
+             Hence the key to controlling operation of processes is to monitor all processes
+             and know what each process is doing at any moment of time--whether execut-
+             ing on the CPU, waiting for the CPU to be allocated to it, waiting for an I/O
+             operation to complete, or waiting to be swapped into memory. The operating
+             system monitors the process state to keep track of what a process is doing at any
+             moment.
+
+
+
+                                                                 Chapter 5    Processes  and  Threads  119
+Here in Section 5.2, we will see what is meant by a process state, and we
+will look at the different states of a process; and the arrangements by which the
+operating system maintains information about the state of a process. We do not
+discuss scheduling in this chapter. It is discussed later in Chapter 7.
+5.2.1 Process States and State Transitions
+An operating system uses the notion of a process state to keep track of what a
+process is doing at any moment.
+Definition 5.2 Process state     The indicator that describes the nature of the
+current activity of a process.
+The kernel uses process states to simplify its own functioning, so the num-
+ber of process states and their names may vary across OSs. However, most OSs
+use the four fundamental states described in Table 5.3. The kernel considers
+a process to be in the blocked state if it has made a resource request and the
+request is yet to be granted, or if it is waiting for some event to occur. A CPU
+should not be allocated to such a process until its wait is complete. The ker-
+nel would change the state of the process to ready when the request is granted
+or the event for which it is waiting occurs. Such a process can be considered
+for scheduling. The kernel would change the state of the process to running
+when it is dispatched. The state would be changed to terminated when exe-
+cution of the process completes or when it is aborted by the kernel for some
+reason.
+A conventional computer system contains only one CPU, and so at most
+one process can be in the running state. There can be any number of processes
+in the blocked, ready, and terminated states. An OS may define more process
+states to simplify its own functioning or to support additional functionalities like
+swapping. We discuss this aspect in Section 5.2.1.1.
+Table 5.3   Fundamental Process States
+State       Description
+Running     A CPU is currently executing instructions in the process code.
+Blocked     The process has to wait until a resource request made by it is granted,
+            or it wishes to wait until a specific event occurs.
+Ready       The process wishes to use the CPU to continue its operation;
+            however, it has not been dispatched.
+Terminated  The operation of the process, i.e., the execution of the program
+            represented by it, has completed normally, or the OS has aborted it.
+
+
+
+120  Part 2  Process Management
+                  Process State Transitions     A state transition for a process Pi is a change in its
+                  state. A state transition is caused by the occurrence of some event such as the
+                  start or end of an I/O operation. When the event occurs, the kernel determines
+                  its influence on activities in processes, and accordingly changes the state of an
+                  affected process.
+                     When a process Pi in the running state makes an I/O request, its state has to
+                  be changed to blocked until its I/O operation completes. At the end of the I/O
+                  operation, Pi's state is changed from blocked to ready because it now wishes to use
+                  the CPU. Similar state changes are made when a process makes some request that
+                  cannot immediately be satisfied by the OS. The process state is changed to blocked
+                  when the request is made, i.e., when the request event occurs, and it is changed
+                  to ready when the request is satisfied. The state of a ready process is changed to
+                  running when it is dispatched, and the state of a running process is changed to
+                  ready when it is preempted either because a higher-priority process became ready
+                  or because its time slice elapsed (see Sections 3.5.1 and 3.6). Table 5.4 summarizes
+                  causes of state transitions.
+                     Figure 5.4 diagrams the fundamental state transitions for a process. A new
+                  process is put in the ready state after resources required by it have been allocated.
+                  It may enter the running, blocked, and ready states a number of times as a result
+                  of events described in Table 5.4. Eventually it enters the terminated state.
+·
+     Example 5.2  Process State Transitions
+                  Consider the time-sharing system of Example 3.2, which uses a time slice of
+                  10 ms. It contains two processes P1 and P2. P1 has a CPU burst of 15 ms
+                  followed by an I/O operation that lasts for 100 ms, while P2 has a CPU burst
+                  of 30 ms followed by an I/O operation that lasts for 60 ms. Execution of P1 and
+                  P2 was described in Figure 3.7. Table 5.5 illustrates the state transitions during
+                  operation of the system. Actual execution of programs proceeds as follows:
+                  System operation starts with both processes in the ready state at time 0. The
+                  scheduler selects process P1 for execution and changes its state to running. At
+                  10 ms, P1 is preempted and P2 is dispatched. Hence P1's state is changed to
+                  ready and P2's state is changed to running. At 20 ms, P2 is preempted and P1 is
+                  dispatched. P1 enters the blocked state at 25 ms because of an I/O operation.
+                  P2 is dispatched because it is in the ready state. At 35 ms, P2 is preempted
+                  because its time slice elapses; however, it is dispatched again since no other
+                  process is in the ready state. P2 initiates an I/O operation at 45 ms. Now both
+                  processes are in the blocked state.
+                  ·
+                  5.2.1.1 Suspended Processes
+                  A kernel needs additional states to describe the nature of the activity of a process
+                  that is not in one of the four fundamental states described earlier. Consider a
+
+
+
+                                                           Chapter 5        Processes  and  Threads  121
+Table 5.4  Causes   of Fundamental State Transitions for a Process
+State transition    Description
+ready  running      The process is dispatched. The CPU begins or resumes
+                    execution of its instructions.
+blocked  ready      A request made by the process is granted or an event for
+                    which it was waiting occurs.
+running  ready      The process is preempted because the kernel decides to
+                    schedule some other process. This transition occurs either
+                    because a higher-priority process becomes ready, or
+                    because the time slice of the process elapses.
+running  blocked    The process in operation makes a system call to indicate
+                    that it wishes to wait until some resource request made by
+                    it is granted, or until a specific event occurs in the system.
+                    Five major causes of blocking are:
+                    ·  Process requests an I/O operation
+                    ·  Process requests a resource
+                    ·  Process wishes to wait for a specified interval of time
+                    ·  Process waits for a message from another process
+                    ·  Process waits for some action by another process.
+running terminated  Execution of the program is completed. Five primary
+                    reasons for process termination are:
+                    ·  Self-termination: The process in operation either
+                       completes its task or realizes that it cannot operate
+                       meaningfully and makes a "terminate me" system call.
+                       Examples of the latter condition are incorrect or
+                       inconsistent data, or inability to access data in a
+                       desired manner, e.g., incorrect file access privileges.
+                    ·  Termination by a parent: A process makes a
+                       "terminate Pi" system call to terminate a child process
+                       Pi, when it finds that execution of the child process is
+                       no longer necessary or meaningful.
+                    ·  Exceeding resource utilization: An OS may limit the
+                       resources that a process may consume. A process
+                       exceeding a resource limit would be aborted by the
+                       kernel.
+                    ·  Abnormal conditions during operation: The kernel
+                       aborts a process if an abnormal condition arises due
+                       to the instruction being executed, e.g., execution of an
+                       invalid instruction, execution of a privileged
+                       instruction, arithmetic conditions like overflow, or
+                       memory protection violation.
+                    ·  Incorrect interaction with other processes: The kernel
+                       may abort a process if it gets involved in a deadlock.
+
+
+
+122  Part 2  Process Management
+                                                       Running            Completion      Termi-
+                                                                                            nated
+                                        Dispatching                       Resource or
+                                                                          wait request
+                                                       Preemption
+                                 New            Ready                     Blocked
+                         process                       Resource granted
+                                                       or wait completed
+             Figure 5.4  Fundamental state transitions for a process.
+             Table  5.5          Process State         Transitions in a Time-Sharing System
+                                                                                            New states
+             Time                Event                 Remarks                     P1              P2
+             0                                         P1 is scheduled             running         ready
+             10                  P1 is preempted       P2 is scheduled             ready           running
+             20                  P2 is preempted       P1 is scheduled             running         ready
+             25                  P1 starts I/O         P2 is scheduled             blocked         running
+             35                  P2 is preempted       --                          blocked         ready
+                                                       P2 is scheduled             blocked         running
+             45                  P2 starts I/O         --                          blocked         blocked
+             process that was in the ready or the blocked state when it got swapped out of
+             memory. The process needs to be swapped back into memory before it can resume
+             its activity. Hence it is no longer in the ready or blocked state; the kernel must
+             define a new state for it. We call such a process a suspended process. If a user
+             indicates that his process should not be considered for scheduling for a specific
+             period of time, it, too, would become a suspended process. When a suspended
+             process is to resume its old activity, it should go back to the state it was in when
+             it was suspended. To facilitate this state transition, the kernel may define many
+             suspend states and put a suspended process into the appropriate suspend state.
+                 We restrict the discussion of suspended processes to swapped processes and
+             use two suspend states called ready swapped and blocked swapped. Accordingly,
+             Figure 5.5 shows process states and state transitions. The transition ready 
+             ready swapped or blocked  blocked swapped is caused by a swap-out action.
+             The reverse state transition takes place when the process is swapped back into
+             memory. The blocked swapped  ready swapped transition takes place if the
+             request for which the process was waiting is granted even while the process is in a
+             suspended state, for example, if a resource for which it was blocked is granted to it.
+             However, the process continues to be swapped out. When it is swapped back into
+             memory, its state changes to ready and it competes with other ready processes for
+
+
+
+                                                                            Chapter 5  Processes  and  Threads  123
+                                        Running           Completion         Termi-
+                                                                             nated
+                      Dispatching                         Resource or
+                                                          wait request
+                                        Preemption
+             New                       Resource granted
+             process            Ready  or wait completed  Blocked
+                      Swap-out         Swap-in  Swap-out           Swap-in
+                                Ready  Resource granted   Blocked
+                      swapped          or wait completed  swapped
+Figure  5.5  Process states and state transitions using two swapped states.
+the CPU. A new process is put either in the ready state or in the ready swapped
+state depending on availability of memory.
+5.2.2 Process Context and the Process Control Block
+The kernel allocates resources to a process and schedules it for use of the CPU.
+Accordingly, the kernel's view of a process consists of two parts:
+·   Code, data, and stack of the process, and information concerning memory
+    and other resources, such as files, allocated to it.
+·   Information concerning execution of a program, such as the process state, the
+    CPU state including the stack pointer, and some other items of information
+    described later in this section.
+These two parts of the kernel's view are contained in the process context and
+the process control block (PCB), respectively (see Figure 5.6). This arrange-
+ment enables different OS modules to access relevant process-related information
+conveniently and efficiently.
+Process Context       The process context consists of the following:
+1.  Address space of the process: The code, data, and stack components of the
+    process (see Definition 5.1).
+2.  Memory allocation information: Information concerning memory areas allo-
+    cated to a process. This information is used by the memory management unit
+    (MMU) during operation of the process (see Section 2.2.2).
+3.  Status of file processing activities: Information about files being used, such
+    as current positions in the files.
+
+
+
+124  Part 2  Process Management
+                                 Memory  Resource        File
+                                  info   info            pointers
+                                                                          Processid
+                                                                          Process state
+                                                                          GPR contents
+                                  Code   Data            Stack            PC value
+                                        Process context            Process control block
+                                                                   (PCB)
+             Figure 5.6  Kernel's view of a process.
+             4.  Process interaction information: Information necessary to control interac-
+                 tion of the process with other processes, e.g., ids of parent and child processes,
+                 and interprocess messages sent to it that have not yet been delivered to it.
+             5.  Resource information: Information concerning resources allocated to the
+                 process.
+             6.  Miscellaneous information: Miscellaneous information needed for operation
+                 of a process.
+                 The OS creates a process context by allocating memory to the process, loading
+             the process code in the allocated memory and setting up its data space. Informa-
+             tion concerning resources allocated to the process and its interaction with other
+             processes is maintained in the process context throughout the life of the pro-
+             cess. This information changes as a result of actions like file open and close and
+             creation and destruction of data by the process during its operation.
+             Process     Control  Block  (PCB)           The process control block (PCB) of a process
+             contains three kinds of information concerning the process--identification infor-
+             mation such as the process id, id of its parent process, and id of the user who
+             created it; process state information such as its state, and the contents of the
+             PSW and the general-purpose registers (GPRs); and information that is useful
+             in controlling its operation, such as its priority, and its interaction with other
+             processes. It also contains a pointer field that is used by the kernel to form PCB
+             lists for scheduling, e.g., a list of ready processes. Table 5.6 describes the fields of
+             the PCB data structure.
+                 The priority and state information is used by the scheduler. It passes the id
+             of the selected process to the dispatcher. For a process that is not in the running
+             state, the PSW and GPRs fields together contain the CPU state of the process
+             when it last got blocked or was preempted (see Section 2.2.1). Operation of the
+             process can be resumed by simply loading this information from its PCB into the
+             CPU. This action would be performed when this process is to be dispatched.
+                 When a process becomes blocked, it is important to remember the reason.
+             It is done by noting the cause of blocking, such as a resource request or an
+
+
+
+                                                                       Chapter 5  Processes  and  Threads  125
+Table 5.6      Fields  of the Process Control Block (PCB)
+PCB field              Contents
+Process id             The unique id assigned to the process at its creation.
+Parent, child ids      These ids are used for process synchronization, typically for
+                       a process to check if a child process has terminated.
+Priority               The priority is typically a numeric value. A process is
+                       assigned a priority at its creation. The kernel may change
+                       the priority dynamically depending on the nature of the
+                       process (whether CPU-bound or I/O-bound), its age, and
+                       the resources consumed by it (typically CPU time).
+Process state          The current state of the process.
+PSW                    This is a snapshot, i.e., an image, of the PSW when the
+                       process last got blocked or was preempted. Loading this
+                       snapshot back into the PSW would resume operation of the
+                       process. (See Fig. 2.2 for fields of the PSW.)
+GPRs                   Contents of the general-purpose registers when the process
+                       last got blocked or was preempted.
+Event information      For a process in the blocked state, this field contains
+                       information concerning the event for which the process is
+                       waiting.
+Signal information     Information concerning locations of signal handlers (see
+                       Section 5.2.6).
+PCB pointer            This field is used to form a list of PCBs for scheduling
+                       purposes.
+I/O operation, in the event information field of the PCB. Consider a process Pi
+that is blocked on an I/O operation on device d. The event information field in
+Pi's PCB indicates that it awaits end of an I/O operation on device d. When the
+I/O operation on device d completes, the kernel uses this information to make
+the transition blocked  ready for process Pi.
+5.2.3 Context Save, Scheduling, and Dispatching
+The context save function performs housekeeping whenever an event occurs. It
+saves the CPU state of the interrupted process in its PCB, and saves information
+concerning its context (see Section 5.2.2). Recall that the interrupted process
+would have been in the running state before the event occurred. The context
+save function changes its state to ready. The event handler may later change the
+interrupted process's state to blocked, e.g., if the current event was a request for
+I/O initiation by the interrupted process itself.
+The scheduling function uses the process state information from PCBs to
+select a ready process for execution and passes its id to the dispatching function.
+The dispatching function sets up the context of the selected process, changes its
+state to running, and loads the saved CPU state from its PCB into the CPU.
+
+
+
+126  Part 2  Process Management
+                  To prevent loss of protection, it flushes the address translation buffers used by
+                  the memory management unit (MMU). Example 5.3 illustrates the context save,
+                  scheduling, and dispatching functions in an OS using priority-based scheduling.
+·
+     Example 5.3  Context Save, Scheduling, and Dispatching
+                  An OS contains two processes P1 and P2, with P2 having a higher priority
+                  than P1. Let P2 be blocked on an I/O operation and let P1 be running. The
+                  following actions take place when the I/O completion event occurs for the I/O
+                  operation of P2:
+                     1.  The context save function is performed for P1 and its state is changed
+                         to ready.
+                     2.  Using the event information field of PCBs, the event handler finds that
+                         the I/O operation was initiated by P2, so it changes the state of P2 from
+                         blocked to ready.
+                     3.  Scheduling is performed. P2 is selected because it is the highest-priority
+                         ready process.
+                     4.  P2's state is changed to running and it is dispatched.
+                  ·
+                  Process Switching      Functions 1, 3, and 4 of Example 5.3 collectively perform
+                  switching between processes P1 and P2. Switching between processes also occurs
+                  when a running process becomes blocked as a result of a request or gets preempted
+                  at the end of a time slice. An event does not lead to switching between processes if
+                  occurrence of the event either (1) causes a state transition only in a process whose
+                  priority is lower than that of the process whose operation is interrupted by the
+                  event or (2) does not cause any state transition, e.g., if the event is caused by a
+                  request that is immediately satisfied. In the former case, the scheduling function
+                  selects the interrupted process itself for dispatching. In the latter case, scheduling
+                  need not be performed at all; the dispatching function could simply change the
+                  state of the interrupted process back to running and dispatch it.
+                     Switching between processes involves more than saving the CPU state of
+                  one process and loading the CPU state of another process. The process context
+                  needs to be switched as well. We use the term state information of a process to
+                  refer to all the information that needs to be saved and restored during process
+                  switching. Process switching overhead depends on the size of the state information
+                  of a process. Some computer systems provide special instructions to reduce the
+                  process switching overhead, e.g., instructions that save or load the PSW and all
+                  general-purpose registers, or flush the address translation buffers used by the
+                  memory management unit (MMU).
+                     Process switching has some indirect overhead as well. The newly sched-
+                  uled process may not have any part of its address space in the cache, and so
+                  it may perform poorly until it builds sufficient information in the cache (see
+                  Section 2.2.3). Virtual memory operation is also poorer initially because address
+
+
+
+                                                                   Chapter 5     Processes  and  Threads  127
+translation buffers in the MMU do not contain any information relevant to the
+newly scheduled process.
+5.2.4 Event Handling
+The following events occur during the operation of an OS:
+1.   Process creation event: A new process is created.
+2.   Process termination event: A process completes its operation.
+3.   Timer event: The timer interrupt occurs.
+4.   Resource request event: Process makes a resource request.
+5.   Resource release event: A process releases a resource.
+6.   I/O initiation request event: Process wishes to initiate an I/O operation.
+7.   I/O completion event: An I/O operation completes.
+8.   Message send event: A message is sent by one process to another.
+9.   Message receive event: A message is received by a process.
+10.  Signal send event: A signal is sent by one process to another.
+11.  Signal receive event: A signal is received by a process.
+12.  A  program   interrupt:  The  current  instruction        in  the  running  process
+     malfunctions.
+13.  A  hardware    malfunction  event:  A     unit  in  the       computer's  hardware
+     malfunctions.
+     The timer, I/O completion, and hardware malfunction events are caused by
+situations that are external to the running process. All other events are caused
+by actions in the running process. We group events 1­9 into two broad classes for
+discussing actions of event handlers, and discuss events 10 and 11 in Section 5.2.6.
+The kernel performs a standard action like aborting the running process when
+events 12 or 13 occur.
+Events Pertaining to Process Creation, Termination, and Preemption               When a
+user issues a command to execute a program, the command interpreter of the user
+interface makes a create_ process system call with the name of the program as a
+parameter. When a process wishes to create a child process to execute a program,
+it itself makes a create_ process system call with the name of the program as a
+parameter.
+     The event handling routine for the create_ process system call creates a PCB
+for the new process, assigns a unique process id and a priority to it, and puts this
+information and id of the parent process into relevant fields of the PCB. It now
+determines the amount of memory required to accommodate the address space
+of the process, i.e., the code and data of the program to be executed and its stack,
+and arranges to allocate this much memory to the process (memory allocation
+techniques are discussed later in Chapters 11 and 12). In most operating systems,
+some standard resources are associated with each process, e.g., a keyboard, and
+standard input and output files; the kernel allocates these standard resources to
+the process at this time. It now enters information about allocated memory and
+resources into the context of the new process. After completing these chores,
+
+
+
+128  Part 2  Process Management
+             it sets the state of the process to ready in its PCB and enters this process in an
+             appropriate PCB list.
+             When a process makes a system call to terminate itself or terminate a child
+             process, the kernel delays termination until the I/O operations that were initiated
+             by the process are completed. It now releases the memory and resources allocated
+             to it. This function is performed by using the information in appropriate fields of
+             the process context. The kernel now changes the state of the process to terminated.
+             The parent of the process may wish to check its status sometime in future, so the
+             PCB of the terminated process is not destroyed now; it will be done sometime after
+             the parent process has checked its status or has itself terminated. If the parent
+             of the process is already waiting for its termination, the kernel must activate
+             the parent process. To perform this action, the kernel takes the id of the parent
+             process from the PCB of the terminated process, and checks the event information
+             field of the parent process's PCB to find whether the parent process is waiting for
+             termination of the child process (see Section 5.2.2).
+             The process in the running state should be preempted if its time slice elapses.
+             The context save function would have already changed the state of the running
+             process to ready before invoking the event handler for timer interrupts, so the
+             event handler simply moves the PCB of the process to an appropriate scheduling
+             list. Preemption should also occur when a higher-priority process becomes ready,
+             but that is realized implicitly when the higher-priority process is scheduled so an
+             event handler need not perform any explicit action for it.
+             Events Pertaining to Resource Utilization  When a process requests a resource
+             through a system call, the kernel may be able to allocate the resource immediately,
+             in which case event handling does not cause any process state transitions, so the
+             kernel can skip scheduling and directly invoke the dispatching function to resume
+             operation of the interrupted process. If the resource cannot be allocated, the event
+             handler changes the state of the interrupted process to blocked and notes the id
+             of the required resource in the event information field of the PCB. When a process
+             releases a resource through a system call, the event handler need not change the
+             state of the process that made the system call. However, it should check whether
+             any other processes were blocked because they needed the resource, and, if so, it
+             should allocate the resource to one of the blocked processes and change its state
+             to ready. This action requires a special arrangement that we will discuss shortly.
+             A system call to request initiation of an I/O operation and an interrupt
+             signaling end of the I/O operation lead to analogous event handling actions.
+             The state of the process is changed to blocked when the I/O operation is initiated
+             and the cause of blocking is noted in the event information field of its PCB; its state
+             is changed back to ready when the I/O operation completes. A request to receive a
+             message from another process and a request to send a message to another process
+             also lead to analogous actions.
+             Event Control Block (ECB)        When an event occurs, the kernel must find the
+             process whose state is affected by it. For example, when an I/O completion
+             interrupt occurs, the kernel must identify the process awaiting its completion.
+             It can achieve this by searching the event information field of the PCBs of all
+
+
+
+                                                                   Chapter 5  Processes   and Threads       129
+                                         Event description
+                                         Process id
+                                         ECB pointer
+Figure  5.7  Event control block (ECB).
+processes. This search is expensive, so operating systems use various schemes to
+speed it up. We discuss a scheme that uses event control blocks (ECBs).
+As shown in Figure 5.7, an ECB contains three fields. The event description
+field describes an event, and the process id field contains the id of the process
+awaiting the event. When a process Pi gets blocked for occurrence of an event
+ei, the kernel forms an ECB and puts relevant information concerning ei and Pi
+into it. The kernel can maintain a separate ECB list for each class of events like
+interprocess messages or I/O operations, so the ECB pointer field is used to enter
+the newly created ECB into an appropriate list of ECBs.
+When an event occurs, the kernel scans the appropriate list of ECBs to find an
+ECB with a matching event description. The process id field of the ECB indicates
+which process is waiting for the event to occur. The state of this process is changed
+to reflect the occurrence of the event. The following example illustrates use of
+ECBs for handling an I/O completion event; their use in handling interprocess
+messages is described in Section 9.2.2. The event information field of the PCB now
+appears redundant; however, we retain it because the kernel may need to know
+which event a process is blocked on, for example, while aborting the process.
+                                                                                                            ·
+Use of ECB for Handling I/O Completion                                                    Example      5.4
+The actions of the kernel when process Pi requests an I/O operation on some
+device d, and when the I/O operation completes, are as follows:
+1.      The kernel creates an ECB, and initializes it as follows:
+        a. Event description := end of I/O on device d.
+        b. Process awaiting the event := Pi.
+2.      The newly created ECB (let us call it ECB j) is added to a list of ECBs.
+3.      The state of Pi is changed to blocked and the address of ECB j is put into
+        the "Event information" field of Pi's PCB (see Figure 5.8).
+4.      When the interrupt `End of I/O on device d' occurs, ECB j is located by
+        searching for an ECB with a matching event description field.
+5.      The id of the affected process, i.e., Pi, is extracted from ECB j. The PCB of
+        Pi is located and its state is changed to ready.
+                                                                                       ·
+Summary of Event Handling  Figure 5.9 illustrates event handling actions of the
+kernel described earlier. The block action always changes the state of the pro-
+cess that made a system call from ready to blocked. The unblock action finds a
+process whose request can be fulfilled now and changes its state from blocked
+
+
+
+130  Part 2  Process Management
+                                     PCB
+                                          Pi                                    ECBj
+                                                                      End of I/O on d
+                                     blocked                                    Pi
+                                   Event information
+             Figure 5.8   PCB-ECB interrelationship.
+                     Resource or
+                          message
+                          request
+                          I/O                         Block
+                          request
+                          Create or
+                          terminate
+                          process
+                          Timer                                       Schedule         Dispatch
+                          interrupt
+                          I/O
+                     completion
+                          Send                        Unblock
+                          message
+                          Resource
+                          release
+             Figure  5.9  Event handling  actions     of the kernel.
+             to ready. A system call for requesting a resource leads to a block action if the
+             resource cannot be allocated to the requesting process. This action is followed
+             by scheduling and dispatching because another process has to be selected for use
+             of the CPU. The block action is not performed if the resource can be allocated
+             straightaway. In this case, the interrupted process is simply dispatched again.
+             When a process releases a resource, an unblock action is performed if some other
+             process is waiting for the released resource, followed by scheduling and dispatch-
+             ing because the unblocked process may have a higher priority than the process
+             that released the resource. Again, scheduling is skipped if no process is unblocked
+             because of the event.
+
+
+
+                                                             Chapter 5              Processes and Threads  131
+5.2.5 Sharing, Communication, and Synchronization
+         Between Processes
+Processes of an application need to interact with one another because they work
+toward a common goal. Table 5.7 describes four kinds of process interaction. We
+summarize their important features in the following.
+Data Sharing     A shared variable may get inconsistent values if many processes
+update it concurrently. For example, if two processes concurrently execute the
+statement a:=    a+1, where a is a shared variable, the result may depend on the
+way the kernel interleaves their execution--the value of a may be incremented
+by only 1! (We discuss this problem later in Section 6.2.) To avoid this problem,
+only one process should access shared data at any time, so a data access in one
+process may have to be delayed if another process is accessing the data. This is
+called mutual exclusion. Thus, data sharing by concurrent processes incurs the
+overhead of mutual exclusion.
+Message Passing        A process may send some information to another process in
+the form of a message. The other process can copy the information into its own
+data structures and use it. Both the sender and the receiver process must anticipate
+the information exchange, i.e., a process must know when it is expected to send or
+receive a message, so the information exchange becomes a part of the convention
+or protocol between processes.
+Synchronization      The logic of a program may require that an action ai should
+be  performed    only  after  some    action  aj  has  been  performed.          Synchroniza-
+tion between processes is required if these actions are performed in different
+processes--the process that wishes to perform action ai is made to wait until
+another process performs action aj.
+Signals  A signal is used to convey an exceptional situation to a process so
+that it may handle the situation through appropriate actions. The code that a
+process wishes to execute on receiving a signal is called a signal handler. The
+signal mechanism is modeled along the lines of interrupts. Thus, when a signal
+Table 5.7      Four    Kinds of Process Interaction
+Kind of interaction    Description
+Data sharing           Shared data may become inconsistent if several processes modify
+                       the data at the same time. Hence processes must interact to
+                       decide when it is safe for a process to modify or use shared data.
+Message passing        Processes exchange information by sending messages to one
+                       another.
+Synchronization        To fulfill a common goal, processes must coordinate their
+                       activities and perform their actions in a desired order.
+Signals                A signal is used to convey occurrence of an exceptional situation
+                       to a process.
+
+
+
+132  Part 2  Process Management
+                  is sent to a process, the kernel interrupts operation of the process and executes a
+                  signal handler, if one has been specified by the process; otherwise, it may perform
+                  a default action. Operating systems differ in the way they resume a process after
+                  executing a signal handler.
+                     Example     5.5  illustrates  sharing,  communication,  and  synchronization
+                  between processes in the real-time application of Example 5.1. Implementation
+                  of signals is described in Section 5.2.6.
+·
+     Example 5.5  Process Interaction in a Real-time Data Logging Application
+                  In the real-time data logging application of Example 5.1, buffer_area is shared
+                  by processes copy_sample and record_sample. If a variable no_of_samples
+                  _in_buffer is used to indicate how many samples are currently in the buffer,
+                  both these processes would need to update no_of_samples_in_buffer, so its
+                  consistency should be protected by delaying a process that wishes to update
+                  it if another process is accessing it. These processes also need to synchronize
+                  their activities such that a new sample is moved into an entry in buffer_area
+                  only after the previous sample contained in the entry is written into the file,
+                  and contents of a buffer entry are written into the file only after a new sample
+                  is moved into it.
+                     These processes also need to know the size of the buffer, i.e., how many
+                  samples it can hold. Like no_of_samples_in_buffer, a variable size could be
+                  used as shared data. However, use as shared data would incur the overhead of
+                  mutual exclusion, which is not justified because the buffer size is not updated
+                  regularly; it changes only in exceptional situations. Hence these processes could
+                  be coded to use the size of the buffer as a local data item buf_size. Its value
+                  would be sent to them by the process data_logger through messages. Process
+                  data_logger would also need to send signals to these processes if the size of the
+                  buffer has to be changed.
+                  ·
+                  5.2.6 Signals
+                  A signal is used to notify an exceptional situation to a process and enable it
+                  to attend to it immediately. A list of exceptional situations and associated signal
+                  names or signal numbers are defined in an OS, e.g., CPU conditions like overflows,
+                  and conditions related to child processes, resource utilization, or emergency com-
+                  munications from a user to a process. The kernel sends a signal to a process when
+                  the corresponding exceptional situation occurs. Some kinds of signals may also be
+                  sent by processes. A signal sent to a process because of a condition in its own activ-
+                  ity, such as an overflow condition in the CPU, is said to be a synchronous signal,
+                  whereas that sent because of some other condition is said to be an asynchronous
+                  signal.
+                     To utilize signals, a process makes a register_handler system call specifying a
+                  routine that should be executed when a specific signal is sent to it; this routine is
+
+
+
+                                                                 Chapter 5    Processes     and Threads       133
+called a signal handler. If a process does not specify a signal handler for a signal,
+the kernel executes a default handler that performs some standard actions like
+dumping the address space of the process and aborting it.
+A  process        Pi  wishing  to  send  a  signal  to  another  process  Pj  invokes  the
+library function signal with two parameters: id of the destination process, i.e.,
+Pj, and the signal number. This function uses the software interrupt instruction
+<SI_instrn> <interrupt_code> to make a system call named signal. The event
+handling routine for the signal call extracts the parameters to find the signal
+number. It now makes a provision to pass the signal to Pj and returns. It does not
+make any change in the state of the sender process, i.e., Pi.
+Signal handling in a process is implemented along the same lines as inter-
+rupt handling in an OS. In Section 2.2 we described how the interrupt hardware
+employs one interrupt vector for each class of interrupts, which contains the
+address of a routine that handles interrupts of that class. A similar arrangement
+can be used in each process. The signal vectors area would contain a signal vector
+for each kind of signal, which would contain the address of a signal handler. When
+a signal is sent to a process, the kernel accesses its signal vectors area to check
+whether it has specified a signal handler for that signal. If so, it would arrange to
+pass control to the handler; otherwise, it would execute its own default handler
+for that signal.
+Signal handling becomes complicated if the process to which a signal is sent
+is in the blocked state. The kernel would have to change its state temporarily to
+ready so that it could execute a signal handler, after which it would have to change
+the state back to blocked. Some operating systems prefer a simpler approach that
+merely notes the arrival of a signal if the destination process is in the blocked
+state, and arranges to execute the signal handler when the process becomes ready
+and gets scheduled.
+Example 5.6 illustrates how a signal is handled by a process.
+                                                                                                              ·
+Signal Handling                                                                             Example      5.6
+Figure 5.10 illustrates the arrangement used for handling signals. The code
+of process Pi contains a function named sh1, whose last instruction is a
+"return from function" instruction, which pops an address off the stack and
+passes control to the instruction with this address. Process Pi makes a library
+call register_handler(sig1,sh1) to register sh1 as the signal han-
+dler for signal sig1. The library routine register_handler makes the
+system call register_handler. While handling this call, the kernel accesses the
+PCB of Pi, obtains the start address of the signal vectors area, and enters
+the address sh1 in the signal vector of signal sig1. Control now returns
+to Pi. The solid arrows in Figure 5.10(a) indicate addresses in the kernel's
+data structures, while the dashed arrows indicate how the CPU is switched
+to the kernel when the system call is made and how it is switched back
+to Pi.
+
+
+
+134  Part 2  Process Management
+                  Start address       Pi          Kernel          Pi         Kernel
+                  of signal                            area                      area
+                  vectors area
+                                            sig1       sh1             sig1      sh1
+                                      PCB                         PCB
+                                                  Signal                     Signal
+                                                  vectors                    vectors
+                                      sh1:                   sh1:
+                                      {signalhandler}             {signalhandler}
+                                      register_handler(      register_handler(
+                                            sig1,sh1)                 sig1,sh1)
+                                                             b1:       ...
+                                 (a)                         (b)
+             Figure 5.10  Signal handling by process Pi: (a) registering a signal handler; (b) invoking a
+             signal handler.
+                Let process Pi get preempted when it was about to execute the instruction
+             with address b1. A little later, some process Pj makes the system call signal
+             (Pi, sig1). The kernel locates the PCB of Pi, obtains the address of its signal
+             vectors area and locates the signal vector for sig1. It now arranges for process
+             Pi to execute the signal handler starting at address sh1 before resuming normal
+             execution as follows: It obtains the address contained in the program counter
+             (PC) field of the saved state of Pi, which is the address b1 because Pi was about
+             to execute the instruction with this address. It pushes this address on Pi's stack,
+             and puts the address sh1 in the program counter field of the saved state of Pi.
+             This way, when process Pi is scheduled, it would execute the signal handler
+             function with the start address sh1. The last instruction of sh1 would pop
+             the address b1 off the stack and pass control to the instruction with address
+             b1, which would resume normal operation of process Pi. In effect, as shown
+             by the broken arrows in Figure 5.10(b), Pi's execution would be diverted to
+             the signal handler starting at address sh1, and it would be resumed after the
+             signal handler is executed.
+             ·
+             5.3  THREADS                                                                                  ·
+             Applications use concurrent processes to speed up their operation. However,
+             switching between processes within an application incurs high process switch-
+             ing overhead because the size of the process state information is large (see
+             Section 5.2.3), so operating system designers developed an alternative model of
+
+
+
+                                                    Chapter 5         Processes and Threads  135
+execution of a program, called a thread, that could provide concurrency within
+an application with less overhead.
+    To understand the notion of threads, let us analyze process switching over-
+head and see where a saving can be made. Process switching overhead has two
+components:
+·   Execution related overhead: The CPU state of the running process has to be
+    saved and the CPU state of the new process has to be loaded in the CPU.
+    This overhead is unavoidable.
+·   Resource-use related overhead: The process context also has to be switched.
+    It involves switching of the information about resources allocated to the
+    process, such as memory and files, and interaction of the process with other
+    processes. The large size of this information adds to the process switching
+    overhead.
+    Consider child processes Pi and Pj of the primary process of an application.
+These processes inherit the context of their parent process. If none of these pro-
+cesses have allocated any resources of their own, their context is identical; their
+state information differs only in their CPU states and contents of their stacks.
+Consequently, while switching between Pi and Pj, much of the saving and loading
+of process state information is redundant. Threads exploit this feature to reduce
+the switching overhead.
+Definition 5.3 Thread    An execution of a program that uses the resources of
+a process.
+    A process creates a thread through a system call. The thread does not have
+resources of its own, so it does not have a context; it operates by using the context
+of the process, and accesses the resources of the process through it. We use the
+phrases "thread(s) of a process" and "parent process of a thread" to describe the
+relationship between a thread and the process whose context it uses. Note that
+threads are not a substitute for child processes; an application would create child
+processes to execute different parts of its code, and each child process can create
+threads to achieve concurrency.
+    Figure 5.11 illustrates the relationship between threads and processes. In the
+abstract view of Figure 5.11(a), process Pi has three threads, which are represented
+by wavy lines inside the circle representing process Pi. Figure 5.11(b) shows an
+implementation arrangement. Process Pi has a context and a PCB. Each thread
+of Pi is an execution of a program, so it has its own stack and a thread control
+block (TCB), which is analogous to the PCB and stores the following information:
+1.  Thread scheduling information--thread id, priority and state.
+2.  CPU state, i.e., contents of the PSW and GPRs.
+3.  Pointer to PCB of parent process.
+4.  TCB pointer, which is used to make lists of TCBs for scheduling.
+    Use of threads effectively splits the process state into two parts--the resource
+state remains with the process while an execution state, which is the CPU state, is
+
+
+
+136  Part 2  Process Management
+                                       Threads
+                     Process
+                     Pi                                                                      Stacks
+                                                      Memory Resource        File
+                                                           info  info        pointers
+                                                           Code  Data        Stack
+                     Context of                                  Context of             PCB  Thread control
+                     process Pi                                  process Pi                  blocks (TCBs)
+             (a)                                      (b)
+             Figure  5.11 Threads  in  process  Pi :  (a) concept; (b) implementation.
+             associated with a thread. The cost of concurrency within the context of a process
+             is now merely replication of the execution state for each thread. The execution
+             states need to be switched during switching between threads. The resource state is
+             neither replicated nor switched during switching between threads of the process.
+             Thread States and State Transitions                 Barring the difference that threads do not
+             have resources allocated to them, threads and processes are analogous. Hence
+             thread states and thread state transitions are analogous to process states and pro-
+             cess state transitions. When a thread is created, it is put in the ready state because
+             its parent process already has the necessary resources allocated to it. It enters the
+             running state when it is dispatched. It does not enter the blocked state because
+             of resource requests, because it does not make any resource requests; however,
+             it can enter the blocked state because of process synchronization requirements.
+             For example, if threads were used in the real-time data logging application of
+             Example 5.1, thread record_sample would have to enter the blocked state if no
+             data samples exist in buffer_area.
+             Advantages of Threads over Processes                Table 5.8 summarizes the advantages
+             of threads over processes, of which we have already discussed the advantage of
+             lower overhead of thread creation and switching. Unlike child processes, threads
+             share the address space of the parent process, so they can communicate through
+             shared data rather than through messages, thereby eliminating the overhead of
+             system calls.
+                  Applications that service requests received from users, such as airline reser-
+             vation systems or banking systems, are called servers; their users are called clients.
+             (Client­server computing is discussed in Section 16.5.1.) Performance of servers
+             can be improved through concurrency or parallelism (see Section 5.1.4), i.e.,
+             either through interleaving of requests that involve I/O operations or through use
+             of many CPUs to service different requests. Use of threads simplifies their design;
+             we discuss it with the help of Figure 5.12.
+                  Figure 5.12(a) is a view of an airline reservation server. The server enters
+             requests made by its clients in a queue and serves them one after another. If
+
+
+
+                                                                            Chapter 5          Processes  and  Threads  137
+Table 5.8          Advantages of  Threads over Processes
+Advantage                         Explanation
+Lower overhead of creation        Thread state consists only of the state of a
+and switching                     computation. Resource allocation state and
+                                  communication state are not a part of the thread
+                                  state, so creation of threads and switching between
+                                  them incurs a lower overhead.
+More efficient communication      Threads of a process can communicate with one
+                                  another through shared data, thus avoiding the
+                                  overhead of system calls for communication.
+Simplification of design          Use of threads can simplify design and coding of
+                                  applications that service requests concurrently.
+                   Server                      Server                       Server
+                   S                                    S                            S
+Pending                                                                                 Pending
+requests                                                                                requests
+                   Clients                     Clients                      Clients
+          (a)                     (b)                                (c)
+Figure 5.12 Use    of threads in structuring   a server: (a) server  using  sequential  code;
+(b) multithreaded  server; (c) server using a  thread pool.
+several requests are to be serviced concurrently, the server would have to employ
+advanced I/O techniques such as asynchronous I/O, and use complex logic to
+switch between the processing of requests. By contrast, a multithreaded server
+could create a new thread to service each new request it receives, and terminate
+the thread after servicing the request. This server would not have to employ any
+special techniques for concurrency because concurrency is implicit in its creation
+of threads. Figure 5.12(b) shows a multithreaded server, which has created three
+threads because it has received three requests.
+Creation and termination of threads is more efficient than creation and ter-
+mination of processes; however, its overhead can affect performance of the server
+if clients make requests at a very high rate. An arrangement called thread pool
+is used to avoid this overhead by reusing threads instead of destroying them
+after servicing requests. The thread pool consists of one primary thread that per-
+forms housekeeping tasks and a few worker threads that are used repetitively.
+The primary thread maintains a list of pending requests and a list of idle worker
+threads. When a new request is made, it assigns the request to an idle worker
+thread, if one exists; otherwise, it enters the request in the list of pending requests.
+When a worker thread completes servicing of a request, the primary thread either
+assigns a new request to the worker thread to service, or enters it in the list of idle
+
+
+
+138  Part 2  Process Management
+             worker threads. Figure 5.12(c) illustrates a server using a thread pool. It contains
+             three worker threads that are busy servicing three service requests, while three ser-
+             vice requests are pending. If the thread pool facility is implemented in the OS, the
+             OS would provide the primary thread for the pool, which would simplify coding
+             of the server because it would not have to handle concurrency explicitly. The OS
+             could also vary the number of worker threads dynamically to provide adequate
+             concurrency in the application, and also reduce commitment of OS resources to
+             idle worker threads.
+             Coding for Use of Threads  Threads should ensure correctness of data sharing
+             and synchronization (see Section 5.2.5). Section 5.3.1 describes features in the
+             POSIX threads standard that can be used for this purpose. Correctness of data
+             sharing also has another facet. Functions or subroutines that use static or global
+             data to carry values across their successive activations may produce incorrect
+             results when invoked concurrently, because the invocations effectively share the
+             global or static data concurrently without mutual exclusion. Such routines are
+             said to be thread unsafe. An application that uses threads must be coded in a
+             thread safe manner and must invoke routines only from a thread safe library.
+                Signal  handling   requires  special  attention  in  a  multithreaded  applica-
+             tion. Recall that the kernel permits a process to specify signal handlers (see
+             Section 5.2.6). When several threads are created in a process, which thread should
+             handle a signal? There are several possibilities. The kernel may select one of the
+             threads for signal handling. This choice can be made either statically, e.g., either
+             the first or the last thread created in the process, or dynamically, e.g., the highest-
+             priority thread. Alternatively, the kernel may permit an application to specify
+             which thread should handle signals at any time.
+                A synchronous signal arises as a result of the activity of a thread, so it is
+             best that the thread itself handles it. Ideally, each thread should be able to specify
+             which synchronous signals it is interested in handling. However, to provide this
+             feature, the kernel would have to replicate the signal handling arrangement of
+             Figure 5.6 for each thread, so few operating systems provide it. An asynchronous
+             signal can be handled by any thread in a process. To ensure prompt attention to
+             the condition that caused the signal, the highest-priority thread should handle
+             such a signal.
+             5.3.1 POSIX Threads
+             The ANSI/IEEE Portable Operating System Interface (POSIX) standard defines
+             the pthreads application program interface for use by C language programs.
+             Popularly called POSIX threads, this interface provides 60 routines that perform
+             the following tasks:
+             ·  Thread management: Threads are managed through calls on thread library
+                routines for creation of threads, querying status of threads, normal or
+                abnormal termination of threads, waiting for termination of a thread, setting
+                of scheduling attributes, and specifying thread stack size.
+             ·  Assistance for data sharing: Data shared by threads may attain incorrect
+                values if two or more threads update it concurrently. A feature called mutex is
+
+
+
+                                                                  Chapter 5  Processes  and  Threads  139
+   provided to ensure mutual exclusion between threads while accessing shared
+   data, i.e., to ensure that only one thread is accessing shared data at any time.
+   Routines are provided to begin use of shared data in a thread and indicate end
+   of use of shared data. If threads are used in Example 5.5, threads copy_sample
+   and record_sample would use a mutex to ensure that they do not access and
+   update no_of_samples_in_buffer concurrently.
+·  Assistance for synchronization: Condition variables are provided to facilitate
+   coordination between threads so that they perform their actions in the desired
+   order. If threads are used in Example 5.5, condition variables would be used
+   to ensure that thread copy_sample would copy a sample into buffer_area
+   before record_sample would write it from there into the file.
+   Figure 5.13 illustrates use of pthreads in the real-time data logging application
+of Example 5.1. A pthread is created through the call
+            pthread_create(< data structure >, < attributes >,
+            < start routine >, < arguments > )
+where the thread data structure becomes the de facto thread id, and attributes
+indicate scheduling priority and synchronization options. A thread terminates
+through a pthread_exit call which takes a thread status as a parameter. Syn-
+chronization between the parent thread and a child thread is performed through
+the pthread_join call, which takes a thread id and some attributes as param-
+eters. On issuing this call, the parent thread is blocked until the thread indicated
+in the call has terminated; an error is raised if the termination status of the thread
+does not match the attributes indicated in the pthread_join call. Some thread
+implementations require a thread to be created with the attribute "joinable" to
+qualify for such synchronization. The code in Figure 5.13 creates three threads
+to perform the functions performed by processes in Example 5.1. As mentioned
+above, and indicated through comments in Figure 5.13, the threads would use the
+mutex buf_mutex to ensure mutually exclusive access to the buffer and use con-
+dition variables buf_full and buf_empty to ensure that they deposit samples
+into the buffer and take them out of the buffer in the correct order. We do not
+show details of mutexes and condition variables here; they are discussed later in
+Chapter 6.
+5.3.2 Kernel-Level, User-Level, and Hybrid Threads
+These three models of threads differ in the role of the process and the kernel in
+the creation and management of threads. This difference has a significant impact
+on the overhead of thread switching and the concurrency and parallelism within
+a process.
+5.3.2.1 Kernel-Level Threads
+A kernel-level thread is implemented by the kernel. Hence creation and ter-
+mination of kernel-level threads, and checking of their status, is performed
+
+
+
+140              Part 2  Process Management
+              #include        <pthread.h>
+              #include        <stdio.h>
+              int   size,      buffer[100],          no_of_samples_in_buffer;
+              int   main()
+              {
+                 pthread_t           id1,   id2,     id3;
+                 pthread_mutex_t                buf_mutex,      condition_mutex;
+                 pthread_cond_t             buf_full,         buf_empty;
+                 pthread_create(&id1,                    NULL,  move_to_buffer,         NULL);
+                 pthread_create(&id2,                    NULL,  write_into_file,          NULL);
+                 pthread_create(&id3,                    NULL,  analysis,      NULL);
+                 pthread_join(id1,              NULL);
+                 pthread_join(id2,              NULL);
+                 pthread_join(id3,              NULL);
+                 pthread_exit(0);
+              }
+              void   *move_to_buffer()
+              {
+                 /*      Repeat      until      all  samples    are       received  */
+                 /*      If   no     space  in  buffer,         wait  on  buf_full      */
+                 /*      Use   buf_mutex        to   access     the   buffer,      increment     no.   of  samples  */
+                 /*      Signal      buf_empty       */
+                 pthread_exit(0);
+              }
+              void   *write_into_file()
+              {
+                 /*      Repeat      until      all  samples    are       written   into    the  file  */
+                 /*      If   no     data   in  buffer,       wait    on  buf_empty     */
+                 /*      Use   buf_mutex        to   access     the   buffer,      decrement     no.   of  samples  */
+                 /*      Signal      buf_full        */
+                 pthread_exit(0);
+              }
+              void   *analysis()
+              {
+                 /*      Repeat      until      all  samples    are       analyzed  */
+                 /*      Read     a  sample     from     the    buffer    and  analyze      it   */
+                 pthread_exit(0);
+              }
+Figure  5.13     Outline of the data logging application using POSIX threads.
+                                  through system calls. Figure 5.14 shows a schematic of how the kernel handles
+                                  kernel-level threads. When a process makes a create_thread system call, the ker-
+                                  nel creates a thread, assigns an id to it, and allocates a thread control block
+                                  (TCB). The TCB contains a pointer to the PCB of the parent process of the
+                                  thread.
+                                     When an event occurs, the kernel saves the CPU state of the interrupted
+                                  thread in its TCB. After event handling, the scheduler considers TCBs of all
+                                  threads and selects one ready thread; the dispatcher uses the PCB pointer in its
+
+
+
+                                                                    Chapter 5       Processes  and  Threads  141
+                             Pi  PCB                  Pj   PCB
+                                 ···                       Thread control   blocks
+                                                                    (TCBs)
+                                                      PCB  pointer
+                                 Scheduler
+                                            Selected  TCB
+Figure 5.14  Scheduling  of  kernel-level threads.
+TCB to check whether the selected thread belongs to a different process than
+the interrupted thread. If so, it saves the context of the process to which the
+interrupted thread belongs, and loads the context of the process to which the
+selected thread belongs. It then dispatches the selected thread. However, actions
+to save and load the process context are skipped if both threads belong to the same
+process. This feature reduces the switching overhead, hence switching between
+kernel-level threads of a process could be as much as an order of magnitude
+faster, i.e., 10 times faster, than switching between processes.
+Advantages and Disadvantages of Kernel-Level Threads                A kernel-level thread
+is like a process except that it has a smaller amount of state information. This
+similarity is convenient for programmers--programming for threads is no dif-
+ferent from programming for processes. In a multiprocessor system, kernel-level
+threads provide parallelism (see Section 5.1.4), as many threads belonging to a
+process can be scheduled simultaneously, which is not possible with the user-level
+threads described in the next section, so it provides better computation speedup
+than user-level threads.
+However, handling threads like processes has its disadvantages too. Switching
+between threads is performed by the kernel as a result of event handling. Hence
+it incurs the overhead of event handling even if the interrupted thread and the
+selected thread belong to the same process. This feature limits the savings in the
+thread switching overhead.
+5.3.2.2 User-Level Threads
+User-level threads are implemented by a thread library, which is linked to the
+code of a process. The library sets up the thread implementation arrangement
+shown in Figure 5.11(b) without involving the kernel, and itself interleaves oper-
+ation of threads in the process. Thus, the kernel is not aware of presence of
+user-level threads in a process; it sees only the process. Most OSs implement the
+
+
+
+142  Part 2  Process Management
+             pthreads application program interface provided in the IEEE POSIX standard
+             (see Section 5.3.1) in this manner.
+             An overview of creation and operation of threads is as follows: A process
+             invokes the library function create_thread to create a new thread. The library
+             function creates a TCB for the new thread and starts considering the new thread
+             for "scheduling." When the thread in the running state invokes a library function
+             to perform synchronization, say, wait until a specific event occurs, the library
+             function performs "scheduling" and switches to another thread of the process.
+             Thus, the kernel is oblivious to switching between threads; it believes that the
+             process is continuously in operation. If the thread library cannot find a ready
+             thread in the process, it makes a "block me" system call. The kernel now blocks
+             the process. It will be unblocked when some event activates one of its threads
+             and will resume execution of the thread library function, which will perform
+             "scheduling" and switch to execution of the newly activated thread.
+             Scheduling of User-Level Threads     Figure 5.15 is a schematic diagram of schedul-
+             ing of user-level threads. The thread library code is a part of each process. It
+             performs "scheduling" to select a thread, and organizes its execution. We view
+             this operation as "mapping" of the TCB of the selected thread into the PCB of
+             the process.
+             The thread library uses information in the TCBs to decide which thread
+             should operate at any time. To "dispatch" the thread, the CPU state of the thread
+             should become the CPU state of the process, and the process stack pointer should
+             point to the thread's stack. Since the thread library is a part of a process, the
+             CPU is in the user mode. Hence a thread cannot be dispatched by loading new
+             information into the PSW; the thread library has to use nonprivileged instructions
+             to change PSW contents. Accordingly, it loads the address of the thread's stack
+                                         Pi                   Pj
+             Process context
+              thread library
+                                                                            Thread control blocks
+                                                                                  (TCBs)
+                                                  ···                       Mapping performed
+                                                                            by thread library
+                                                                            Process control blocks
+                                                                                  (PCBs)
+                                                  Scheduler
+                                                              Selected PCB
+             Figure 5.15 Scheduling  of  user-level threads.
+
+
+
+                                                    Chapter 5        Processes          and Threads       143
+into the stack address register, obtains the address contained in the program
+counter (PC) field of the thread's CPU state found in its TCB, and executes a
+branch instruction to transfer control to the instruction which has this address.
+The next example illustrates interesting situations during scheduling of user-level
+threads.
+                                                                                                          ·
+Scheduling of User-Level Threads                                                        Example      5.7
+Figure 5.16 illustrates how the thread library manages three threads in a pro-
+cess Pi. The codes N, R, and B in the TCBs represent the states running, ready,
+and blocked, respectively. Process Pi is in the running state and the thread
+library is executing. It dispatches thread h1, so h1's state is shown as N, i.e.
+running. Process Pi is preempted sometime later by the kernel. Figure 5.16(a)
+illustrates states of the threads and of process Pi. Thread h1 is in the running
+state, and process Pi is in the ready state. Thread h1 would resume its operation
+when process Pi is scheduled next. The line from h1's TCB to Pi's PCB indi-
+cates that h1's TCB is currently mapped into Pi's PCB. This fact is important
+for the dispatching and context save actions of the thread library.
+Thread h2 is in the ready state in Figure 5.16(a), so its TCB contains the
+code R. Thread h3 awaits a synchronization action by h1, so it is in the blocked
+state. Its TCB contains the code B, and h1 to indicate that it is awaiting an
+event that is a synchronization action by h1. Figure 5.16(b) shows the situation
+when the kernel dispatches Pi and changes its state to running.
+The thread library overlaps operation of threads using the timer. While
+"scheduling" h1, the library would have requested an interrupt after a small
+interval of time. When the timer interrupt occurs, it gets control through the
+event handling routine of the kernel for timer interrupts, and decides to pre-
+empt h1. So it saves the CPU state in h1's TCB, and "schedules" h2. Hence
+the state codes in the TCB's of h1 and h2 change to R and N, respectively
+(Figure 5.16(c)). Note that thread scheduling performed by the thread library
+is invisible to the kernel. All through these events, the kernel sees process Pi in
+the running state.
+A user thread should not make a blocking system call; however, let us see
+what would happen if h2 made a system call to initiate an I/O operation on
+device d2, which is a blocking system call. The kernel would change the state
+of process Pi to blocked and note that it is blocked because of an I/O operation
+on device d2 (Figure 5.16(d)). Some time after the I/O operation completes,
+the kernel would schedule process Pi, and operation of h2 would resume. Note
+that the state code in h2's TCB remains N, signifying the running state, all
+through its I/O operation!
+                                                                                     ·
+Advantages and Disadvantages of User-Level Threads  Thread synchronization
+and scheduling is implemented by the thread library. This arrangement avoids
+
+
+
+144  Part 2  Process  Management
+                                  h1  h2  h3           h1  h2  h3           h1  h2  h3           h1  h2  h3
+                                              Pi                   Pi                   Pi                      Pi
+                      TCBs   N        R   B       N        R   B       R        N   B       R        N      B
+                                          h1                   h1                    h1                     h1
+                      PCB         Ready                Running              Running              Blocked
+                      of Pi                                                                          d2
+                             (a)                  (b)                  (c)                  (d)
+             Figure 5.16     Actions of the thread library (N, R, B indicate running, ready, and blocked).
+             the overhead of a system call for synchronization between threads, so the thread
+             switching overhead could be as much as an order of magnitude smaller than in
+             kernel-level threads. This arrangement also enables each process to use a schedul-
+             ing policy that best suits its nature. A process implementing a real-time application
+             may use priority-based scheduling of its threads to meet its response require-
+             ments, whereas a process implementing a multithreaded server may perform
+             round-robin scheduling of its threads. However, performance of an application
+             would depend on whether scheduling of user-level threads performed by the
+             thread library is compatible with scheduling of processes performed by the kernel.
+             For example, round-robin scheduling in the thread library would be compatible
+             with either round-robin scheduling or priority-based scheduling in the kernel,
+             whereas priority-based scheduling would be compatible only with priority-based
+             scheduling in the kernel.
+                      Managing threads without involving the kernel also has a few drawbacks.
+             First, the kernel does not know the distinction between a thread and a process,
+             so if a thread were to block in a system call, the kernel would block its parent
+             process. In effect, all threads of the process would get blocked until the cause of
+             the blocking was removed--In Figure 5.16(d) of Example 5.7, thread h1 cannot be
+             scheduled even though it is in the ready state because thread h2 made a blocking
+             system call. Hence threads must not make system calls that can lead to blocking.
+             To facilitate this, an OS would have to make available a nonblocking version
+             of each system call that would otherwise lead to blocking of a process. Second,
+             since the kernel schedules a process and the thread library schedules the threads
+             within a process, at most one thread of a process can be in operation at any time.
+             Thus, user-level threads cannot provide parallelism (see Section 5.1.4), and the
+             concurrency provided by them is seriously impaired if a thread makes a system
+             call that leads to blocking.
+
+
+
+                                                         Chapter 5  Processes                   and  Threads  145
+5.3.2.3  Hybrid Thread Models
+A hybrid thread model has both user-level threads and kernel-level threads and
+a method of associating user-level threads with kernel-level threads. Different
+methods of associating user- and kernel-level threads provide different combina-
+tions of the low switching overhead of user-level threads and the high concurrency
+and parallelism of kernel-level threads.
+     Figure 5.17 illustrates three methods of associating user-level threads with
+kernel-level threads. The thread library creates user-level threads in a process and
+associates a thread control block (TCB) with each user-level thread. The kernel
+creates kernel-level threads in a process and associates a kernel thread control block
+(KTCB) with each kernel-level thread. In the many-to-one association method,
+a single kernel-level thread is created in a process by the kernel and all user-
+level threads created in a process by the thread library are associated with this
+kernel-level thread. This method of association provides an effect similar to mere
+user-level threads: User-level threads can be concurrent without being parallel,
+thread switching incurs low overhead, and blocking of a user-level thread leads
+to blocking of all threads in the process.
+     In the one-to-one method of association, each user-level thread is perma-
+nently mapped into a kernel-level thread. This association provides an effect
+similar to mere kernel-level threads: Threads can operate in parallel on different
+CPUs of a multiprocessor system; however, switching between threads is per-
+formed at the kernel level and incurs high overhead. Blocking of a user-level
+thread does not block other user-level threads of the process because they are
+mapped into different kernel-level threads.
+     The many-to-many association method permits a user-level thread to be
+mapped into different kernel-level threads at different times (see Figure 5.17(c)).
+It provides parallelism between user-level threads that are mapped into different
+kernel-level threads at the same time, and provides low overhead of switching
+             PCB                             PCB                    PCB
+             TCBs                            TCBs                   TCBs
+             KTCBs                           KTCBs                  KTCBs
+(a)                 (b)                             (c)
+Figure 5.17  (a) Many-to-one; (b) one-to-one; (c) many-to-many associations in hybrid threads.
+
+
+
+146  Part 2  Process Management
+             between user-level threads that are scheduled on the same kernel-level thread
+             by the thread library. However, the many-to-many association method requires
+             a complex implementation. We shall discuss its details in Section 5.4.3 when we
+             discuss the hybrid thread model that was used in the Sun Solaris operating system
+             until Solaris 8.
+             5.4  CASE STUDIES OF PROCESSES AND THREADS                                                ·
+             5.4.1 Processes in Unix
+             Data Structures     Unix uses two data structures to hold control data about
+             processes:
+             ·    proc structure: Contains process id, process state, priority, information about
+                  relationships with other processes, a descriptor of the event for which a
+                  blocked process is waiting, signal handling mask, and memory management
+                  information.
+             ·    u area (stands for "user area"): Contains a process control block, which stores
+                  the CPU state for a blocked process; pointer to proc structure, user and group
+                  ids, and information concerning the following: signal handlers, open files and
+                  the current directory, terminal attached to the process, and CPU usage by
+                  the process.
+             These data structures together hold information analogous to the PCB data struc-
+             ture discussed in Section 5.2. The proc structure mainly holds scheduling related
+             data while the u area contains data related to resource allocation and signal han-
+             dling. The proc structure of a process is always held in memory. The u area needs
+             to be in memory only when the process is in operation.
+             Types of Processes  Two types of processes exist in Unix--user processes and
+             kernel processes. A user process executes a user computation. It is associated
+             with the user's terminal. When a user initiates a program, the kernel creates the
+             primary process for it, which can create child processes (see Section 5.1.2). A
+             daemon process is one that is detached from the user's terminal. It runs in the
+             background and typically performs functions on a systemwide basis, e.g., print
+             spooling and network management. Once created, daemon processes can exist
+             throughout the lifetime of the OS. Kernel processes execute code of the kernel.
+             They are concerned with background activities of the kernel like swapping. They
+             are created automatically when the system is booted and they can invoke kernel
+             functionalities or refer to kernel data structures without having to perform a
+             system call.
+             Process Creation and Termination  The system call fork creates a child process
+             and sets up its context (called the user-level context in Unix literature). It allocates
+             a proc structure for the newly created process and marks its state as ready, and
+             also allocates a u area for the process. The kernel keeps track of the parent­child
+             relationships using the proc structure. fork returns the id of the child process.
+
+
+
+                                                                 Chapter 5     Processes and Threads  147
+The user-level context of the child process is a copy of the parent's user-
+level context. Hence the child executes the same code as the parent. At creation,
+the program counter of the child process is set to contain the address of the
+instruction at which the fork call returns. The fork call returns a 0 in the child
+process, which is the only difference between parent and child processes.A child
+process can execute the same program as its parent, or it can use a system call
+from the exec family of system calls to load some other program for execution.
+Although this arrangement is cumbersome, it gives the child process an option of
+executing the parent's code in the parent's context or choosing its own program
+for execution. The former alternative was used in older Unix systems to set up
+servers that could service many user requests concurrently.
+The complete view of process creation and termination in Unix is as follows:
+After booting, the system creates a process init. This process creates a child process
+for every terminal connected to the system. After a sequence of exec calls, each
+child process starts running the login shell. When a programmer indicates the
+name of a file from the command line, the shell creates a new process that executes
+an exec call for the named file, in effect becoming the primary process of the
+program. Thus the primary process is a child of the shell process. The shell process
+now executes the wait system call described later in this section to wait for end of
+the primary process of the program. Thus it becomes blocked until the program
+completes, and becomes active again to accept the next user command. If a shell
+process performs an exit call to terminate itself, init creates a new process for the
+terminal to run the login shell.
+A  process       Pi  can  terminate  itself  through  the  exit  system  call  exit  (sta-
+tus_code), where status_code is a code indicating the termination status of the
+process. On receiving the exit call the kernel saves the status code in the proc
+structure of Pi, closes all open files, releases the memory allocated to the process,
+and destroys its u area. However, the proc structure is retained until the parent
+of Pi destroys it. This way the parent of Pi can query its termination status any
+time it wishes. In essence, the terminated process is dead but it exists, hence it is
+called a zombie process. The exit call also sends a signal to the parent of Pi. The
+child processes of Pi are made children of the kernel process init. This way init
+receives a signal when a child of Pi, say Pc, terminates so that it can release Pc's
+proc structure.
+Waiting for Process Termination      A process Pi can wait for the termination of
+a child process through the system call wait (addr(. . .)), where addr(. . .) is the
+address of a variable, say variable xyz, within the address space of Pi. If process
+Pi has child processes and at least one of them has already terminated, the wait call
+stores the termination status of a terminated child process in xyz and immediately
+returns with the id of the terminated child process. If more terminated child
+processes exist, their termination status will be made available to Pi only when
+it repeats the wait call. The state of process Pi is changed to blocked if it has
+children but none of them has terminated. It will be unblocked when one of the
+child processes terminates. The wait call returns with a "-1" if Pi has no children.
+The following example illustrates benefits of these semantics of the wait call.
+
+
+
+148  Part 2  Process Management
+·
+     Example 5.8  Child Processes in Unix
+                  Figure 5.18 shows the C code of a process that creates three child processes
+                  in the for loop and awaits their completion. This code can be used to set
+                  up processes of the real-time data logging system of Example 5.1. Note that
+                  the fork call returns to the calling process with the id of the newly created
+                  child process whereas it returns to the child process with a 0. Because of this
+                  peculiarity, child processes execute the code in the if statement while the
+                  parent process skips the if statement and executes a wait statement. The wait
+                  is satisfied whenever a child process terminates through the exit statement.
+                  However, the parent process wishes to wait until the last process finishes, so
+                  it issues another wait if the value returned is anything other than -1. The
+                  fourth wait call returns with a -1, which brings the parent process out of
+                  the loop. The parent process code does not contain an explicit exit() call.
+                  The language compiler automatically adds this at the end of main().
+                  ·
+                  Waiting for Occurrence of Events         A process that is blocked on an event is said
+                  to sleep on it; e.g., a process that initiates an I/O operation would sleep on its
+                  completion event. Unix uses an interesting arrangement to activate processes
+                  sleeping on an event. It does not use event control blocks (ECBs) described earlier
+                  in Section 5.2.4; instead it uses event addresses. A set of addresses is reserved
+                  in the kernel, and every event is mapped into one of these addresses. When a
+                  process wishes to sleep on an event, the address of the event is computed, the
+                  state of the process is changed to blocked, and the address of the event is put in
+                  its process structure. This address serves as the description of the event awaited
+                  by the process. When the event occurs, the kernel computes its event address and
+                  activates all processes sleeping on it.
+                     main()
+                     {
+                                int  saved_status;
+                                for  (i=0;     i<3;  i++)
+                                {
+                                       if  (fork()==0)
+                                       {   /*  code  for   child  processes        */
+                                               ...
+                                               exit();
+                                       }
+                                }
+                                while  (wait(&saved_status)                !=-1);
+                                          /*   loop  till  all    child    processes   terminate  */
+                     }
+                  Figure  5.18  Process creation and termination in Unix.
+
+
+
+                                                              Chapter 5  Processes          and  Threads  149
+This     arrangement  incurs       unnecessary  overhead  in  some       situations.   For
+example, consider several processes sleeping on the same event as a result of
+data access synchronization. When the event occurs, all these processes are acti-
+vated but only one process gains access to the data and the other processes go
+back to sleep. This is analogous to the busy wait situation, which we will discuss
+in the next chapter. The method of mapping events into addresses adds to this
+problem. A hashing scheme is used for mapping, and so two or more events may
+map into the same event address. Now occurrence of any one of these events will
+activate all processes sleeping on all these events. Each activated process would
+now have to check whether the event on which it is sleeping has indeed occurred,
+and go back to sleep if this is not the case.
+Interrupt Servicing  Unix avoids interrupts during sensitive kernel-level actions
+by assigning each interrupt an interrupt priority level (ipl). Depending on the
+program being executed by the CPU, an interrupt priority level is also associated
+with the CPU. When an interrupt at a priority level l arises, it is handled only if l
+is larger than the interrupt priority level of the CPU; otherwise, it is kept pending
+until the CPU's interrupt priority level becomes < l. The kernel uses this feature
+to prevent inconsistency of the kernel data structures by raising the ipl of the
+CPU to a high value before starting to update its data structures and lowering it
+after the update is completed.
+System Calls     When a system call is made, the system call handler uses the system
+call number to determine which system functionality is being invoked. From its
+internal tables it knows the address of the handler for this functionality. It also
+knows the number of parameters this call is supposed to take. However, these
+parameters exist on the user stack, which is a part of the process context of the
+process making the call. So these parameters are copied from the process stack
+into some standard place in the u area of the process before control is passed
+to the handler for the specific call. This action simplifies operation of individual
+event handlers.
+Signals  A signal can be sent to a process, or to a group of processes. This action
+is performed by the kill system call kill (<pid>, <signum>), where <pid> is an
+integer value that can be positive, zero, or negative. A positive value of <pid> is
+the id of a process to which the signal is to be sent. A 0 value of <pid> implies
+that the signal is to be sent to some processes within the same process tree as the
+sender process, i.e., some processes that share an ancestor with the sender process.
+This feature is implemented as follows: At a fork call, the newly created process
+is assigned a group id that is the same as the process group number of its parent
+process. A process may change its group number by using the setpgrp system call.
+When <pid>= 0, the signal is sent to all processes with the same group number
+as the sender. A negative value of <pid> is used to reach processes outside the
+process tree of the sender. We will not elaborate on this feature here.
+A process specifies a signal handler by executing the statement
+              oldfunction       =  signal (<signum>, <function>)
+
+
+
+150  Part 2  Process Management
+             where signal is a function in the C library that makes a signal system call,
+             <signum> is an integer, and <function> is the name of a function within the
+             address space of the process. This call specifies that the function <function>
+             should be executed on occurrence of the signal <signum>. The signal call
+             returns with the previous action specified for the signal <signum>. A user can
+             specify SIG_DFL as <function> to indicate that the default action defined in the
+             kernel, such as producing a core dump and aborting the process, is to be executed
+             on occurrence of the signal, or specify SIG_IGN as <function> to indicate that
+             the occurrence of the signal is to be ignored.
+             The kernel uses the u area of a process to note the signal handling actions
+             specified by it, and a set of bits in the proc structure to register the occurrence
+             of signals. Whenever a signal is sent to a process, the bit corresponding to the
+             signal is set to 1 in the proc structure of the destination process. The kernel now
+             determines whether the signal is being ignored by the destination process. If not,
+             it makes provision to deliver the signal to the process. If a signal is ignored, it
+             remains pending and is delivered when the process specifies its interest in receiving
+             the signal (either by specifying an action or by specifying that the default action
+             should be used for it). A signal remains pending if the process for which it is
+             intended is in a blocked state. The signal is delivered when the process comes
+             out of the blocked state. In general, the kernel checks for pending signals when
+             a process returns from a system call or interrupt, after a process gets unblocked,
+             and before a process gets blocked on an event.
+             Invocation of the signal handling action is implemented as described earlier
+             in Section 5.2.6. A few anomalies exist in the way signals are handled. If a signal
+             occurs repeatedly, the kernel simply notes that it has occurred, but does not count
+             the number of its occurrences. Hence the signal handler may be executed once or
+             several times, depending on when the process gets scheduled to execute the signal
+             handler. Another anomaly concerns a signal sent to a process that is blocked in a
+             system call. After executing the signal handler, such a process does not resume its
+             execution of the system call. Instead, it returns from the system call. If necessary,
+             it may have to repeat the system call. Table 5.9 lists some interesting Unix signals.
+             Table 5.9           Interesting  Signals in Unix
+             Signal                           Description
+             SIGCHLD                          Child process died or suspended
+             SIGFPE                           Arithmetic fault
+             SIGILL                           Illegal instruction
+             SIGINT                           Tty interrupt (Control-C)
+             SIGKILL                          Kill process
+             SIGSEGV                          Segmentation fault
+             SIGSYS                           Invalid system call
+             SIGXCPU                          CPU time limit is exceeded
+             SIGXFSZ                          File size limit is exceeded
+
+
+
+                                                            Chapter 5   Processes       and  Threads  151
+Process  States  and  State    Transitions  There  is  one  conceptual  difference
+between the process model described in Section 5.2.1 and that used in Unix.
+In the model of Section 5.2.1, a process in the running state is put in the ready
+state the moment its execution is interrupted. A system process then handles the
+event that caused the interrupt. If the running process had itself caused a software
+interrupt by executing an <SI_instrn>, its state may further change to blocked if
+its request cannot be granted immediately. In this model a user process executes
+only user code; it does not need any special privileges. A system process may have
+to use privileged instructions like I/O initiation and setting of memory protection
+information, so the system process executes with the CPU in the kernel mode.
+Processes behave differently in the Unix model. When a process makes a
+system call, the process itself proceeds to execute the kernel code meant to handle
+the system call. To ensure that it has the necessary privileges, it needs to execute
+with the CPU in the kernel mode. A mode change is thus necessary every time
+a system call is made. The opposite mode change is necessary after processing a
+system call. Similar mode changes are needed when a process starts executing the
+interrupt servicing code in the kernel because of an interrupt, and when it returns
+after servicing an interrupt.
+The Unix kernel code is made reentrant so that many processes can execute it
+concurrently. This feature takes care of the situation where a process gets blocked
+while executing kernel code, e.g., when it makes a system call to initiate an I/O
+operation, or makes a request that cannot be granted immediately. To ensure
+reentrancy of code, every process executing the kernel code must use its own
+kernel stack. This stack contains the history of function invocations since the
+time the process entered the kernel code. If another process also enters the kernel
+code, the history of its function invocations will be maintained on its own kernel
+stack. Thus, their operation would not interfere. In principle, the kernel stack of
+a process need not be distinct from its user stack; however, distinct stacks are
+used in practice because most computer architectures use different stacks when
+the CPU is in the kernel and user modes.
+Unix uses two distinct running states. These states are called user running and
+kernel running states. A user process executes user code while in the user running
+state, and kernel code while in the kernel running state. It makes the transition from
+user running to kernel running when it makes a system call, or when an interrupt
+occurs. It may get blocked while in the kernel running state because of an I/O
+operation or nonavailability of a resource. When the I/O operation completes or
+its resource request is granted, the process returns to the kernel running state and
+completes the execution of the kernel code that it was executing. It now leaves
+the kernel mode and returns to the user mode. Accordingly, its state is changed
+from kernel running to user running.
+Because of this arrangement, a process does not get blocked or preempted in
+the user running state--it first makes a transition to the kernel running state and
+then gets blocked or preempted. In fact, user running  kernel running is the only
+transition out of the user running state. Figure 5.19 illustrates fundamental process
+states and state transitions in Unix. As shown there, even process termination
+occurs when a process is in the kernel running state. This happens because the
+
+
+
+152  Part 2  Process Management
+                                                    User
+                                                running
+                                   Interrupt/                  Return from
+                                   system call                 interrupt/
+                                                               system call
+                                                    Kernel       Exit          Zombie
+                                                running
+                                 Dispatching                     Resource or
+                                                                 wait request
+                                                    Preemption
+                                   Ready      Resource granted   Blocked
+                                              or wait completed
+             Figure  5.19  Process state transitions in Unix.
+             process executes the system call exit while in the user running state. This call
+             changes its state to kernel running. The process actually terminates and becomes
+             a zombie process as a result of processing this call.
+             5.4.2 Processes and Threads in Linux
+             Data Structures     The Linux 2.6 kernel supports the 1 : 1 threading model, i.e.,
+             kernel-level threads. It uses a process descriptor, which is a data structure of type
+             task_struct, to contain all information pertaining to a process or thread. For
+             a process, this data structure contains the process state, information about its
+             parent and child processes, the terminal used by the process, its current directory,
+             open files, the memory allocated to it, signals, and signal handlers. The kernel
+             creates substructures to hold information concerning the terminal, directory, files,
+             memory and signals and puts pointers to them in the process descriptor. This
+             organization saves both memory and overhead when a thread is created.
+             Creation and Termination of Processes and Threads              Both processes and threads
+             are created through the system calls fork and vfork, whose functionalities are
+             identical to the corresponding Unix calls. These functionalities are actually imple-
+             mented by the system call clone, which is hidden from the view of programs. The
+             clone system call takes four parameters: start address of the process or thread,
+             parameters to be passed to it, flags, and a child stack specification. Some of the
+             important flags are:
+             CLONE_VM            Shares the memory management information used
+                                 by the MMU
+             CLONE_FS            Shares the information about root and current
+                                 working directory
+
+
+
+                                                                      Chapter 5  Processes  and  Threads  153
+CLONE_FILES              Shares the information about open files
+CLONE_SIGHAND            Shares the information about signals and signal
+                         handlers
+The organization of task_struct facilitates selective sharing of this infor-
+mation since it merely contains pointers to the substructures where the actual
+information is stored. At a clone call, the kernel makes a copy of task_struct
+in which some of these pointers are copied and others are changed. A thread
+is created by calling clone with all flags set, so that the new thread shares the
+address space, files and signal handlers of its parent. A process is created by
+calling clone with all flags cleared; the new process does not share any of these
+components.
+The Linux 2.6 kernel also includes support for the Native POSIX Threading
+Library (NPTL), which provides a number of enhancements that benefit heavily
+threaded applications. It can support up to 2 billion threads, whereas the Linux
+2.4 kernel could support only up to 8192 threads per CPU. A new system call
+exit_group( ) has been introduced to terminate a process and all its threads; it can
+terminate a process having a hundred thousand threads in about 2 seconds, as
+against about 15 minutes in the Linux 2.4 kernel. Signal handling is performed
+in the kernel space, and a signal is delivered to one of the available threads in
+a process. Stop and continue signals affect an entire process, while fatal signals
+terminate the entire process. These features simplify handling of multithreaded
+processes. The Linux 2.6 kernel also supports a fast user-space mutex called futex
+that reduces the overhead of thread synchronization through a reduction in the
+number of system calls.
+Parent---Child Relationships  Information about parent and child processes or
+threads is stored in a task_struct to maintain awareness of the process tree.
+task_struct contains a pointer to the parent and to the deemed parent, which
+is a process to which termination of this process should be reported if its par-
+ent process has terminated, a pointer to the youngest child, and pointers to the
+younger and older siblings of a process. Thus, the process tree of Figure 5.2 would
+be represented as shown in Figure 5.20.
+                                                  data_logger
+              copy_sample          record_sample  housekeeping
+Figure  5.20  Linux process tree for the processes of Figure 5.2(a).
+
+
+
+154  Part 2  Process Management
+             Process States      The state field of a process descriptor contains a flag indicating
+             the state of a process. A process can be in one of five states at any time:
+                TASK_RUNNING                        The process is either scheduled or waiting to
+                                                    be scheduled.
+                TASK_INTERRUPTIBLE                  The process is sleeping on an event, but may
+                                                    receive a signal.
+                TASK_UNINTERRUPTIBLE                The process is sleeping on an event, but may
+                                                    not receive a signal.
+                TASK_STOPPED                        The operation of the process has been
+                                                    stopped by a signal.
+                TASK_ZOMBIE                         The process has completed, but the parent
+                                                    process has not yet issued a system call of
+                                                    the wait-family to check whether it has
+                                                    terminated.
+                The  TASK_RUNNING            state  corresponds    to  one  of  running   or  ready
+             states  described   in  Section        5.2.1.  The  TASK_INTERRUPTIBLE                 and
+             TASK_UNINTERRUPTIBLE states both correspond to the blocked state. Splitting
+             the blocked state into two states resolves the dilemma faced by an OS in handling
+             signals sent to a process in the blocked state (see Section 5.2.6)--a process can
+             decide whether it wants to be activated by a signal while waiting for an event to
+             occur, or whether it wants the delivery of a signal to be deferred until it comes out
+             of the blocked state. A process enters the TASK_STOPPED state when it receives a
+             SIGSTOP or SIGTSTP signal to indicate that its execution should be stopped, or
+             a SIGTTIN or SIGTTOU signal to indicate that a background process requires
+             input or output.
+             5.4.3 Threads in Solaris
+             Solaris, which is a Unix 5.4-based operating system, originally provided a hybrid
+             thread model that actually supported all three association methods of hybrid
+             threads discussed in Section 5.3.2.3, namely, many-to-one, one-to-one, and many-
+             to-many association methods. This model has been called the M × N model in
+             Sun literature. Solaris 8 continued to support this model and also provided an
+             alternative 1 : 1 implementation, which is equivalent to kernel-level threads. The
+             support for the M × N model was discontinued in Solaris 9. In this section we
+             discuss the M × N model, and the reasons why it was discontinued.
+                The M × N model employs three kinds of entities to govern concurrency and
+             parallelism within a process.
+             ·  User threads: User threads are analogous to user-level threads discussed in
+                Section 5.3.2.2; they are created and managed by a thread library, so they
+                are not visible to the kernel.
+             ·  Lightweight      processes:  A  lightweight  process   (LWP)    is  an  intermediary
+                between user threads and a kernel thread. Many LWPs may be created for
+
+
+
+                                                                    Chapter 5  Processes and Threads  155
+   a process; each LWP is a unit of parallelism within a process. User threads
+   are mapped into LWPs by the thread library. This mapping can be one-to-
+   one, many-to-one, many-to-many, or a suitable combination of all three. The
+   number of LWPs for a process and the nature of the mapping between user
+   threads and LWPs is decided by the programmer, who makes it known to the
+   thread library through appropriate function calls.
+·  Kernel threads: A kernel thread is a kernel-level thread. The kernel creates
+   one kernel thread for each LWP in a process. It also creates some kernel
+   threads for its own use, e.g., a thread to handle disk I/O in the system.
+   Figure 5.21 illustrates an arrangement of user threads, LWPs, and kernel
+threads. Process Pi has three user threads and one LWP, so a many-to-one map-
+ping exists between them. Process Pj has four user threads and three LWPs. One
+of these user threads is exclusively mapped into one of the LWPs. The remaining
+three user threads and two LWPs have a many-to-many mapping; this way each
+of the three threads can operate in any of the two LWPs.
+   LWPs can operate in parallel because each of them has a kernel thread associ-
+ated with it. The kernel creates an LWP control block for each LWP, and a kernel
+thread control block (KTCB) for each kernel thread. In addition, the thread library
+maintains a thread control block for each user thread. The information in this
+control block is analogous to that described in Section 5.3.2.2. The scheduler
+examines the KTCBs and, for each CPU in the system, selects a kernel thread
+that is in the ready state. The dispatcher dispatches the LWP corresponding to this
+kernel thread. The thread library can switch between user threads mapped into
+this LWP to achieve concurrency between user threads. The number of LWPs
+                                                                    Threads
+                                    Pi  PCB              Pj    PCB
+   Process
+   context
+   
+   thread                                                      Thread control blocks
+   library                                                     Mapping performed
+                                                                    by thread library
+                                        ···                    LWP control blocks
+                                        ···              Kernel thread control blocks
+                                    Scheduler
+                                               Selected  KTCB
+Figure 5.21  Threads  in  Solaris.
+
+
+
+156  Part 2  Process Management
+             per process and the association of user threads with LWPs is decided by the
+             programmer, thus both parallelism and concurrency within a process are under
+             the programmer's control. An n-way parallelism would be possible within a pro-
+             cess if the programmer created n LWPs for a process, 1  n  p, where p is the
+             number of CPUs. However, the degree of parallelism would reduce if a user thread
+             made a blocking system call during its operation, because the call would block
+             the LWP in which it is mapped. Solaris provides scheduler activations, described
+             later in this section, to overcome this problem.
+             A complex arrangement of control blocks is used to control switching
+             between kernel threads. The kernel thread control block contains the kernel regis-
+             ters of the CPU, stack pointer, priority, scheduling information, and a pointer to
+             the next KTCB in a scheduling list. In addition, it contains a pointer to the LWP
+             control block. The LWP control block contains saved values of user registers of
+             the CPU, signal handling information, and a pointer to the PCB of the owner
+             process.
+             Signal Handling     Signals generated by operation of a thread, such as an arith-
+             metic condition or a memory protection violation, are delivered to the thread
+             itself. Signals generated by external sources, such as a timer, have to be directed
+             to a thread that has enabled its handling. The M ×N model provided each process
+             with an LWP that was dedicated to signal handling. When a signal was generated,
+             the kernel would keep it pending and notify this LWP, which would wait until
+             it found that some thread that had enabled handling of that specific signal was
+             running on one of the other LWPs of the process, and would ask the kernel to
+             direct the pending signal to that LWP.
+             States of Processes and Kernel Threads      The kernel is aware only of states of
+             processes and kernel threads; it is oblivious to existence of user threads. A process
+             can be in one of the following states:
+             SIDL                A transient state during creation
+             SRUN                Runnable process
+             SONPROC             Running on a processor
+             SSLEEP              Sleeping
+             SSTOP               Stopped
+             SZOMB               Terminated process
+             The SRUN and SSLEEP states correspond to the ready and blocked states
+             of Section 5.2.1. A kernel thread has states TS_RUN, TS_ONPROC, TS_SLEEP,
+             TS_STOPPED, and TS_ZOMB that are analogous to the corresponding process
+             states. A kernel thread that is free is in the TS_FREE state.
+             Scheduler Activations  A scheduler activation is like a kernel thread. The kernel
+             uses scheduler activations to perform two auxiliary functions: (1) When some
+             LWP of the process becomes blocked, the kernel uses a scheduler activation to
+             create a new LWP so that other runnable threads of the process could operate.
+             (2) When an event related to the operation of the thread library occurs, the kernel
+             uses a scheduler activation to notify the thread library.
+
+
+
+                                        Chapter 5                         Processes  and  Threads  157
+Consider a many-to-one mapping between many user threads and an LWP,
+and a user thread that is currently mapped into the LWP. A kernel thread is
+associated with the LWP, so the user thread operates when the kernel thread is
+scheduled. If the user thread makes a blocking system call, the kernel thread
+would block. Effectively, the LWP with which it is associated would block. If
+some of the other threads that are mapped into the same LWP are runnable, we
+have a situation where a runnable user thread cannot be scheduled because the
+LWP has become blocked.
+In such situations, the kernel creates a scheduler activation when the user
+thread is about to block, provides the activation to the thread library, and makes
+an upcall to it. The upcall is implemented as a signal sent to the thread library.
+The thread library now executes its signal handler, using the activation provided
+by the kernel. The signal handler saves the state of the user thread that is about
+to block, releases the LWP that was used by it, and hands it over to the kernel
+for reuse. It now schedules a new user thread on the new activation provided by
+the kernel. In effect, the user thread that was about to block is removed from an
+LWP and a new user thread is scheduled in a new LWP of the process. When the
+event for which the user thread had blocked occurs, the kernel makes another
+upcall to the thread library with a scheduler activation so that it can preempt
+the user thread currently mapped into the LWP, return the LWP to the kernel,
+and schedule the newly activated thread on the new activation provided by the
+kernel.
+Switchover to the 1:1 Implementation  The M × N model was developed in the
+expectation that, because a context switch by the thread library incurred signifi-
+cantly less overhead than a context switch by the kernel, user-level scheduling of
+threads in the thread library would provide good application performance. How-
+ever, as mentioned in Section 5.3.2.2, it is possible only when schedulers in the
+thread library and in the kernel work harmoniously. The 1 : 1 implementation in
+Solaris 8 provided efficient kernel-level context switching. Use of the 1 : 1 model
+led to simpler signal handling, as threads could be dedicated to handling of spe-
+cific signals. It also eliminated the need for scheduler activations, and provided
+better scalability. Hence the M × N model was discontinued in Solaris 9.
+5.4.4 Processes and Threads in Windows
+The flavor of processes and threads in Windows differs somewhat from that pre-
+sented earlier in this chapter--Windows treats a process as a unit for resource
+allocation, and uses a thread as a unit for concurrency. Accordingly, a Win-
+dows process does not operate by itself; it must have at least one thread inside
+it. A resource can be accessed only through a resource handle. A process inherits
+some resource handles from its parent process; it can obtain more resource han-
+dles by opening new resources. The kernel stores all these handles in a handles
+table for each process. This way, a resource can be accessed by simply specifying
+an offset into the handles table.
+
+
+
+158  Part 2  Process Management
+             Windows uses three control blocks to manage a process. An executive process
+             block contains fields that store the process id, memory management information,
+             address of the handle table, a kernel process block for the process, and address
+             of the process environment block. The kernel process block contains scheduling
+             information for threads of the process, such as the processor affinity for the
+             process, the state of the process and pointers to the kernel thread blocks of its
+             threads. The executive process block and the kernel process block are situated
+             in the system address space. The process environment block contains information
+             that is used by the loader to load the code to be executed, and by the heap manager.
+             It is situated in the user address space.
+             The control blocks employed to manage a thread contain information about
+             its operation, and about the process containing it. The executive thread block of
+             a thread contains a kernel thread block, a pointer to the executive process block
+             of its parent process and impersonation information. The kernel thread block
+             contains information about the kernel stack of the thread and the thread-local
+             storage, scheduling information for the thread, and a pointer to its thread envi-
+             ronment block, which contains its id and information about its synchronization
+             requirements.
+             Windows supports the notion of a job as a method of managing a group of
+             processes. A job is represented by a job object, which contains information such
+             as handles to processes in it, the jobwide CPU time limit, per process CPU time
+             limit, job scheduling class that sets the time slice for the processes of the job,
+             processor affinity for processes of the job, and their priority class. A process can
+             be a member of only one job; all processes created by it automatically belong to
+             the same job.
+             Process Creation    The create call takes a parameter that is a handle to the parent
+             of the new process or thread. This way, a create call need not be issued by the
+             parent of a process or thread. A server process uses this feature to create a thread
+             in a client process so that it can access resources with the client's access privileges,
+             rather than its own privileges.
+             Recall from Section 4.8.4 that the environment subsystems provide support
+             for execution of programs developed for other OSs like MS-DOS, Win 32, and
+             OS/2. The semantics of process creation depend on the environment subsystem
+             used by an application process. In the Win/32 and OS/2 operating environments,
+             a process has one thread in it when it is created; it is not so in other environments
+             supported by the Windows OS. Hence process creation is actually handled by
+             an environment subsystem DLL that is linked to an application process. After
+             creating a process, it passes the id of the new process or thread to the envi-
+             ronment subsystem process so that it can manage the new process or thread
+             appropriately.
+             Creation of a child process by an application process in the Win/32 envi-
+             ronment proceeds as follows: The environment subsystem DLL linked to the
+             application process makes a system call to create a new process. This call is han-
+             dled by the executive. It creates a process object, initializes it by loading the
+             image of the code to be executed, and returns a handle to the process object. The
+
+
+
+                                                                         Chapter 5  Processes  and  Threads  159
+environment subsystem DLL now makes a second system call to create a thread,
+and passes the handle to the new process as a parameter. The executive creates
+a thread in the new process and returns a handle to it. The DLL now sends a
+message to the environment subsystem process, passing it the process and thread
+handles, and the id of their parent process. The environment subsystem process
+enters the process handle in the table of processes that currently exist in the envi-
+ronment and enters the thread handle in the scheduling data structures. Control
+now returns to the application process.
+Thread States and State Transitions                 Figure 5.22 shows the state transition
+diagram for threads. A thread can be in one of following six states:
+1.  Ready: The thread can be executed if a CPU is available.
+2.  Standby: This is a thread that has been selected to run next on a specific
+    processor. If its priority is high, the thread currently running on the processor
+    would be preempted and this thread would be scheduled.
+3.  Running: A CPU is currently allocated to the thread and the thread is in
+    operation.
+4.  Waiting: The thread is waiting for a resource or event, or has been suspended
+    by the environment subsystem.
+5.  Transition: The thread's wait was satisfied, but meanwhile its kernel stack
+    was removed from memory because it had been waiting for long. The thread
+    would enter the ready state when the kernel stack is brought back into
+    memory.
+6.  Terminated: The thread has completed its operation.
+Thread Pools       Windows provides a thread pool in every process. As described
+in Section 5.3, the pool contains a set of worker threads and an arrangement
+                      Standby    Dispatch           Running  Completion  Termi-
+                                                                         nated
+              Select            Preemption                Resource
+              for                                            or wait
+              execution                                      request
+                                 Resource granted
+                         Ready   or wait completed  Waiting
+                   Kernel stack
+                      reloaded              Kernel stack
+                                 Transi-    removed
+                                 tion
+Figure  5.22  Thread state transitions in Windows.
+
+
+
+160        Part 2  Process Management
+                   of lists of pending services and idle worker threads. The threads of a pool can
+                   be used to perform work presented to the pool, or can be programmed to per-
+                   form specific tasks either at specific times or periodically or when specific kernel
+                   objects become signaled. The number of worker threads is adapted to the pool's
+                   workload dynamically. Threads are neither created nor destroyed if the rate at
+                   which service requests are made to the pool matches the rate at which worker
+                   threads complete servicing of requests. However, new threads are created if
+                   the request rate exceeds the service rate, and a thread is destroyed if it is idle
+                   for more than 40 seconds. Windows Vista supports several thread pools in a
+                   process.
+5.5  SUMMARY                                                                                                   ·
+A computer user and the operating system have           with one another. They achieve this by employing
+different views of execution of programs. The user      the process synchronization means provided in the
+is concerned with achieving execution of a pro-         operating system.
+gram in a sequential or concurrent manner as            The operating system allocates resources to a
+desired, whereas the OS is concerned with allo-         process and stores information about them in the
+cation of resources to programs and servicing of        process context of the process. To control opera-
+several programs simultaneously, so that a suit-        tion of the process, it uses the notion of a process
+able combination of efficient use and user service      state. The process state is a description of the cur-
+may be obtained. In this chapter, we discussed var-     rent activity within the process; the process state
+ious aspects of these two views of execution of         changes as the process operates. The fundamental
+programs.                                               process states are: ready, running, blocked, termi-
+     Execution of a program can be speeded up           nated, and suspended. The OS keeps information
+through either parallelism or concurrency. Paral-       concerning each process in a process control block
+lelism implies that several activities are in progress  (PCB). The PCB of a process contains the process
+within the program at the same time. Concurrency        state, and the CPU state associated with the process
+is an illusion of parallelism--activities appear to     if the CPU is not currently executing its instruc-
+be parallel, but may not be actually so.                tions. The scheduling function of the kernel selects
+     A process is a model of execution of a pro-        one of the ready processes and the dispatching
+gram. When the user issues a command to execute         function switches the CPU to the selected process
+a program, the OS creates the primary process           through information found in its process context
+for it. This process can create other processes by      and the PCB.
+making requests to the OS through system calls;         A  thread     is   an  alternative  model  of  execu-
+each of these processes is called its child process.    tion of a program. A thread differs from a process
+The OS can service a process and some of its            in that no resources are allocated to it. This dif-
+child processes concurrently by letting the same        ference makes the overhead of switching between
+CPU execute instructions of each one of them            threads much less than the overhead of switch-
+for some time, or service them in parallel by exe-      ing between processes. Three models of threads,
+cuting their instructions on several CPUs at the        called kernel-level threads, user-level threads, and
+same time. The processes within a program must          hybrid threads, are used. They have different impli-
+work harmoniously toward a common goal by               cations for switching overhead, concurrency, and
+sharing data or by coordinating their activities        parallelism.
+
+
+
+                                                                Chapter 5  Processes and Threads                161
+TEST  YOUR CONCEPTS                                                                                                 ·
+5.1   An application comprises several processes--              e. When a user-level thread of a process makes a
+      a   primary   process    and    some  child   pro-        system call that leads to blocking, all threads
+      cesses. This arrangement provides computation             of the process become blocked.
+      speedup if                                                f. Kernel-level threads provide more concur-
+      a. The computer system contains many CPUs                 rency than user-level threads in both unipro-
+      b. Some of the processes are I/O bound                    cessor and multiprocessor systems.
+      c. Some of the processes are CPU bound                    g. When a process terminates, its termination
+      d. None of the above                                      code should be remembered until its parent
+5.2   Classify each of the following statements as true         process terminates.
+      or false:                                            5.3  Which of the following state transitions for a
+      a. The OS creates a single process if two users           process can cause the state transition blocked 
+          execute the same program.                             ready for one or more other processes?
+      b. The state of a process that is blocked on a            a. A  process  starts  an    I/O  operation     and
+          resource request changes to running when the          becomes blocked.
+          resource is granted to it.                            b. A process terminates.
+      c. There is no distinction between a terminated           c. A  process  makes   a     resource  request  and
+          process and a suspended process.                      becomes blocked.
+      d.  After  handling  an  event,  the  kernel  need        d. A process sends a message.
+          not perform scheduling before dispatching if          e. A process makes the state transition blocked
+          none of the process states has changed.                blocked swapped.
+EXERCISES                                                                                                           ·
+5.1   Describe the actions of the kernel when pro-              b. Give a sequence of state transitions through
+      cesses  make  system     calls  for  the  following       which it can reach the ready state.
+      purposes:                                                 Is more than one sequence of state transitions
+      a. Request to receive a message                           possible in each of these cases?
+      b. Request to perform an I/O operation               5.6  The designer of a kernel has decided to use a sin-
+      c. Request for status information concerning a            gle swapped state. Give a diagram analogous to
+          process                                               Figure 5.5 showing process states and state tran-
+      d. Request to create a process                            sitions. Describe how the kernel would perform
+      e. Request to terminate a child process                   swapping and comment on the effectiveness of
+5.2   Describe the conditions under which a kernel              swapping.
+      may perform dispatching without performing           5.7  Compare and contrast inherent parallelism in
+      scheduling.                                               the following applications:
+5.3   Give an algorithm to implement a Unix-like                a. An online banking application which per-
+      wait call using the PCB data structure shown              mits users to perform banking transactions
+      in Table 5.6. Comment on comparative lifetimes            through a Web-based browser.
+      of a process and its PCB.                                 b. A Web-based airline reservation system.
+5.4   Describe how each signal listed in Table 5.9 is      5.8  An airline reservation system using a centralized
+      raised and handled in Unix.                               database services user requests concurrently. Is
+5.5   A process is in the blocked swapped state.                it preferable to use threads rather than pro-
+      a. Give a sequence of state transitions through           cesses in this system? Give reasons for your
+          which it could have reached this state.               answer.
+
+
+
+162      Part 2  Process Management
+5.9   Name two system calls a thread should avoid           5.14  Comment on computation speedup of the fol-
+      using if threads are implemented at the user level,         lowing applications in computer systems having
+      and explain your reasons.                                   (i) a single CPU and (ii) many CPUs.
+5.10  As described in Example 5.7 and illustrated in              a. Many threads are created in a server that
+      Figure 5.16, if a process has user-level threads,              handles user requests at a large rate, where
+      its own state depends on states of all of its                  servicing of a user request involves both CPU
+      threads. List the possible causes of each of the               and I/O activities.
+      fundamental state transitions for such a process.           b. Computation of an expression z := a  b +
+5.11  Explain whether you agree with the following                   cd      is  performed      by  spawning  two  child
+      statement on the basis of what you read in this                processes to evaluate a  b and c  d.
+      chapter: "Concurrency increases the scheduling              c. A server creates a new thread to handle every
+      overhead without providing any speedup of an                   user request received, and servicing of each
+      application program."                                          user request involves accesses to a database.
+5.12  On the basis of the Solaris case study, write a             d. Two matrices contain m rows and n columns
+      short note on how to decide the number of user                 each, where m and n are both very large. An
+      threads and lightweight processes (LWPs) that                  application obtains the result of adding the
+      should be created in an application.                           two matrices by creating m threads, each of
+5.13  An OS supports both user-level threads and                     which performs addition of one row of the
+      kernel-level threads. Do you agree with the fol-               matrices.
+      lowing  recommendations    about      when  to  use   5.15  Compute the best computation speedup in the
+      user-level threads and when kernel-level threads?           real-time      data  logging  application   of  Exam-
+      Why, or why not?                                            ple 5.1 under the following conditions: The over-
+      a. If a candidate for a thread is a CPU-bound               head of event handling and process switching
+         computation, make it a kernel-level thread               is negligible. For each sample, the copy_sample
+         if the system contains multiple processors;              process requires 5 microseconds (s) of CPU
+         otherwise, make it a user-level thread.                  time, and does not involve any I/O operation,
+      b. If a candidate for a thread is an I/O-bound              record_sample requires 1.5 ms to record the sam-
+         computation, make it a user-level thread if              ple and consumes only 1 s of CPU time, while
+         the process containing it does not contain               housekeeping consumes 200 s of CPU time and
+         a kernel-level thread; otherwise, make it a              its write operation requires 1.5 ms.
+         kernel-level thread.
+CLASS PROJECT: IMPLEMENTING A SHELL                                                                                  ·
+Write a program in C/C++, which will act as a shell in      ls                   Lists information about files
+a Unix or Linux system. When invoked, the program                                in the current directory.
+will display its own prompt to the user, accept the user's  rm                   Deletes indicated files.
+command from the keyboard, classify it, and invoke an                            Supports options -r, -f, -v.
+appropriate routine to implement it. The command "sys-      history n            Prints the most recent n
+tem" should not be used in implementing any command                              commands issued by the user,
+other than the ls command. The shell must support the                            along with their serial numbers.
+following commands:                                                              If n is omitted, prints all
+                                                                                 commands issued by the user.
+                                                            issue n              Issues the nth command in the
+Command                 Description                                              history once again.
+                                                            <program_name>       Creates a child process to run
+cd <directory_name>     Changes current directory                                <program_name>. Supports
+                        if user has appropriate                                  the redirection operators > and
+                        permissions.                                             < to redirect the input and
+
+
+
+                                                                         Chapter 5     Processes and Threads               163
+                         output of the program to                        rmexcept <list_of_files> which removes all files
+                         indicated files.                                except those in <list_of_files> from the current
+<program_name> &         The child process for                           directory.
+                         <program_name> should be                   2.   Support a command <program_name> m that cre-
+                         run in the background.                          ates a child process to execute program_name, but
+quit                     Quits the shell.                                aborts the process if it does not complete its opera-
+After implementing a basic shell supporting these com-                   tion in m seconds. (Hint: Use an appropriate routine
+mands, you should add two advanced features to the                       from the library to deliver a SIGALRM signal after
+shell:                                                                   m seconds, and use a signal handler to perform
+                                                                         appropriate actions.)
+1.    Design   a   new  command        that    provides  a  use-
+      ful facility. As an example, consider a command
+BIBLIOGRAPHY                                                                                                                    ·
+The process concept is discussed in Dijkstra (1968),                     management of parallelism," ACM Transactions
+Brinch Hansen (1973), and Bic and Shaw (1974). Brinch                    on Computer Systems, 10 (1), 53­79.
+Hansen (1988) describes implementation of processes in              2.   Bach, M. J. (1986): The Design of the Unix
+the RC 4000 system.                                                      Operating System, Prentice Hall, Englewood
+      Marsh et al. (1991) discusses user-level threads and               Cliffs, N.J.
+issues concerning thread libraries. Anderson et al. (1992)          3.   Beck, M., H. Bohme, M. Dziadzka, U. Kunitz,
+discusses use of scheduler activations for communica-                    R. Magnus, C. Schroter, and D. Verworner
+tion between the kernel and a thread library. Engelschall                (2002): Linux Kernel Programming, 3rd ed.,
+(2000) discusses how user-level threads can be imple-                    Pearson Education, New York.
+mented in Unix by using standard Unix facilities, and               4.   Bic, L., and A. C. Shaw (1988): The Logical
+also    summarizes     properties  of  other   multithreading            Design of Operating Systems, 2nd ed., Prentice
+packages.                                                                Hall, Englewood Cliffs, N.J.
+      Kleiman (1996), Butenhof (1997), Lewis and Berg               5.   Brinch Hansen, P. (1970): "The nucleus of a
+(1997), and Nichols et al. (1996) discuss programming                    multiprogramming system," Communications of
+with POSIX threads. Lewis and Berg (2000) discusses                      the ACM, 13, 238­241, 250.
+multithreading in Java.                                             6.   Brinch Hansen, P. (1973): Operating System
+      Bach (1986), McKusick (1996), and Vahalia (1996)                   Principles, Prentice Hall, Englewood
+discuss processes in Unix. Beck et al. (2002) and Bovet                  Cliffs, N.J.
+and Cesati (2005) describes processes and threads in                7.   Bovet, D. P., and M. Cesati (2005): Understanding
+Linux. Stevens and Rago (2005) describes processes and                   the Linux Kernel, 3rd ed., O'Reilly, Sebastopol.
+threads in Unix, Linux, and BSD; it also discusses dae-             8.   Butenhof, D. (1997): Programming with POSIX
+mon     processes  in   Unix.  O'Gorman        (2003)    discusses       threads, Addison-Wesley, Reading,
+implementation      of  signals    in  Linux.  Eykholt   et  al.         Mass.
+(1992) describes threads in SunOS, while Vahalia (1996)             9.   Custer, H. (1993): Inside Windows/NT, Microsoft
+and     Mauro  and     McDougall       (2006)  describe  threads         Press, Redmond, Wash.
+and LWPs in Solaris. Custer (1993), Richter (1999), and             10.  Dijkstra, E. W. (1968): "The structure of THE
+Russinovich and Solomon (2005) describe processes and                    multiprogramming system," Communications of
+threads in Windows. Vahalia (1996) and Tanenbaum                         the ACM, 11, 341­346.
+(2001) discuss threads in Mach.                                     11.  Engelschall, R. S. (2000): "Portable
+                                                                         Multithreading: The signal stack trick for
+1.      Anderson, T. E., B. N. Bershad, E. D. Lazowska,                  user-space thread creation," Proceedings of the
+        and H. M. Levy (1992): "Scheduler activations:                   2000 USENIX Annual Technical Conference,
+        effective kernel support for the user-level                      San Diego.
+
+
+
+164  Part 2         Process Management
+12.  Eykholt, J. R, S. R. Kleiman, S. Barton,                Implementation of the 4.4 BSD Operating System,
+     S. Faulkner, A. Shivalingiah, M. Smith, D. Stein,       Addison Wesley, Reading, Mass.
+     J. Voll, M. Weeks, and D. Williams (1992):         19.  Nichols, B., D. Buttlar, and J. P. Farrell (1996):
+     "Beyond multiprocessing: multithreading the             Pthreads Programming, O'Reilly, Sebastopol.
+     SunOS kernel," Proceedings of the Summer 1992      20.  O'Gorman, J. (2003): Linux Process Manager:
+     USENIX Conference, 11­18.                               The internals of Scheduling, Interrupts and
+13.  Kleiman, S., D. Shah, and B. Smaalders (1996):          Signals, John Wiley, New York.
+     Programming with Threads, Prentice Hall,           21.  Richter, J. (1999): Programming Applications for
+     Englewood Cliffs, N.J.                                  Microsoft Windows, 4th ed., Microsoft Press,
+14.  Lewis, B., and D. Berg (1997): Multithreaded            Redmond, Wash.
+     Programming with Pthreads, Prentice Hall,          22.  Russinovich, M. E., and D. A. Solomon (2005):
+     Englewood Cliffs, N.J.                                  Microsoft Windows Internals, 4th ed., Microsoft
+15.  Lewis, B., and D. Berg (2000): Multithreaded            Press, Redmond, Wash.
+     Programming with Java Technology, Sun              23.  Silberschatz, A., P. B. Galvin, and G. Gagne
+     Microsystems.                                           (2005): Operating System Principles, 7th ed., John
+16.  Mauro, J., and R. McDougall (2006): Solaris             Wiley, New York.
+     Internals, 2nd ed., Prentice Hall, Englewood       24.  Stevens, W. R., and S. A. Rago (2005): Advanced
+     Cliffs, N.J.                                            Programming in the Unix Environment, 2nd ed.,
+17.  Marsh, B. D., M. L. Scott, T. J. LeBlanc, and           Addison-Wesley, Reading, Mass.
+     E. P. Markatos (1991): "First-class user-level     25.  Tanenbaum, A. S. (2001): Modern Operating
+     threads," Proceedings of the Thirteenth ACM             Systems, 2nd ed., Prentice Hall, Englewood
+     Symposium on Operating Systems Principles,              Cliffs, N.J.
+     October 1991, 110­121.                             26.  Vahalia, U. (1996): Unix Internals--The
+18.  McKusick, M. K., K. Bostic, M. J. Karels,               New Frontiers, Prentice Hall, Englewood
+     and J. S. Quarterman (1996): The Design and             Cliffs, N.J.

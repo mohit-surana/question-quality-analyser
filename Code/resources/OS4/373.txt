@@ -1,0 +1,65 @@
+Process Scheduling
+             A process can be scheduled on any CPU in a multiprocessor system. However,
+             its performance can be improved by making an intelligent choice of the CPU,
+             i.e., by deciding where to schedule it. Performance of a group of processes that
+             synchronize and communicate with one another can be improved by deciding
+             how and when to schedule them. This section discusses issues involved in making
+             these decisions.
+             Choice of the CPU   When a process Pi operates on a CPU, say, CPU C1, some
+             parts of its address space are loaded into the L1 cache of the CPU. When the
+             CPU is switched to another process, some of these parts are overwritten by parts
+             of the address space of the new process, however some other parts of Pi's address
+             space may survive in C1's cache memory for some time. These parts are called
+             the residual address space of a process. A process is said to have an affinity for
+             a CPU if it has a residual address space in its cache. The process would have a
+             higher cache hit ratio on this CPU than on a CPU for which it does not have
+             affinity.
+             Affinity scheduling schedules a process on a CPU for which it has an affinity.
+             This technique provides a good cache hit ratio, thereby speeding up operation
+             of the process and reducing the memory bus traffic. Another way to exploit
+             the affinity is to schedule the threads of a process on the same CPU in close
+             succession. However, affinity scheduling interferes with load balancing across
+             CPUs since processes and threads become tied to specific CPUs. Section 10.6.3
+             describes how it also leads to scheduling anomalies in the Windows system.
+
+
+
+                      Chapter 10   Synchronization and Scheduling in Multiprocessor Operating          Systems        353
+                      C1           C2                   C1           C2
+                 Pi            Pj           Pk                   Pi           Pj          Pk
+        Pi            Pj           Pk                   Pi           Pj            Pk
+        8             6            5                    8            6             5
+        blocked       running      running              running      running       ready
+        (a)                                             (b)
+Figure  10.8 Process  Pj is shuffled from CPU   C1  to  CPU C2       when process  Pi becomes  ready.
+In Section 10.3, we discussed how the SMP kernel permits each CPU to
+perform its own scheduling. This arrangement prevents the kernel from becoming
+a performance bottleneck; however, it leads to scheduling anomalies in which a
+higher-priority process is in the ready state even though a low-priority process has
+been scheduled. Correcting this anomaly requires shuffling of processes between
+CPUs, as indicated in the next example.
+                                                                                                                      ·
+Process Shuffling in an SMP Kernel                                                                     Example  10.1
+An SMP system contains two CPUs C1 and C2, and three processes Pi, Pj , and
+Pk with priorities 8, 6, and 5, respectively. Figure 10.8(a) shows the situation
+in which process Pi is in the blocked state due to an I/O operation (see contents
+of its PCB fields) and processes Pj and Pk are executing using CPUs C1 and
+C2, respectively. When the I/O operation of Pi completes, the I/O interrupt is
+processed by CPU C1, which changes Pi's state to ready and switches itself to
+service process Pi. So, process Pj, which is the process with the next higher
+priority, is in the ready state, and Pk, whose priority is the lowest, is in oper-
+ation. To correct this situation, process Pk should be preempted and process
+Pj should be scheduled on CPU C2. Figure 10.8(b) shows the situation after
+these actions are performed.
+                                                                                               ·
+Process shuffling can be implemented by using the assigned workload table
+(AWT), discussed in Section 10.3, and the interprocessor interrupt (IPI). How-
+ever, process shuffling leads to high scheduling overhead; this effect is more
+pronounced in a system containing a large number of CPUs. Hence some
+operating systems do not correct scheduling anomalies through process shuffling.
+Synchronization-Conscious Scheduling            Parts of a computation may be executed
+on different CPUs to achieve computation speedup. However, synchronization
+and communication among processes of an application influence the nature of
+parallelism between its processes, so a scheduling policy should take these into
+account as well. As commented earlier in Section 10.2, processes of an application
+should be scheduled on different CPUs at the same time if they use spin locks

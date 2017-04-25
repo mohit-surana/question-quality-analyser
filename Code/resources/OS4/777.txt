@@ -1,0 +1,144 @@
+Summary
+Recovery and fault tolerance are two approaches to       its  operation,  whereas    in  forward  recovery      the
+reliability of a computer system. These approaches       error is removed from the system's state and its
+are generically called recovery. The cost of a recov-    operation is resumed. Backward recovery is imple-
+ery approach is determined by its overhead during        mented as follows: The states of processes are
+normal operation and the amount of reprocessing          recorded periodically. When a node fails, a process
+which becomes necessary when a fault occurs. In          that was executing in it, say process Pi, is rolled
+a distributed system, a fault typically affects the      back to a previous state. If Pi had sent a message
+operation of a single link or node, hence special        m that was received by another process Pj, Pi's
+techniques are employed to minimize the cost of a        rollback makes message m an orphan message and
+recovery. It gives rise to a third recovery approach     causes an inconsistency in the states of Pi and Pj.
+called  resiliency.  In  this  chapter  we  studied      To remove this inconsistency, Pj has to be rolled
+the recovery techniques of distributed operating         back to some previous state in which it had not
+systems.                                                 received message m. This effect is called the domino
+     A fault like an I/O device malfunction or a         effect. Recovery is performed by rolling back pro-
+power outage causes an error in the state of the         cesses in accordance with the domino effect until
+system. It leads to an unexpected behavior of the        all processes assume mutually consistent states.
+system, which is called a failure. Recovery is initi-         A system implements fault tolerance by main-
+ated when a failure is noticed. It puts the system       taining a log in which it writes information for
+into a new state from which its operation can be         recovery. An undo log contains information useful
+resumed. The nature of a fault determines what           for backward recovery, while a do log, which is also
+kind of recovery is possible. A fail-stop fault brings   called a redo log, contains information for forward
+the system to a halt, a partial amnesia fault makes it   recovery. Fault tolerance is implemented through
+lose a part of its state, while a Byzantine fault makes  an atomic transaction, which ensures that if a fault
+it behave in an unpredictable manner and perform         occurs, either all actions in a specified sequence of
+wrong actions. It may not be possible to undo            actions would be performed or none of them would
+the effect of wrong actions performed because of         be performed. This way, the system will never be in
+a Byzantine fault in a process, hence recovery is        a state in which only some of the actions have been
+implemented as follows: Several processes are cre-       performed. An atomic transaction can be imple-
+ated to perform the same computation in parallel.        mented by using a do log and forward recovery
+When a failure results from a Byzantine fault, the       if a fault occurs while implementing its actions; it
+state in which majority of the processes exist is        can also be implemented by using an undo log and
+considered to be the correct state. Processes in the     backward recovery. The two-phase commit proto-
+wrong state are aborted and others resume their          col (2PC protocol) is used to implement atomic
+operation.                                               transactions that involve data existing in differ-
+     Recovery from non-Byzantine faults can be           ent nodes of the system. It ensures that actions of
+performed by using two approaches. In backward           the transaction are implemented only if all nodes
+recovery, recovery is performed by rolling back the      containing  its  data  can  carry  out   the  required
+system to a previous consistent state and resuming       updates.
+
+
+
+                                                            Chapter 19    Recovery and Fault Tolerance               757
+An atomic transaction that involves data in                 reduces  the  cost         of  reprocessing     as  follows:    A
+many nodes of the system can be implemented                 nested transaction of the failed transaction may
+by using nested transactions, which are its parts           have completed its operation in some other node.
+that execute in different nodes. If an atomic trans-        Hence it is not reinitiated even if its parent trans-
+action is unable to complete because of a node              action is reinitiated; instead, its results are simply
+fault, it may be reinitiated. The resiliency technique      reused in the reinitiated parent transaction.
+TEST  YOUR CONCEPTS                                                                                                         ·
+19.1  Classify each of the following statements as true              a.  A fault occurs when a system is in state S, and
+      or false:                                                          a process Pi is in state si. Process Pi is rolled
+      a. A power outage is a partial amnesia fault if                    back to a state si contained in a checkpoint
+      no recovery techniques are used.                                   that was taken at time t. A domino effect
+      b. Use of a recovery technique incurs overhead                     arises if
+      even during normal operation of a system,                          i. Pi had received a message m         some time
+      i.e., even when no faults occur.                                    after time t.
+      c. Backward recovery is performed by using                         ii. Pi had sent a message m to a process Pk
+      backups and checkpoints.                                            some time after time t, and in state S the
+      d. An orphan message is a message that has                          message is still in transit.
+      been sent but has not been received by its                         iii. Pi had sent a message m to a process
+      destination process.                                                Pk some time after time t, and in state
+      e. The domino effect may be observed while                          S process Pk has received the message.
+      recovering a system by using asynchronous                      b.  An atomic transaction can be implemented
+      checkpoints.                                                       by using
+      f. Quorum algorithms are used for fault toler-                     i. A do log and backward recovery
+      ance while updating distributed data.                              ii. A do log and forward recovery
+19.2  Select the appropriate alternative(s) in each of                   iii. An undo log and backward recovery
+      the following questions:                                           iv. An undo log and forward recovery
+EXERCISES                                                                                                                   ·
+19.1  A checkpoint is said to be strongly consistent if     19.3  Can orphan messages arise if a process takes a
+      (i) states of all pairs of processes are mutually           checkpoint before receiving each message?
+      consistent, and (ii) every message recorded as        19.4  When asynchronous checkpointing is used, sev-
+      sent by a sender process is recorded as received            eral checkpoints for each process need to be
+      by a receiver process. Discuss whether a syn-               preserved to support rollbacks in the presence
+      chronous   checkpoint      is  both  consistent  and        of orphan messages. To preserve disk space, it
+      strongly consistent.                                        is useful to know when (if ever) a specific check-
+19.2  Processes in a distributed computation perform              point can be deleted without affecting recovery.
+      asynchronous checkpointing as follows: Each                 Comment on the following proposals:
+      process takes a checkpoint immediately after                   a. Delete a checkpoint Cij when another check-
+      sending a message. Prove that recovery using                       point is taken for process Pi.
+      such  checkpoints     can  be  performed  without              b. Delete      a  checkpoint  Cij  if  another  check-
+      encountering the domino effect.                                    point Cij+1 is taken for process Pi and no
+
+
+
+758       Part 5     Distributed Operating Systems
+          messages were      sent  by  Pi  between  the  two    19.7  Can use of read and write quorums determined
+          checkpoints.                                                by Eq.(19.2) lead to deadlocks? If so, design a
+          c. Delete a checkpoint Cij if another checkpoint            scheme to avoid deadlocks.
+          Cij+1 is taken for process Pi and no mes-             19.8  Because of large quorum sizes in handling repli-
+          sages were received by Pi between the two                   cated data, it is proposed to use an approach
+          checkpoints.                                                based on the notion of request sets of Maekawa
+          d. Delete all checkpoints for process Pi taken              (see Section 18.3.1). Comment on whether all
+          prior to checkpoint Cij if for every message                four rules of Section 19.4.2 would be satisfied by
+          mk recorded as received in Cij , the process                this approach.
+          that sent message mk has taken a checkpoint           19.9  Comment          on  correctness  of  the      following
+          after sending it.                                           scheme      for  mutual  exclusion    of  readers  and
+19.5  The node in a distributed system in which a pro-                writers over replicated data:
+      cess Pi operates fails. What are the processes that             a. Set Qr = 1 and Qw = n, where n is the number
+      need to be rolled back due to recovery of Pi?                   of copies of data.
+      Give an algorithm to recover from Pi's failure.                 b. When a writer wishes to update the data, it
+      While recovery from Pi's failure is in progress,                tries to set a write lock on each copy.
+      the node in which another process Pj operates                   i.    If    the  copy    is  already  locked,  it  waits
+      fails. State the conditions under which recovery                      for the copy's lock to be released by the
+      from these two failures would be independent of                       process which had set it.
+      one another. How should recovery from these                     ii.   If it cannot access the copy,        it assumes
+      failures be performed if these conditions are not                     that the node containing the copy has
+      satisfied?                                                            failed, and reduces Qw by 1.
+19.6  Give a scheme to implement an atomic trans-                     iii.  It proceeds to update the data when it
+      action using an undo log. In what order should                        finds that it has set a write lock on as
+      entries in the undo log be processed if a transac-                    many copies as the current value of Qw.
+      tion is aborted?
+BIBLIOGRAPHY                                                                                                              ·
+Lamport et al. (1982) discusses the Byzantine generals          discusses fault tolerance in distributed systems. Garg
+problem. Barborak et al. (1993) surveys approaches that         (2002) discusses recovery based on checkpointing and
+can be used to obtain agreement on a system status by the       message logging.
+fault-free segment of the processor population. Lynch
+(1996), Tel (2000), and Garg (2002) discuss consensus in        1.  Barborak, M., M. Malek, and A. Dahbura
+synchronous and asynchronous systems.                               (1993): "The consensus problem in fault tolerant
+     The  two-phase  commit  protocol      is  discussed    in      computing," Computing Surveys, 25, 2, 171­220.
+Gray (1981). The three-phase commit protocol avoids             2.  Garg, V. K. (2002): Elements of Distributed
+the blocking problem of the two­phase commit proto-                 Computing, Wiley-IEEE, New York.
+col when the coordinator fails. It permits participating        3.  Gray, J. N. (1981): "The transaction concept:
+nodes to roll forward such a transaction to completion,             virtues and limitations," Proceedings of the
+or to roll it back to an abort. The three-phase commit              International Conference on Very Large Data
+protocol is discussed in Skeen (1983). Svobodova (1984)             Bases, 144­154.
+discusses resiliency in distributed computing.                  4.  Lamport, L., R. Shostak, and M. Pease (1982):
+     Venkatesh et al. (1987) discusses optimal check-               "The Byzantine generals problem," ACM
+pointing  and  domino-free   recovery.     This  topic   con-       Transactions on Programming Languages and
+tinues to be much researched even today. Tel (2000)                 Systems, 4 (3), 382­401.
+
+
+
+                                                  Chapter 19    Recovery and Fault Tolerance         759
+5.  Lynch, N. (1996): Distributed Algorithms,     8.  Tel, G. (2000): Introduction to Distributed
+    Morgan Kaufmann.                                  Algorithms, 2nd ed., Cambridge University Press,
+6.  Skeen, D. (1983): "A formal model of crash        Cambridge.
+    recovery in a distributed system," IEEE       9.  Venkatesh, K., T. Radhakrishnan, and H. F. Li
+    Transactions on Software Engineering, 9 (3),      (1987): "Optimal checkpointing and local
+    219­228.                                          recording for domino-free rollback recovery,"
+7.  Svobodova, L. (1984): "Resilient Distributed      Information Processing Letters, 25 (5),
+    computing," IEEE Transactions on Software         295­304.
+    Engineering, 10 (3), 257­267.

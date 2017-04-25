@@ -1,0 +1,218 @@
+Multiprogramming Systems
+Multiprogramming  operating              systems  were    developed         to  provide  efficient
+resource utilization in a noninteractive environment. A multiprogramming OS
+
+
+
+60          Part 1  Overview
+                    Multiprogramming       Multiprogramming                                Multiprogramming
+                    kernel                         kernel                                  kernel
+            I/O     program1          I/O          program1  CPU                           program1
+    CPU             program2          I/O          program2  I/O                           program2
+                    program3          CPU          program3                                program3
+    (a)                               (b)                    (c)
+Figure 3.3  Operation of a multiprogramming system: (a) program2 is in execution while     program1 is performing an I/O
+operation; (b) program2 initiates an I/O operation, program3 is scheduled; (c) program1's  I/O operation completes and it  is
+scheduled.
+                    has many user programs in the memory of the computer at any time, hence the
+                    name multiprogramming. It employs the DMA mode of I/O (see Section 2.2.4),
+                    so it can perform I/O operations of some program(s) while using the CPU to
+                    execute some other program. This arrangement makes efficient use of both the
+                    CPU and I/O devices. The I/O and computational activities in several programs
+                    are in progress at any time, so it also leads to high system performance. We discuss
+                    this aspect in Section 3.5.1.
+                              Figure 3.3 illustrates operation of a multiprogramming OS. The memory
+                    contains three programs. An I/O operation is in progress for program1, while the
+                    CPU is executing program2. The CPU is switched to program3 when program2
+                    initiates an I/O operation, and it is switched to program1 when program1's I/O
+                    operation completes. The multiprogramming kernel performs scheduling, mem-
+                    ory management and I/O management. It uses a simple scheduling policy, which
+                    we will discuss in Section 3.5.1, and performs simple partitioned or pool-based
+                    allocation of memory and I/O devices. Since several programs are in memory at
+                    the same time, the instructions, data, and I/O operations of a program should be
+                    protected against interference by other programs. We shall shortly see how it is
+                    achieved.
+                              A computer must possess the features summarized in Table 3.4 to support
+                    multiprogramming (see Section 2.2). The DMA makes multiprogramming fea-
+                    sible by permitting concurrent operation of the CPU and I/O devices. Memory
+                    protection prevents a program from accessing memory locations that lie outside
+                    the range of addresses defined by contents of the base register and size register
+                    of the CPU. The kernel and user modes of the CPU provide an effective method
+                    of preventing interference between programs. Recall from Section 2.2 that the
+                    OS puts the CPU in the user mode while executing user programs, and that
+                    instructions that load an address into the base register and a number into the
+                    size register of the CPU, respectively, are privileged instructions. If a program
+                    tries to undermine memory protection by changing contents of the base and size
+                    registers through these instructions, a program interrupt would be raised because
+
+
+
+                                               Chapter 3             Overview of Operating  Systems  61
+Table 3.4        Architectural Support for Multiprogramming
+Feature            Description
+DMA                The CPU initiates an I/O operation when an I/O instruction
+                   is executed. The DMA implements the data transfer
+                   involved in the I/O operation without involving the CPU
+                   and raises an I/O interrupt when the data transfer completes.
+Memory protection  A program can access only the part of memory defined by
+                   contents of the base register and size register.
+Kernel and user    Certain instructions, called privileged instructions, can be
+modes of CPU       performed only when the CPU is in the kernel mode. A
+                   program interrupt is raised if a program tries to execute a
+                   privileged instruction when the CPU is in the user mode.
+the CPU is in the user mode; the kernel would abort the program while servicing
+this interrupt.
+The turnaround time of a program is the appropriate measure of user service
+in a multiprogramming system. It depends on the total number of programs in
+the system, the manner in which the kernel shares the CPU between programs,
+and the program's own execution requirements.
+3.5.1 Priority of Programs
+An appropriate measure of performance of a multiprogramming OS is through-
+put, which is the ratio of the number of programs processed and the total time
+taken to process them. Throughput of a multiprogramming OS that processes n
+programs in the interval between times t0 and tf is n/(tf - t0). It may be larger
+than the throughput of a batch processing system because activities in several
+programs may take place simultaneously--one program may execute instruc-
+tions on the CPU, while some other programs perform I/O operations. However,
+actual throughput depends on the nature of programs being processed, i.e., how
+much computation and how much I/O they perform, and how well the kernel can
+overlap their activities in time.
+The OS keeps a sufficient number of programs in memory at all times, so that
+the CPU and I/O devices will have sufficient work to perform. This number is
+called the degree of multiprogramming. However, merely a high degree of multi-
+programming cannot guarantee good utilization of both the CPU and I/O devices,
+because the CPU would be idle if each of the programs performed I/O operations
+most of the time, or the I/O devices would be idle if each of the programs per-
+formed computations most of the time. So the multiprogramming OS employs the
+two techniques described in Table 3.5 to ensure an overlap of CPU and I/O activ-
+ities in programs: It uses an appropriate program mix, which ensures that some
+of the programs in memory are CPU-bound programs, which are programs that
+
+
+
+62  Part 1  Overview
+            Table 3.5       Techniques of Multiprogramming
+            Technique          Description
+            Appropriate        The kernel keeps a mix of CPU-bound and I/O-bound programs
+            program mix        in memory, where
+                               ·  A CPU-bound program is a program involving a lot of
+                                  computation and very little I/O. It uses the CPU in long
+                                  bursts--that is, it uses the CPU for a long time before
+                                  starting an I/O operation.
+                               ·  An I/O-bound program involves very little computation and a
+                                  lot of I/O. It uses the CPU in small bursts.
+            Priority-based     Every program is assigned a priority. The CPU is always
+            preemptive         allocated to the highest-priority program that wishes to use it.
+            scheduling         A low-priority program executing on the CPU is preempted if a
+                               higher-priority program wishes to use the CPU.
+            involve a lot of computation but few I/O operations, and others are I/O-bound pro-
+            grams, which contain very little computation but perform more I/O operations.
+            This way, the programs being serviced have the potential to keep the CPU and I/O
+            devices busy simultaneously. The OS uses the notion of priority-based preemptive
+            scheduling to share the CPU among programs in a manner that would ensure
+            good overlap of their CPU and I/O activities. We explain this technique in the
+            following.
+            Definition   3.4   Priority  A tie-breaking criterion under which a scheduler
+            decides     which  request   should  be  scheduled  when  many      requests         await
+            service.
+                      The kernel assigns numeric priorities to programs. We assume that priorities
+            are positive integers and a large value implies a high priority. When many pro-
+            grams need the CPU at the same time, the kernel gives the CPU to the program
+            with the highest priority. It uses priority in a preemptive manner; i.e., it preempts
+            a low-priority program executing on the CPU if a high-priority program needs
+            the CPU. This way, the CPU is always executing the highest-priority program
+            that needs it. To understand implications of priority-based preemptive schedul-
+            ing, consider what would happen if a high-priority program is performing an I/O
+            operation, a low-priority program is executing on the CPU, and the I/O operation
+            of the high-priority program completes--the kernel would immediately switch the
+            CPU to the high-priority program.
+                      Assignment of priorities to programs is a crucial decision that can influence
+            system throughput. Multiprogramming systems use the following priority assign-
+            ment rule: An I/O-bound program should have a higher priority than a CPU-bound
+            program. Example 3.1 illustrates operation of this rule.
+
+
+
+                                                                   Chapter 3       Overview of Operating Systems       63
+                                                                                                                       ·
+Execution of Programs in a Multiprogramming System                                        Example                 3.1
+A multiprogramming system has progiob, an I/O-bound program, and progcb,
+a CPU-bound program. Its operation starts at time 0. In Figure 3.4, the CPU
+and I/O activities of these programs are plotted in the form of a timing chart in
+which the x axis shows time and the y axis shows CPU and I/O activities of the
+two programs. Cumulative CPU and I/O activities are shown at the bottom of
+the chart. Note that the chart is not to scale; the CPU activity of progiob has
+been exaggerated for clarity.
+        Program progiob is the higher priority program. Hence it starts executing
+at time 0. After a short burst of CPU activity, it initiates an I/O operation (time
+instant t1). The CPU is now switched to progcb. Execution of progcb is thus
+concurrent with the I/O operation of progiob. Being a CPU-bound program,
+progcb keeps the CPU busy until progiob's I/O completes at t2, at which time
+progcb is preempted because progiob has a higher priority. This sequence of
+events repeats in the period 0­t6. Deviations from this behavior occur when
+progcb initiates an I/O operation. Now both programs are engaged in I/O
+operations, which go on simultaneously because the programs use different
+I/O devices, and the CPU remains idle until one of them completes its I/O
+operation. This explains the CPU-idle periods t6­t7 and t8­t9 in the cumulative
+CPU activity. I/O-idle periods occur whenever progiob executes on the CPU
+and progcb is not performing I/O (see intervals 0 - t1, t2­t3, and t4­t5). But
+the CPU and the I/O subsystem are concurrently busy in the intervals t1­t2,
+t3­t4, t5­t6, and t7­t8.
+                                                                                       ·
+                      CPU activity
+             progiob
+                      I/O activity
+                      CPU activity
+             progcb
+                      I/O activity
+                                    0  t1    t2  t3    t4  t5  t6  t7    t8  t9  Time
+                      Cumulative                 Busy              Busy      Busy
+                      CPU activity
+                      Cumulative       Busy      Busy              Busy
+                      I/O activity
+Figure  3.4  Timing   chart when I/O-bound program has higher priority.
+
+
+
+64  Part 1  Overview
+            Table 3.6           Effect  of  Increasing the Degree of Multiprogramming
+            Action                               Effect
+            Add a CPU-bound                      A CPU-bound program (say, prog3) can be
+            program                              introduced to utilize some of the CPU time that was
+                                                 wasted in Example 3.1 (e.g., the intervals t6­t7 and
+                                                 t8­t9). prog3 would have the lowest priority. Hence
+                                                 its presence would not affect the progress of progcb
+                                                 and progiob.
+            Add an I/O-bound                     An I/O-bound program (say, prog4) can be
+            program                              introduced. Its priority would be between the
+                                                 priorities of progiob and progcb. Presence of prog4
+                                                 would improve I/O utilization. It would not affect
+                                                 the progress of progiob at all, since progiob has the
+                                                 highest priority, and it would affect the progress of
+                                                 progcb only marginally, since prog4 does not use a
+                                                 significant amount of CPU time.
+                      We can make a few observations from Example 3.1: The CPU utilization
+            is good. The I/O utilization is also good; however, I/O idling would exist if
+            the system contained many devices capable of operating in the DMA mode.
+            Periods   of   concurrent       CPU  and     I/O  activities  are  frequent.   progiob      makes
+            very good progress because it is the highest-priority program. It makes very
+            light     use  of   the  CPU,   and  so  progcb   also  makes      very  good  progress.    The
+            throughput is thus substantially higher than if the programs were executed
+            one after another as in a batch processing system. Another important fea-
+            ture of this priority assignment is that system throughput can be improved
+            by adding more programs. Table 3.6 describes how addition of a CPU-bound
+            program        can  reduce  CPU      idling  without    affecting  execution   of  other    pro-
+            grams, while addition of an I/O-bound program can improve I/O utilization
+            while marginally affecting execution of CPU-bound programs. The kernel can
+            judiciously add CPU-bound or I/O-bound programs to ensure efficient use of
+            resources.
+                      When an appropriate program mix is maintained, we can expect that an
+            increase in the degree of multiprogramming would result in an increase in
+            throughput. Figure 3.5 shows how the throughput of a system actually varies
+            with the degree of multiprogramming. When the degree of multiprogramming
+            is 1, the throughput is dictated by the elapsed time of the lone program in the
+            system. When more programs exist in the system, lower-priority programs also
+            contribute to throughput. However, their contribution is limited by their oppor-
+            tunity to use the CPU. Throughput stagnates with increasing values of the degree
+            of multiprogramming if low-priority programs do not get any opportunity to
+            execute.

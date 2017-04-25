@@ -1,0 +1,198 @@
+Overview of Message Passing
+In Section 5.2.5, we summarized four ways in which processes interact with
+one another--data sharing, message passing, synchronization, and signals (see
+Table 5.7). Of these, we discussed data sharing and synchronization in Chapter 6
+and signals in Chapter 5. Data sharing provides means to access values of shared
+data in a mutually exclusive manner. Process synchronization is performed by
+blocking a process until other processes have performed certain specific actions.
+Capabilities of message passing overlap those of data sharing and synchroniza-
+tion; however, each form of process interaction has its own niche application area.
+We discuss this aspect after taking an overview of message passing.
+     Figure 9.1 shows an example of message passing. Process Pi sends a message
+to process Pj by executing the statement send (Pj, <message>). The compiled
+code of the send statement invokes the library module send. send makes a
+                                                                                                315
+
+
+
+316  Part 2  Process Management
+                                       Process Pi                    Process Pj
+                                       ···                           ···
+                                 send  (Pj , <message>);  receive    (Pi ,  msg_area);
+                                       ···                           ···
+             Figure 9.1  Message passing.
+             system call send, with Pj and the message as parameters. Execution of the state-
+             ment receive (Pi,         msg_area), where msg_area is an area in Pj's address
+             space, results in a system call receive.
+             The semantics of message passing are as follows: At a send call by Pi, the ker-
+             nel checks whether process Pj is blocked on a receive call for receiving a message
+             from process Pi. If so, it copies the message into msg_area and activates Pj. If
+             process Pj has not already made a receive call, the kernel arranges to deliver the
+             message to it when Pj eventually makes a receive call. When process Pj receives
+             the message, it interprets the message and takes an appropriate action.
+             Messages may be passed between processes that exist in the same computer or
+             in different computers connected to a network. Also, the processes participating in
+             message passing may decide on what a specific message means and what actions
+             the receiver process should perform on receiving it. Because of this flexibility,
+             message passing is used in the following applications:
+             · Message passing is employed in the client­server paradigm, which is used to
+             communicate between components of a microkernel-based operating system
+             and user processes, to provide services such as the print service to processes
+             within an OS, or to provide Web-based services to client processes located in
+             other computers.
+             · Message passing is used as the backbone of higher-level protocols employed
+             for communicating between computers or for providing the electronic mail
+             facility.
+             · Message passing is used to implement communication between tasks in a
+             parallel or distributed program.
+             In principle, message passing can be performed by using shared variables. For
+             example, msg_area in Figure 9.1 could be a shared variable. Pi could deposit a
+             value or a message in it and Pj could collect it from there. However, this approach
+             is cumbersome because the processes would have to create a shared variable with
+             the correct size and share its name. They would also have to use synchronization
+             analogous to the producers­consumers problem (see Section 6.7.1) to ensure
+             that a receiver process accessed a message in a shared variable only after a sender
+             process had deposited it there. Message passing is far simpler in this situation. It
+             is also more general, because it can be used in a distributed system environment,
+             where the shared variable approach is not feasible.
+             The producers­consumers problem with a single buffer, a single producer
+             process, and a single consumer process can be implemented by message passing
+             as shown in Figure 9.2. The solution does not use any shared variables. Instead,
+             process Pi, which is the producer process, has a variable called buffer and process
+
+
+
+                                                                             Chapter 9  Message Passing  317
+   begin
+        Parbegin
+             var buffer : . . . ;                var message_area : . . . ;
+             repeat                              repeat
+              { Produce in buffer }              receive (Pi, message_area);
+              send (Pj , buffer);                { Consume from message_area     }
+              { Remainder of the cycle }         { Remainder of the cycle }
+             forever;                            forever;
+        Parend;
+        end.
+                       Process Pi                          Process Pj
+Figure  9.2  Producers­consumers solution using  message passing.
+Pj, which is the consumer process, has a variable called message_area. The pro-
+ducer process produces in buffer and sends the contents of buffer in a message to
+the consumer. The consumer receives the message in message_area and consumes
+it from there. The send system call blocks the producer process until the message
+is delivered to the consumer, and the receive system call blocks the consumer until
+a message is sent to it.
+   The producers­consumers solution of Figure 9.2 is much simpler than the
+solutions discussed in Chapter 6; however, it is restrictive because it permits a
+single producer and a single consumer process. In the general case, it is effective
+to use the process synchronization means discussed in Chapter 6 to implement a
+system containing producers and consumers.
+Issues in Message Passing          Two important issues in message passing are:
+·  Naming of processes: Whether names of sender and receiver processes are
+   explicitly indicated in send and receive statements, or whether their
+   identities are deduced by the kernel in some other manner.
+·  Delivery of messages: Whether a sender process is blocked until the message
+   sent by it is delivered, what the order is in which messages are delivered to
+   the receiver process, and how exceptional conditions are handled.
+   These issues dictate implementation arrangements and also influence the
+generality of message passing. For example, if a sender process is required to know
+the identity of a receiver process, the scope of message passing would be limited
+to processes in the same application. Relaxing this requirement would extend
+message passing to processes in different applications and processes operating in
+different computer systems. Similarly, providing FCFS message delivery may be
+rather restrictive; processes may wish to receive messages in some other order.
+9.1.1 Direct and Indirect Naming
+In direct naming, sender and receiver processes mention each other's name. For
+example, the send and receive statements might have the following syntax:
+
+
+
+318  Part 2  Process Management
+             send (<destination_ process>, <message_length>, <message_address>);
+             receive (<source_ process>, <message_area>);
+             where <destination_ process> and <source_ process> are process names (typi-
+             cally, they are process ids assigned by the kernel), <message_address> is the
+             address of the memory area in the sender process's address space that contains
+             the textual form of the message to be sent, and <message_area> is a memory area
+             in the receiver's address space where the message is to be delivered. The processes
+             of Figure 9.2 used direct naming.
+             Direct naming can be used in two ways: In symmetric naming, both sender
+             and receiver processes specify each other's name. Thus, a process can decide which
+             process to receive a message from. However, it has to know the name of every
+             process that wishes to send it a message, which is difficult when processes of
+             different applications wish to communicate, or when a server wishes to receive a
+             request from any one of a set of clients. In asymmetric naming, the receiver does
+             not name the process from which it wishes to receive a message; the kernel gives
+             it a message sent to it by some process.
+             In indirect naming, processes do not mention each other's name in send and
+             receive statements. We discuss indirect naming in Section 9.3.
+             9.1.2 Blocking and Nonblocking Sends
+             A blocking send blocks a sender process until the message to be sent is delivered to
+             the destination process. This method of message passing is called synchronous mes-
+             sage passing. A nonblocking send call permits a sender to continue its operation
+             after making a send call, irrespective of whether the message is delivered immedi-
+             ately; such message passing is called asynchronous message passing. In both cases,
+             the receive primitive is typically blocking.
+             Synchronous message passing provides some nice properties for user pro-
+             cesses and simplifies actions of the kernel. A sender process has a guarantee
+             that the message sent by it is delivered before it continues its operation. This
+             feature simplifies the design of concurrent processes. The kernel delivers the
+             message immediately if the destination process has already made a receive call
+             for receiving a message; otherwise, it blocks the sender process until the des-
+             tination process makes a receive call. The kernel can simply let the message
+             remain in the sender's memory area until it is delivered. However, use of block-
+             ing sends has one drawback--it may unnecessarily delay a sender process in
+             some situations, for example, while communicating with a heavily loaded print
+             server.
+             Asynchronous message passing enhances concurrency between the sender
+             and receiver processes by letting the sender process continue its operation. How-
+             ever, it also causes a synchronization problem because the sender should not
+             alter contents of the memory area which contains text of the message until the
+             message is delivered. To overcome this problem, the kernel performs message
+             buffering--when a process makes a send call, the kernel allocates a buffer in
+             the system area and copies the message into the buffer. This way, the sender
+
+
+
+                                                                      Chapter 9        Message Passing  319
+process is free to access the memory area that contained text of the message.
+However, this arrangement involves substantial memory commitment for buffers
+when many messages are awaiting delivery. It also consumes CPU time, as a
+message has to be copied twice--once into a system buffer when a send call is
+made, and later into the message area of the receiver at the time of message
+delivery.
+9.1.3 Exceptional Conditions in Message Passing
+To facilitate handling of exceptional conditions, the send and receive calls take
+two additional parameters. The first parameter is a set of flags indicating how the
+process wants exceptional conditions to be handled; we will call this parameter
+flags. The second parameter is the address of a memory area in which the kernel
+provides a condition code describing the outcome of the send or receive call; we
+will call this area status_area.
+    When a process makes a send or receive call, the kernel deposits a con-
+dition code in status_area. It then checks flags to decide whether it should
+handle any exceptional conditions and performs the necessary actions. It then
+returns control to the process. The process checks the condition code pro-
+vided by the kernel and handles any exceptional conditions it wished to handle
+itself.
+    Some exceptional conditions and their handling actions are as follows:
+1.  The destination process mentioned in a send call does not exist.
+2.  In symmetric naming, the source process mentioned in a receive call does not
+    exist.
+3.  A send call cannot be processed because the kernel has run out of buffer
+    memory.
+4.  No message exists for a process when it makes a receive call.
+5.  A set of processes becomes deadlocked when a process is blocked on a receive
+    call.
+    In cases 1 and 2, the kernel may abort the process that made the send or receive
+call and set its termination code to describe the exceptional condition. In case 3,
+the sender process may be blocked until some buffer space becomes available.
+Case 4 is really not an exception if receives are blocking (they generally are!), but
+it may be treated as an exception so that the receiving process has an opportunity
+to handle the condition if it so desires. A process may prefer the standard action,
+which is that the kernel should block the process until a message arrives for it, or
+it may prefer an action of its own choice, like waiting for a specified amount of
+time before giving up.
+    More severe exceptions belong to the realm of OS policies. The deadlock situ-
+ation of case 5 is an example. Most operating systems do not handle this particular
+exception because it incurs the overhead of deadlock detection. Difficult-to-
+handle situations, such as a process waiting a long time on a receive call, also
+belong to the realm of OS policies.

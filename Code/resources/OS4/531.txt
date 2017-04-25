@@ -1,0 +1,90 @@
+File Sharing Semantics
+                   As discussed in Section 13.6, the owner of a file may authorize some other users
+                   to access the file. Processes created by authorized users can read, write, or execute
+
+
+
+                                                                  Chapter 13                File  Systems  511
+the file in accordance with access privileges granted to them. In essence they share
+the files to which they have access. The file system provides two methods of file
+sharing so that processes can choose the one that permits them to collaborate
+and build on each other's work effectively:
+·  Sequential sharing: Processes access a shared file one after another. Thus, file
+   modifications made by one process, if any, are visible to processes that access
+   the file afterwards.
+·  Concurrent sharing: Two or more processes access a file over the same period
+   of time.
+File sharing semantics is a set of rules that determine the manner in which results of
+file manipulations performed by concurrent processes are visible to one another.
+   Sequential sharing of a file can be implemented through the lock field in the
+file's directory entry (see Figure 13.6). If the lock field of the file's directory entry
+has the value "reset," an open operation would succeed and change the value to
+"set"; otherwise, the open operation would fail and would have to be repeated.
+A close operation would change the value in the lock to "reset."
+   To facilitate concurrent sharing of a file, the file system has to ensure that
+file processing activities of processes do not interfere. Accordingly, it creates a
+separate FCB for each process by simply following the procedure of Section 13.9.1
+every time a file is opened. Several FCBs may thus be created for concurrent
+sharing of file alpha. We use the notation fcbPal1 pha for the FCB of alpha
+created for process P1. Table 13.4 summarizes three modes of concurrent file
+sharing provided in file systems.
+Sharing Immutable Files     When the file alpha is shared as an immutable file,
+none of the sharing processes can modify it. Hence the processes sharing file
+alpha are independent of one another. Creation of an fcbalpha for each sharing
+process is adequate to implement this form of file sharing.
+Table 13.4       Modes of Concurrent File Sharing
+Mode                        Description
+Immutable files             The file being shared cannot be modified by any
+                            process.
+Single-image mutable files  All processes concurrently sharing a file "see" the same
+                            image of the file, i.e., they have an identical view of file's
+                            data. Thus, modifications made by one process are
+                            immediately visible to other processes using the file.
+Multiple-image mutable      Processes sharing a file may "see" different images of
+files                       the file. Thus, updates made by a process may not be
+                            visible to some concurrent processes. The file system
+                            may maintain many images of a file, or it may reconcile
+                            them in some manner to create a single image when
+                            processes close the file.
+
+
+
+512  Part 4  File  Systems and I/O Management
+                                                                                 fcbaPl1 pha
+                                     Data blocks
+                                         of alpha                                fcbaPl2 pha
+                                                   fmtalpha
+                                                                                 OFT
+                   Figure 13.22  Concurrent sharing of a single-image mutable file by processes P1 and P2.
+                   Sharing Single-Image Mutable Files         A single copy of the file is shared by pro-
+                   cesses accessing it. Hence modifications made by one process are immediately
+                   visible to other processes. To implement this form of sharing, it is essential that a
+                   single copy of the FMT be used by all sharing processes. Hence it is best to keep
+                   a pointer to the FMT, rather than the FMT itself, in an FCB.
+                        Figure 13.22 shows concurrent sharing of file alpha using such an arrange-
+                   ment. The FCBs fcbPal1 pha and fcbPal2 pha are created when alpha is opened by
+                   processes P1 and P2. Both FCBs point to the same copy of fmtalpha. Each FCB
+                   contains the address of the next record to be accessed by a process. If the sets of
+                   records processed by P1 and P2 overlapped, their modifications would be visible
+                   to one another. Race conditions could also arise in such situations, and updates
+                   made by processes might be lost. A typical file system does not provide any means
+                   of tackling this problem; the processes have to evolve their own synchronization
+                   conventions for this purpose. The Unix file system supports single-image mutable
+                   files; we discuss Unix file sharing semantics in Section 13.14.1.
+                   Sharing  Multiple-Image         Mutable    Files  When a multiple-image mutable file
+                   alpha is shared by several processes, each process that modifies the file creates
+                   a new version of alpha that is distinct from versions created by other concur-
+                   rent processes. In this scheme, there has to be a distinct fmtalpha for each FCB,
+                   and each FMT must point to an exclusive copy of the file. This requirement is
+                   best implemented by making a copy of alpha (and its FMT) for each process
+                   concurrently accessing it.
+                        Figure 13.23 illustrates the arrangement for implementing multiple-image
+                   mutable files. Processes P1 and P2 are engaged in updating alpha. alphaP1 rep-
+                   resents the copy of alpha made for process P1. Processing by P1 uses fcbaPl1 pha
+                   and  fmtaPl1 pha  to  access    alphaP1 ,  while  processing  by   P2      uses  fcbPal2 pha  and
+                   fmtaPl2 pha to access alphaP2 . alphaP1 and alphaP2 are thus two versions of
+                   alpha. To arrive at a unique implementation scheme, the file sharing semantics
+                   must specify how alpha would be accessed by processes that wish only to read
+                   it, i.e., which version of alpha they would access.
+                        Sharing of multiple-image mutable files has special features that may not be
+                   valid or applicable in many applications. Hence it can be used only in applications

@@ -1,0 +1,280 @@
+Architecture of Multiprocessor Systems
+     Performance of a uniprocessor system depends on the performance of the CPU
+     and memory, which can be enhanced through faster chips, and several levels of
+336
+
+
+
+                      Chapter 10  Synchronization and Scheduling in Multiprocessor Operating  Systems  337
+Table 10.1      Benefits of Multiprocessors
+Benefit               Description
+High throughput       Several processes can be serviced by the CPUs at the
+                      same time. Hence more work is accomplished.
+Computation speedup   Several processes of an application may be serviced at
+                      the same time, leading to a reduction in the duration,
+                      i.e., running time, of an application; it provides better
+                      response times.
+Graceful degradation  Failure of a CPU does not halt operation of the system;
+                      the system can continue to operate with somewhat
+                      reduced capabilities.
+caches. However, chip speeds cannot be increased beyond technological limits.
+Further improvements in system performance can be obtained only by using
+multiple CPUs.
+As a result of the presence of multiple CPUs, multiprocessor architectures
+possess the potential to provide the three benefits summarized in Table 10.1.
+High throughput is possible because the OS can schedule several processes in par-
+allel, and so several applications can make progress at the same time. The actual
+increase in throughput compared with a uniprocessor system may be limited by
+memory contention that occurs when several CPUs try to make memory accesses
+at the same time, which increases the effective memory access time experienced
+by processes. Computation speedup is obtained when processes of an applica-
+tion are scheduled in parallel. The extent of the speedup may be limited by the
+amount of parallelism within an application, that is, whether processes of the
+application can operate without requiring synchronization frequently. Graceful
+degradation provides continuity of operation despite CPU failures. This feature is
+vital for supporting mission-critical applications like online services and real-time
+applications.
+A System Model   Figure 10.1 shows a model of a multiprocessor system. The
+CPUs, the memory, and the I/O subsystem are connected to the interconnection
+network. Each CPU chip may contain level 1 and level 2 caches, i.e., L1 and L2
+caches, that hold blocks of instructions and data recently accessed by the CPU.
+However, for simplicity, we assume that the CPU contains only an L1 cache.
+The memory comprises several memory units. We assume that an L3 cache is
+associated with each memory unit and holds blocks of instructions and data
+accessed recently from it. Every time a CPU or an I/O device wishes to make a
+memory access, the interconnection network establishes a path between it and the
+memory unit containing the required byte, and the access takes place over this
+path. Ignoring delays in the interconnection network, effective memory access
+time depends on hit ratios in the L1, L2, and L3 caches, and on the memory
+access time (see Section 2.2.3).
+
+
+
+338  Part 2  Process Management
+                                      CPU       ...          CPU
+                                      L1 cache               L1 cache
+                                      Interconnection                  I/O
+                                                network
+                                      L3 cache  ...          L3 cache
+                                      Memory                 Memory
+             Figure 10.1 Model   of  multiprocessor system.
+             Cache and TLB Coherence  When processes use shared data, several copies of a
+             data item d may be present in the system at the same time. One of these copies
+             would be in a memory unit and one may exist in the L3 cache associated with
+             the memory unit, while the rest would exist in the L1 caches of CPUs where
+             the processes were scheduled. When a process operating on one CPU updates a
+             copy of d, the other copies of d become stale. Their use by processes would cause
+             correctness and data consistency problems, so the system uses a cache coherence
+             protocol to ensure that a stale copy is never used in a computation.
+             Cache coherence protocols are based on two fundamental approaches, sev-
+             eral variants of which are applied in practice. The snooping-based approach can
+             be used if the interconnection network is a bus. A CPU snoops on the bus to detect
+             messages that concern caching, and eliminates stale copies from its L1 cache. In
+             the write-invalidate variant of this approach, any process updating a copy of a
+             shared data item d is required to update the copy of d existing in memory. Hence
+             the memory never holds a stale copy. A CPU that updates d sends a "cache inval-
+             idate" message for d on the bus. On seeing this message, every snooping CPU
+             discards the copy of d, if present, from its L1 cache. The next time such a CPU
+             accesses d, the value is copied afresh into the CPU's L1 cache.
+             A directory-based cache coherence approach requires maintaining a directory
+             of information about cached copies of data items in the system; the directory could
+             indicate which CPUs contain cached copies of each data item. While updating
+             a data item d, a CPU would send point-to-point cache invalidation signals to
+             these CPUs. Alternatively, the dictionary could indicate the location of the most
+             recently updated copy of each shared data item. When a CPU C1 wishes to access
+             a data item d, it would send a "read d" request to the directory. The directory
+             would send the request to the memory unit or the CPU that has the most recent
+             copy of d in its cache, which would forward the value of d to C1. After the update,
+             the directory entry of d would be set to point to C1.
+             TLB coherence is an analogous problem, whereby information in some entries
+             in a CPU's TLB becomes stale when other CPUs perform page replacements or
+             change access privileges of processes to shared pages. A shared page pi of a process
+             has entries in the TLBs of many CPUs. If a page fault arises in a process operating
+             on one of the CPUs, say, CPU C1, and page pi is replaced by a new page, the TLB
+
+
+
+                    Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  339
+entry of pi in C1 would be erased (see Section 12.2.2.2). The TLB entries of pi in
+other CPUs are now stale, so they need to be erased too. It is achieved through a
+TLB shootdown action, in which CPU C1 sends interprocessor interrupts to other
+CPUs with details of pi's id, and the other CPUs invalidate pi's entries in their
+TLBs. Similar actions are performed when access privileges of shared pages are
+changed. The overhead of a TLB shootdown is reduced in two ways. The page
+table entry of pi indicates which CPUs have TLB entries for pi, and C1 sends the
+interrupts to only these CPUs. A CPU receiving the intimation for shootdown
+could implement it in a lazy, i.e., need-based, manner. If the shootdown concerns
+the currently operating process, it erases the TLB entry immediately; otherwise,
+it queues the intimation and handles it when the process that it concerns is next
+scheduled.
+Classification of Multiprocessor Systems  Multiprocessor systems are classified
+into three kinds of systems according to the manner in which CPUs and memory
+units are associated with one another.
+·  Uniform memory access architecture (UMA architecture): All CPUs in the
+   system can access the entire memory in an identical manner, i.e., with the same
+   access speed. Some examples of UMA architecture are the Balance system
+   by Sequent and VAX 8800 by Digital. The UMA architecture is called the
+   tightly coupled multiprocessor architecture in older literature. It is also called
+   symmetrical multiprocessor (SMP) architecture.
+·  Nonuniform memory access architecture (NUMA architecture): The system
+   consists of a number of nodes, where each node consists of one or more
+   CPUs, a memory unit, and an I/O subsystem. The memory unit of a node
+   is said to be local to the CPUs in that node. Other memory units are said
+   to be nonlocal. All memory units together constitute a single address space.
+   Each CPU can access the entire address space; however, it can access the local
+   memory unit faster than it can access nonlocal memory units. Some examples
+   of the NUMA architecture are the HP AlphaServer and the IBM NUMA-Q.
+·  No-remote-memory-access architecture (NORMA architecture): Each CPU
+   has its local memory. CPUs can access remote memory units, but this access is
+   over the network, and so it is very slow compared with access to local memory.
+   The Hypercube system by Intel is an example of a NORMA architecture. A
+   NORMA system is a distributed system according to Definition 3.8; there-
+   fore, we shall not discuss architecture of NORMA systems in this chapter.
+Interconnection Networks  CPUs in a multiprocessor system access memory
+units  through  an  interconnection     network.  Two  important  attributes  of       an
+interconnection network are cost and effective access speed. Table 10.2 lists
+the characteristics and relative advantages of three popular interconnection
+networks. Figure 10.2 contains schematic diagrams of these networks.
+   A bus in a multiprocessor system is simply an extension of a bus in a unipro-
+cessor system. All memory units and all CPUs are connected to the bus. Thus the
+bus supports data traffic between any CPU and any memory unit. However, only
+one CPU­memory conversation can be in progress at any time. The bus is simple
+
+
+
+340  Part 2  Process Management
+             Table 10.2          Features       of Interconnection Networks
+             Interconnection network            Features
+             Bus                                Low cost. Reasonable access speed at low traffic
+                                                density. Only one CPU­memory conversation can be in
+                                                progress at any time.
+             Crossbar switch                    High cost. Low expandability. CPUs and memory units
+                                                are connected to the switch. A CPU­memory
+                                                conversation is implemented by selecting a path
+                                                between a CPU and a memory unit. Permits many
+                                                CPU­memory conversations in parallel.
+             Multistage inter-                  A compromise between a bus and a crossbar switch. It
+             connection network                 consists of many stages of 2 × 2 crossbar switches. A
+             (MIN)                              CPU­memory conversation is set up by selecting a
+                                                path through each stage. Permits some parallel
+                                                conversations.
+                                                                       M0  M1     M2        M3
+                                                                C0
+                                 C0                             C1
+                                                     M0
+                                 C1                             C2
+                                                     M1
+                                 C2                             C3
+                                           Bus                       Crossbar switch
+                                                Bits in address of a memory unit
+                                           First bit     Second bit    Third bit
+                                                01        01               01
+                                     C0         S11       S21              S31        M0
+                                     C1
+                                                                                      M1
+                                                01        01               01
+                                     CC23       S12       S22              S32        MM23
+                                                01        01               01
+                                     CC54       S13       S23              S33        M4
+                                                                                      M5
+                                                01        01               01
+                                     CC76       S14       S24              S34        M6
+                                                                                      M7
+                                                First     Second       Third
+                                           stage          stage            stage
+                                           Multistage interconnection network (MIN)
+             Figure  10.2  Bus,  crossbar switch, and multistage interconnection network        (MIN).
+
+
+
+Chapter 10               Synchronization and Scheduling in Multiprocessor Operating Systems  341
+and inexpensive but it is slow because of bus contention at medium or high traffic
+densities because more than one CPU might wish to access memory at the same
+time. The bus may become a bottleneck when the number of CPUs is increased.
+A crossbar switch reduces the contention problem by providing many paths
+for CPU­memory conversations. It uses a matrix organization wherein CPUs are
+arranged along one dimension and memory units along the other dimension (see
+Figure 10.2). Every CPU and every memory unit has its own independent bus.
+When a CPU, say CPU C1, wishes to access a byte located in a memory unit, say
+memory unit M3, the switch connects the bus of C1 with the bus of M3 and the
+CPU­memory conversation takes place over this path. This conversation does not
+suffer contention due to conversations between other CPUs and other memory
+units because such conversations would use different paths through the switch.
+Thus, the switch can provide a large effective memory bandwidth. Contention
+would arise only if two or more CPUs wish to converse with the same memory
+unit, which has a low probability of happening at low overall traffic densities
+between CPUs and memory units. However, a crossbar switch is expensive. It
+also suffers from poor expandability.
+A multistage interconnection network (MIN) is a compromise between a bus
+and a crossbar switch in terms of cost and parallelism; it has been used in the
+BBN Butterfly, which has a NUMA architecture. Figure 10.2 shows an 8×8
+Omega interconnection network, which permits 8 CPUs to access 8 memory
+units whose binary addresses range from 000 to 111. It contains three stages
+because memory units have three bits in their binary addresses. Each column
+contains 2×2 crossbar switches of one stage in the interconnection network. For
+each switch, a row represents a CPU and a column represents the value of one bit
+in the binary address of the memory unit to be accessed. If an address bit is 0, the
+upper output of the crossbar switch is selected. If the bit is 1, the lower output of
+the switch is selected. These outputs lead to switches in the next stage.
+When CPU C1 wishes to access memory unit M4, the interconnection takes
+place as follows: The address of memory unit M4 is 100. Because the first bit is 1,
+the lower output of switch S11 is selected. This leads to S22, whose upper output
+is selected because the next address bit is 0. This leads to S33, whose upper output
+is selected. It leads to M4 as desired. Switches S13, S24, and S34 would be selected
+if CPU C4 wishes to access memory unit 7. The interconnection network uses
+twelve 2×2 switches. The cost of these switches is much lower than that of an 8×8
+crossbar switch. In general, an N×N multistage network uses log2N stages, and
+each stage contains (N/2) 2×2 switches.
+Other interconnection networks use combinations of these three fundamen-
+tal interconnection networks. For example, the IEEE scalable coherent interface
+(SCI) uses a ring-based network that provides bus-like services but uses fast point-
+to-point unidirectional links to provide high throughput. A crossbar switch is used
+to select the correct unidirectional link connected to a CPU.
+10.1.1 SMP Architecture
+SMP architectures popularly use a bus or a crossbar switch as the interconnec-
+tion network. As discussed earlier, only one conversation can be in progress over
+
+
+
+342          Part 2  Process Management
+                       the bus at any time; other conversations are delayed. Hence CPUs face unpre-
+                       dictable delays while accessing memory. The bus may become a bottleneck and
+                       limit the performance of the system. When a crossbar switch is used, the CPUs
+                       and the I/O subsystem face smaller delays in accessing memory, so system per-
+                       formance would be better than when a bus is used. Switch delays are also more
+                       predictable than bus delays. Cache coherence protocols add to the delays in mem-
+                       ory access in both of these variations of the SMP architecture. Hence SMP systems
+                       do not scale well beyond a small number of CPUs.
+                       10.1.2 NUMA Architecture
+                       Figure 10.3 illustrates the architecture of a NUMA system. Each dashed box
+                       encloses a node of the system. A node could consist of a single-CPU system;
+                       however, it is common to use SMP systems as nodes. Hence a node consists of
+                       CPUs, local memory units, and an I/O subsystem connected by a local intercon-
+                       nection network. Each local interconnection network also has a global port, and
+                       the global ports of all nodes are connected to a high-speed global interconnection
+                       network capable of providing transfer rates upward of 1 GB/s, i.e., 109 bytes per
+                       second. They are used for the traffic between CPUs and nonlocal memory units. A
+                       global port of a node may also contain a cache to hold instructions and data from
+                       nonlocal memories that were accessed by CPUs of the node. The global inter-
+                       connection network shown in Figure 10.3 resembles the IEEE scalable coherent
+                       interface (SCI). It uses a ring-based network that provides fast point-to-point
+                       unidirectional links between nodes.
+                                As in an SMP system, the hardware of a NUMA system must ensure coher-
+                       ence between caches in CPUs of a node. It must also ensure coherence between
+                       nonlocal caches. This requirement can slow down memory accesses and consume
+                       part of the bandwidth of interconnection networks. Ignoring delays in the local
+             CPU       ...       CPU                                     CPU    ...      CPU
+                                           Global
+             L1 cache           L1 cache   port                       L1 cache           L1 cache
+                       Local               Remote             Remote            Local
+     I/O             interconnection    ·  cache              cache        interconnection         I/O
+                       network                                                  network
+                                                   High
+             L3 cache           L3 cache           speed              L3 cache           L3 cache
+                                                   global
+             Memory    ...      Memory             intercon-          Memory    ...      Memory
+                                                   nection
+                                                   network
+                                      ...  Remote             Remote  ...
+                                           cache              cache
+Figure 10.3  NUMA architecture.

@@ -1,0 +1,140 @@
+Fundamental File Organizations and Access Methods
+                   We use the term "record access pattern" to describe the order in which records
+                   in a file are accessed by a process. The two fundamental record access patterns
+                   are sequential access, in which records are accessed in the order in which they
+
+
+
+                                                  Chapter 13                              File  Systems  485
+fall in a file (or in the reverse of that order), and random access, in which records
+may be accessed in any order. The file processing actions of a process will execute
+efficiently only if the process's record access pattern can be implemented efficiently
+in the file system. The characteristics of an I/O device make it suitable for a specific
+record access pattern. For example, a tape drive can access only the record that
+is placed immediately before or after the current position of its read/write head.
+Hence it is suitable for sequential access to records. A disk drive can directly
+access any record given its address. Hence it can efficiently implement both the
+sequential and random record access patterns.
+A file organization is a combination of two features--a method of arranging
+records in a file and a procedure for accessing them. A file organization is designed
+to exploit the characteristics of an I/O device for providing efficient record access
+for a specific record access pattern. A file system supports several file organi-
+zations so that a process can employ the one that best suits its file processing
+requirements and the I/O device in use. This section describes three fundamen-
+tal file organizations--sequential file organization, direct file organization and
+index sequential file organization. Other file organizations used in practice are
+either variants of these fundamental ones or are special-purpose organizations
+that exploit less commonly used I/O devices.
+Accesses to files governed by a specific file organization are implemented by
+an IOCS module called an access method. An access method is a policy module
+of the IOCS. While compiling a program, the compiler infers the file organiza-
+tion governing a file from the file's declaration statement (or from the rules for
+default, if the program does not contain a file declaration statement), and identi-
+fies the correct access method to invoke for operations on the file. We describe the
+functions of access methods after discussing the fundamental file organizations.
+13.3.1 Sequential File Organization
+In sequential file organization, records are stored in an ascending or descending
+sequence according to the key field; the record access pattern of an application
+is expected to follow suit. Hence sequential file organization supports two kinds
+of operations: read the next (or previous) record, and skip the next (or previous)
+record. A sequential-access file is used in an application if its data can be con-
+veniently presorted into an ascending or descending order. The sequential file
+organization is also used for byte stream files.
+13.3.2 Direct File Organization
+The direct file organization provides convenience and efficiency of file processing
+when records are accessed in a random order. To access a record, a read/write
+command needs to mention the value in its key field. We refer to such files as
+direct-access files. A direct-access file is implemented as follows: When a process
+provides the key value of a record to be accessed, the access method module for
+the direct file organization applies a transformation to the key value that generates
+the address of the record in the storage medium. If the file is organized on a disk,
+
+
+
+486  Part 4  File Systems and I/O Management
+                   the transformation generates a (track_no, record_no) address. The disk heads are
+                   now positioned on the track track_no before a read or write command is issued
+                   on the record record_no.
+                         Consider a file of employee information organized as a direct-access file. Let
+                   p records be written on one track of the disk. Assuming the employee numbers
+                   and the track and record numbers of the file to start from 1, the address of the
+                   record for employee number n is (track number (tn), record number (rn)) where
+                                              tn =  n                                               (13.1)
+                                                    p
+                                              rn = n - (tn - 1) × p                                 (13.2)
+                   and   ...     indicates a rounded-up integer value.
+                         Direct file organization provides access efficiency when records are pro-
+                   cessed randomly. However, it has three drawbacks compared to sequential file
+                   organization:
+                      ·  Record address calculation consumes CPU time.
+                      ·  Disks can store much more data along the outermost track than along the
+                         innermost track. However, the direct file organization stores an equal amount
+                         of data along each track. Hence some recording capacity is wasted.
+                      ·  The address calculation formulas (13.1) and (13.2) work correctly only if a
+                         record exists for every possible value of the key, so dummy records have to
+                         exist for keys that are not in use. This requirement leads to poor utilization
+                         of the I/O medium.
+                   Hence sequential processing of records in a direct-access file is less efficient than
+                   processing of records in a sequential-access file. Another practical problem is that
+                   characteristics of an I/O device are explicitly assumed and used by the address
+                   calculation formulas (13.1) and (13.2), which makes the file organization device-
+                   dependent. Rewriting the file on another device with different characteristics, e.g.,
+                   different track capacity, will imply modifying the address calculation formulas.
+                   This requirement affects the portability of programs.
+·
+     Example 13.2  Sequential and Direct-Access Files
+                   Figure 13.4 shows the arrangement of employee records in sequential and
+                   direct file organizations. Employees with the employee numbers 3, 5­9 and 11
+                   have left the organization. However, the direct-access file needs to contain a
+                   record for each of these employees to satisfy the address calculation formulas
+                   (13.1) and (13.2). This fact leads to the need for dummy records in the direct-
+                   access file.
+                   ·
+                   13.3.3 Index Sequential File Organization
+                   An index helps to determine the location of a record from its key value. In a
+                   pure indexed file organization, the index of a file contains an index entry with
+
+
+
+                                                                                           Chapter 13     File Systems        487
+employee #                                                         dummy records
+             1     2  4  10  12  ...                     1  2      3      4  5    .  .  .  10
+(a)                                                 (b)
+Figure 13.4  Records  in (a) sequential file;  (b)  direct-access  file.
+the format (key value, disk address) for each key value existing in the file. To
+access a record with key k, the index entry containing k is found by search-
+ing the index, and the disk address mentioned in the entry is used to access
+the record. If an index is smaller than a file, this arrangement provides high
+access efficiency because a search in the index is more efficient than a search in
+the file.
+The index sequential file organization is a hybrid organization that combines
+elements of the indexed and the sequential file organizations. To locate a desired
+record, the access method module for this organization searches an index to
+identify a section of the disk that may contain the record, and searches the records
+in this section of the disk sequentially to find the record. The search succeeds if
+the record is present in the file; otherwise, it results in a failure. This arrangement
+requires a much smaller index than does a pure indexed file because the index
+contains entries for only some of the key values. It also provides better access
+efficiency than the sequential file organization while ensuring comparably efficient
+use of I/O media.
+For a large file the index would still contain a large number of entries, and
+so the time required to search through the index would be large. A higher-level
+index can be used to reduce the search time. An entry in the higher-level index
+points to a section of the index. This section of the index is searched to find the
+section of the disk that may contain a desired record, and this section of the
+disk is searched sequentially for the desired record. The next example illustrates
+this arrangement.
+                                                                                                                              ·
+Index Sequential File Organization                                                                        Example       13.3
+Figure 13.5 illustrates a file of employee information organized as an index
+sequential file. Records are stored in ascending order by the key field. Two
+indexes are built to facilitate speedy search. The track index indicates the
+smallest and largest key value located on each track (see the fields named low
+and high in Figure 13.5). The higher-level index contains entries for groups
+of tracks containing 3 tracks each. To locate the record with a key k, first the
+higher-level index is searched to locate the group of tracks that may contain
+the desired record. The track index for the tracks of the group is now searched
+to locate the track that may contain the desired record, and the selected track is
+searched sequentially for the record with key k. The search ends unsuccessfully
+if it fails to find the record on the track.
+                                                                                                       ·

@@ -1,0 +1,2102 @@
+OPERATING SYSTEM DESIGN
+
+
+                              12
+OPERATING SYSTEM DESIGN
+In the past 11 chapters, we have covered a lot of ground and taken a look at
+many concepts and examples relating to operating systems. But studying existing
+operating systems is different from designing a new one.  In this chapter we will
+take a quick look at some of the issues and trade-offs that operating systems de-
+signers have to consider when designing and implementing a new system.
+There is a certain amount of folklore about what is good and what is bad float-
+ing around in the operating systems community, but surprisingly little has been
+written down. Probably the most important book is Fred Brooks' classic The Myth-
+ical Man Month in which he relates his experiences in designing and implementing
+IBM's OS/360.  The 20th anniversary edition revises some of that material and
+adds four new chapters (Brooks, 1995).
+Three classic papers on operating system design are ``Hints for Computer Sys-
+tem Design'' (Lampson, 1984), ``On Building Systems That Will Fail'' (Corbato´,
+1991), and ``End-to-End Arguments in System Design'' (Saltzer et al., 1984). Like
+Brooks' book, all three papers have survived the years extremely well; most of
+their insights are still as valid now as when they were first published.
+This chapter draws upon these sources as well as on personal experience as de-
+signer or codesigner of two operating systems: Amoeba (Tanenbaum et al., 1990)
+and MINIX (Tanenbaum and Woodhull, 2006).    Since no consensus exists among
+operating system designers about the best way to design an operating system, this
+chapter will thus be more personal, speculative, and undoubtedly more controver-
+sial than the previous ones.
+                                        981
+
+
+
+982                          OPERATING SYSTEM DESIGN                     CHAP. 12
+12.1  THE NATURE OF THE DESIGN PROBLEM
+     Operating system design is more of an engineering project than an exact sci-
+ence. It is hard to set clear goals and meet them. Let us start with these points.
+12.1.1 Goals
+     In order to design a successful operating system, the designers must have a
+clear idea of what they want. Lack of a goal makes it very hard to make subsequent
+decisions.  To make this point clearer, it is instructive to take a look at two pro-
+gramming languages, PL/I and C. PL/I was designed by IBM in the 1960s because
+it was a nuisance to have to support both FORTRAN and COBOL, and embarrass-
+ing to have academics yapping in the background that Algol was better than both
+of them. So a committee was set up to produce a language that would be all things
+to all people: PL/I.   It had a little bit of FORTRAN, a little bit of COBOL, and a
+little bit of Algol.   It failed because it lacked any unifying vision.  It was simply a
+collection of features at war with one another, and too cumbersome to be compiled
+efficiently, to boot.
+     Now consider C.   It was designed by one person (Dennis Ritchie) for one pur-
+pose (system programming).      It was a huge success, in no small part because
+Ritchie knew what he wanted and did not want. As a result, it is still in widespread
+use more than three decades after its appearance.  Having a clear vision of what
+you want is crucial.
+     What do operating system designers want?      It obviously varies from system to
+system, being different for embedded systems than for server systems. However,
+for general-purpose operating systems four main items come to mind:
+      1.  Define abstractions.
+      2.  Provide primitive operations.
+      3.  Ensure isolation.
+      4.  Manage the hardware.
+Each of these items will be discussed below.
+     The most important, but probably hardest task of an operating system is to
+define the right abstractions. Some of them, such as processes, address spaces, and
+files, have been around so long that they may seem obvious. Others, such as
+threads, are newer, and are less mature.      For example, if a multithreaded process
+that has one thread blocked waiting for keyboard input forks, is there a thread in
+the new process also waiting for keyboard input?   Other abstractions relate to syn-
+chronization, signals, the memory model, modeling of I/O, and many other areas.
+     Each of the abstractions can be instantiated in the form of concrete data struc-
+tures. Users can create processes, files, pipes, and more.  The primitive operations
+
+
+
+SEC. 12.1             THE NATURE OF THE DESIGN PROBLEM                                 983
+manipulate these data structures. For example, users can read and write files.         The
+primitive operations are implemented in the form of system calls. From the user's
+point of view, the heart of the operating system is formed by the abstractions and
+the operations on them available via the system calls.
+Since on some computers multiple users can be logged into a computer at the
+same time, the operating system needs to provide mechanisms to keep them sepa-
+rated. One user may not interfere with another. The process concept is widely used
+to group resources together for protection purposes. Files and other data structures
+generally are protected as well. Another place where separation is crucial is in vir-
+tualization: the hypervisor must ensure that the virtual machines keep out of each
+other's hair. Making sure each user can perform only authorized operations on
+authorized data is a key goal of system design. However, users also want to share
+data and resources, so the isolation has to be selective and under user control. This
+makes it much harder. The email program should not be able to clobber the Web
+browser. Even when there is only a single user, different processes need to be iso-
+lated. Some systems, like Android, will start each process that belongs to the same
+user with a different user ID, to protect the processes from each other.
+Closely related to this point is the need to isolate failures.     If some part of the
+system goes down, most commonly a user process, it should not be able to take the
+rest of the system down with it. The system design should make sure that the vari-
+ous parts are well isolated from one another. Ideally, parts of the operating system
+should also be isolated from one another to allow independent failures.         Going
+even further, maybe the operating system should be fault tolerant and self healing?
+Finally, the operating system has to manage the hardware.          In particular, it has
+to take care of all the low-level chips, such as interrupt controllers and bus con-
+trollers.  It also has to provide a framework for allowing device drivers to manage
+the larger I/O devices, such as disks, printers, and the display.
+12.1.2 Why Is It Hard to Design an Operating System?
+Moore's Law says that computer hardware improves by a factor of 100 every
+decade. Nobody has a law saying that operating systems improve by a factor of
+100 every decade.     Or even get better at all.  In fact, a case can be made that some
+of them are worse in key respects (such as reliability) than UNIX Version 7 was
+back in the 1970s.
+Why?       Inertia and the desire for backward compatibility often get much of the
+blame, and the failure to adhere to good design principles is also a culprit. But
+there is more to it.  Operating systems are fundamentally different in certain ways
+from small application programs you can download for $49. Let us look at eight of
+the issues that make designing an operating system much harder than designing an
+application program.
+First, operating systems have become extremely large programs.            No one per-
+son can sit down at a PC and dash off a serious operating system in a few months.
+
+
+
+984                    OPERATING SYSTEM DESIGN                               CHAP. 12
+Or even a few years. All current versions of UNIX contain millions of lines of
+code; Linux has hit 15 million, for example.    Windows 8 is probably in the range
+of 50­100 million lines of code, depending on what you count (Vista was 70 mil-
+lion, but changes since then have both added code and removed it).   No one person
+can understand a million lines of code, let alone 50 or 100 million. When you have
+a product that none of the designers can hope to fully understand, it should be no
+surprise that the results are often far from optimal.
+     Operating systems are not the most complex systems around. Aircraft carriers
+are far more complicated, for example, but they partition into isolated subsystems
+much better. The people designing the toilets on a aircraft carrier do not have to
+worry about the radar system. The two subsystems do not interact much. There are
+no known cases of a clogged toilet on an aircraft carrier causing the ship to start
+firing missiles.  In an operating system, the file system often interacts with the
+memory system in unexpected and unforeseen ways.
+     Second, operating systems have to deal with concurrency. There are multiple
+users and multiple I/O devices all active at once.     Managing concurrency is inher-
+ently much harder than managing a single sequential activity. Race conditions and
+deadlocks are just two of the problems that come up.
+     Third, operating systems have to deal with potentially hostile users--users who
+want to interfere with system operation or do things that they are forbidden from
+doing, such as stealing another user's files. The operating system needs to take
+measures to prevent these users from behaving improperly. Word-processing pro-
+grams and photo editors do not have this problem.
+     Fourth, despite the fact that not all users trust each other, many users do want
+to share some of their information and resources with selected other users. The op-
+erating system has to make this possible, but in such a way that malicious users
+cannot interfere. Again, application programs do not face anything like this chal-
+lenge.
+     Fifth, operating systems live for a very long time.   UNIX has been around for
+40 years. Windows has been around for about 30 years and shows no signs of van-
+ishing. Consequently, the designers have to think about how hardware and applica-
+tions may change in the distant future and how they should prepare for it. Systems
+that are locked too closely into one particular vision of the world usually die off.
+     Sixth, operating system designers really do not have a good idea of how their
+systems will be used, so they need to provide for considerable generality. Neither
+UNIX nor Windows was designed with a          Web browser or streaming HD video in
+mind, yet many computers running these systems do little else. Nobody tells a ship
+designer to build a ship without specifying whether they want a fishing vessel, a
+cruise ship, or a battleship. And even fewer change their minds after the product
+has arrived.
+     Seventh,  modern  operating  systems  are  generally  designed  to  be  portable,
+meaning they have to run on multiple hardware platforms. They also have to sup-
+port thousands of I/O devices, all of which are independently designed with no
+
+
+
+SEC. 12.1            THE NATURE OF THE DESIGN PROBLEM                                   985
+regard to one another.   An example of where this diversity causes problems is the
+need for an operating system to run on both little-endian and big-endian machines.
+A second example was seen constantly under MS-DOS when users attempted to
+install, say, a sound card and a modem that used the same I/O ports or interrupt re-
+quest lines. Few programs other than operating systems have to deal with sorting
+out problems caused by conflicting pieces of hardware.
+Eighth, and last in our list, is the frequent need to be backward compatible
+with some previous operating system. That system may have restrictions on word
+lengths, file names, or other aspects that the designers now regard as obsolete, but
+are stuck with. It is like converting a factory to produce next year's cars instead of
+this year's cars, but while continuing to produce this year's cars at full capacity.
+12.2 INTERFACE DESIGN
+It should be clear by now that writing a modern operating system is not easy.
+But where does one begin?  Probably the best place to begin is to think about the
+interfaces it provides.  An operating system provides a set of abstractions, mostly
+implemented by data types (e.g., files) and operations on them (e.g., read).          Toget-
+her, these form the interface to its users. Note that in this context the users of the
+operating system are programmers who write code that use system calls, not peo-
+ple running application programs.
+In addition to the main system-call interface, most operating systems have ad-
+ditional interfaces. For example, some programmers need to write device drivers to
+insert into the operating system. These drivers see certain features and can make
+certain procedure calls. These features and calls also define an interface, but a very
+different one from one application programmers see. All of these interfaces must
+be carefully designed if the system is to succeed.
+12.2.1 Guiding Principles
+Are there any principles that can guide interface design?  We believe there are.
+Briefly summarized, they are simplicity, completeness, and the ability to be imple-
+mented efficiently.
+Principle 1: Simplicity
+A simple interface is easier to understand and implement in a bug-free way. All
+system designers should memorize this famous quote from the pioneer French avi-
+ator and writer, Antoine de St. Exupe´ry:
+Perfection is reached not when there is no longer anything to add, but
+when there is no longer anything to take away.
+
+
+
+986                       OPERATING SYSTEM DESIGN                               CHAP. 12
+If you want to get really picky, he didn't say that. He said:
+     Il semble que la perfection soit atteinte non quand il n'y a plus rien a`
+     ajouter, mais quand il n'y a plus rien a` retrancher.
+But you get the idea. Memorize it either way.
+     This principle says that less is better than more, at least in the operating system
+itself. Another way to say this is the KISS principle: Keep It Simple, Stupid.
+Principle 2: Completeness
+     Of course, the interface must make it possible to do everything that the users
+need to do, that is, it must be complete. This brings us to another famous quote,
+this one from Albert Einstein:
+     Everything should be as simple as possible, but no simpler.
+In other words, the operating system should do exactly what is needed of it and no
+more. If users need to store data, it must provide some mechanism for storing data.
+If users need to communicate with each other, the operating system has to provide
+a communication mechanism, and so on.          In his 1991 Turing Award lecture, Fer-
+nando Corbato´, one of the designers of CTSS and MULTICS, combined the con-
+cepts of simplicity and completeness and said:
+     First, it is important to emphasize the value of simplicity and elegance, for
+     complexity has a way of compounding difficulties and as we have seen,
+     creating mistakes.   My definition of elegance is the achievement of a given
+     functionality with a minimum of mechanism and a maximum of clarity.
+The key idea here is minimum of mechanism.      In other words, every feature, func-
+tion, and system call should carry its own weight.  It should do one thing and do it
+well. When a member of the design team proposes extending a system call or add-
+ing some new feature, the others should ask whether something awful would hap-
+pen if it were left out.  If the answer is: ``No, but somebody might find this feature
+useful some day,'' put it in a user-level library, not in the operating system, even if
+it is slower that way. Not every feature has to be faster than a speeding bullet. The
+goal is to preserve what Corbato´ called minimum of mechanism.
+     Let us briefly consider two examples from our own experience: MINIX (Tan-
+enbaum and Woodhull, 2006) and Amoeba (Tanenbaum et al., 1990).                     For all
+intents and purposes, MINIX until very recently had only three kernel calls: send,
+receive, and sendrec.     The system is structured as a collection of processes, with
+the memory manager, the file system, and each device driver being a separate
+schedulable process.      To a first approximation, all the kernel does is schedule proc-
+esses and handle message passing between them. Consequently, only two system
+calls were needed: send, to send a message, and receive, to receive one. The third
+call, sendrec, is simply an optimization for efficiency reasons to allow a message
+
+
+
+SEC. 12.2                  INTERFACE DESIGN                                                987
+to be sent and the reply to be requested with only one kernel trap. Everything else
+is done by requesting some other process (e.g., the file-system process or the disk
+driver) to do the work. The most recent version of MINIX added two additional
+calls, both for asynchronous communication.  The senda call sends an asynchro-
+nous message. The kernel will attempt to deliver the message, but the application
+does not wait for this; it just keeps running. Similarly, the system uses the notify
+call to deliver short notifications. For instance, the kernel can notify a device driver
+in user space that something happened--much like an interrupt. There is no mes-
+sage associated with a notification. When the kernel delivers a notification to proc-
+ess, all it does is flip a bit in a per-process bitmap indicating that something hap-
+pened. Because it is so simple, it can be fast and the kernel does not need to worry
+about what message to deliver if the process receives the same notification twice. It
+is worth observing that while the number of calls is still very small, it is growing.
+Bloat is inevitable. Resistance is futile.
+Of course, these are just the kernel calls. Running a POSIX compliant system
+on top of it, requires implementing a lot of POSIX system calls. But the beauty of
+it is that they all map on just a tiny set of kernel calls. With a system that is (still)
+so simple, there is a chance we may even get it right.
+Amoeba is even simpler.    It has only one system call: perform remote proce-
+dure call.  This call sends a message and waits for a reply.     It is essentially the
+same as MINIX' sendrec. Everything else is built on this one call. Whether or not
+synchronous communication is the way to go is another matter, one that we will re-
+turn to in Sec. 12.3.
+Principle 3: Efficiency
+The third guideline is efficiency of implementation.       If a feature or system call
+cannot be implemented efficiently, it is probably not worth having.  It should also
+be intuitively obvious to the programmer about how much a system call costs. For
+example, UNIX programmers expect the lseek system call to be cheaper than the
+read system call because the former just changes a pointer in memory while the
+latter performs disk I/O.  If the intuitive costs are wrong, programmers will write
+inefficient programs.
+12.2.2 Paradigms
+Once the goals have been established, the design can begin.          A good starting
+place is thinking about how the customers will view the system.      One of the most
+important issues is how to make all the features of the system hang together well
+and present what is often called architectural coherence.     In this regard, it is im-
+portant to distinguish two kinds of operating system ``customers.'' On the one
+hand, there are the users, who interact with application programs; on the other are
+the programmers, who write them. The former mostly deal with the GUI; the latter
+
+
+
+988                         OPERATING SYSTEM DESIGN                           CHAP. 12
+mostly deal with the system call interface.  If the intention is to have a single GUI
+that pervades the complete system, as in the Macintosh, the design should begin
+there.   If, on the other hand, the intention is to support many possible GUIs, such
+as in UNIX, the system-call interface should be designed first. Doing the GUI first
+is essentially a top-down design. The issues are what features it will have, how the
+user will interact with it, and how the system should be designed to support it.         For
+example, if most programs display icons on the screen and then wait for the user to
+click on one of them, this suggests an event-driven model for the GUI and proba-
+bly also for the operating system. On the other hand, if the screen is mostly full of
+text windows, then a model in which processes read from the keyboard is probably
+better.
+     Doing the system-call interface first is a bottom-up design. Here the issues are
+what kinds of features programmers in general need.      Actually, not many special
+features are needed to support a GUI.  For example, the UNIX windowing system,
+X, is just a big C program that does reads and writes on the keyboard, mouse, and
+screen. X was developed long after UNIX and did not require many changes to the
+operating system to get it to work. This experience validated the fact that UNIX
+was sufficiently complete.
+User-Interface Paradigms
+     For both the GUI-level interface and the system-call interface, the most impor-
+tant aspect is having a good paradigm (sometimes called a metaphor) to provide a
+way of looking at the interface. Many GUIs for desktop machines use the WIMP
+paradigm that we discussed in Chap. 5. This paradigm uses point-and-click, point-
+and-double-click, dragging, and other idioms throughout the interface to provide
+an architectural coherence to the whole. Often there are additional requirements for
+programs, such as having a menu bar with FILE, EDIT, and other entries, each of
+which has certain well-known menu items.     In this way, users who know one pro-
+gram can quickly learn another.
+     However, the WIMP user interface is not the only one possible. Tablets, smart-
+phones and some laptops use touch screens to allow users to interact more directly
+and more intuitively with the device. Some palmtop computers use a stylized
+handwriting interface. Dedicated multimedia devices may use a VCR-like inter-
+face. And of course, voice input has a completely different paradigm. What is im-
+portant is not so much the paradigm chosen, but the fact that there is a single over-
+riding paradigm that unifies the entire user interface.
+     Whatever paradigm is chosen, it is important that all application programs use
+it. Consequently, the system designers need to provide libraries and tool kits to ap-
+plication developers that give them access to procedures that produce the uniform
+look-and-feel. Without tools, application developers will all do something dif-
+ferent.  User interface design is important, but it is not the subject of this book, so
+we will now drop back down to the subject of the operating system interface.
+
+
+
+SEC. 12.2                          INTERFACE DESIGN                                    989
+Execution Paradigms
+   Architectural coherence is important at the user level, but equally important at
+the system-call interface level.   It is often useful to distinguish between the execu-
+tion paradigm and the data paradigm, so we will do both, starting with the former.
+   Two execution paradigms are widespread: algorithmic and event driven. The
+algorithmic paradigm is based on the idea that a program is started to perform
+some function that it knows in advance or gets from its parameters. That function
+might be to compile a program, do the payroll, or fly an airplane to San Francisco.
+The basic logic is hardwired into the code, with the program making system calls
+from time to time to get user input, obtain operating system services, and so on.
+This approach is outlined in Fig. 12-1(a).
+main( )                                     main( )
+{                                           {
+   int ... ;                                    mess         t msg;
+   init( );                                     init( );
+   do    something( );                          while (get        message(&msg)) {
+   read(...);                                             switch (msg.type) {
+   do    something       else( );                                 case 1: ... ;
+   write(...);                                                    case 2: ... ;
+   keep       going( );                                           case 3: ... ;
+   exit(0);                                               }
+}                                               }
+                                            }
+         (a)                                                 (b)
+                         Figure 12-1. (a) Algorithmic code. (b) Event-driven code.
+   The other execution paradigm is the event-driven paradigm of Fig. 12-1(b).
+Here the program performs some kind of initialization, for example by displaying a
+certain screen, and then waits for the operating system to tell it about the first
+event. The event is often a key being struck or a mouse movement.                   This design is
+useful for highly interactive programs.
+   Each of these ways of doing business engenders its own programming style.
+In the algorithmic paradigm, algorithms are central and the operating system is
+regarded as a service provider. In the event-driven paradigm, the operating system
+also provides services, but this role is overshadowed by its role as a coordinator of
+user activities and a generator of events that are consumed by processes.
+Data Paradigms
+   The execution paradigm is not the only one exported by the operating system.
+An equally important one is the data paradigm.       The key question here is how sys-
+tem structures and devices are presented to the programmer.          In early FORTRAN
+
+
+
+990                         OPERATING SYSTEM DESIGN                        CHAP. 12
+batch systems, everything was modeled as a sequential magnetic tape. Card decks
+read in were treated as input tapes, card decks to be punched were treated as output
+tapes, and output for the printer was treated as an output tape. Disk files were also
+treated as tapes.  Random access to a file was possible only by rewinding the tape
+corresponding to the file and reading it again.
+     The mapping was done using job control cards like these:
+     MOUNT(TAPE08, REEL781)
+     RUN(INPUT, MYDATA, OUTPUT, PUNCH, TAPE08)
+The first card instructed the operator to go get tape reel 781 from the tape rack and
+mount it on tape drive 8.      The second card instructed the operating system to run
+the just-compiled FORTRAN program, mapping INPUT (meaning the card reader)
+to logical tape 1, disk file MYDATA to logical tape 2, the printer (called OUTPUT)
+to logical tape 3, the card punch (called PUNCH) to logical tape 4. and physical
+tape drive 8 to logical tape 5.
+     FORTRAN had a well-defined syntax for reading and writing logical tapes.
+By reading from logical tape 1, the program got card input.        By writing to logical
+tape 3, output would later appear on the printer.        By reading from logical tape 5,
+tape reel 781 could be read in, and so on.       Note that the tape idea was just a para-
+digm to integrate the card reader, printer, punch, disk files, and tapes.  In this ex-
+ample, only logical tape 5 was a physical tape; the rest were ordinary (spooled)
+disk files. It was a primitive paradigm, but it was a start in the right direction.
+     Later came UNIX, which goes much further using the model of ``everything is
+a file.'' Using this paradigm, all I/O devices are treated as files and can be opened
+and manipulated as ordinary files. The C statements
+     fd1 = open("file1", O  RDWR);
+     fd2 = open("/dev/tty", O    RDWR)'
+open a true disk file and the user's terminal (keyboard + display).        Subsequent
+statements can use fd1 and fd2 to read and write them, respectively. From that
+point on, there is no difference between accessing the file and accessing the termi-
+nal, except that seeks on the terminal are not allowed.
+     Not only does UNIX unify files and I/O devices, but it also allows other proc-
+esses to be accessed over pipes as files. Furthermore, when mapped files are sup-
+ported, a process can get at its own virtual memory as though it were a file. Finally,
+in versions of UNIX that support the /proc file system, the C statement
+     fd3 = open("/proc/501", O   RDWR);
+allows the process to (try to) access process 501's memory for reading and writing
+using file descriptor fd3, something useful for, say, a debugger.
+     Of course, just because someone says that everything is a file does not mean it
+is true--for everything. For instance, UNIX network sockets may resemble files
+somewhat, but they have their own, fairly different, socket API. Another operating
+
+
+
+SEC. 12.2                  INTERFACE DESIGN                                             991
+system, Plan 9 from Bell Labs, has not compromised and does not provide spe-
+cialized interfaces for network sockets and such. As a result, the Plan 9 design is
+arguably cleaner.
+Windows tries to make everything look like an object. Once a process has ac-
+quired a valid handle to a file, process, semaphore, mailbox, or other kernel object,
+it can perform operations on it. This paradigm is even more general than that of
+UNIX and much more general than that of FORTRAN.
+Unifying paradigms occur in other contexts as well. One of them is worth
+mentioning here: the Web.  The paradigm behind the Web is that cyberspace is full
+of documents, each of which has a URL.      By typing in a URL or clicking on an
+entry backed by a URL, you get the document.       In reality, many ``documents'' are
+not documents at all, but are generated by a program or shell script when a request
+comes in. For example, when a user asks an online store for a list of CDs by a par-
+ticular artist, the document is generated on-the-fly by a program; it certainly did
+not exist before the query was made.
+We have now seen four cases: namely, everything is a tape, file, object, or doc-
+ument. In all four cases, the intention is to unify data, devices, and other resources
+to make them easier to deal with. Every operating system should have such a uni-
+fying data paradigm.
+12.2.3 The System-Call Interface
+If one believes in Corbato´'s dictum of minimal mechanism, then the operating
+system should provide as few system calls as it can get away with, and each one
+should be as simple as possible (but no simpler).  A unifying data paradigm can
+play a major role in helping here. For example, if files, processes, I/O devices, and
+much more all look like files or objects, then they can all be read with a single read
+system call. Otherwise it may be      necessary to have separate calls for read         file,
+read  proc, and read  tty, among others.
+Sometimes, system calls may need several variants, but it is often good prac-
+tice to have one call that handles the general case, with different library procedures
+to hide this fact from the programmers. For example, UNIX has a system call for
+overlaying a process' virtual address space, exec. The most general call is
+exec(name, argp, envp);
+which loads the executable file name and gives it arguments pointed to by argp and
+environment variables pointed to by envp.   Sometimes it is convenient to list the
+arguments explicitly, so the library contains procedures that are called as follows:
+execl(name, arg0, arg1, ..., argn, 0);
+execle(name, arg0, arg1, ..., argn, envp);
+All these procedures do is stick the arguments in an array and then call exec to do
+the real work. This arrangement is the best of both worlds: a single straightforward
+
+
+
+992                     OPERATING SYSTEM DESIGN                                    CHAP. 12
+system call keeps the operating system simple, yet the programmer gets the con-
+venience of various ways to call exec.
+     Of course, trying to have one call to handle every possible case can easily get
+out of hand.  In UNIX creating a process requires two calls: fork followed by exec.
+The former has no parameters; the latter has three. In contrast, the WinAPI call for
+creating a process, CreateProcess, has 10 parameters, one of which is a pointer to
+a structure with an additional 18 parameters.
+     A long time ago, someone should have asked whether something awful would
+happen if some of these had been omitted. The truthful answer would have been in
+some cases programmers might have to do more work to achieve a particular ef-
+fect, but the net result would have been a simpler, smaller, and more reliable oper-
+ating system. Of course, the person proposing the 10 + 18 parameter version might
+have added: ``But users like all these features.'' The rejoinder might have been they
+like systems that use little memory and never crash even more. Trade-offs between
+more functionality at the cost of more memory are at least visible and can be given
+a price tag (since the price of memory is known).         However, it is hard to estimate
+the additional crashes per year some feature will add and whether the users would
+make the same choice if they knew the hidden price. This effect can be summa-
+rized in Tanenbaum's first law of software:
+     Adding more code adds more bugs.
+Adding more features adds more code and thus adds more bugs. Programmers who
+believe adding new features does not add new bugs either are new to computers or
+believe the tooth fairy is out there watching over them.
+     Simplicity is not the only issue that comes out when designing system calls.
+An important consideration is Lampson's (1984) slogan:
+     Don't hide power.
+If the hardware has an extremely efficient way of doing something, it should be
+exposed to the programmers in a simple way and not buried inside some other
+abstraction. The purpose of abstractions is to hide undesirable properties, not hide
+desirable ones. For example, suppose the hardware has a special way to move large
+bitmaps around the screen (i.e., the video RAM) at high speed.  It would be justi-
+fied to have a new system call to get at this mechanism, rather than just provide
+ways to read video RAM into main memory and write it back again. The new call
+should just move bits and nothing else.      If a system call is fast, users can always
+build more convenient interfaces on top of it. If it is slow, nobody will use it.
+     Another design issue is connection-oriented vs. connectionless calls. The Win-
+dows and UNIX system calls for reading a file are connection-oriented, like using
+the telephone. First you open a file, then you read it, finally you close it. Some re-
+mote file-access protocols are also connection-oriented. For example, to use FTP,
+the user first logs in to the remote machine, reads the files, and then logs out.
+
+
+
+SEC. 12.2                      INTERFACE DESIGN                                          993
+On the other hand, some remote file-access protocols are connectionless. The
+Web protocol (HTTP) is connectionless.   To read a Web page you just ask for it;
+there is no advance setup required (a TCP connection is required, but this is at a
+lower level of protocol. HTTP itself is connectionless).
+The        trade-off  between  any  connection-oriented   mechanism  and              a  con-
+nectionless one is the additional work required to set up the mechanism (e.g., open
+the file), and the gain from not having to do it on (possibly many) subsequent calls.
+For file I/O on a single machine, where the setup cost is low, probably the standard
+way (first open, then use) is the best way. For remote file systems, a case can be
+made both ways.
+Another issue relating to the system-call interface is its visibility. The list of
+POSIX-mandated system calls is easy to find. All UNIX systems support these, as
+well as a small number of other calls, but the complete list is always public.           In
+contrast, Microsoft has never made the list of Windows system calls public. Instead
+the WinAPI and other APIs have been made public, but these contain vast numbers
+of library calls (over 10,000) but only a small number are true system calls. The
+argument for making all the system calls public is that it lets programmers know
+what is cheap (functions performed in user space) and what is expensive (kernel
+calls). The argument for not making them public is that it gives the implementers
+the flexibility of changing the actual underlying system calls to make them better
+without breaking user programs. As we saw in Sec. 9.7.7, the original designers
+simply got it wrong with the access system call, but now we are stuck with it.
+12.3 IMPLEMENTATION
+Turning away from the user and system-call interfaces, let us now look at how
+to implement an operating system.   In the following sections we will examine
+some general conceptual issues relating to implementation strategies. After that we
+will look at some low-level techniques that are often helpful.
+12.3.1 System Structure
+Probably the first decision the implementers have to make is what the system
+structure should be.  We  examined  the  main  possibilities    in  Sec. 1.7,   but      will
+review them here.     An unstructured monolithic design is not a good idea, except
+maybe for a tiny operating system in, say, a toaster, but even there it is arguable.
+Layered Systems
+A reasonable approach that has been well established over the years is a lay-
+ered system. Dijkstra's THE system (Fig. 1-25) was the first layered operating sys-
+tem.  UNIX and Windows 8 also have a layered structure, but the layering in both
+
+
+
+994                         OPERATING SYSTEM DESIGN                             CHAP. 12
+of them is more a way of trying to describe the system than a real guiding principle
+that was used in building the system.
+     For a new system, designers choosing to go this route should first very careful-
+ly choose the layers and define the functionality of each one. The bottom layer
+should always try to hide the worst idiosyncracies of the hardware, as the HAL
+does in Fig. 11-4. Probably the next layer should handle interrupts, context switch-
+ing, and the MMU, so above this level the code is mostly machine independent.
+Above this, different designers will have different tastes (and biases).        One possi-
+bility is to have layer 3 manage threads, including scheduling and interthread syn-
+chronization, as shown in Fig. 12-2.        The idea here is that starting at layer 4 we
+have proper threads that are scheduled normally and synchronize using a standard
+mechanism (e.g., mutexes).
+                  Layer
+                  7                         System call handler
+                  6      File system 1           ...             File system m
+                  5                         Virtual memory
+                  4      Driver 1 Driver 2  ...                  Driver n
+                  3      Threads, thread scheduling, thread synchronization
+                  2         Interrupt handling, context switching, MMU
+                  1         Hide the low-level        hardware
+     Figure 12-2. One possible design for a modern layered operating system.
+     In layer 4 we might find the device drivers, each one running as a separate
+thread, with its own state, program counter, registers, and so on, possibly (but not
+necessarily) within the kernel address space. Such a design can greatly simplify the
+I/O structure because when an interrupt occurs, it can be converted into an unlock
+on a mutex and a call to the scheduler to (potentially) schedule the newly readied
+thread that was blocked on the mutex.       MINIX 3 uses this approach, but in UNIX,
+Linux, and Windows 8, the interrupt handlers run in a kind of no-man's land, rather
+than as proper threads like other threads that can be scheduled, suspended, and the
+like. Since a huge amount of the complexity of any operating system is in the I/O,
+any technique for making it more tractable and encapsulated is worth considering.
+     Above layer 4, we would expect to find virtual memory, one or more file sys-
+tems, and the system-call handlers. These layers are focused on providing services
+to applications.  If the virtual memory is at a lower level than the file systems, then
+the block cache can be paged out, allowing the virtual memory manager to dynam-
+ically determine how the real memory should be divided among user pages and
+kernel pages, including the cache. Windows 8 works this way.
+
+
+
+SEC. 12.3   IMPLEMENTATION                                                               995
+Exokernels
+While layering has its supporters among system designers, another camp has
+precisely the opposite view (Engler et al., 1995).    Their view is based on the end-
+to-end argument (Saltzer et al., 1984). This concept says that if something has to
+be done by the user program itself, it is wasteful to do it in a lower layer as well.
+Consider an application of that principle to remote file access.          If a system is
+worried about data being corrupted in transit, it should arrange for each file to be
+checksummed at the time it is written and the checksum stored along with the file.
+When a file is transferred over a network from the source disk to the destination
+process, the checksum is transferred, too, and also recomputed at the receiving end.
+If the two disagree, the file is discarded and transferred again.
+This check is more accurate than using a reliable network protocol since it also
+catches disk errors, memory errors, software errors in the routers, and other errors
+besides bit transmission errors. The end-to-end argument says that using a reliable
+network protocol is then not necessary, since the endpoint (the receiving process)
+has enough information to verify the correctness of the file. The only reason for
+using a reliable network protocol in this view is for efficiency, that is, catching and
+repairing transmission errors earlier.
+The end-to-end argument can be extended to almost all of the operating sys-
+tem.  It argues for not having the operating system do anything that the user pro-
+gram can do itself. For example, why have a file system? Just let the user read and
+write a portion of the raw disk in a protected way. Of course, most users like hav-
+ing files, but the end-to-end argument says that the file system should be a library
+procedure linked with any program that needs to use files. This approach allows
+different programs to have different file systems.    This line of reasoning says that
+all the operating system should do is securely allocate resources (e.g., the CPU and
+the disks) among the competing users. The Exokernel is an operating system built
+according to the end-to-end argument (Engler et al., 1995).
+Microkernel-Based Client-Server Systems
+A compromise between having the operating system do everything and the op-
+erating system do nothing is to have the operating system do a little bit. This de-
+sign leads to a microkernel with much of the operating system running as user-
+level server processes, as illustrated in Fig. 12-3.  This is the most modular and
+flexible of all the designs. The ultimate in flexibility is to have each device driver
+also run as a user process, fully protected against the kernel and other drivers, but
+even having the device drivers run in the kernel adds to the modularity.
+When the device drivers are in the kernel, they can access the hardware device
+registers directly. When they are not, some mechanism is needed to provide access
+to them. If the hardware permits, each driver process could be given access to only
+those I/O devices it needs. For example, with memory-mapped I/O, each driver
+
+
+
+996                         OPERATING SYSTEM DESIGN                                    CHAP. 12
+Client   Client            Client  Process              File       Memory              User mode
+process  process    process         server              server           server
+                                   Microkernel                                         Kernel mode
+                                                             Client obtains
+                                                             service by
+                                                             sending messages
+                                                             to server processes
+         Figure     12-3. Client-server computing       based on a microkernel.
+process could have the page for its device mapped in, but no other device pages. If
+the I/O port space can be partially protected, the correct portion of it could be made
+available to each driver.
+     Even if no hardware assistance is available, the idea can still be made to work.
+What is then needed is a new system call, available only to device-driver processes,
+supplying a list of (port, value) pairs. What the kernel does is first check to see if
+the process owns all the ports in the list. If so, it then copies the corresponding val-
+ues to the ports to initiate device I/O. A similar call can be used to read I/O ports.
+     This approach keeps device drivers from examining (and damaging) kernel
+data structures, which is (for the most part) a good thing.      An analogous set of calls
+could be made available to allow driver processes to read and write kernel tables,
+but only in a controlled way and with the approval of the kernel.
+     The main problem with this approach, and with microkernels in general, is the
+performance hit all the extra context switches cause. However, virtually all work
+on microkernels was done many years ago when CPUs were much slower. Now-
+adays, applications that use every drop of CPU power and cannot tolerate a small
+loss of performance are few and far between. After all, when running a word proc-
+essor or Web browser, the CPU is probably idle 95% of the time. If a microkernel-
+based    operating  system  turned  an      unreliable  3.5-GHz  system          into  a  reliable
+3.0-GHz system, probably few users would complain. Or even notice. After all,
+most of them were quite happy only a few years ago when they got their previous
+computer at the then-stupendous speed of 1 GHz. Also, it is not clear whether the
+cost of interprocess communication is still as much of an issue if cores are no long-
+er a scarce resource. If each device driver and each component of the operating
+system has its own dedicated core, there is no context switching during interproc-
+ess communication. In addition, the caches, branch predictors and TLBs will be all
+warmed up and ready to run at full speed. Some experimental work on a high-per-
+formance operating system based on a microkernel was presented by Hruby et al.
+(2013).
+     It is noteworthy that while microkernels are not popular on the desktop, they
+are very widely used in cell phones, industrial systems, embedded systems, and
+
+
+
+SEC. 12.3                    IMPLEMENTATION                                            997
+military systems, where very high reliability is absolutely essential. Also, Apple's
+OS X, which runs on all Macs and Macbooks, consists of a modified version of
+FreeBSD running on top of a modified version of the Mach microkernel.
+Extensible Systems
+With the client-server systems discussed above, the idea was to remove as
+much out of the kernel as possible. The opposite approach is to put more modules
+into the kernel, but in a protected way. The key word here is protected, of course.
+We studied some protection mechanisms in Sec. 9.5.6 that were initially intended
+for importing applets over the Internet, but are equally applicable to inserting for-
+eign code into the kernel. The most important ones are sandboxing and code sign-
+ing, as interpretation is not really practical for kernel code.
+Of course, an extensible system by itself is not a way to structure an operating
+system. However, by starting with a minimal system consisting of little more than a
+protection mechanism and then adding protected modules to the kernel one at a
+time until reaching the functionality desired, a minimal system can be built for the
+application at hand.  In this view, a new operating system can be tailored to each
+application by including only the parts it requires. Paramecium is an example of
+such a system (Van Doorn, 2001).
+Kernel Threads
+Another issue relevant here no matter which structuring model is chosen is that
+of system threads. It is sometimes convenient to allow kernel threads to exist, sep-
+arate from any user process. These threads can run in the background, writing dirty
+pages to disk, swapping processes between main memory and disk, and so forth.
+In fact, the kernel itself can be structured entirely of such threads, so that when a
+user does a system call, instead of the user's thread executing in kernel mode, the
+user's thread blocks and passes control to a kernel thread that takes over to do the
+work.
+In addition to kernel threads running in the background, most operating sys-
+tems start up many daemon processes in the background. While these are not part
+of the operating system, they often perform ``system'' type activities. These might
+including getting and sending email and serving various kinds of requests for re-
+mote users, such as FTP and Web pages.
+12.3.2 Mechanism vs. Policy
+Another principle that helps architectural coherence, along with keeping things
+small and well structured, is that of separating mechanism from policy.  By putting
+the mechanism in the operating system and leaving the policy to user processes,
+the system itself can be left unmodified, even if there is a need to change policy.
+
+
+
+998                   OPERATING SYSTEM DESIGN                                 CHAP. 12
+Even if the policy module has to be kept in the kernel, it should be isolated from
+the mechanism, if possible, so that changes in the policy module do not affect the
+mechanism module.
+     To make the split between policy and mechanism clearer, let us consider two
+real-world examples. As a first example, consider a large company that has a pay-
+roll department, which is in charge of paying the employees' salaries.        It has com-
+puters, software, blank checks, agreements with banks, and more mechanisms for
+actually paying out the salaries. However, the policy--determining who gets paid
+how much--is completely separate and is decided by management. The payroll de-
+partment just does what it is told to do.
+     As the second example, consider a restaurant.      It has the mechanism for serv-
+ing diners, including tables, plates, waiters, a kitchen full of equipment, agree-
+ments with food suppliers and credit card companies, and so on. The policy is set
+by the chef, namely, what is on the menu.  If the chef decides that tofu is out and
+big steaks are in, this new policy can be handled by the existing mechanism.
+     Now let us consider some operating system examples. First, let us consider
+thread scheduling.  The kernel could have a priority scheduler, with k        priority lev-
+els. The mechanism is an array, indexed by priority level, as is the case in UNIX
+and Windows 8.      Each entry is the head of a list of ready threads at that priority
+level. The scheduler just searches the array from highest priority to lowest priority,
+selecting the first threads it hits. The policy is setting the priorities.    The system
+may have different classes of users, each with a different priority, for example.       It
+might also allow user processes to set the relative priority of its threads.  Priorities
+might be increased after completing I/O or decreased after using up a quantum.
+There are numerous other policies that could be followed, but the idea here is the
+separation between setting policy and carrying it out.
+     A second example is paging. The mechanism involves MMU management,
+keeping lists of occupied and free pages, and code for shuttling pages to and from
+disk. The policy is deciding what to do when a page fault occurs. It could be local
+or global, LRU-based or FIFO-based, or something else, but this algorithm can
+(and should) be completely separate from the mechanics of managing the pages.
+     A third example is allowing modules to be loaded into the kernel. The mechan-
+ism concerns how they are inserted, how they are linked, what calls they can make,
+and what calls can be made on them. The policy is determining who is allowed to
+load a module into the kernel and which modules. Maybe only the superuser can
+load modules, but maybe any user can load a module that has been digitally signed
+by the appropriate authority.
+12.3.3 Orthogonality
+     Good system design consists of separate concepts that can be combined inde-
+pendently. For example, in C there are primitive data types including integers,
+characters, and floating-point numbers. There are also mechanisms for combining
+
+
+
+SEC. 12.3                       IMPLEMENTATION                                         999
+data types, including arrays, structures, and unions. These ideas combine indepen-
+dently, allowing arrays of integers, arrays of characters, structures and union mem-
+bers that are floating-point numbers, and so forth. In fact, once a new data type has
+been defined, such as an array of integers, it can be used as if it were a primitive
+data type, for example as a member of a structure or a union. The ability to com-
+bine separate concepts independently is called orthogonality.      It is a direct conse-
+quence of the simplicity and completeness principles.
+The concept of orthogonality also occurs in operating systems in various dis-
+guises. One example is the Linux clone system call, which creates a new thread.
+The call has a bitmap as a parameter, which allows the address space, working di-
+rectory, file descriptors, and signals to be shared or copied individually.  If every-
+thing is copied, we have a new process, the same as fork.      If nothing is copied, a
+new thread is created in the current process. However, it is also possible to create
+intermediate forms of sharing not possible in traditional UNIX systems.      By sepa-
+rating out the various features and making them orthogonal, a finer degree of con-
+trol is possible.
+Another use of orthogonality is the separation of the process concept from the
+thread concept in Windows 8.    A process is a container for resources, nothing more
+and nothing less.  A thread is a schedulable entity.   When one process is given a
+handle for another process, it does not matter how many threads it has. When a
+thread is scheduled, it does not matter which process it belongs to. These concepts
+are orthogonal.
+Our last example of orthogonality comes from UNIX. Process creation there is
+done in two steps: fork plus exec.  Creating the new address space and loading it
+with a new memory image are separate, allowing things to be done in between
+(such as manipulating file descriptors).     In Windows 8, these two steps cannot be
+separated, that is, the concepts of making a new address space and filling it in are
+not orthogonal there. The Linux sequence of clone plus exec is yet more orthogo-
+nal, since even more fine-grained building blocks are available.   As a general rule,
+having a small number of orthogonal elements that can be combined in many ways
+leads to a small, simple, and elegant system.
+12.3.4 Naming
+Most long-lived data structures used by an operating system have some kind of
+name or identifier by which they can be referred to. Obvious examples are login
+names, file names, device names, process IDs, and so on. How these names are
+constructed  and   managed  is  an  important  issue   in  system  design    and  imple-
+mentation.
+Names that were primarily designed for human beings to use are charac-
+ter-string names in ASCII or Unicode and are usually hierarchical. Directory paths,
+such as /usr/ast/books/mos4/chap-12, are clearly hierarchical, indicating a series of
+directories to search starting at the root.  URLs are also hierarchical.     For example,
+
+
+
+1000                     OPERATING SYSTEM DESIGN                                          CHAP. 12
+www.cs.vu.nl/~ast/ indicates a specific machine (www) in a specific department
+(cs) at specific university (vu) in a specific country (nl). The part after the slash in-
+dicates a specific file on the designated machine, in this case, by convention,
+www/index.html in ast's home directory. Note that URLs (and DNS addresses in
+general, including email addresses) are ``backward,'' starting at the bottom of the
+tree and going up, unlike file names, which start at the top of the tree and go down.
+Another way of looking at this is whether the tree is written from the top starting at
+the left and going right or starting at the right and going left.
+Often naming is done at two levels: external and internal. For example, files al-
+ways have a character-string name in ASCII or Unicode for people to use. In addi-
+tion, there is almost always an internal name that the system uses.               In UNIX, the
+real name of a file is its i-node number; the ASCII name is not used at all inter-
+nally.  In fact, it is not even unique, since a file may have multiple links to it.         The
+analogous internal name in Windows 8 is the file's index in the MFT.              The job of
+the directory is to provide the mapping between the external name and the internal
+name, as shown in Fig. 12-4.
+External name: /usr/ast/books/mos2/Chap-12
+                Directory: /usr/ast/books/mos2               I-node table
+                Chap-10       114                                          7
+                Chap-11       38                                           6
+                Chap-12       2                                            5
+                                                                           4
+                                                                           3      Internal  name:  2
+                                                                           2
+                                                                           1
+        Figure  12-4. Directories are used to map  external  names onto internal  names.
+In many cases (such as the file-name example given above), the internal name
+is an unsigned integer that serves as an index into a kernel table. Other examples of
+table-index names are file descriptors in UNIX and object handles in Windows 8.
+Note that neither of these has any external representation. They are strictly for use
+by the system and running processes.            In general, using table indices for transient
+names that are lost when the system is rebooted is a good idea.
+Operating systems commonly support multiple namespaces, both external and
+internal. For example, in Chap. 11 we looked at three external namespaces sup-
+ported by Windows 8: file names, object names, and registry names (and there is
+also the Active Directory namespace, which we did not look at). In addition, there
+are innumerable internal namespaces using unsigned integers, for example, object
+
+
+
+SEC. 12.3               IMPLEMENTATION                                       1001
+handles and MFT entries. Although the names in the external namespaces are all
+Unicode strings, looking up a file name in the registry will not work, just as using
+an MFT index in the object table will not work.    In a good design, considerable
+thought is given to how many namespaces are needed, what the syntax of names is
+in each one, how they can be told apart, whether absolute and relative names exist,
+and so on.
+12.3.5 Binding Time
+      As we have just seen, operating systems use various kinds of names to refer to
+objects. Sometimes the mapping between a name and an object is fixed, but some-
+times it is not. In the latter case, when the name is bound to the object may matter.
+In general, early binding is simple, but not flexible, whereas late binding is more
+complicated but often more flexible.
+      To clarify the concept of binding time, let us look at some real-world ex-
+amples.   An example of early binding is the practice of some colleges to allow par-
+ents to enroll a baby at birth and prepay the current tuition. When the student
+shows up 18 years later, the tuition is fully paid, no matter how high it may be at
+that moment.
+      In manufacturing, ordering parts in advance and maintaining an inventory of
+them is early binding.  In contrast, just-in-time manufacturing requires suppliers to
+be able to provide parts on the spot, with no advance notice required. This is late
+binding.
+      Programming languages often support multiple binding times for variables.
+Global variables are bound to a particular virtual address by the compiler.  This
+exemplifies early binding. Variables local to a procedure are assigned a virtual ad-
+dress (on the stack) at the time the procedure is invoked. This is intermediate bind-
+ing.  Variables stored on the heap (those allocated by malloc in C or new in Java)
+are assigned virtual addresses only at the time they are actually used. Here we have
+late binding.
+      Operating systems often use early binding for most data structures, but occa-
+sionally use late binding for flexibility. Memory allocation is a case in point. Early
+multiprogramming systems on machines lacking address-relocation hardware had
+to load a program at some memory address and relocate it to run there.       If it was
+ever swapped out, it had to be brought back at the same memory address or it
+would fail. In contrast, paged virtual memory is a form of late binding. The actual
+physical address corresponding to a given virtual address is not known until the
+page is touched and actually brought into memory.
+      Another example of late binding is window placement in a GUI. In contrast to
+the early graphical systems, in which the programmer had to specify the absolute
+screen coordinates for all images on the screen, in modern GUIs the software uses
+coordinates relative to the window's origin, but that is not determined until the
+window is put on the screen, and it may even be changed later.
+
+
+
+1002                               OPERATING SYSTEM DESIGN                          CHAP. 12
+12.3.6  Static vs. Dynamic Structures
+   Operating system designers are constantly forced to choose between static and
+dynamic data structures. Static ones are always simpler to understand, easier to
+program, and faster in use; dynamic ones are more flexible.  An obvious example
+is the process table.      Early systems simply allocated a fixed array of per-process
+structures.     If the process table consisted of 256 entries, then only 256 processes
+could exist at any one instant. An attempt to create a 257th one would fail for lack
+of table space. Similar considerations held for the table of open files (both per user
+and systemwide), and many other kernel tables.
+   An alternative strategy is to build the process table as a linked list of minita-
+bles, initially just one.  If this table fills up, another one is allocated from a global
+storage pool and linked to the first one. In this way, the process table cannot fill up
+until all of kernel memory is exhausted.
+   On the other hand, the code for searching the table becomes more complicated.
+For example, the code for searching a static process table for a given PID, pid, is
+given in Fig. 12-5.     It is simple and efficient. Doing the same thing for a linked list
+of minitables is more work.
+found = 0;
+for (p = &proc  table[0]; p < &proc  table[PROC  TABLE  SIZE]; p++) {
+   if (p->proc      pid == pid) {
+            found = 1;
+            break;
+   }
+}
+                Figure 12-5. Code for searching the process table for a given PID.
+   Static tables are best when there is plenty of memory or table utilizations can
+be guessed fairly accurately. For example, in a single-user system, it is unlikely
+that the user will start up more than 128 processes at once, and it is not a total dis-
+aster if an attempt to start a 129th one fails.
+   Yet another alternative is to use a fixed-size table, but if it fills up, allocate a
+new fixed-size table, say, twice as big. The current entries are then copied over to
+the new table and the old table is returned to the free storage pool. In this way, the
+table is always contiguous rather than linked.   The disadvantage here is that some
+storage management is needed and the address of the table is now a variable in-
+stead of a constant.
+   A similar issue holds for kernel stacks. When a thread switches from user
+mode to kernel mode, or a kernel-mode thread is run, it needs a stack in kernel
+space. For user threads, the stack can be initialized to run down from the top of the
+virtual address space, so the size need not be specified in advance. For kernel
+threads, the size must be specified in advance because the stack takes up some ker-
+nel virtual address space and there may be many stacks. The question is: how much
+
+
+
+SEC. 12.3                        IMPLEMENTATION                                     1003
+space should each one get?  The trade-offs here are similar to those for the process
+table. Making key data structures like these dynamic is possible, but complicated.
+Another static-dynamic trade-off is process scheduling.  In some systems, es-
+pecially real-time ones, the scheduling can be done statically in advance. For ex-
+ample, an airline knows what time its flights will leave weeks before their depar-
+ture. Similarly, multimedia systems know when to schedule audio, video, and other
+processes in advance. For general-purpose use, these considerations do not hold
+and scheduling must be dynamic.
+Yet another static-dynamic issue is kernel structure.    It is much simpler if the
+kernel is built as a single binary program and loaded into memory to run. The
+consequence of this design, however, is that adding a new I/O device requires a
+relinking of the kernel with the new device driver. Early versions of UNIX worked
+this way, and it was quite satisfactory in a minicomputer environment when adding
+new I/O devices was a rare occurrence. Nowadays, most operating systems allow
+code to be added to the kernel dynamically, with all the additional complexity that
+entails.
+12.3.7 Top-Down vs. Bottom-Up Implementation
+While it is best to design the system top down, in theory it can be implemented
+top down or bottom up.      In a top-down implementation, the implementers start
+with the system-call handlers and see what mechanisms and data structures are
+needed to support them. These procedures are written, and so on, until the hard-
+ware is reached.
+The problem with this approach is that it is hard to test anything with only the
+top-level procedures available. For this reason, many developers find it more prac-
+tical to actually build the system bottom up. This approach entails first writing
+code that hides the low-level hardware, essentially the HAL in Fig. 11-4. Interrupt
+handling and the clock driver are also needed early on.
+Then multiprogramming can be tackled, along with a simple scheduler (e.g.,
+round-robin scheduling).    At this point it should be possible to test the system to
+see if it can run multiple processes correctly. If that works, it is now time to begin
+the careful definition of the various tables and data structures needed throughout
+the system, especially those for process and thread management and later memory
+management.  I/O and the file system can wait initially, except for a primitive way
+to read the keyboard and write to the screen for testing and debugging.  In some
+cases, the key low-level data structures should be protected by allowing access
+only through specific access procedures--in effect, object-oriented programming,
+no matter what the programming language is. As lower layers are completed, they
+can be tested thoroughly.   In this way, the system advances from the bottom up,
+much the way contractors build tall office buildings.
+If a large team of programmers is available, an alternative approach is to first
+make a detailed design of the whole system, and then assign different groups to
+
+
+
+1004  OPERATING SYSTEM DESIGN                                       CHAP. 12
+write different modules. Each one tests its own work in isolation.  When all the
+pieces are ready, they are integrated and tested. The problem with this line of at-
+tack is that if nothing works initially, it may be hard to isolate whether one or more
+modules are malfunctioning, or one group misunderstood what some other module
+was supposed to do. Nevertheless, with large teams, this approach is often used to
+maximize the amount of parallelism in the programming effort.
+12.3.8 Synchronous vs. Asynchronous Communication
+Another issue that often creeps up in conversations between operating system
+designers is whether the interactions between the system components should be
+synchronous or asynchronous (and, related, whether threads are better than events).
+The issue frequently leads to heated arguments between proponents of the two
+camps, although it does not leave them foaming at the mouth quite as much as
+when deciding really important matters--like which is the best editor, vi or emacs.
+We use the term ``synchronous'' in the (loose) sense of Sec. 8.2 to denote calls that
+block until completion. Conversely, with ``asynchronous'' calls the caller keeps
+running. There are advantages and disadvantages to either model.
+Some systems, like Amoeba, really embrace the synchronous design and im-
+plement communication between processes as blocking client-server calls. Fully
+synchronous communication is conceptually very simple.         A process sends a re-
+quest and blocks waiting until the reply arrives--what could be simpler? It be-
+comes a little more complicated when there are many clients all crying for the ser-
+ver's attention. Each individual request may block for a long time waiting for other
+requests to complete first. This can be solved by making the server multi-threaded
+so that each thread can handle one client. The model is tried and tested in many
+real-world implementations, in operating systems as well as user applications.
+Things get more complicated still if the threads frequently read and write shar-
+ed data structures. In that case, locking is unavoidable. Unfortunately, getting the
+locks right is not easy. The simplest solution is to throw a single big lock on all
+shared data structures (similar to the big kernel lock). Whenever a thread wants to
+access the shared data structures, it has to grab the lock first. For performance rea-
+sons, a single big lock is a bad idea, because threads end up waiting for each other
+all the time even if they do not conflict at all. The other extreme, lots of micro
+locks for (parts) of individual data structures, is much faster, but conflicts with our
+guiding principle number one: simplicity.
+Other operating systems build their interprocess communication using asyn-
+chronous primitives. In a way, asynchronous communication is even simpler than
+its synchronous cousin. A client process sends a message to a server, but rather
+than wait for the message to be delivered or a reply to be sent back, it just con-
+tinues executing. Of course, this means that it also receives the reply asynchro-
+nously and should remember which request corresponded to it when it arrives. The
+server typically processes the requests (events) as a single thread in an event loop.
+
+
+
+SEC. 12.3                   IMPLEMENTATION                          1005
+Whenever the request requires the server to contact other servers for further proc-
+essing it sends an asynchronous message of its own and, rather than block, con-
+tinues with the next request. Multiple threads are not needed. With only a single
+thread processing events, the problem of multiple threads accessing shared data
+structures cannot occur. On the other hand, a long-running event handler makes the
+single-threaded server's response sluggish.
+Whether threads or events are the better programming model is a long-standing
+controversial issue that has stirred the hearts of zealots on either side ever since
+John Ousterhout's classic paper: ``Why threads are a bad idea (for most purposes)''
+(1996). Ousterhout argues that threads make everything needlessly complicated:
+locking, debugging, callbacks, performance--you name it. Of course, it would not
+be a controversy if everybody agreed. A few years after Ousterhout's paper, Von
+Behren et al. (2003) published a paper titled ``Why events are a bad idea (for high-
+concurrency servers).'' Thus, deciding on the right programming model is a hard,
+but important decision for system designers. There is no slam-dunk winner. Web
+servers like apache firmly embrace synchronous communication and threads, but
+others like lighttpd are based on the event-driven paradigm. Both are very popu-
+lar. In our opinion, events are often easier to understand and debug than threads. As
+long as there is no need for per-core concurrency, they are probably a good choice.
+12.3.9 Useful Techniques
+We have just looked at some abstract ideas for system design and imple-
+mentation. Now we will examine a number of useful concrete techniques for sys-
+tem implementation. There are numerous others, of course, but space limitations
+restrict us to just a few.
+Hiding the Hardware
+A lot of hardware is ugly.  It has to be hidden early on (unless it exposes pow-
+er, which most hardware does not). Some of the very low-level details can be hid-
+den by a HAL-type layer of the type shown in Fig. 12-2 as layer 1.  However,
+many hardware details cannot be hidden this way.
+One thing that deserves early attention is how to deal with interrupts. They
+make programming unpleasant, but operating systems have to deal with them. One
+approach is to turn them into something else immediately. For example, every in-
+terrupt could be turned into a pop-up thread instantly.  At that point we are dealing
+with threads, rather than interrupts.
+A second approach is to convert each interrupt into an unlock operation on a
+mutex that the corresponding driver is waiting on. Then the only effect of an inter-
+rupt is to cause some thread to become ready.
+
+
+
+1006              OPERATING SYSTEM DESIGN                                     CHAP. 12
+A third approach is to immediately convert an interrupt into a message to some
+thread. The low-level code just builds a message telling where the interrupt came
+from, enqueues it, and calls the scheduler to (potentially) run the handler, which
+was probably blocked waiting for the message. All these techniques, and others
+like them, all try to convert interrupts into thread-synchronization operations. Hav-
+ing each interrupt handled by a proper thread in a proper context is easier to man-
+age than running a handler in the arbitrary context that it happened to occur in. Of
+course, this must be done efficiently, but deep within the operating system, every-
+thing must be done efficiently.
+Most operating systems are designed to run on multiple hardware platforms.
+These platforms can differ in terms of the CPU chip, MMU, word length, RAM
+size, and other features that cannot easily be masked by the HAL or equivalent.
+Nevertheless, it is highly desirable to have a single set of source files that are used
+to generate all versions; otherwise each bug that later turns up must be fixed multi-
+ple times in multiple sources, with the danger that the sources drift apart.
+Some hardware differences, such as RAM size, can be dealt with by having the
+operating system determine the value at boot time and keep it in a variable. Memo-
+ry allocators, for example, can use the RAM-size variable to determine how big to
+make the block cache, page tables, and the like. Even static tables such as the proc-
+ess table can be sized based on the total memory available.
+However, other differences, such as different CPU chips, cannot be solved by
+having a single binary that determines at run time which CPU it is running on. One
+way to tackle the problem of one source and multiple targets is to use conditional
+compilation. In the source files, certain compile-time flags are defined for the dif-
+ferent configurations and these are used to bracket code that is dependent on the
+CPU, word length, MMU, and so on. For example, imagine an operating system
+that is to run on the IA32 line of x86 chips (sometimes referred to as x86-32), or
+on UltraSPARC chips, which need different initialization code. The init procedure
+could be written as illustrated in Fig. 12-6(a).  Depending on the value of CPU,
+which is defined in the header file config.h, one kind of initialization or other is
+done. Because the actual binary contains only the code needed for the target ma-
+chine, there is no loss of efficiency this way.
+As a second example, suppose there is a need for a data type Register, which
+should be 32 bits on the IA32 and 64 bits on the UltraSPARC. This could be hand-
+led by the conditional code of Fig. 12-6(b) (assuming that the compiler produces
+32-bit ints and 64-bit longs).   Once this definition has been made (probably in a
+header file included everywhere), the programmer can just declare variables to be
+of type Register and know they will be the right length.
+The header file, config.h, has to be defined correctly, of course. For the IA32 it
+might be something like this:
+#define CPU IA32
+#define WORD  LENGTH 32
+
+
+
+SEC. 12.3                               IMPLEMENTATION                                1007
+#include "config.h"                         #include "config.h"
+init( )                                     #if (WORD        LENGTH == 32)
+{                                           typedef int Register;
+#if (CPU == IA32)                           #endif
+/* IA32 initialization here. */                              LENGTH == 64)
+#endif                                      #if (WORD
+                                            typedef long Register;
+#if (CPU == ULTRASPARC)                     #endif
+/* UltraSPARC initialization here.  */      Register R0, R1, R2, R3;
+#endif
+           (a)                                          (b)
+}
+         Figure 12-6. (a) CPU-dependent conditional compilation. (b) Word-length-de-
+         pendent conditional compilation.
+To compile the system for the UltraSPARC, a different config.h would be               used,
+with the correct values for the UltraSPARC, probably something like
+      #define CPU ULTRASPARC
+      #define WORD   LENGTH 64
+      Some readers may be wondering why CPU and WORD           LENGTH are handled
+by different macros.  We could easily have bracketed the definition of Register
+with a test on CPU, setting it to 32 bits for the IA32 and 64 bits for the Ultra-
+SPARC.     However, this is not a good idea. Consider what happens when we later
+port the system to the 32-bit ARM.         We would have to add a third conditional to
+Fig. 12-6(b) for the ARM. By doing it as we have, all we have to do is include the
+line
+      #define WORD    LENGTH 32
+to the config.h file for the ARM.
+      This example illustrates the orthogonality principle we discussed earlier. Those
+items that are CPU dependent should be conditionally compiled based on the CPU
+macro, and those that are word-length dependent should use the WORD                   LENGTH
+macro. Similar considerations hold for many other parameters.
+Indirection
+      It is sometimes said that there is no problem in computer science that cannot
+be solved with another level of indirection. While something of an exaggeration,
+there is definitely a grain of truth here.  Let us consider some examples.              On
+x86-based systems, when a key is depressed, the hardware generates an interrupt
+and puts the key number, rather than an ASCII character code, in a device register.
+
+
+
+1008                OPERATING SYSTEM DESIGN                                   CHAP. 12
+Furthermore, when the key is released later, a second interrupt is generated, also
+with the key number. This indirection allows the operating system the possibility of
+using the key number to index into a table to get the ASCII character, which makes
+it easy to handle the many keyboards used around the world in different countries.
+Getting both the depress and release information makes it possible to use any key
+as a shift key, since the operating system knows the exact sequence in which the
+keys were depressed and released.
+Indirection is also used on output. Programs can write ASCII characters to the
+screen, but these are interpreted as indices into a table for the current output font.
+The table entry contains the bitmap for the character.  This indirection makes it
+possible to separate characters from fonts.
+Another example of indirection is the use of major device numbers in UNIX.
+Within the kernel there is a table indexed by major device number for the block de-
+vices and another one for the character devices. When a process opens a special
+file such as /dev/hd0, the system extracts the type (block or character) and major
+and minor device numbers from the i-node and indexes into the appropriate driver
+table to find the driver. This indirection makes it easy to reconfigure the system,
+because programs deal with symbolic device names, not actual driver names.
+Yet another example of indirection occurs in message-passing systems that
+name a mailbox rather than a process as the message destination.  By indirecting
+through mailboxes (as opposed to naming a process as the destination), consid-
+erable flexibility can be achieved (e.g., having a secretary handle her boss' mes-
+sages).
+In a sense, the use of macros, such as
+#define PROC        TABLE  SIZE 256
+is also a form of indirection, since the programmer can write code without having
+to know how big the table really is.  It is good practice to give symbolic names to
+all constants (except sometimes -1, 0, and 1), and put these in headers with com-
+ments explaining what they are for.
+Reusability
+It is frequently possible to reuse the same code in slightly different contexts.
+Doing so is a good idea as it reduces the size of the binary and means that the code
+has to be debugged only once. For example, suppose that bitmaps are used to keep
+track of free blocks on the disk. Disk-block management can be handled by having
+procedures alloc and free that manage the bitmaps.
+As a bare minimum, these procedures should work for any disk. But we can go
+further than that.  The same procedures can also work for managing memory
+blocks, blocks in the file system's block cache, and i-nodes.  In fact, they can be
+used to allocate and deallocate any resources that can be numbered linearly.
+
+
+
+SEC. 12.3                        IMPLEMENTATION                            1009
+Reentrancy
+Reentrancy refers to the ability of code to be executed two or more times si-
+multaneously. On a multiprocessor, there is always the danger than while one CPU
+is executing some procedure, another CPU will start executing it as well, before the
+first one has finished.  In this case, two (or more) threads on different CPUs might
+be executing the same code at the same time. This situation must be protected
+against by using mutexes or some other means to protect critical regions.
+However, the problem also exists on a uniprocessor.  In particular, most of any
+operating system runs with interrupts enabled.  To do otherwise would lose many
+interrupts and make the system unreliable. While the operating system is busy ex-
+ecuting some procedure, P, it is entirely possible that an interrupt occurs and that
+the interrupt handler also calls P. If the data structures of P were in an inconsistent
+state at the time of the interrupt, the handler will see them in an inconsistent state
+and fail.
+An obvious example where this can happen is if P is the scheduler. Suppose
+that some process has used up its quantum and the operating system is moving it to
+the end of its queue. Partway through the list manipulation, the interrupt occurs,
+makes some process ready, and runs the scheduler. With the queues in an inconsis-
+tent state, the system will probably crash.  As a consequence even on a uniproc-
+essor, it is best that most of the operating system is reentrant, critical data struc-
+tures are protected by mutexes, and interrupts are disabled at moments when they
+cannot be tolerated.
+Brute Force
+Using brute-force to solve a problem has acquired a bad name over the years,
+but it is often the way to go in the name of simplicity. Every operating system has
+many procedures that are rarely called or operate with so few data that optimizing
+them is not worthwhile. For example, it is frequently necessary to search various
+tables and arrays within the system. The brute force algorithm is to just leave the
+table in the order the entries are made and search it linearly when something has to
+be looked up.   If the number of entries is small (say, under 1000), the gain from
+sorting the table or hashing it is small, but the code is far more complicated and
+more likely to have bugs in it.  Sorting or hashing the mount table (which keeps
+track of mounted file systems in UNIX systems) really is not a good idea.
+Of course, for functions that are on the critical path, say, context switching,
+everything should be done to make them very fast, possibly even writing them in
+(heaven forbid) assembly language. But large parts of the system are not on the
+critical path.  For example, many system calls are rarely invoked.  If there is one
+fork every second, and it takes 1 msec to carry out, then even optimizing it to 0
+wins only 0.1%.  If the optimized code is bigger and buggier, a case can be made
+not to bother with the optimization.
+
+
+
+1010                         OPERATING SYSTEM DESIGN                      CHAP. 12
+Check for Errors First
+Many system calls can fail for a variety of reasons: the file to be opened be-
+longs to someone else; process creation fails because the process table is full; or a
+signal cannot be sent because the target process does not exist. The operating sys-
+tem must painstakingly check for every possible error before carrying out the call.
+Many system calls also require acquiring resources such as process-table slots,
+i-node table slots, or file descriptors.  A general piece of advice that can save a lot
+of grief is to first check to see if the system call can actually be carried out before
+acquiring any resources. This means putting all the tests at the beginning of the
+procedure that executes the system call. Each test should be of the form
+if (error     condition) return(ERROR     CODE);
+If the call gets all the way through the gamut of tests, then it is certain that it will
+succeed. At that point resources can be acquired.
+Interspersing the tests with resource acquisition means that if some test fails
+along the way, all resources acquired up to that point must be returned.  If an error
+is made here and some resource is not returned, no damage is done immediately.
+For example, one process-table entry may just become permanently unavailable.
+No big deal.  However, over a period of time, this bug may be triggered multiple
+times. Eventually, most or all of the process-table entries may become unavailable,
+leading to a system crash in an extremely unpredictable and difficult-to-debug way.
+Many systems suffer from this problem in the form of memory leaks. Typi-
+cally, the program calls malloc to allocate space but forgets to call free later to re-
+lease it. Ever so gradually, all of memory disappears until the system is rebooted.
+Engler et al. (2000) have proposed a way to check for some of these errors at
+compile time. They observed that the programmer knows many invariants that the
+compiler does not know, such as when you lock a mutex, all paths starting at the
+lock must contain an unlock and no more locks of the same mutex. They have de-
+vised a way for the programmer to tell the compiler this fact and instruct it to
+check all the paths at compile time for violations of the invariant. The programmer
+can also specify that allocated memory must be released on all paths and many
+other conditions as well.
+12.4 PERFORMANCE
+All things being equal, a fast operating system is better than a slow one. How-
+ever, a fast unreliable operating system is not as good as a reliable slow one. Since
+complex optimizations often lead to bugs, it is important to use them sparingly.
+This notwithstanding, there are places where performance is critical and optimiza-
+tions are worth the effort.  In the following sections, we will look at some tech-
+niques that can be used to improve performance in places where that is called for.
+
+
+
+SEC. 12.4                       PERFORMANCE                                       1011
+12.4.1 Why Are Operating Systems Slow?
+     Before talking about optimization techniques, it is worth pointing out that the
+slowness of many operating systems is to a large extent self-inflicted. For example,
+older operating systems, such as MS-DOS and UNIX Version 7, booted within a
+few seconds. Modern UNIX systems and Windows 8 can take several minutes to
+boot, despite running on hardware that is 1000 times faster.    The reason is that they
+are doing much more, wanted or not.          A case in point.  Plug and play makes it
+somewhat easier to install a new hardware device, but the price paid is that on
+every boot, the operating system has to go out and inspect all the hardware to see if
+there is anything new out there. This bus scan takes time.
+     An alternative (and, in the authors' opinion, better) approach would be to scrap
+plug-and-play altogether and have an icon on the screen labeled ``Install new hard-
+ware.'' Upon installing a new hardware device, the user would click on it to start
+the bus scan, instead of doing it on every boot. The designers of current systems
+were well aware of this option, of course. They rejected it, basically, because they
+assumed that the users were too stupid to be able to do this correctly (although they
+would word it more kindly).     This is only one example, but there are many more
+where the desire to make the system ``user-friendly'' (or ``idiot-proof,'' depending
+on your linguistic preferences) slows the system down all the time for everyone.
+     Probably the biggest single thing system designers can do to improve per-
+formance is to be much more selective about adding new features. The question to
+ask is not whether some users like it, but whether it is worth the inevitable price in
+code size, speed, complexity, and reliability.   Only if the advantages clearly out-
+weigh the drawbacks should it be included. Programmers have a tendency to as-
+sume that code size and bug count will be 0 and speed will be infinite. Experience
+shows this view to be a wee bit optimistic.
+     Another factor that plays a role is product marketing. By the time version 4 or
+5 of some product has hit the market, probably all the features that are actually use-
+ful have been included and most of the people who need the product already have
+it.  To keep sales going, many manufacturers nevertheless continue to produce a
+steady stream of new versions, with more features, just so they can sell their exist-
+ing customers upgrades. Adding new features just for the sake of adding new fea-
+tures may help sales but rarely helps performance.
+12.4.2 What Should Be Optimized?
+     As a general rule, the first version of the system should be as straightforward
+as possible. The only optimizations should be things that are so obviously going to
+be a problem that they are unavoidable. Having a block cache for the file system is
+such  an   example.  Once  the  system  is   up  and  running,  careful  measurements
+should be made to see where the time is really going. Based on these numbers,
+optimizations should be made where they will help most.
+
+
+
+1012                        OPERATING SYSTEM DESIGN                            CHAP. 12
+       Here is a true story of where an optimization did more harm than good. One of
+the authors (AST) had a former student (who shall here remain nameless) who
+wrote the original MINIX mkfs program. This program lays down a fresh file sys-
+tem on a newly formatted disk.      The student spent about 6 months optimizing it,
+including putting in disk caching. When he turned it in, it did not work and it re-
+quired several additional months of debugging. This program typically runs on the
+hard disk once during the life of the computer, when the system is installed.       It also
+runs once for each disk that is formatted.  Each run takes about 2 sec. Even if the
+unoptimized version had taken 1 minute, it was a poor use of resources to spend so
+much time optimizing a program that is used so infrequently.
+       A slogan that has considerable applicability to performance optimization is
+       Good enough is good enough.
+By this we mean that once the performance has achieved a reasonable level, it is
+probably not worth the effort and complexity to squeeze out the last few percent.
+If the scheduling algorithm is reasonably fair and keeps the CPU busy 90% of the
+time, it is doing its job. Devising a far more complex one that is 5% better is proba-
+bly a bad idea.  Similarly, if the page rate is low enough that it is not a bottleneck,
+jumping through hoops to get optimal performance is usually not worth it. Avoid-
+ing disaster is far more important than getting optimal performance, especially
+since what is optimal with one load may not be optimal with another.
+       Another concern is what to optimize when. Some programmers have a tenden-
+cy to optimize to death whatever they develop, as soon as it is appears to work. The
+problem is that after optimization, the system may be less clean, making it harder
+to maintain and debug. Also, it makes it harder to adapt it, and perhaps do more
+fruitful optimization later. The problem is known as premature optimization. Don-
+ald Knuth, sometimes referred to as the father of the analysis of algorithms, once
+said that ``premature optimization is the root of all evil.''
+12.4.3 Space-Time Trade-offs
+       One general approach to improving performance is to trade off time vs.       space.
+It frequently occurs in computer science that there is a choice between an algo-
+rithm that uses little memory but is slow and an algorithm that uses much more
+memory but is faster. When making an important optimization, it is worth looking
+for algorithms that gain speed by using more memory or conversely save precious
+memory by doing more computation.
+       One technique that is sometimes helpful is to replace small procedures by
+macros. Using a macro eliminates the overhead that is associated with a procedure
+call.  The gain is especially significant if the call occurs inside a loop.    As an ex-
+ample, suppose we use bitmaps to keep track of resources and frequently need to
+know how many units are free in some portion of the bitmap. For this purpose we
+will need a procedure, bit  count, that counts the number of 1 bits in a byte. The
+
+
+
+SEC. 12.4                                   PERFORMANCE                                       1013
+obvious procedure is given in Fig. 12-7(a).      It loops over the bits in a byte, count-
+ing them one at a time. It is pretty simple and straightforward.
+#define BYTE  SIZE 8                             /* A byte contains 8 bits */
+int bit  count(int byte)
+{                                                /* Count the bits in a byte. */
+         int i, count = 0;
+         for (i = 0; i < BYTE  SIZE; i++)        /* loop over the bits in a byte */
+             if ((byte >> i) & 1) count++;       /* if this bit is a 1, add to count */
+         return(count);                          /* return sum */
+}
+                                           (a)
+/*Macro to add up the bits in a byte and return the sum. */
+#define bit  count(b) ((b&1) + ((b>>1)&1) + ((b>>2)&1) + ((b>>3)&1) + \
+                            ((b>>4)&1) + ((b>>5)&1) + ((b>>6)&1) + ((b>>7)&1))
+                                           (b)
+/*Macro to look up the bit count in a table. */
+char bits[256] = {0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, ...};
+#define bit  count(b) (int) bits[b]
+                                           (c)
+         Figure 12-7. (a) A procedure for counting bits in a byte. (b) A macro to count
+         the bits. (c) A macro that counts bits by table lookup.
+   This procedure has two sources of inefficiency. First, it must be called, stack
+space must be allocated for it, and it must return. Every procedure call has this
+overhead.    Second, it contains a loop, and there is always some overhead associ-
+ated with a loop.
+   A completely different approach is to use the macro of Fig. 12-7(b).                       It is an
+inline expression that computes the sum of the bits by successively shifting the arg-
+ument, masking out everything but the low-order bit, and adding up the eight
+terms. The macro is hardly a work of art, but it appears in the code only once.
+When the macro is called, for example, by
+   sum = bit  count(table[i]);
+the macro call looks identical to the call of the procedure. Thus, other than one
+somewhat messy definition, the code does not look any worse in the macro case
+than in the procedure case, but it is much more efficient since it eliminates both the
+procedure-call overhead and the loop overhead.
+   We can take this example one step further. Why compute the bit count at all?
+Why not look it up in a table?              After all, there are only 256 different bytes, each
+with a unique value between 0 and 8.             We can declare a 256-entry table, bits, with
+each entry initialized (at compile time) to the bit count corresponding to that byte
+
+
+
+1014                        OPERATING SYSTEM DESIGN                                        CHAP. 12
+value. With this approach no computation at all is needed at run time, just one
+indexing operation. A macro to do the job is given in Fig. 12-7(c).
+This is a clear example of trading computation time against memory. However,
+we could go still further.  If the bit counts for whole 32-bit words are needed, using
+our bit  count macro, we need to perform four lookups per word.                   If we expand the
+table to 65,536 entries, we can suffice with two lookups per word, at the price of a
+much bigger table.
+Looking answers up in tables can also be used in other ways.                           Anwell-known
+image-compression technique, GIF, uses table lookup to encode 24-bit RGB pixels.
+However, GIF only works on images with 256 or fewer colors.          For each image to
+be compressed, a palette of 256 entries is constructed, each entry containing one
+24-bit RGB value. The compressed image then consists of an 8-bit index for each
+pixel instead of a 24-bit color value, a gain of a factor of three. This idea is illus-
+trated for a 4 × 4 section of an image in Fig. 12-8. The original compressed image
+is shown in Fig. 12-8(a).         Each value is a 24-bit value, with 8 bits for the intensity
+of red, green, and blue, respectively. The GIF image is shown in Fig. 12-8(b).
+Each value is an 8-bit index into the color palette. The color palette is stored as part
+of the image file, and is shown in Fig. 12-8(c).       Actually, there is more to GIF, but
+the core idea is table lookup.
+24 Bits                             8 Bits                                                 24 Bits
+                                                                                       11  66,4,43
+3,8,13   3,8,13   26,4,9   90,2,6   7          7       2   6                           10  5,8,1
+                                                                                       9   4,2,17
+3,8,13   3,8,13   4,19,20  4,6,9    7          7       3   4                           8   10,11,5
+                                                                                       7   3,8,13
+                                                                                       6   90,2,6
+4,6,9    10,30,8  5,8,1    22,2,0   4          5       10  0                           5   10,30,8
+                                                                                       4   4,6,9
+                                                                                       3   4,19,20
+10,11,5  4,2,17   88,4,3   66,4,43  8          9       2   11                          2   88,4,3
+                                                                                       1   26,4,9
+                                                                                       0   22,2,0
+         (a)                                      (b)                                      (c)
+         Figure 12-8.  (a) Part of an uncompressed image with 24 bits per pixel.       (b) The
+         same part compressed with GIF, with 8 bits per pixel. (c) The color palette.
+There is another way to reduce image size, and it illustrates a different trade-
+off. PostScript is a programming language that can be used to describe images.
+(Actually, any programming language can describe images, but PostScript is tuned
+for this purpose.)     Many printers have a PostScript interpreter built into them to be
+able to run PostScript programs sent to them.
+
+
+
+SEC. 12.4             PERFORMANCE                                                       1015
+For example, if there is a rectangular block of pixels all the same color in an
+image, a PostScript program for the image would carry instructions to place a rect-
+angle at a certain location and fill it with a certain color. Only a handful of bits are
+needed to issue this command. When the image is received at the printer, an inter-
+preter there must run the program to construct the image. Thus PostScript achieves
+data compression at the expense of more computation, a different trade-off than ta-
+ble lookup, but a valuable one when memory or bandwidth is scarce.
+Other trade-offs often involve data structures. Doubly linked lists take up more
+memory than singly linked lists, but often allow faster access to items. Hash tables
+are even more wasteful of space, but faster still.  In short, one of the main things to
+consider when optimizing a piece of code is whether using different data structures
+would make the best time-space trade-off.
+12.4.4 Caching
+A well-known technique for improving performance is caching.        It is applica-
+ble whenever it is likely the same result will be needed multiple times. The general
+approach is to do the full work the first time, and then save the result in a cache.
+On subsequent attempts, the cache is first checked. If the result is there, it is used.
+Otherwise, the full work is done again.
+We have already seen the use of caching within the file system to hold some
+number of recently used disk blocks, thus saving a disk read on each hit. However,
+caching can be used for many other purposes as well.    For example, parsing path
+names is surprisingly expensive. Consider the UNIX example of Fig. 4-34 again.
+To look up /usr/ast/mbox requires the following disk accesses:
+1.  Read the i-node for the root directory (i-node 1).
+2.  Read the root directory (block 1).
+3.  Read the i-node for /usr (i-node 6).
+4.  Read the /usr directory (block 132).
+5.  Read the i-node for /usr/ast (i-node 26).
+6.  Read the /usr/ast directory (block 406).
+It takes six disk accesses just to discover the i-node number of the file. Then the i-
+node itself has to be read to discover the disk block numbers.  If the file is smaller
+than the block size (e.g., 1024 bytes), it takes eight disk accesses to read the data.
+Some systems optimize path-name parsing by caching (path, i-node) combina-
+tions. For the example of Fig. 4-34, the cache will certainly hold the first three en-
+tries of Fig. 12-9 after parsing /usr/ast/mbox.     The last three entries come from
+parsing other paths.
+When a path has to be looked up, the name parser first consults the cache and
+searches it for the longest substring present in the cache. For example, if the path
+
+
+
+1016                          OPERATING SYSTEM DESIGN                        CHAP. 12
+                              Path               I-node number
+                              /usr                        6
+                              /usr/ast                26
+                              /usr/ast/mbox           60
+                              /usr/ast/books          92
+                              /usr/bal                45
+                              /usr/bal/paper.ps       85
+                       Figure 12-9. Part of the i-node cache for Fig. 4-34.
+/usr/ast/grants/erc is presented, the cache returns the fact that /usr/ast is i-node 26,
+so the search can start there, eliminating four disk accesses.
+A problem with caching paths is that the mapping between file name and i-
+node number is not fixed for all time. Suppose that the file /usr/ast/mbox is re-
+moved from the system and its i-node reused for a different file owned by a dif-
+ferent user. Later, the file /usr/ast/mbox is created again, and this time it gets i-node
+106. If nothing is done to prevent it, the cache entry will now be wrong and subse-
+quent lookups will return the wrong i-node number. For this reason, when a file or
+directory is deleted, its cache entry and (if it is a directory) all the entries below it
+must be purged from the cache.
+Disk blocks and path names are not the only items that are cacheable. I-nodes
+can be cached, too.    If pop-up threads are used to handle interrupts, each one of
+them  requires      a  stack  and   some  additional  machinery.  These      previously  used
+threads can also be cached, since refurbishing a used one is easier than creating a
+new one from scratch (to avoid having to allocate memory).                   Just about anything
+that is hard to produce can be cached.
+12.4.5 Hints
+Cache entries are always correct.             A cache search may fail, but if it finds an
+entry, that entry is guaranteed to be correct and can be used without further ado. In
+some systems, it is convenient to have a table of hints.          These are suggestions
+about the solution, but they are not guaranteed to be correct. The called must verify
+the result itself.
+A well-known example of hints are the URLs embedded on Web pages. Click-
+ing on a link does not guarantee that the Web page pointed to is there.      In fact, the
+page pointed to may have been removed 10 years ago. Thus the information on the
+pointing page is really only a hint.
+Hints are also used in connection with remote files. The information in the hint
+tells something about the remote file, such as where it is located. However, the file
+may have moved or been deleted since the hint was recorded, so a check is always
+needed to see if it is correct.
+
+
+
+SEC. 12.4                   PERFORMANCE                                  1017
+12.4.6 Exploiting Locality
+Processes and programs do not act at random. They exhibit a fair amount of lo-
+cality in time and space, and this information can be exploited in various ways to
+improve performance. One well-known example of spatial locality is the fact that
+processes do not jump around at random within their address spaces. They tend to
+use a relatively small number of pages during a given time interval. The pages that
+a process is actively using can be noted as its working set, and the operating sys-
+tem can make sure that when the process is allowed to run, its working set is in
+memory, thus reducing the number of page faults.
+The locality principle also holds for files. When a process has selected a partic-
+ular working directory, it is likely that many of its future file references will be to
+files in that directory.  By putting all the i-nodes and files for each directory close
+together on the disk, performance improvements can be obtained. This principle is
+what underlies the Berkeley Fast File System (McKusick et al., 1984).
+Another area in which locality plays a role is in thread scheduling in multi-
+processors.  As we saw in Chap. 8, one way to schedule threads on a multiproces-
+sor is to try to run each thread on the CPU it last used, in hopes that some of its
+memory blocks will still be in the memory cache.
+12.4.7 Optimize the Common Case
+It is frequently a good idea to distinguish between the most common case and
+the worst possible case and treat them differently. Often the code for the two is
+quite different. It is important to make the common case fast. For the worst case, if
+it occurs rarely, it is sufficient to make it correct.
+As a first example, consider entering a critical region. Most of the time, the
+entry will succeed, especially if processes do not spend a lot of time inside critical
+regions.   Windows 8 takes advantage of this expectation by providing a WinAPI
+call EnterCriticalSection that atomically tests a flag in user mode (using TSL or e-
+quivalent).  If the test succeeds, the process just enters the critical region and no
+kernel call is needed. If the test fails, the library procedure does a down on a sema-
+phore to block the process. Thus, in the normal case, no kernel call is needed. In
+Chap. 2 we saw that futexes on Linux likewise optimize for the common case of no
+contention.
+As a second example, consider setting an alarm (using signals in UNIX).  If no
+alarm is currently pending, it is straightforward to make an entry and put it on the
+timer queue. However, if an alarm is already pending, it has to be found and re-
+moved from the timer queue. Since the alarm call does not specify whether there is
+already an alarm set, the system has to assume worst case, that there is. However,
+since most of the time there is no alarm pending, and since removing an existing
+alarm is expensive, it is a good idea to distinguish these two cases.
+
+
+
+1018                OPERATING SYSTEM DESIGN                      CHAP. 12
+One way to do this is to keep a bit in the process table that tells whether an
+alarm is pending.  If the bit is off, the easy path is followed (just add a new timer-
+queue entry without checking). If the bit is on, the timer queue must be checked.
+12.5 PROJECT MANAGEMENT
+Programmers are perpetual optimists. Most of them think that the way to write
+a program is to run to the keyboard and start typing. Shortly thereafter the fully
+debugged program is finished. For very large programs, it does not quite work like
+that. In the following sections we have a bit to say about managing large software
+projects, especially large operating system projects.
+12.5.1 The Mythical Man Month
+In his classic book, The Mythical Man Month, Fred Brooks, one of the de-
+signers of OS/360, who later moved to academia, addresses the question of why it
+is so hard to build big operating systems (Brooks, 1975, 1995).  When most pro-
+grammers see his claim that programmers can produce only 1000 lines of debug-
+ged code per year on large projects, they wonder whether Prof. Brooks is living in
+outer space, perhaps on Planet Bug. After all, most of them can remember an all
+nighter when they produced a 1000-line program in one night. How could this be
+the annual output of anybody with an IQ > 50?
+What Brooks pointed out is that large projects, with hundreds of programmers,
+are completely different than small projects and that the results obtained from
+small projects do not scale to large ones.  In a large project, a huge amount of time
+is consumed planning how to divide the work into modules, carefully specifying
+the modules and their interfaces, and trying to imagine how the modules will inter-
+act, even before coding begins. Then the modules have to be coded and debugged
+in isolation.  Finally, the modules have to be integrated and the system as a whole
+has to be tested. The normal case is that each module works perfectly when tested
+by itself, but the system crashes instantly when all the pieces are put together.
+Brooks estimated the work as being
+1/3 Planning
+1/6 Coding
+1/4 Module testing
+1/4 System testing
+In other words, writing the code is the easy part. The hard part is figuring out what
+the modules should be and making module A correctly talk to module B.                  In a
+small program written by a single programmer, all that is left over is the easy part.
+The title of Brooks' book comes from his assertion that people and time are
+not interchangeable. There is no such unit as a man-month (or a person-month). If
+
+
+
+SEC. 12.5                      PROJECT MANAGEMENT                                1019
+a project takes 15 people 2 years to build, it is inconceivable that 360 people could
+do it in 1 month and probably not possible to have 60 people do it in 6 months.
+There are three reasons for this effect. First, the work cannot be fully paral-
+lelized.  Until the planning is done and it has been determined what modules are
+needed and what their interfaces will be, no coding can even be started.   On a two-
+year project, the planning alone may take 8 months.
+Second, to fully utilize a large number of programmers, the work must be par-
+titioned into large numbers of modules so that everyone has something to do. Since
+every module might potentially interact with every other one, the number of mod-
+ule-module interactions that need to be considered grows as the square of the num-
+ber of modules, that is, as the square of the number of programmers. This com-
+plexity quickly gets out of hand.   Careful measurements of 63 software projects
+have confirmed that the trade-off between people and months is far from linear on
+large projects (Boehm, 1981).
+Third, debugging is highly sequential. Setting 10 debuggers on a problem does
+not find the bug 10 times as fast.  In fact, ten debuggers are probably slower than
+one because they will waste so much time talking to each other.
+Brooks sums up his experience with trading-off people and time in Brooks'
+Law:
+Adding manpower to a late software project makes it later.
+The problem with adding people is that they have to be trained in the project, the
+modules have to be redivided to match the larger number of programmers now
+available, many meetings will be needed to coordinate all the efforts, and so on.
+Abdel-Hamid and Madnick (1991) confirmed this law experimentally.          A slightly
+irreverent way of restating Brooks law is
+It takes 9 months to bear a child, no matter how many women you assign
+to the job.
+12.5.2 Team Structure
+Commercial operating systems are large software projects and invariably re-
+quire large teams of people. The quality of the people matters immensely.        It has
+been known for decades that top programmers are 10× more productive than bad
+programmers (Sackman et al., 1968).        The trouble is, when you need 200 pro-
+grammers, it is hard to find 200 top programmers; you have to settle for a wide
+spectrum of qualities.
+What is also important in any large design project, software or otherwise, is the
+need for architectural coherence. There should be one mind controlling the design.
+Brooks cites the Reims cathedral in France as an example of a large project that
+took decades to build, and in which the architects who came later subordinated
+
+
+
+1020                      OPERATING SYSTEM DESIGN                                         CHAP. 12
+their desire to put their stamp on the project to carry out the initial architect's
+plans. The result is an architectural coherence unmatched in other European cathe-
+drals.
+In the 1970s, Harlan Mills combined the observation that some programmers
+are much better than others with the need for architectural coherence to propose
+the chief programmer team paradigm (Baker, 1972).        His idea was to organize a
+programming team like a surgical team rather than like a hog-butchering team. In-
+stead of everyone hacking away like mad, one person wields the scalpel. Everyone
+else is there to provide support. For a 10-person project, Mills suggested the team
+structure of Fig. 12-10.
+Title             Duties
+Chief programmer  Performs the architectural design and writes the code
+Copilot           Helps the chief programmer and serves as a sounding board
+Administrator     Manages the people, budget, space, equipment, reporting, etc.
+Editor            Edits the documentation, which must be written by the chief programmer
+Secretaries       The administrator and editor each need a secretary
+Program clerk     Maintains the code and documentation archives
+Toolsmith         Provides any tools the chief programmer needs
+Tester            Tests the chief programmer's code
+Language lawyer   Part timer who can advise the chief programmer on the language
+         Figure 12-10. Mills' proposal for populating a 10-person chief programmer team.
+Three decades have gone by since this was proposed and put into production.
+Some things have changed (such as the need for a language lawyer--C is simpler
+than PL/I), but the need to have only one mind controlling the design is still true.
+And that one mind should be able to work 100% on designing and programming,
+hence the need for the support staff, although with help from the computer, a smal-
+ler staff will suffice now. But in its essence, the idea is still valid.
+Any large project needs to be organized as a hierarchy.  At the bottom level are
+many small teams, each headed by a chief programmer.     At the next level, groups
+of teams must be coordinated by a manager. Experience shows that each person
+you manage costs you 10% of your time, so a full-time manager is needed for each
+group of 10 teams. These managers must be managed, and so on.
+Brooks observed that bad news does not travel up the tree well. Jerry Saltzer of
+M.I.T. called this effect the bad-news diode. No chief programmer or his manager
+wants to tell the big boss that the project is 4 months late and has no chance what-
+soever of meeting the deadline because there is a 2000-year-old tradition of be-
+heading the messenger who brings bad news.  As a consequence, top management
+is generally in the dark about the state of the project. When it becomes undeniably
+obvious that the deadline cannot be met under any conditions, top management
+panics and responds by adding people, at which time Brooks' Law kicks in.
+
+
+
+SEC. 12.5                  PROJECT MANAGEMENT                            1021
+In practice, large companies, which have had long experience producing soft-
+ware and know what happens if it is produced haphazardly, have a tendency to at
+least try to do it right.  In contrast, smaller, newer companies, which are in a huge
+rush to get to market, do not always take the care to produce their software careful-
+ly. This haste often leads to far from optimal results.
+Neither Brooks nor Mills foresaw the growth of the open source movement.
+While many expressed doubt (especially those leading large closed-source soft-
+ware companies), open source software has been a tremendous success. From large
+servers to embedded devices, and from industrial control systems to handheld
+smartphones, open source software is everywhere. Large companies like Google
+and IBM are throwing their weight behind Linux now and contribute heavily in
+code. What is noticeable is that the open source software projects that have been
+most successful have clearly used the chief-programmer model of having one mind
+control the architectural design (e.g., Linus Torvalds for the Linux kernel and
+Richard Stallman for the GNU C compiler).
+12.5.3 The Role of Experience
+Having experienced designers is absolutely critical to any software project.
+Brooks points out that most of the errors are not in the code, but in the design. The
+programmers correctly did what they were told to do.     What they were told to do
+was wrong. No amount of test software will catch bad specifications.
+Brooks' solution is to abandon the classical development model illustrated in
+Fig. 12-11(a) and use the model of Fig. 12-11(b).        Here the idea is to first write a
+main program that merely calls the top-level procedures, initially dummies. Start-
+ing on day 1 of the project, the system will compile and run, although it does noth-
+ing. As time goes on, real modules replace the dummies. The result is that system
+integration testing is performed continuously, so errors in the design show up much
+earlier, so the learning process caused by bad design starts earlier.
+A little knowledge is a dangerous thing. Brooks observed what he called the
+second system effect.      Often the first product produced by a design team is mini-
+mal because the designers are afraid it may not work at all.           As a result, they are
+hesitant to put in many features.  If the project succeeds, they build a follow-up
+system. Impressed by their own success, the second time the designers include all
+the bells and whistles that were intentionally left out the first time.  As a result, the
+second system is bloated and performs poorly.            The third time around they are
+sobered by the failure of the second system and are cautious again.
+The CTSS-MULTICS pair is a clear case in point. CTSS was the first general-
+purpose timesharing system and was a huge success despite having minimal func-
+tionality. Its successor, MULTICS, was too ambitious and suffered badly for it.
+The ideas were good, but there were too many new things, so the system performed
+poorly for years and was never a commercial success. The third system in this line
+of development, UNIX, was much more cautious and much more successful.
+
+
+
+1022                             OPERATING SYSTEM DESIGN                                CHAP. 12
+Plan                                                      Main
+                                                          program
+          Code
+                Test
+                modules                           Dummy   Dummy                         Dummy
+                         Test                procedure    procedure                     procedure
+                         system                   1                             2                3
+                               Deploy
+                (a)                                       (b)
+          Figure 12-11.  (a) Traditional software design progresses in stages.     (b) Alterna-
+          tive design produces a working system (that does nothing) starting on day 1.
+12.5.4 No Silver Bullet
+In addition to The Mythical Man Month, Brooks also wrote an influential paper
+called ``No Silver Bullet'' (Brooks, 1987).  In it, he argued that none of the many
+nostrums being hawked by various people at the time was going to generate an
+order-of-magnitude improvement in software productivity within a decade. Experi-
+ence shows that he was right.
+Among the silver bullets that were proposed were better high-level languages,
+object-oriented programming, artificial intelligence, expert systems, automatic pro-
+gramming, graphical programming, program verification, and programming envi-
+ronments. Perhaps the next decade will see a silver bullet, but maybe we will have
+to settle for gradual, incremental improvements.
+12.6 TRENDS IN OPERATING SYSTEM DESIGN
+In 1899, the head of the U.S. Patent Office, Charles H. Duell, asked then-Presi-
+dent McKinley to abolish the Patent Office (and his job!), because, as he put it:
+``Everything that can be invented, has been invented'' (Cerf and Navasky, 1984).
+Nevertheless, Thomas Edison showed up on his doorstep within a few years with a
+couple of new items, including the electric light, the phonograph, and the movie
+projector. The point is that the world is constantly changing and operating systems
+must adapt to the new reality all the time. In this section, we mention a few trends
+that are relevant for operating system designers today.
+To avoid confusion, the hardware developments mentioned below are here
+already.  What is not here is the operating system software to use them effectively.
+
+
+
+SEC. 12.6   TRENDS IN OPERATING SYSTEM DESIGN                          1023
+Generally, when new hardware arrives, what everyone does is just plop the old
+software (Linux, Windows, etc.) down on it and call it a day. In the long run, this is
+a bad idea. What we need is innovative software to deal with innovative hardware.
+If you are a computer science or engineering student or an ICT professional, your
+homework assignment is to think up this software.
+12.6.1 Virtualization and the Cloud
+Virtualization is an idea whose time has definitely come--again.       It first sur-
+faced in 1967 with the IBM CP/CMS system, but now it is back in full force on the
+x86 platform. Many computers are now running hypervisors on the bare hardware,
+as illustrated in Fig. 12-12.  The hypervisor creates a number of virtual machines,
+each with its own operating system. This phenomenon was discussed in Chap. 7
+and appears to be the wave of the future. Nowadays, many companies are taking
+the idea further by virtualizing other resources also. For instance, there is much in-
+terest in virtualizing the control of network equipment, even going so far as run-
+ning the control of their networks in the cloud also. In addition, vendors and re-
+searchers constantly work on making hypervisors better for some notion of better:
+smaller, faster, or with provable isolation properties.
+            Virtual machine    Windows     Linux         Linux  Other
+                                                                OS
+                                           Hypervisor
+                                           Hardware
+            Figure 12-12. A hypervisor running four virtual machines.
+12.6.2 Manycore Chips
+There used to be a time that memory was so scarce that a programmer knew
+every byte in person and celebrated its birthday. Nowaways, programmers rarely
+worry about wasting a few megabytes here and there. For most applications, mem-
+ory is no longer a scarce resource. What will happen when cores become equally
+plentiful?  Phrased differently, as manufacturers are putting more and more cores
+on a die, what happens if there are so many that a programmers stops worrying
+about wasting a few cores here and there?
+Manycore chips are here already, but the operating systems for them do not use
+them well. In fact, stock operating systems often do not even scale beyond a few
+dozens of cores and developers are constantly struggling to remove all the bottle-
+necks that limit scalability.
+
+
+
+1024                     OPERATING SYSTEM DESIGN                     CHAP. 12
+One obvious question is: what do you do with all the cores? If you run a popu-
+lar server handling many thousands of client requests per second, the answer may
+be relatively simple. For instance, you may decide to dedicate a core to each re-
+quest. Assuming you do not run into locking issues too much, this may work. But
+what do we do with all those cores on tablets?
+Another question is: what sort of cores do we want? Deeply pipelined, super-
+scalar cores with fancy out-of-order and speculative execution at high clock rates
+may be great for sequential code, but not for your energy bill. They also do not
+help much if your job exhibits a lot of parallelism.  Many applications are better
+off with smaller and simpler cores, if they get more of them. Some experts argue
+for heterogeneous multicores, but the questions remain the same: what cores, how
+many, and at what speeds? And we have not even begun to mention the issue of
+running an operating system and all of its applications. Will the operating system
+run on all cores or only some? Will there be one or more network stacks? How
+much sharing is needed? Do we dedicate certain cores to specific operating system
+functions (like the network or storage stack)? If so, do we replicate such functions
+for better scalability?
+Exploring many different directions, the operating system world is currently
+trying to formulate answers to these questions. While researchers may disagree on
+the answers, most of them agree on one thing: these are exciting times for systems
+research!
+12.6.3 Large-Address-Space Operating Systems
+As machines move from 32-bit address spaces to 64-bit address spaces, major
+shifts in operating system design become possible.    A 32-bit address space is not
+really that big.  If you tried to divide up 232 bytes by giving everybody on earth his
+or her own byte, there would not be enough bytes to go around.       In contrast, 264 is
+about 2 × 1019.   Now everybody gets a personal 3-GB chunk.
+What could we do with an address space of 2 × 1019 bytes?            For starters, we
+could eliminate the file-system concept. Instead, all files could be conceptually
+held in (virtual) memory all the time.  After all, there is enough room in there for
+over 1 billion full-length movies, each compressed to 4 GB.
+Another possible use is a persistent object store. Objects could be created in
+the address space and kept there until all references to them were gone, at which
+time they would be automatically deleted. Such objects would be persistent in the
+address space, even over shutdowns and reboots of the computer. With a 64-bit ad-
+dress space, objects could be created at a rate of 100 MB/sec for 5000 years before
+we ran out of address space.  Of course, to actually store this amount of data, a lot
+of disk storage would be needed for the paging traffic, but for the first time in his-
+tory, the limiting factor would be disk storage, not address space.
+With large numbers of objects in the address space, it becomes interesting to
+allow multiple processes to run in the same address space at the same time, to
+
+
+
+SEC. 12.6                TRENDS IN OPERATING SYSTEM DESIGN  1025
+share the objects in a general way. Such a design would clearly lead to very dif-
+ferent operating systems than we now have.
+Another operating system issue that will have to be rethought with 64-bit ad-
+dresses is virtual memory. With 264 bytes of virtual address space and 8-KB pages
+we have 251 pages. Conventional page tables do not scale well to this size, so
+something else is needed. Inverted page tables are a possibility, but other ideas
+have been proposed as well (Talluri et al., 1995).  In any event there is plenty of
+room for new research on 64-bit operating systems.
+12.6.4 Seamless Data Access
+Ever since the dawn of computing, there has been a strong distinction between
+this machine and that machine. If the data was on this machine, you could not ac-
+cess it from that machine, unless you explicitly transferred it first. Similarly, even
+if you had the data, you could not use it unless you had the right software installed.
+This model is changing.
+Nowadays, users expect much of the data to be accessible from anywhere at
+any time. Typically, this is accomplished by storing the data in the cloud using stor-
+age services like Dropbox, GoogleDrive, iCloud, and SkyDrive. All files stored
+there can be accessed from any device that has a network connection. Moreover,
+the programs to access the data often reside in the cloud too, so you do not even
+have to have all the programs installed either. It allows people to read and modify
+word-processor files, spreadsheets, and presentations using a smartphone on the
+toilet. This is generally regarded as progress.
+To make this happen seamlessly is tricky and requires a lot of clever systems'
+solutions under the hood. For instance, what to do if there is no network con-
+nection? Clearly, you do not want to stop people from working. Of course, you
+could buffer changes locally and update the master document when the connection
+was re-established, but what if multiple devices have made conflicting changes?
+This is a very common problem if multiple users share data, but it could even hap-
+pen with a single user. Moreover, if the file is large, you do not want to wait a long
+time until you can access it. Caching, preloading and synchronization are key is-
+sues here.  Current operating systems deal with merging multiple machines in a
+seamful way (assuming that ``seamful'' is the opposite of ``seamless'') We can
+surely do a lot better.
+12.6.5 Battery-Powered Computers
+Powerful PCs with 64-bit address spaces, high-bandwidth networking, multiple
+processors, and high-quality audio and video, are now standard on desktop systems
+and moving rapidly into notebooks, tablets, and even smartphones. As this trend
+
+
+
+1026                     OPERATING SYSTEM DESIGN                            CHAP. 12
+continues, their operating systems will have to be appreciably different from cur-
+rent ones to handle all these demands. In addition, they must balance the power
+budget and ``keep cool.'' Heat dissipation and power consumption are some of the
+most important challenges even in high-end computers.
+However, an even faster growing segment of the market is battery-powered
+computers, including notebooks, tablets, $100 laptops, and smartphones. Most of
+these have wireless connections to the outside world. They demand operating sys-
+tems that are smaller, faster, more flexible, and more reliable than operating sys-
+tems on high-end devices. Many of these devices today are based on traditional op-
+erating systems like Linux, Windows and OS X, but with significant modification.
+In addition, they frequently use a microkernel/hypervisor-based solution to manage
+the radio stack.
+These operating systems have to handle fully connected (i.e., wired), weakly
+connected (i.e., wireless), and disconnected operation, including data hoarding be-
+fore going offline and consistency resolution when going back online, better than
+current systems. In the future, they will also have to handle the problems of mobil-
+ity better than current systems (e.g., find a laser printer, log onto it, and send it a
+file by radio). Power management, including extensive dialogs between the operat-
+ing system and applications about how much battery power is left and how it can
+be best used, will be essential. Dynamic adaptation of applications to handle the
+limitations of tiny screens may become important. Finally, new input and output
+modes, including handwriting and speech, may require new techniques in the oper-
+ating system to improve the quality. It is likely that the operating system for a
+battery-powered, handheld wireless, voice-operated computer will be appreciably
+different from that of a desktop 64-bit 16-core CPU with a gigabit fiber-optic net-
+work connection. And, of course, there will be innumerable hybrid machines with
+their own requirements.
+12.6.6 Embedded Systems
+One final area in which new operating systems will proliferate is embedded
+systems. The operating systems inside washing machines, microwave ovens, dolls,
+radios, MP3 players, camcorders, elevators, and pacemakers will differ from all of
+the above and most likely from each other. Each one will probably be carefully
+tailored for its specific application, since it is unlikely anyone will ever stick a
+PCIe card into a pacemaker to turn it into an elevator controller. Since all embed-
+ded systems run only a limited number of programs, known at design time, it may
+be possible to make optimizations not possible in general-purpose systems.
+A promising idea for embedded systems is the extensible operating system
+(e.g., Paramecium and Exokernel).  These can be made as lightweight or heavy-
+weight as the application in question demands, but in a consistent way across ap-
+plications. Since embedded systems will be produced by the hundreds of millions,
+this will be a major market for new operating systems.
+
+
+
+SEC. 12.7                               SUMMARY                                     1027
+12.7 SUMMARY
+    Designing an operating system starts with determining what it should do. The
+interface should be simple, complete, and efficient.        It should have a clear user-in-
+terface paradigm, execution paradigm, and data paradigm.
+    The system should be well structured, using one of several known techniques,
+such as layering or client-server. The internal components should be orthogonal to
+one another and clearly separate policy from mechanism. Considerable thought
+should be given to issues such as static vs.  dynamic data structure, naming, bind-
+ing time, and order of implementing modules.
+    Performance is important, but optimizations should be chosen carefully so as
+not to ruin the system's structure. Space-time trade-offs, caching, hints, exploiting
+locality, and optimizing the common case are often worth doing.
+    Writing a system with a couple of people is different than producing a big sys-
+tem with 300 people.        In the latter case, team structure and project management
+play a crucial role in the success or failure of the project.
+    Finally, operating systems are changing to adapt to new trends and meet new
+challenges. These include hypervisor-based systems, multicore systems, 64-bit ad-
+dress spaces, handheld wireless computers, and embedded systems.      There is no
+doubt that the coming years will be exciting times for operating system designers.
+                                        PROBLEMS
+1.  Moore's Law describes a phenomenon of exponential growth similar to the population
+    growth of an animal species introduced into a new environment with abundant food
+    and no natural enemies. In nature, an exponential growth curve is likely eventually to
+    become a sigmoid curve with an asymptotic limit when food supplies become limiting
+    or predators learn to take advantage of new prey. Discuss some factors that may even-
+    tually limit the rate of improvement of computer hardware.
+2.  In Fig. 12-1, two paradigms are shown, algorithmic and event driven. For each of the
+    following kinds of programs, which of the following paradigms is likely to be easiest
+    to use?
+    (a) A compiler.
+    (b) A photo-editing program.
+    (c) A payroll program.
+3.  Hierarchical file names always start at the top of the tree. Consider, for example, the
+    file  name  /usr/ast/books/mos2/chap-12   rather  than  chap-12/mos2/books/ast/usr.      In
+    contrast, DNS names start at the bottom of the tree and work up.  Is there some funda-
+    mental reason for this difference?
+
+
+
+1028                          OPERATING SYSTEM DESIGN                                 CHAP. 12
+4.   Corbato´'s dictum is that the system should provide minimal mechanism. Here is a list
+     of POSIX calls that were also present in UNIX Version 7.   Which ones are redundant,
+     that is, could be removed with no loss of functionality because simple combinations of
+     other ones could do the same job with about the same performance?           Access, alarm,
+     chdir, chmod, chown, chroot, close, creat, dup, exec, exit, fcntl, fork, fstat, ioctl, kill, link,
+     lseek, mkdir, mknod, open, pause, pipe, read, stat, time, times, umask, unlink, utime,
+     wait, and write.
+5.   Suppose that layers 3 and 4 in Fig. 12-2 were exchanged. What implications would
+     that have for the design of the system?
+6.   In a microkernel-based client-server system, the microkernel just does message passing
+     and nothing else. Is it possible for user processes to nevertheless create and use sema-
+     phores? If so, how? If not, why not?
+7.   Careful optimization can improve system-call performance. Consider the case in which
+     one system call is made every 10 msec.         The average time of a call is 2 msec.  If the
+     system calls can be speeded up by a factor of two, how long does a process that took
+     10 sec to run now take?
+8.   Operating systems often do naming at two different levels: external and internal. What
+     are the differences between these names with respect to
+     (a) Length?
+     (b) Uniqueness?
+     (c) Hierarchies?
+9.   One way to handle tables whose size is not known in advance is to make them fixed,
+     but when one fills up, to replace it with a bigger one, copy the old entries over to the
+     new one, then release the old one. What are the advantages and disadvantages of mak-
+     ing the new one 2× the size of the original one, as compared to making it only 1.5× as
+     big?
+10.  In Fig. 12-5, a flag, found, is used to tell whether the PID was located. Would it b pos-
+     sible to forget about found and just test p at the end of the loop to see whether it got to
+     the end or not?
+11.  In Fig. 12-6, the differences between the x86 and the UltraSPARC are hidden by con-
+     ditional compilation. Could the same approach be used to hide the difference between
+     x86 machines with an IDE disk as the only disk and x86 machines with a SCSI disk as
+     the only disk? Would it be a good idea?
+12.  Indirection is a way of making an algorithm more flexible. Does it have any disadvan-
+     tages, and if so, what are they?
+13.  Can reentrant procedures have private static global variables? Discuss your answer.
+14.  The   macro    of  Fig. 12-7(b)   is  clearly  much  more  efficient  than  the  procedure          of
+     Fig. 12-7(a).  One disadvantage, however, is that it is hard to read. Are there any other
+     disadvantages? If so, what are they?
+15.  Suppose that we need a way of computing whether the number of bits in a 32-bit word
+     is odd or even. Devise an algorithm for performing this computation as fast as possible.
+
+
+
+CHAP. 12                                PROBLEMS                                        1029
+     You may use up to 256 KB of RAM for tables if need be. Write a macro to carry out
+     your algorithm.  Extra Credit: Write a procedure to do the computation by looping
+     over the 32 bits. Measure how many times faster your macro is than the procedure.
+16.  In Fig. 12-8, we saw how GIF files use 8-bit values to index into a color palette. The
+     same idea can be used with a 16-bit-wide color palette.        Under what circumstances, if
+     any, might a 24-bit color palette be a good idea?
+17.  One disadvantage of GIF is that the image must include the color palette, which in-
+     creases the file size. What is the minimum image size for which an 8-bit-wide color
+     palette breaks even? Now repeat this question for a 16-bit-wide color palette.
+18.  In the text we showed how caching path names can result in a significant speedup
+     when looking up path names. Another technique that is sometimes used is having a
+     daemon program that opens all the files in the root directory and keeps them open per-
+     manently, in order to force their i-nodes to be in memory all the time. Does pinning the
+     i-nodes like this improve the path lookup even more?
+19.  Even if a remote file has not been removed since a hint was recorded, it may have been
+     changed since the last time it was referenced. What other information might it be use-
+     ful to record?
+20.  Consider a system that hoards references to remote files as hints, for example as
+     (name, remote-host, remote-name).      It is possible that a remote file will quietly be re-
+     moved and then replaced. The hint may then retrieve the wrong file.        How can this
+     problem be made less likely to occur?
+21.  In the text it is stated that locality can often be exploited to improve performance. But
+     consider a case where a program reads input from one source and continuously outputs
+     to two or more files. Can an attempt to take advantage of locality in the file system lead
+     to a decrease in efficiency here? Is there a way around this?
+22.  Fred Brooks claims that a programmer can write 1000 lines of debugged code per year,
+     yet the first version of MINIX (13,000 lines of code) was produced by one person in
+     under three years. How do you explain this discrepancy?
+23.  Using Brooks' figure of 1000 lines of code per programmer per year, make an estimate
+     of the amount of money it took to produce Windows 8.           Assume that a programmer
+     costs $100,000 per year (including overhead, such as computers, office space, secretar-
+     ial support, and management overhead).        Do you believe this answer?       If not, what
+     might be wrong with it?
+24.  As memory gets cheaper and cheaper, one could imagine a computer with a big bat-
+     tery-backed-up RAM instead of a hard disk.         At current prices, how much would a
+     low-end RAM-only PC cost? Assume that a 100-GB RAM-disk is sufficient for a low-
+     end machine. Is this machine likely to be competitive?
+25.  Name some features of a conventional operating system that are not needed in an em-
+     bedded system used inside an appliance.
+26.  Write a procedure in C to do a double-precision addition on two given parameters.
+     Write the procedure using conditional compilation in such a way that it works on
+     16-bit machines and also on 32-bit machines.
+
+
+
+1030  OPERATING SYSTEM DESIGN                                     CHAP. 12
+27.  Write programs that enter randomly generated short strings into an array and then can
+     search the array for a given string using (a) a simple linear search (brute force), and (b)
+     a more sophisticated method of your choice. Recompile your programs for array sizes
+     ranging from small to as large as you can handle on your system. Evaluate the per-
+     formance of both approaches. Where is the break-even point?
+28.  Write a program to simulate an in-memory file system.

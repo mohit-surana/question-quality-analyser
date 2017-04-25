@@ -1,0 +1,217 @@
+The Physical IOCS
+The purpose of physical IOCS is to simplify the code of user processes by hiding
+the complexity of I/O operations and to ensure high system performance. It is
+achieved through the following three functions:
+·  Handling device-level I/O: The physical IOCS provides an interface for device-
+   level I/O that eliminates the complexity of I/O programming discussed earlier
+   in Section 14.4.1.
+·  Synchronizing a process with completion of an I/O operation: This synchro-
+   nization avoids the busy wait following I/O initiation in Figure 14.11 and
+   releases the CPU for use by other processes.
+·  I/O    scheduling:  The  physical  IOCS  schedules  the  I/O  operations  to         be
+   performed on a device in a suitable order to provide high device throughput.
+Handling Device-Level I/O   While requesting initiation of an I/O operation, a pro-
+cess needs to specify only the device address and details of the I/O operation. The
+physical IOCS initiates an I/O operation immediately if the I/O device is available;
+otherwise, it notes the request for I/O initiation and initiates it sometime later. In
+either case, control is returned to the process that made the I/O request. When
+an interrupt arises, the physical IOCS notes which I/O operation has completed,
+and initiates another operation on the I/O device, if one is pending.
+Synchronizing a Process with Completion of an I/O Operation            The physical
+IOCS provides an "await I/O completion" functionality to block a process until
+an I/O operation completes. Its parameters are the address of the I/O device and
+details of the I/O operation. When a process invokes this functionality, the phys-
+ical IOCS checks whether the I/O operation has already completed. If it has not,
+it requests the kernel to block the process. This action avoids the busy wait of
+Figure 14.11. The state of the process is changed to ready when the I/O operation
+completes.
+I/O Scheduling  The throughput of an I/O device can be computed as the num-
+ber of bytes of data transferred per unit time, or the number of I/O operations
+performed per unit time. Throughput can be optimized by minimizing the access
+times suffered during I/O operations. In disk devices it can be achieved by reduc-
+ing the rotational latency and mechanical motion of disk heads by performing
+I/O operations in a suitable order. This function is called I/O scheduling. It is
+performed automatically by the physical IOCS; it is not explicitly invoked by a
+process.
+14.5.1 Logical Devices
+A logical device is an abstraction that is employed for a variety of useful purposes.
+In the simplest case, a logical device is merely a name for a physical I/O device.
+Use of a logical device in the code of a process solves a practical difficulty--the
+address of a physical device that a process will use is not known when its code is
+
+
+
+570  Part 4  File Systems
+             written. While creating a process that uses a logical device, the kernel assigns a
+             physical device to the logical device. When the process performs an operation on
+             the logical device, the physical IOCS implements the operation on the physical
+             device assigned to the logical device.
+                A logical device can also be a virtual device as described in Section 1.3.2.
+             In this case, the kernel has to map the logical device into a part of a physical
+             device. Many logical disks may be mapped into a physical disk in this manner;
+             the I/O operations directed at the logical disks would all be performed on the
+             same physical disk.
+             14.5.2 Physical IOCS Data Structures
+             The physical IOCS uses the following data structures (see Figure 14.12):
+             ·  Physical device table (PDT)
+             ·  Logical device table (LDT)
+             ·  I/O control block (IOCB)
+             ·  I/O queue (IOQ)
+                The physical device table (PDT) is a systemwide data structure. Each entry in
+             it contains information about one I/O device. The IOQ pointer field of an entry
+             points to the queue of I/O operations that are to be performed on the device. Each
+             entry in the queue is a pointer to an I/O control block (IOCB), which contains
+             information concerning one I/O operation. The current operation field points to
+             the I/O control block that contains information concerning the I/O operation
+                                  Logical Physical
+                                  device      device            Device   Device      IOQ  Current
+                                  name        address           address  type    pointer  operation
+                                  std_out
+                                                                         Disk
+                                  std_err
+                                  Logical device                         Physical device
+                                  table (LDT)                            table (PDT)
+                                  of process Pi
+                                                       I/O Queue (IOQ)
+                                  Kernel space
+                                  User space           Logical
+                                                       device   I/O      Status
+                                                       name     details        flag
+                                                       I/O control block (IOCB)
+             Figure        14.12  Data structures of the physical IOCS.
+
+
+
+                                                Chapter 14     Implementation of File Operations  571
+that has been initiated on the device. This information is useful in processing
+completion of the I/O operation.
+   The logical device table (LDT) is a per-process data structure. There is one
+copy of the LDT for every process in the system; this copy is accessible from
+the process control block (PCB) of the process. The LDT contains one entry
+for each logical device used by the process. The field physical device address in
+the entry contains information concerning the current assignment, if any, for the
+logical device. Note that many logical devices, possibly belonging to different user
+processes, may be assigned the same physical device such as a disk.
+   An I/O control block (IOCB) contains all information pertaining to an I/O
+operation. The important fields in an IOCB are logical device name, I/O details,
+and status flag. The I/O details field contains the address of the first I/O com-
+mand. The status flag indicates whether an I/O operation is "in progress" or
+"completed"; it is the equivalent of IO_FLAG in Figure 14.11.
+   The I/O queue (IOQ) is a list of all I/O operations pending on a physical device.
+Each entry of the IOQ contains a pointer to an I/O control block. Information
+in the IOQ is used for I/O scheduling.
+   The PDT is formed at system boot time by obtaining details of all devices
+connected to the system. The size of the LDT is specified at boot time. An LDT
+is formed when a process is created. An I/O control block is allocated when
+an I/O operation is to be initiated. The IOQ is shown as an array of pointers in
+Figure 14.12. However, it is more practical to organize it as a linked list of IOCBs.
+   The PDT, LDT, and IOQ data structures are found within the kernel, whereas
+a process creates an IOCB in its own address space, initializes its fields, and uses
+it as a parameter in a call on a physical IOCS module. The IOCB's presence in
+the address space of the process permits the process to check the status of an I/O
+operation without having to invoke the kernel.
+14.5.3 Organization of Physical IOCS
+Figure 14.13 shows organization of the physical IOCS. Modules above the dashed
+line execute with the CPU in the user mode, while those below this line execute
+with the CPU in the kernel mode. The physical IOCS is activated in one of two
+ways:
+·  Through  calls  on  the  physical    IOCS    library  modules     start-io          or
+   await-io by a process, with an I/O control block as a parameter
+·  Through occurrence of an I/O completion interrupt
+When a process invokes start-io, start-io invokes the I/O initiator through
+a system call. The I/O initiator obtains the address of the physical device on which
+the I/O operation is to be performed, enters the I/O operation in the IOQ of the
+physical device and passes control to the I/O scheduler. The I/O scheduler invokes
+the I/O initiator to start the I/O operation immediately if no other I/O operations
+exist in the IOQ of the device. Control is then passed to the process scheduler,
+which returns it to the process that had requested the I/O operation.
+   When the await-io module of the physical IOCS is invoked, it determines
+the status of the I/O operation from the status flag of the I/O control block. If
+
+
+
+572  Part 4  File Systems
+                                                    Process
+                                                   Start-io           Await-io
+                                                   Obtain
+                                       IOQ         physical device
+                                                   address
+                                  I/O  I/O          I/O               I/O                 Process
+                           interrupt   completion  scheduler          initiator           scheduler
+                                       handler
+                                       Error                                     Data
+                                       recovery                                  Control
+             Figure        14.13  Organization of the physical IOCS.
+             the I/O operation is complete, control is immediately returned to the process;
+             otherwise, the await-io module makes a system call to block the process. At
+             an I/O completion interrupt from a device, an error recovery routine is invoked
+             if an I/O error has occurred; otherwise, the status flag in the I/O control block
+             describing the current operation on the device is set to "completed," the ECB-
+             PCB arrangement of Example 5.4 is used to activate a process (if any) awaiting
+             completion of the I/O operation, and the I/O scheduler is invoked. It selects one
+             of the I/O operations pending on the device and hands it over to the I/O initiator.
+             The I/O initiator initiates the I/O operation and passes control to the process
+             scheduler.
+             14.5.4 Implementation of Physical IOCS
+             Recall from Section 13.1 that the compiler replaces the file processing statements
+             in a program with calls on the file system operations open, read, and close.
+             As seen in Section 13.8, the file system operation read makes a call on the IOCS
+             library module seq-read. seq-read contains code that contributes to efficient
+             processing of a file (more about it later in this chapter). This code makes a call on
+             the physical IOCS library module start-io to perform device-level I/O. The
+             linker links all these modules of the file system, IOCS, and the physical IOCS
+             with the compiled program.
+             A process representing execution of the linked program makes a call on the
+             file system operation open to open a file named alpha. open constructs a
+             file control block (FCB) for alpha, i.e., fcbalpha, in the open files table (OFT)
+             and returns internal idalpha, which is the offset of the FCB in the OFT (see
+             Section 13.9.1). The following actions take place when the process wishes to read
+             a record of alpha (see Figure 14.14):
+             1. The process calls the file system module read, which invokes the IOCS
+             module seq-read with internal idalpha as a parameter.
+
+
+
+                                                               Chapter 14  Implementation of File  Operations  573
+        ···                        ···                    ···
+                                                          <Load>  <reg>,
+        seq _read                  start_io                       Ad(<OPN>)
+        (internal  idalpha)        (Ad(<OPN>))            <SI>    <int_code>
+        ···                        ···
+                                                          ···
+        File system module         IOCS module                 Physical IOCS library
+                read                    seq _read              module start-io
+Figure  14.14   Invocation of the  physical IOCS library  module start-io in a process.
+2.  When seq-read decides to read a record of alpha, it uses internal idalpha
+    to access fcbalpha, obtains the address of fmtalpha and finds the address of
+    the disk block that contains the desired record. It now forms an I/O control
+    block for the I/O operation and calls start-io with the address of the
+    I/O control block as a parameter. The I/O control block is named OPN in
+    Figure 14.14.
+3.  start-io loads the address of the I/O control block in a general-purpose
+    register and executes an SI instruction with an appropriate code to invoke
+    the physical IOCS.
+I/O Initiation  When invoked through a system call, the physical IOCS obtains
+the address of the IOCB from the general-purpose register and performs the
+following actions:
+1. Sets the status flag field of the IOCB to "in progress."
+2. Enters the address of the I/O control block in the IOQ of the physical device.
+3. Initiates the I/O operation, if the I/O device is not busy.
+4. Returns control to the process.
+    To enter the I/O control block address in the correct IOQ, the physical IOCS
+extracts the logical device id from the IOCB, and accesses the logical device table
+(LDT) of the process to obtain the address of the physical device assigned to the
+logical device. It then obtains the address of the IOQ for the physical device from
+its entry in the physical device table (PDT) and adds the IOCB address at the
+end of the IOQ. The I/O operation can be initiated immediately if there are no
+other entries in the IOQ. If other entries exist, presumably one of the previous
+I/O operations is in progress, so the I/O operation cannot be initiated now.
+    I/O initiation is performed as described in Section 14.4.1. The status flag field
+of the I/O control block is used in a manner analogous to the use of IO_FLAG in
+Figure 14.11. Address of the I/O control block is stored in the current operation
+field of the device's entry in the physical device table.
+I/O Completion Handling            The I/O completion handler is implicitly invoked at
+the occurrence of an I/O completion interrupt. The interrupt hardware provides
+the address of the physical device raising the I/O interrupt. The I/O completion
+handler queries the device to obtain an I/O status code describing the cause of
+the interrupt. It now performs the following actions: If the I/O operation was

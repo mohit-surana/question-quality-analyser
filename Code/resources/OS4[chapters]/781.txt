@@ -1,0 +1,1123 @@
+Distributed File Systems
+
+
+20   Chapter
+     Distributed File Systems
+     U sers         of  a  distributed  file  system  (DFS)  expect  it  to    provide       the
+           convenience, reliability, and performance provided by conventional file
+           systems. The convenience of using a distributed file system depends on
+     two key issues. Transparency of a distributed file system makes users oblivious
+     to the location of their files in the nodes and disks in the system. File sharing
+     semantics specify the rules of file sharing--whether and how the effect of file
+     modifications made by one process are visible to other processes using the file
+     concurrently.
+     A process and a file accessed by it may exist in different nodes of a distributed
+     system, so a fault in either node or in a path between the two can affect the file
+     processing activity. Distributed file systems ensure high reliability through file
+     replication, and through use of a stateless file server design to minimize the impact
+     of file server crashes on ongoing file processing activities.
+     Response time to file system operations is influenced by network latencies in
+     accessing remote files, so the technique of file caching is used to reduce network
+     traffic in file processing. Another aspect of performance is scalability--response
+     times should not degrade when the distributed system grows in size. It is addressed
+     through techniques that localize a file processing activity to a cluster, which is a
+     group of computer systems having a high-speed LAN.
+     This chapter discusses the DFS techniques for achieving user convenience,
+     reliability, and high performance. Case studies of distributed file systems illustrate
+     their operation in practice.
+     20.1  DESIGN ISSUES IN DISTRIBUTED FILE SYSTEMS                                         ·
+     A distributed file system (DFS) stores user files in several nodes of a distributed
+     system, so a process and a file being accessed by it often exist in different nodes
+     of the distributed system. This situation has three likely consequences:
+     · A user may have to know the topology of the distributed system to open and
+     access files located in various nodes of the system.
+     · A file processing activity in a process might be disrupted if a fault occurs in
+     the node containing the process, the node containing the file being accessed,
+     or a path connecting the two.
+760
+
+
+
+                                                            Chapter 20       Distributed  File  Systems  761
+· Performance of the file system may be poor because of the network traffic
+   involved in accessing a file.
+   The need to avoid these consequences motivates the three design issues
+summarized in Table 20.1 and discussed in the following.
+Transparency     A file system finds the location of a file during path name resolu-
+tion (see Section 13.9.1). Two relevant issues in a distributed file system are: How
+much information about the location of a file should be reflected in its path name,
+and can a DFS change the location of a file to optimize file access performance?
+The notion of transparency has two facets that address these issues.
+·  Location transparency: The name of a file should not reveal its location.
+·  Location independence: The file system should be able to change the location
+   of a file without having to change its name.
+Location transparency provides user convenience, as a user or a computation
+need not know the location of a file. Location independence enables a file system
+to optimize its own performance. For example, if accesses to files stored at a
+node cause network congestion and result in poor performance, the DFS may
+move some of those files to other nodes. This operation is called file migration.
+Location independence can also be used to improve utilization of storage media
+in the system. We discuss these two facets of transparency in Section 20.2.
+Fault Tolerance  A fault disrupts an ongoing file processing activity, thereby
+threatening consistency of file data and metadata, i.e., control data, of the file
+system. A DFS may employ a journaling technique as in a conventional file
+Table 20.1       Design Issues in Distributed File Systems
+Design issue     Description
+Transparency     High transparency of a file system implies that a user need
+                 not know much about location of files in a system.
+                 Transparency has two aspects. Location transparency implies
+                 that the name of a file should not reveal its location in the file
+                 system. Location independence implies that it should be
+                 possible to change the location of a file without having to
+                 change its name.
+Fault tolerance  A fault in a computer system or a communication link may
+                 disrupt ongoing file processing activities. It affects availability
+                 of the file system and also impairs consistency of file data and
+                 metadata, i.e., control data, of the file system. A DFS should
+                 employ special techniques to avoid these consequences of
+                 faults.
+Performance      Network latency is a dominant factor of file access times in a
+                 DFS; it affects both efficiency and scalability of a DFS.
+                 Hence a DFS should use techniques that reduce network
+                 traffic generated by file accesses.
+
+
+
+762  Part 5  Distributed Operating Systems
+             system to protect consistency of metadata, or it may use a stateless file server
+             design, which makes it unnecessary to protect consistency of metadata when a
+             fault occurs. To protect file data, it may provide transaction semantics, which
+             are useful in implementing atomic transactions (see Section 19.4.1), so that an
+             application may itself achieve fault tolerance if it so desires. We discuss fault
+             tolerance issues in Section 20.4.
+             Performance  Performance of a DFS has two facets--efficiency and scalabil-
+             ity. In a distributed system, network latency is the dominant factor influencing
+             efficiency of a file processing activity. Network latency typically exceeds the pro-
+             cessing time for a file record so, unlike I/O device latency, it cannot be masked by
+             blocking and buffering of records (see Sections 14.8 and 14.9). A DFS employs the
+             technique of file caching, which keeps a copy of a remote file in the node of a pro-
+             cess that accesses the file. This way accesses to the file do not cause network traffic,
+             though staleness of data in a file cache has to be prevented through cache coherence
+             techniques. Scalability of DFS performance requires that response times should
+             not degrade when system size increases because of addition of nodes or users. A
+             distributed system is composed of clusters, which are groups of computer systems
+             having high-speed LANs (see Section 16.2), so caching a single copy of a file in a
+             cluster ensures that file access performance for accesses from a computer system
+             within a cluster would be independent of system size. It also reduces network traf-
+             fic. Both these effects help in enhancing scalability of DFS performance. When
+             several processes access the same file in parallel, distributed locking techniques
+             are employed to ensure that synchronization of the file processing activities scales
+             well with an increase in system size. We discuss DFS performance enhancement
+             techniques in Section 20.5.
+             20.1.1 Overview of DFS Operation
+             Figure 20.1 shows a simplified schematic of file processing in a DFS. A pro-
+             cess in node N1 opens a file with path name . . . alpha. We call this process
+             a client process of this file, or simply a client of this file, and call node N1 the
+             client node. Through path name resolution, the DFS finds that this file exists in
+             node N2, so it sets up the arrangement shown in Figure 20.1. The file system
+             component in node N2 is called a file server, and node N2 is called the server
+             node. Other nodes that were involved in path name resolution or that would be
+             involved in transferring file data between nodes N1 and N2 are called intermediate
+             nodes.
+             We refer to this model as the remote file processing model. An arrangement
+             analogous to RPC is used to implement file accesses through stub processes called
+             file server agent and client agent (see Section 16.5.2). When the client opens the
+             file, the request is handed over to the client agent. The client agent communicates
+             the request to the file server agent in node N2, which hands over the request to the
+             file server. The file server opens alpha and builds fcbalpha. When file caching
+             is not employed, a read or write operation on alpha is implemented through a
+
+
+
+                                                                      Chapter 20          Distributed File Systems  763
+                   Node N1                                            Node N2
+             Client   Client                      File server                  File
+             process  agent                       agent               server
+                                                  Open files table
+                                                  fcbalpha                           fmt
+             File     Cache
+             cache    manager
+Figure 20.1  Basics of file processing in a distributed file system.
+message between the client agent and the file server agent. I/O buffers for the file
+exist at node N2, and only one record at a time gets passed to the client.
+When file caching is employed, a read or write request is routed to the
+cache manager, which checks whether the required data can be accessed from
+or deposited in the file cache. The cache manager interacts with the file server
+agent through messages when it needs to transfer data between the file cache
+and the file. For efficiency reasons, the client agent and the cache manager are
+typically rolled into a single unit.
+20.2  TRANSPARENCY                                                                                                  ·
+In a conventional file system, a user identifies a file through a path name. He is
+aware that the file belongs in a specific directory; however, he is not aware of its
+location in the system. The location info field of the file's directory entry indicates
+the file's location on disk. This arrangement would be adequate to provide location
+transparency in a DFS as well--a user would use a path name to access a file, and
+the DFS would obtain the location of the file from its directory entry. The DFS
+may choose to keep all files of a directory in the same node of the distributed
+system, or disperse them to different nodes. In the former case, its metadata
+would be identical with that of a conventional file system. In the latter case, the
+location info field of the directory entry of a file would contain a pair (node id,
+location).
+Providing location independence would require the information in the location
+info field of a directory entry to change dynamically. Now, the DFS could change
+the location of a file at will, so long as it puts information about the new location in
+the location info field of the directory entry. It should similarly change information
+in all links to the file (see Section 13.4.2). To simplify these changes, a DFS may
+use the following arrangement: Each file is assigned a globally unique file id.
+The directory entry of the file contains this file id. DFS maintains a separate
+data structure to hold (file id, file location) pairs. This way, the DFS needs to
+change only one pair in this data structure when the location of a file is changed,
+irrespective of the number of links to the file.
+
+
+
+764  Part 5  Distributed Operating Systems
+             Most distributed file systems provide location transparency, but not location
+             independence. Hence files cannot be migrated to other nodes. This restriction
+             deprives the DFS of an opportunity to optimize file access performance.
+             20.3  SEMANTICS OF FILE SHARING                                                                    ·
+             Semantics of file sharing determine the manner in which the effect of file manip-
+             ulations performed by concurrent users of a file are visible to one another. Recall
+             from the discussion in Section 13.10 that all clients concurrently processing a
+             single-image mutable file have the same view of its contents, so modifications
+             made by one client are immediately visible to other clients processing the file.
+             Clients processing a multiple-image mutable file can have different views of its
+             contents. When their file processing activities complete, the file system can either
+             reconcile these views in some manner to create a single image, or support exis-
+             tence of many versions of the file. In the latter case, it has to ensure that any
+             client that opens the file subsequently gets access to the correct version of the
+             file. Table 20.2, summarizes key features of three file sharing semantics--Unix
+             semantics, session semantics, and transaction semantics.
+             Unix Semantics     Recall from Section 13.10 that Unix file sharing semantics sup-
+             port a single-image mutable file. Thus, updates made by one client are visible to
+             other clients immediately. Clients may optionally share the offset into a file. This
+             feature is useful if clients process a file jointly. The Unix semantics are easy and
+             efficient to implement in a conventional file system; however, as discussed later
+             in Section 20.5.2, they incur the overhead of cache coherence in a DFS that uses
+             file caching.
+             Table 20.2      Features of File Sharing Semantics
+             Semantics                      Description
+             Unix semantics                 A single-image mutable file is implemented. The effect of a
+                                            write operation in a file by one client is visible immediately to
+                                            other clients of the file. Clients may optionally share the file
+                                            offset, i.e., pointer to the next record in a file.
+             Session semantics              A multiple-image mutable file is implemented. Only clients in a
+                                            session share the same image of a file. Updates made by a
+                                            client are visible to other clients in the same session
+                                            immediately; they are visible to other clients only after the file
+                                            is closed.
+             Transaction                    File processing performed by a client is implemented as an
+             semantics                      atomic transaction, so either all file operations are performed
+                                            or none of them are performed. This property simplifies fault
+                                            tolerance.
+
+
+
+                                                                                  Chapter 20  Distributed File Systems  765
+                       F             F                                 F
+        Node                                                                      Node
+        N1                                                                        N2
+                    C  C       C  C     C                  C           C       C
+                       SSFF11     SSFF22                               SSFF33
+Figure  20.2 Three  sessions in   a DFS    using  session  semantics.
+Session Semantics      A session consists of some of the clients of a file that are
+located in the same node of a system. Clients in one session share a single mutable
+image of the file. Thus, result of a write operation performed by a client process
+is visible to other clients in the same session immediately, but not to clients in
+other sessions.
+Formation of sessions and visibility of file images is governed by the follow-
+ing rules: Let SF i be a session involving a set of clients processing file F. When
+another client located in the same node opens file F, the DFS would let it join
+session SF i if none of the clients in SF i had closed F after performing a write
+operation; otherwise, the DFS would start a new session. When a client located
+in another node opens file F, the DFS always starts a new session. Figure 20.2
+illustrates three sessions SF1, SF2, and SF3 on a file F. Two of these sessions are
+in node N1 for the reasons mentioned above. A new version of the file would be
+created every time a client closes a file after modifying it. However, session seman-
+tics do not specify the rules for deciding which version of a file should be opened
+when a new session is started, so file systems may implement this aspect differ-
+ently. Consequently, applications that use session semantics may not be portable.
+Session semantics are easy to implement in a DFS employing file caching because
+changes made in a file are not to be visible to clients in other nodes.
+Transaction Semantics          The file processing activity of each client is performed as
+an atomic transaction. Transaction semantics can be implemented by treating the
+open and close operations on a file as the beginning and end of a transaction,
+providing a mutually exclusive access to a file by setting a lock on the file, and
+performing file updates as discussed in Section 19.4.1. Thus, only one client can
+access a file at any time and either all updates made by it are reflected in the
+file or none are. The all-or-nothing property of transaction semantics always
+maintains a file in a consistent state. Consequently, a client can simply reexecute
+a file processing activity that is disrupted by a fault. Locking of a file also implies
+that the DFS does not have to handle concurrent accesses to a file by clients.
+20.4    FAULT TOLERANCE                                                                                                 ·
+File system reliability has several facets. A file must be robust, i.e., it must survive
+faults in a guaranteed manner. It must be recoverable to an earlier state when a
+
+
+
+766  Part 5  Distributed Operating Systems
+             failure occurs. It must also be available despite faults in the system, i.e., a copy
+             of the file should be accessible at all times and a client process should be able
+             to open it for processing. Robustness and recoverability depend on how files are
+             stored and backed up, respectively, while availability depends on how files are
+             opened and accessed. All these facets are independent of one another. Thus a
+             file may be recoverable without being robust or available, recoverable and robust
+             without being available, available without being recoverable or robust, and so on.
+             Robustness is achieved by using techniques for reliable storage of data, e.g., the
+             disk mirroring technique used in RAID level 1 (see Section 14.3.5). Recoverability
+             and availability are achieved through special techniques discussed in this Section.
+             Faults in the server or intermediate nodes during a file open operation
+             disrupt path name resolution. Such faults are tolerated through availability tech-
+             niques. The DFS maintains many copies of the information required for path
+             name resolution, and many copies of a file. If a copy is inaccessible because of a
+             fault, the DFS uses another copy. However, availability techniques become very
+             complex and expensive if faults that occur during file processing are to be tol-
+             erated (see Section 19.4.2 for the quorum-based fault tolerance techniques to
+             handle replicated data). Hence few, if any, distributed file systems handle such
+             faults.
+             Faults in the server or client nodes during file processing may result in loss of
+             state. As we shall see in Section 20.4.3, a file server can be designed such that its
+             operation is not disrupted if state information is lost because of a fault. However,
+             clients may not use special design techniques to protect against loss of state, so
+             client node crashes can be messy. The only defense against client node crashes
+             is the use of transaction semantics in the file server, whereby the file would be
+             restored to its state before the failed client had started its processing. A fault in
+             an intermediate node does not affect file processing if the communication system
+             has sufficient resiliency, i.e., if it can tolerate a few link and node faults. Hence
+             file systems do not address these faults.
+             Table 20.3 summarizes fault tolerance techniques used in distributed file sys-
+             tems. File replication and cached directories address faults in a file server and
+             in intermediate nodes during an open operation. The stateless file server design
+             addresses faults in a file server during file processing. Following sections describe
+             these techniques.
+             20.4.1 Availability
+             A file is said to be available if a copy of the file can be opened and accessed
+             by a client. Ability to open a file depends on whether path name resolution can
+             be completed, i.e., whether the server node and all nodes involved in path name
+             resolution are functional. Ability to access a file requires only the client and server
+             nodes to be functional, because a path between the two is guaranteed by resiliency
+             of the network.
+             Consider a path name a/b/c/d, where directory files a, b, c and file d exist
+             in nodes A, B, C, and D, respectively. Two approaches can be employed to resolve
+             this path. When the DFS finds that file b exists in node B, it would send the path
+
+
+
+                                                                Chapter 20         Distributed  File  Systems  767
+Table 20.3        Fault Tolerance Techniques of Distributed File Systems
+Technique              Description
+Cached directories     A cached directory is a copy of a directory that exists at a
+                       remote site. It helps the DFS to tolerate faults in intermediate
+                       nodes involved in path name resolution.
+File replication       Several copies of a file are maintained in the interest of
+                       availability. Special techniques are used to avoid
+                       inconsistencies between the copies. The primary copy
+                       technique permits client programs to read-access any copy of
+                       a file but restricts file updates only to a special copy called the
+                       primary copy. The results of these updates are propagated to
+                       other copies. This method simplifies concurrency control.
+Stateless file server  A conventional file server maintains information concerning
+                       state of a file processing activity in the metadata, for example,
+                       in file control blocks and file buffers. A stateless file server
+                       does not maintain such information, so it is immune to faults
+                       that lead to loss of state information.
+name suffix b/c/d to node B. At node B, it would look up c in directory b and
+find that it exists at node C, so it would send c/d to node C, and so on. In an
+alternative approach, the DFS would perform resolution of all path components
+in the client node itself. When it finds that a path name component is the name of
+a directory in a remote node, it would copy the directory from the remote node
+and continue path name resolution using it. This way, all directories would be
+copied into the client node during path name resolution. As we shall see later,
+these approaches have different implications for availability. In either approach,
+an access to file data does not involve the intermediate nodes involved in path
+name resolution. File processing would not be affected if any of these nodes failed
+after the file was opened.
+Cached Directories     An anomalous situation may arise when path names span
+many nodes. In the previous example, let node c fail after file d was opened using
+path name a/b/c/d and its processing was underway. If another client in node
+A tries to open a/b/c/z, where file z also exists in node D, it would fail because
+node c has failed. So file z cannot be processed even though its processing involves
+the same client and server nodes as file d.
+The only way to avoid this anomaly is to cache remote directories accessed
+during path name resolution at the client node. For the path name a/b/c/d,
+it implies that the DFS would cache the directories a/b and a/b/c at node A.
+While resolving path names involving the prefixes a/b and a/b/c, the DFS
+would directly use the cached directories. Thus, it would be able to resolve the
+path name a/b/c/z without having to access nodes B or C. However, informa-
+tion in cached directories may be outdated because of creation or deletion of files
+in some of the intermediate nodes, so a cache updating protocol would have to be
+used. We discuss a related issue in the next section.
+
+
+
+768  Part 5  Distributed Operating Systems
+             File  Replication  The         DFS  performs  replication  in  such  a  way  that  it     is
+             transparent to clients. Replication of a file that is likely to be updated involves a
+             trade-off between cost and complexity of the protocol for updating and its impli-
+             cations for efficient use of the file. A two-phase commit protocol could be used
+             to update all copies of a file at the same time. This way, stale and updated copies
+             of a file would not coexist, so a client would need only one copy of the file to
+             implement a read access. However, an update operation may be delayed if some
+             copies are in use by other processes or are inaccessible because of faults. Alter-
+             natives to this approach focus on speeding up the update operation by reducing
+             the number of copies that need to be updated.
+                   In the primary copy approach, updates are directed at a single copy--the
+             primary copy. Other copies are invalidated when the primary copy is updated;
+             they would be replicated afresh when they are referenced. Alternatively, the DFS
+             can use a protocol similar to the readers-and-writers protocol for replicated data
+             (see Section 19.4.2). To provide efficiency and fault tolerance, it would make the
+             read and write quorums as small as possible. A timestamp would be associated
+             with each copy to indicate when it was last updated. These timestamps would be
+             compared to identify the most recent copy of data in a read quorum.
+                   File replication works best if the use of a stale copy is also meaningful, because
+             changes need not be propagated to all copies of a file immediately. Directories can
+             be replicated in this manner. All updates are made in the primary copy. Staleness
+             of a directory's copy can cause two kinds of failures--a file does not have an
+             entry in the directory even though it has been created, or an entry for a file exists
+             in the directory even though the file has been deleted. If the first kind of failure
+             occurs, the file server can immediately consult the primary copy to check whether
+             the file actually exists, and abort the process only if it does not. The second kind
+             of failure would occur when a read or write operation is attempted on the file.
+             The process would be aborted if it occurs.
+             20.4.2 Client and Server Node Failures
+             As described in Section 13.8, a conventional file system stores information con-
+             cerning the state of a file processing activity in metadata such as the file control
+             block (FCB) of the file. This state information provides an implicit context
+             between the file system and a client, using which a read or write operation on the
+             file can be performed efficiently. For example, to read the next record or byte from
+             a sequential file, the file system simply accesses its FCB to obtain the id of the next
+             record or byte to be read, and accesses the file map table (FMT) to obtain the disk
+             address of the next record or byte; it does not have to access the directory entry
+             of the file to obtain address of its FMT. We refer to this design of a file system as
+             a stateful design. In a distributed file system, the server node can maintain FCBs
+             and the open files table (OFT) in memory, just as in a conventional file system.
+             This arrangement provides good performance. However, use of a stateful DFS
+             design poses problems in the event of client and server crashes.
+                   When a client crashes, the file processing activity would have to be aban-
+             doned and the file would have to be restored to its previous state so that the
+
+
+
+                                                   Chapter 20              Distributed  File  Systems  769
+client can restart its file processing activity. The server would have committed
+resources like the FCB and I/O buffers to service the file processing activity. These
+resources would have to be released, otherwise they would remain committed to
+the aborted file processing activity indefinitely. These issues can be addressed as
+follows: The client and the file server share a virtual circuit (see Section 16.6.5).
+The virtual circuit "owns" the file processing actions and resources like file server
+metadata. These actions and resources become orphans when a client or server
+crash breaks the virtual circuit, so the actions would have to be rolled back and
+the metadata would have to be destroyed. A client­server protocol implementing
+transaction semantics may be used to ensure this. If a DFS does not provide trans-
+action semantics, a client would have to make its own arrangements to restore
+the file to a previous consistent state.
+When a file server crashes, state information stored in server metadata is lost,
+so an ongoing file processing activity has to be abandoned and the file has to be
+restored to its previous state. The stateless file server design described in the next
+section can be used to avoid both these problems.
+20.4.3 Stateless File Servers
+A stateless file server does not maintain any state information about a file pro-
+cessing activity, so there is no implied context between a client and the file server.
+Consequently, a client must maintain state information about a file processing
+activity and provide all relevant information in a file system call. For example, a
+client reading from a sequential file has to keep track of the id of the next record
+or byte to be read from the file so that it can issue the following call:
+read ("alpha", <record/byte id>, <io_area address>);
+At this call, the file server opens file alpha, locates its file map table, and
+uses it to convert <record/byte id> into the pair (disk block id, byte offset) (see
+Section 13.9.2). It then reads the disk block and provides the required record
+or byte to the client. Thus, many actions traditionally performed only at file
+open time are repeated at every file operation. If a file server crashes, time-outs
+and retransmissions occur in the client. The file server processes a retransmit-
+ted request when it recovers, and provides a reply to the client. Thus the client
+perceives only a delayed response to a request and is unaware of a file server crash.
+Use of a stateless file server provides fault tolerance, but it also incurs a
+substantial performance penalty for two reasons. First, the file server opens a file
+at every file operation, and passes back state information to the client. Second,
+when a client performs a write operation, reliability considerations require that
+data should be written into the disk copy of a file immediately. Consequently, a
+stateless file server cannot employ buffering, file caching (see Section 20.5.2), or
+disk caching (see Section 14.12) to speed up its own operation. In Section 20.5.1,
+we discuss a hybrid design of file servers that avoids repeated file open operations.
+A stateless file server is oblivious of client failures because it does not pos-
+sess any state information for a client or its file processing activity. If a client
+fails, recovers and resends some requests to the file server, the file server would
+
+
+
+770  Part 5  Distributed Operating Systems
+             simply reprocess them. For the same reason, it cannot detect and discard duplicate
+             requests, so it may process a request more than once. An individual read or write
+             operation is idempotent, so its reprocessing does not pose any problem. However,
+             directory-related requests like creation and deletion of files are not idempotent.
+             Consequently, a client may receive ambiguous or misleading warnings if a state-
+             less file server crashes and recovers during a file processing activity. A sequence of
+             read and write operations may also not be idempotent. For example, a sequence
+             of operations involving reading of a record from a file, searching for a string xyz
+             in the record, insertion of a string S before string xyz, and writing of the modi-
+             fied record back into the file, is not idempotent. If a failed client has performed
+             such a nonidempotent sequence, it must restore the file to a previous state before
+             reissuing the sequence of operations.
+             20.5     DFS PERFORMANCE                                                                  ·
+             Inherent efficiency of file access mechanisms determines peak performance of a
+             DFS measured as either average response time to client requests or throughput of
+             client requests. The DFS can achieve peak performance when all data accesses are
+             local to client nodes, i.e., when clients and file servers are located in the same node.
+             However, network latencies can completely overshadow the efficiency of access
+             mechanisms even when only a small fraction of file accesses cause network traffic.
+             This fact motivates measures to reduce network traffic caused by file processing
+             activities.
+             A DFS design is scalable if DFS performance does not degrade with an
+             increase in the size of a distributed system. Scalability is important for avoiding
+             a situation in which a DFS that used to perform well in a user's organization
+             becomes a bottleneck when the organization becomes large. Scalability is achieved
+             through special techniques that ensure that network traffic does not grow with
+             size of the distributed system.
+             Table 20.4 summarizes techniques used to achieve high DFS performance.
+             These techniques are discussed in the following sections.
+             20.5.1 Efficient File Access
+             Inherent efficiency of file access depends on how the operation of a file server is
+             structured. We discuss two server structures that provide efficient file access.
+             Multithreaded File Server        The file server has several threads; each thread is
+             capable of servicing one client request. Operation of several of these threads can
+             be overlapped because file processing is an I/O-bound activity. This arrangement
+             provides fast response to client requests and a high throughput. The number of
+             threads can be varied in accordance with the number of client requests that are
+             active at any time, and the availability of OS resources such as thread control
+             blocks.
+
+
+
+                                                  Chapter 20                          Distributed  File  Systems  771
+Table 20.4         Performance Techniques of Distributed File Systems
+Technique               Description
+Multithreaded file      Each thread in the file server handles one client request. File
+server design           processing is an I/O-bound activity, hence several threads can
+                        make progress in parallel, thereby contributing to higher
+                        throughput.
+Hint-based file         A hint is some information related to an ongoing file
+server design           processing activity that may be maintained by a file server.
+                        When a suitable hint is available, the file server behaves like a
+                        stateful file server so that it can perform a file operation
+                        efficiently; otherwise, it behaves like a stateless file server.
+File caching            Some part of a file located in a remote node is copied into the
+                        file cache in the client node. File caching reduces network
+                        traffic during file processing by converting data transfers over
+                        the network into data transfers that are local to a client node.
+Semi-independent        A cluster of nodes is a section of the distributed system that
+clusters of nodes       contains sufficient hardware and software resources such that
+                        processes operating in a cluster rarely need resources located
+                        elsewhere in the system.
+Hint-Based File Server  A hint-based file server is a hybrid design in that it has
+features of both a stateful and a stateless file server. In the interest of efficiency,
+it operates in a stateful manner whenever possible. At other times, it operates
+in a stateless manner. A hint is some information concerning an ongoing file
+processing activity, e.g., id of the next record in a sequential file that would to be
+accessed by a file processing activity (see Section 13.8). The file server maintains a
+collection of hints in its volatile storage. When a client requests a file operation, the
+file server checks for presence of a hint that would help in its processing. If a hint is
+available, the file server uses it to speed up the file operation; otherwise, it operates
+in a stateless manner--it opens the file and uses the record/byte id provided by
+the client to access the required record or byte. In either case, after completing
+the file operation, it inserts a part of the state of the file processing activity in its
+volatile storage as a hint and also returns it to the client as in a stateless file server.
+The overall efficiency of the file server depends on the number of file operations
+that are aided by the presence of hints.
+Operation of a hint-based file server is fault tolerant because it would not
+be disrupted even if all hints in the server's volatile storage are lost because of a
+crash. Users will notice only a degradation of response times until the file server
+recovers and builds up a useful set of hints.
+20.5.2 File Caching
+The technique of file caching speeds up operation of a DFS by reducing network
+traffic. It holds some data from a remote file in a buffer in a client node called
+
+
+
+772  Part 5  Distributed Operating Systems
+             the file cache. The file cache and the copy of the file on a disk in the server node
+             form a memory hierarchy (see Section 2.2.3), so operation of the file cache and
+             its benefits are analogous to those of a CPU cache. Chunks of file data are loaded
+             from the file server into the file cache. To benefit from spatial locality, each chunk
+             is large enough to service a few file accesses made by a client. Studies of file size
+             distributions indicate small average file size, so even an entire file can be copied
+             into the file cache, which is called whole-file caching. Studies by Tanenbaum and
+             others reported that 79 percent of files in their system were smaller than 4 KB in
+             size and 94 percent were smaller than 16 KB. In the Andrew file system, where
+             the chunk size was varied on a per-client basis, chunk size was frequently 8 KB
+             and contained an entire file, and file cache hit ratios exceeded 0.98. A DFS may
+             use a separate attributes cache to cache information about file attributes.
+                Figure 20.3 contains a schematic diagram of file caching. The cache manager
+             exists on the path between a client and a file server. It loads chunks of file data
+             into the file cache; supplies data from the cache to clients; maintains the file cache,
+             using a replacement algorithm for chunks; and writes modified chunks into the
+             file copy in the server node. Key issues in the design of a file cache are:
+             ·  Location of the file cache
+             ·  File updating policy
+             ·  Cache validation policy
+             ·  Chunk size
+                The file cache can be maintained in memory of a client node, or on a disk
+             attached to the client node. Organizing the file cache in memory would provide
+             faster access to file data; however, it would result in low reliability because a
+             crash of the client node would lead to loss of the file cache, including any mod-
+             ified file data that is yet to be written to the file copy in the server. Locating the
+             cache on the disk would slow down access to file data, but would provide relia-
+             bility as the file cache and the modified data contained in it would survive client
+                                            Server                F
+                                                     node
+                                                                  File
+                                                                  server         Data traffic and
+                                                                                 cache validation
+                                                                                 traffic
+                                            Cache                                Cache
+                          Client            manager        File           File   manager  Client
+                          node                             cache          cache           node
+                                            Client1                              Client2
+             Figure 20.3  A schematic of file caching.
+
+
+
+                                       Chapter 20                   Distributed           File  Systems  773
+node crashes. Redundancy-based techniques like disk mirroring could be used to
+further enhance reliability of the file cache organized on a disk.
+When a client performs a write operation on a disk, the modified file data
+would have to be written into the file copy in the server. The decision of whether
+to update the file copy immediately or at a later time involves a trade-off between
+delay in the client and reliability of the DFS. It is simplest to use the write-through
+policy, which updates the file cache in the client node and the file copy in the server
+node at the same time. This method is reliable, because the write-through could
+be implemented as a transaction to ensure that it completes; however, it delays
+the client that performed the write operation. To avoid delaying the client, the
+update of the file copy could be performed at a later time provided arrangements
+are made to ensure that the modified data would not be lost if the client node
+failed in the meanwhile. This policy is called the delayed write policy. Its varia-
+tions perform the write operation at different times--when the modified chunk is
+deleted from the file cache due to replacement, or when the client closes the file.
+When a file is processed by many clients in parallel, copies of its data would
+exist in several file caches at the same time. If one client performs a write operation,
+copies in other clients' caches become invalid, i.e., stale. The cache validation
+function identifies invalid data and deals with it in accordance with the file sharing
+semantics of the DFS. For example, when Unix semantics are used, file updates
+made by a client should be immediately visible to other clients of the file, so the
+cache validation function either refreshes invalid data or prevents its use by a
+client.
+Chunk size in the file cache should be large so that spatial locality of file data
+contributes to a high hit ratio in the file cache. However, use of a large chunk size
+implies a higher probability of data invalidation due to modifications performed
+by other clients, hence more delays and more cache validation overhead than
+when a small chunk size is used. So the chunk size used in a DFS is a trade-off
+between these two considerations. A fixed chunk size may not suit all clients of a
+DFS, so some distributed file systems, notably the Andrew file system, adapt the
+chunk size to each individual client.
+Cache Validation  A simple method to identify invalid data is through time-
+stamps. A timestamp is associated with each chunk in a file and with each of its
+cached chunks. The timestamp of a chunk indicates when it was last modified.
+When a chunk of the file is copied into a cache, its timestamp is also copied as
+the timestamp of the cached chunk. At any time, the cached chunk is invalid if
+its timestamp is smaller than the timestamp of the corresponding chunk in the
+file. This way a write operation in some chunk x of a file by one client invalidates
+all copies of x in other clients' caches. Data in such a chunk is refreshed, i.e.,
+reloaded, at its next reference.
+Two basic approaches to cache validation are client-initiated validation and
+server-initiated validation. Client-initiated validation is performed by the cache
+manager at a client node. At every file access by a client, it checks whether the
+required data is already in the cache. If so, it checks whether the data is valid.
+If the check succeeds, the cache manager provides the data from the cache to
+
+
+
+774  Part 5  Distributed Operating Systems
+             the client; otherwise, it refreshes the data in the cache before providing it to the
+             client. This approach leads to cache validation traffic over the network at every
+             access to the file. This traffic can be reduced by performing validation periodically
+             rather than at every file access, provided such validation is consistent with the file
+             sharing semantics of the DFS. Sun NFS uses this approach (see Section 20.6.1).
+             In the server-initiated approach, the file server keeps track of which client
+             nodes have which file data in their caches and uses this information as follows:
+             When a client updates data in some part x of a file, the file server finds the client
+             nodes that have x in their file cache, and informs their cache managers that their
+             copies of x have become invalid. Each cache manager now has an option of
+             deleting the copy of x from its cache, or of caching it afresh either immediately
+             or at the next reference to it.
+             Cache validation is an expensive operation, hence some file sharing semantics
+             like the session semantics do not require that updates made by one client should
+             be visible to clients in other nodes. This feature avoids the need for validation
+             altogether. Another way to avoid the cache validation overhead is to disable file
+             caching if some client opens a file in the update mode. All accesses to such a file
+             are directly implemented in the server node.
+             20.5.3 Scalability
+             DFS scalability is achieved through techniques that localize most data traffic
+             generated by file processing activities within small sections of a distributed system
+             called clusters of nodes or, simply, clusters (see Section 16.2). There are two reasons
+             why this approach is effective. First, clusters typically represent subnets like high-
+             speed LANs, which provide high data transfer rates, so both response time and
+             throughput improve when data traffic is confined to a cluster. Second, an increase
+             in the number of clusters does not lead to degradation of performance because
+             it does not add much network traffic. When a client of a DFS possessing both
+             location transparency and location independence accesses a remote file, the file
+             could be simply moved to the cluster where the client is located. If the DFS does
+             not possess location independence, an analogous effect can be achieved for read-
+             only files by replicating or caching a file in the client's node. For files that are
+             updated, use of session semantics eliminates cache validation traffic, so locating
+             a file version in the client node would suffice to reduce network traffic.
+             20.6  CASE STUDIES                                                                       ·
+             20.6.1 Sun Network File System
+             The Sun network file system (NFS) provides sharing of file systems in nodes oper-
+             ating under the SunOS operating system, which is a version of Unix. Figure 20.4
+             shows a schematic diagram of the NFS. It uses a two-level architecture consist-
+             ing of the virtual file system (VFS) layer (see Section 13.13) and the NFS layer.
+             The VFS layer implements the mount protocol and creates a systemwide unique
+
+
+
+                                                                        Chapter 20   Distributed  File  Systems  775
+                            Client
+                            System calls
+                            interface
+                                                                             Server
+                      VFS interface                                     VFS interface
+                                                       NFS  layer
+        Other               Unix 4.2          NFS client    NFS server       Unix 4.2
+        file systems        file system                                      file system
+                                              RPC/XDR       RPC/XDR
+                                                          Network
+Figure  20.4  Architecture of the Sun network file system (NFS).
+designator for each file, called the vnode. If the file on which an operation is to
+be performed is located in one of the local file systems, the VFS invokes that
+file system; otherwise, it invokes the NFS layer. The NFS layer interacts with
+the remote node containing the file through the NFS protocol. This architecture
+permits a node to be both a client and a server at the same time.
+Mount Protocol        Each node in the system contains an export list that con-
+tains pairs of the form (<directory>, <list_of_nodes>). Each pair indicates that
+<directory>, which exists in one of the local file systems, can be remotely mounted
+only in the nodes contained in <list_of_nodes>. When the superuser of a node
+makes a request to mount a remote directory, the NFS checks the validity of the
+request, mounts the directory, and returns a file handle, which contains the iden-
+tifier of the file system that contained the remote directory, and the inode of the
+remote directory in that file system. Users in the node see a directory hierarchy
+constructed through such mount commands.
+NFS permits cascaded mounting of file systems, i.e., a file system could
+be mounted at a mount point in another file system, which is itself mounted
+inside  another       file  system,      and  so  on.  However,    the  NFS  design    carefully
+avoids transitivity of the mount mechanism. For example, consider the following
+situation:
+1. The superuser in node N1 of the system mounts the file system C of node N3
+at mount point y in the local file system B.
+2. The superuser in node N2 mounts the file system B of node N1 at mount
+point x in the local file system A.
+The NFS does not permit users in node N2 to access the file system C that was
+mounted over some part of file system B. This way, each host's view of the direc-
+tory hierarchy is the result of the mounts performed by its own superuser only,
+which enables the file server to operate in a stateless manner. If this restriction were
+
+
+
+776  Part 5  Distributed Operating Systems
+             not imposed, each file server would have to know about all mounts performed by
+             all clients over its file system, which would require the file server to be stateful.
+             NFS Protocol     The NFS protocol uses the remote service paradigm (i.e., remote
+             file processing--see Section 20.1.1) through a client­server model employing
+             remote procedure calls (RPC). A file server is stateless, so each RPC has param-
+             eters that identify the file, the directory containing the file, record id and the data
+             to be read or written. The NFS provides calls for looking up a file within a direc-
+             tory; reading directory entries; manipulating links and directories; accessing file
+             attributes, i.e., inode information; and performing a file read/write operation.
+             Since a file server is stateless, it performs an implicit open and close for every
+             file operation, and does not use the Unix buffer cache (see Section 14.13.1.2 for
+             a description of the Unix buffer cache). An NFS server does not provide locking
+             of files or records; users must use their own means for concurrency control.
+             Path Name Resolution           Let a user U1 located in node N1 use a path name
+             x/y/z/w where y is the root directory of a mounted file system. To start with,
+             host node N1 creates vnodex, the vnode for x. The NFS uses the mount table of
+             N1 while looking up the next component of the path name, so it knows that y is
+             a mounted directory. It creates vnodey from the information in the mount table.
+             Let vnodey be for a file in node N2, so the NFS makes a copy of directory y in
+             node N1. While looking for z in this copy y, the NFS again uses the mount table
+             of N1. This action would resolve z properly even if z were a file system that was
+             mounted by the superuser of node N1 over some point in the remote file system y.
+             The file server in node N2, which contains y, does not need to have any knowledge
+             of this mounting. Instead of using this procedure, if the path name y/z/w were
+             to be handed over to the file server in node N2, it would have to know about all
+             mounts performed by all clients over its file system. It would require the file server
+             to be stateful.
+             A directory names cache is used in each client node to speed up path name
+             resolution. It contains remote directory names and their vnodes. New entries
+             are added to the cache when a new path name prefix is resolved, and entries are
+             deleted when a lookup fails because of mismatch between attributes returned by
+             the file server and those of the cached vnodes.
+             File Operations and File Sharing Semantics       The NFS uses two caches to speed
+             up file operations. A file attributes cache caches inode information. This cache is
+             used because it was found that a large percentage of requests made to a file server
+             concerned file attributes. The cached attributes are discarded after 3 seconds for
+             files and after 30 seconds for directories.
+             The file blocks cache is the conventional file cache. It contains data blocks
+             from the file. The file server uses large (8 Kbytes) data blocks, and uses read-
+             ahead and delayed-write techniques (i.e. buffering techniques, see Section 14.8)
+             for improving file access performance. Cache validation is performed through
+             timestamps associated with each file, and with each cache block. Contents of
+             a cached block are assumed to be valid for a certain period of time. For any
+             access after this time, the cached block is used only if its timestamp is larger
+             than the timestamp of the file. A modified block is sent to the file server for
+
+
+
+                                            Chapter 20                Distributed     File  Systems  777
+writing into the file at an unspecified time during processing of a file, or when
+the file is closed. This policy is used even if clients concurrently access the same
+file block in conflicting modes. As a result of this policy and the cache validation
+scheme, visibility of a file modification made by one client to concurrent clients
+is unpredictable and the file sharing semantics are neither Unix semantics nor
+session semantics.
+20.6.2 Andrew and Coda File Systems
+Andrew, the distributed computing environment developed at the Carnegie
+Mellon University, is targeted at gigantic distributed systems containing 5000
+workstations. Each workstation has a local disk, which is used to organize the
+local name space. This name space contains system programs for booting and
+operation of the workstation, and temporary files which are accommodated there
+for performance reasons. All clients have an identical shared name space, which
+is location transparent in nature. It is implemented by dedicated servers which
+are collectively called Vice.
+Scalable performance is obtained as follows: Clusters localize file processing
+activities as much as possible so that file accesses do not cause traffic on the
+system backbone network. Traffic within a cluster is reduced by caching an entire
+file on the local disk of a workstation when it is opened for processing. These two
+techniques ensure that network traffic in the system does not grow as system size
+grows.
+Shared Name Space   Andrew uses the concept of a volume. A volume typically
+contains files of a single user. Many volumes may exist on a disk. Andrew treats
+a volume in much the same way Unix treats a disk partition, though a volume
+can be substantially smaller than a disk partition. A volume can be mounted.
+This fact provides a much finer granularity for mounting than in Unix. The file
+identifier used by Vice contains volume number of the volume which contains a
+file, and an index into the array of inodes contained in the volume.
+A volume location database (VLDB) contains information about each vol-
+ume in the system. This database is replicated on every server. Volumes are
+migrated from one disk to another in order to balance the utilization of disks
+in the system. The server that previously contained a migrated volume main-
+tains some forwarding information until all servers update their volume location
+databases. This arrangement simplifies volume migration by eliminating the need
+to update all volume location databases at the same time. Actual migration of a
+volume is performed with minimum disruption of file processing activities by the
+following procedure: A copy of a volume is made at the new server. While this
+operation is in progress, its original server continues to service requests. Once
+the copying is completed, the volume is made off-line, recent updates performed
+after the copy operation was initiated are made on the copy at the new server,
+and the new copy is made operational.
+File Operations and File Sharing Semantics  When a client opens a file, Andrew
+caches the file on the local disk of the client's workstation using 64 KB chunks.
+
+
+
+778  Part 5  Distributed Operating Systems
+             However, it adapts the chunk size on a per-client basis to suit the client's file
+             access pattern. As mentioned earlier in Section 20.5.2, studies conducted in the
+             mid-1990s have reported that chunks of 8 KB were widely used, and the hit ratio
+             in the file cache typically exceeded 0.98. File open/close calls are directed to a user-
+             level process called Venus. Venus caches a file when a client opens it, and updates
+             the server's copy when the client closes the file. File read and write operations are
+             performed on the cached copy without involving Venus. Consequently, changes
+             made to a file are not immediately reflected on the server's copy and they are
+             not visible to other clients accessing the file. These file sharing semantics have
+             some features of session semantics; however, Andrew does not maintain multiple
+             versions of a file.
+             The file copy cached by the Venus process in a node is considered to be valid
+             unless the Venus process is told otherwise. This way, a cached copy of a file may
+             persist across the close operation on the file and the next open operation on it in
+             the same workstation. Cache validation is performed in a server-initiated manner
+             using a mechanism called callback. When some file F is cached at client node N1
+             because of an open, the server notes this fact in its table. As long as this entry
+             remains in the table, node N1 is said to have a callback on F. When the copy of
+             F in the server is updated because some client closed F, the server removes N1's
+             entry from its table and notifies the Venus process in node N1 that its callback on
+             F has been broken. If some client in N1 tried to open F in the future, Venus would
+             know that N1 does not have a callback on F, so it would cache file F once again.
+             Venus maintains two caches--a data cache and a status cache. The status cache
+             is used to service system calls that query file status information. Both caches are
+             managed on an LRU basis.
+             Path name resolution is performed on a component-by-component basis.
+             Venus maintains a mapping cache, which contains information concerning vol-
+             umes which have been accessed recently. Since volumes may be migrated, Venus
+             treats this information as a hint and discards it if it turns out to be wrong. During
+             path name resolution, Venus also copies each directory involved in the path name
+             in its cache. Presence of these cached copies may speed up path name resolution
+             in the future.
+             File servers are multithreaded to prevent them from becoming a bottleneck.
+             A lightweight process package is used to spawn new lightweight processes to
+             handle file requests. Client­server communication is organized by using RPCs.
+             Features of Coda     Coda, which is a successor of the Andrew file system version 2,
+             added two complementary features to achieve high availability--replication and
+             disconnected operation. Coda supports replication of volumes. The collection of
+             servers that have a copy of a volume is known as the volume storage group (VSG).
+             Coda controls use of replicated files through the read one, write all policy--only
+             one of the copies needs to be available for reading; however, all copies must be
+             updated at the same time. A multicasting RPC called multiRPC is used for this
+             purpose.
+             A node enters the disconnected mode of operation when the subset of
+             VSG accessible to it is null. Andrew already supported whole-file caching in
+
+
+
+                                                                            Chapter 20  Distributed  File  Systems  779
+a client's node, so a client in the disconnected mode of operation could operate
+on a file in isolation. The file updates made by this client would be reflected in
+the file when the client's node is able to connect to the server. Any conflicts
+with file versions created by other file processing activities in the meanwhile
+would have to be resolved at this time. This step can be automated in an
+application-specific manner; however, it may require human intervention in some
+cases.
+Having a single file in cache may not be adequate for disconnected opera-
+tion, so Coda provides hoarding of files. A user can provide a hoarding database,
+which contains path names of important files, to Coda. During a session initi-
+ated by the user, Coda uses a prioritized cache management policy to hold some
+recently accessed files and files named in the hoarding database in the cache of
+the user's node. This set of files is refined by recomputing their priorities period-
+ically. This way, the cache in the node may contain an adequate set of files when
+the node becomes disconnected, which would enable meaningful disconnected
+operation.
+20.6.3 GPFS
+The general parallel file system is a high-performance shared-disk file system
+for large computing clusters operating under Linux. GPFS uses data striping
+(see Section 14.3.5) across all disks available in a cluster. Thus, data of a file is
+written on several disks, which can be read from or written to in parallel. A large-
+size block, i.e., strip, is used to minimize seek overhead during a file read/write;
+however, a large disk block may not provide high data transfer rates for small files
+that would occupy only a small number of strips, so a smaller subblock, which
+could   be  as  small  as  1   of  a  block,  is  used  for  small  files.
+                           32
+Locking is used to maintain consistency of file data when processes in several
+nodes of the cluster access a common file. High parallelism in accessing a common
+file requires fine-grained locking, whereas low locking overhead requires coarse-
+grained locking. So GPFS uses a composite approach that works as follows:
+The first process that performs a write operation on a file is given a lock whose
+byte range covers the entire file. If no other process accesses the same file, this
+process does not have to set and reset locks while processing the file. If another
+process wishes to write into the same file, that process is given a lock with a
+byte range that covers the bytes it wishes to write, and the byte range in the lock
+already held by the first process is reduced to exclude those bytes. This way the
+lock granularity is as coarse as possible, but as fine as necessary, subject to the
+restriction that the byte range in a lock cannot be smaller than a data block on
+a disk. Whenever the byte range in a lock is narrowed, updates made on the
+bytes that are not covered by the new byte range in the lock are flushed to the
+file. This way, a process acquiring a lock for these bytes would see their latest
+values.
+The locking scheme of GPFS involves a centralized lock manager and a few
+distributed lock managers, and employs the notion of lock tokens to reduce the
+latency and overhead of locking. The first time some process in a node accesses
+
+
+
+780  Part 5  Distributed Operating Systems
+             a file, the centralized lock manager issues a lock token to that node. This token
+             authorizes the node to locally issue locks on the file to other processes in that
+             node, until the lock token is taken away from it. This arrangement avoids repeated
+             traffic between a node and the centralized lock manager for acquiring locks on
+             a file. When a process in some other node wishes to access the same file, the
+             centralized lock manager takes away the lock token from the first node and gives
+             it to the second node. Now, this node can issue locks on that file locally. The data
+             bytes covered by byte ranges in the locks issued by a node can be cached locally
+             at that node; no cache coherence traffic would be generated when these bytes are
+             accessed or updated because no process in another node is permitted to access
+             these bytes.
+             Race conditions may arise over the metadata of a file, such as the index
+             blocks in the FMT, when several nodes update the metadata concurrently. For
+             example, when two nodes add a pointer each to the same index block in the FMT,
+             one client's update of the block would be lost when another client updates it. To
+             prevent inconsistencies due to race conditions, one of the nodes is designated as
+             the metanode for the file, and all accesses and updates to the file's metadata are
+             made only by the metanode. Other nodes that update the file send their metadata
+             to the metanode and the metanode commits them to the disk.
+             The list of free disk space can become a performance bottleneck when file
+             processing activities in many nodes need more disk space. The central allocation
+             manager avoids it by partitioning the free space map and giving one partition of
+             the map to each node. A node makes all disk space allocations, using its partition
+             of the map. When the free space in that partition is exhausted, it requests the
+             allocation manager for another partition.
+             Each node writes a separate journal for recovery. This journal is located in
+             the file system to which the file being processed belongs. When a node fails, other
+             nodes can access its journal and carry out the pending updates. Consistency of
+             the data bytes updated in this manner is implicit because the failed node would
+             have locked the data bytes; these locks are released only after the journal of the
+             failed node is processed.
+             Communication failures may partition the system. However, file process-
+             ing activities in individual nodes may not be affected because nodes may be
+             able to access some of the disks. Such operation of the file system can lead to
+             inconsistencies in the metadata. To prevent such inconsistencies, only nodes in
+             one partition should continue file processing and all other nodes must cease
+             file processing. GPFS achieves it as follows: Only nodes in the majority par-
+             tition, i.e., the partition that contains a majority of the nodes, are allowed to
+             perform file processing at any time. GPFS contains a group services layer that
+             uses heartbeat messages to detect node failures; it notifies a node when the node
+             has fallen out of the majority partition or has become a part of the majority
+             partition once again. However, this notification may itself be delayed indef-
+             initely because of communication failures, so GPFS uses features in the I/O
+             subsystem to prevent those nodes that are not included in the majority partition
+             from accessing any disks. GPFS uses a replication policy to protect against disk
+             failures.
+
+
+
+                                                                    Chapter 20  Distributed  File  Systems     781
+20.6.4 Windows
+The file system of the Windows Server 2003 provides two features for data
+replication and data distribution:
+·     Remote differential compression (RDC) is a protocol for file replication that
+      reduces the file replication and file coherence traffic between servers.
+·     DFS namespaces is a method of forming a virtual tree of folders located on
+      different servers, so that a client located in any node can access these folders.
+      Replication is organized by using the notion of a replication group, which is
+a group of servers that replicates a group of folders. If a client wishes to access
+several of these folders, it is made to access them off the same server. The RDC
+protocol is used to synchronize copies of a replicated folder across servers in its
+replication group. This protocol transmits only changes made to a file, or only
+the differences between copies of a file, among different members of a replica-
+tion group, thereby conserving bandwidth between servers. Copies of a file are
+synchronized periodically. When a new file is created, cross-file RDC identifies
+existing files that are similar to the new file, and transmits only differences of the
+new file from one of these files to members of the replication group. This protocol
+reduces the bandwidth consumed by the replication operation.
+      The DFS namespace is created by a system administrator. For every folder
+in the namespace, the administrator specifies a list of servers that contain a copy
+of the folder. When a client refers to a shared folder that appears in the namespace,
+the namespace server is contacted to resolve the name in the virtual tree. It sends
+back a referral to the client, which contains the list of servers that contain a copy
+of the folder. The client contacts the first server in this list to access the folder.
+If this server does not respond and client failback is enabled, the client is notified
+of this failure and goes on to contact the next server in the list. Thus, if the list
+of servers contains two servers, the second server acts as a hot standby for the
+first server.
+20.7     SUMMARY                                                                                                    ·
+A distributed file system (DFS) stores user files              The notion of transparency concerns the asso-
+in several nodes of a distributed system, hence a          ciation between the path name of a file and location
+process and a file being accessed by it may exist          of  the  file--whether  a     user  must  know   a  file's
+in different nodes. This situation requires a dis-         location in order to access it and whether the sys-
+tributed file system to use special techniques so          tem can change the location without affecting the
+that  a  user  (1)  need  not  know  where  a  file    is  file's name. High transparency provides user con-
+located, (2) can perform file processing even when         venience and also enables a DFS to reduce network
+link and node failures occur in the system, and            traffic by moving a file to a node where it is accessed
+(3) can process files efficiently. In this chapter we      very frequently. File sharing semantics represent
+discussed how distributed file systems fulfill these       another aspect of user convenience. They specify
+requirements.                                              whether the file updates made by a process would
+
+
+
+782   Part 5     Distributed Operating Systems
+be visible to other processes accessing the file con-      to find its location. The notion of a hint is used
+currently. Three popular file sharing semantics are        to improve performance of a stateless file server.
+as follows: In Unix semantics, file updates made           A hint is simply a part of DFS state; however, the
+by a process are visible immediately to all other          server is designed in such a manner that it uses a
+processes using the file. In session semantics, the        hint if one is available, but proceeds in a stateless
+updates made by a process are visible to only some         manner if a hint is not available.
+processes in the same node. In transaction seman-          Performance of a DFS is affected by network
+tics, a complete file processing activity is treated       latencies when a process and the file processed by
+as a single atomic transaction so that either all file     it exist in different nodes. A DFS uses the tech-
+updates made during the activity are reflected in the      nique of file caching to improve its performance.
+file or none of them are, and the updates made by a        It maintains a copy of a file's data in the node
+file processing activity are visible to other processes    where the process exists, so that accesses to file
+only after the activity completes.                         data are implemented locally in the node rather
+     High availability of a file system requires that      than over the network. If processes located in dif-
+a file processing activity in a process should not be      ferent nodes update the same file concurrently,
+affected by a transient fault in the node holding          copies of the file would exist in caches in many
+the file, which is called the server node. The DFS         nodes, so a process may not see the latest value
+uses a stateless server design to provide high avail-      of the data that was updated by another process.
+ability. The stateless server does not maintain any        This problem is overcome by using cache coher-
+state information about an ongoing file processing         ence techniques, which prevent accesses to stale file
+activity. Consequently, a crash of the server node         data. However, it causes network traffic for refresh-
+does not disrupt the file processing activity--it can      ing stale copies of a file's data in caches, which
+be resumed when the server's operation is restored.        reduces the benefit of file caching. Session seman-
+However, the stateless design of the server implies        tics eliminate the cache coherence traffic because
+that every time a file is accessed, the file server        updates made by a process are not visible outside
+would have to access the directory entry of the file       its node.
+TEST  YOUR CONCEPTS                                                                                                 ·
+20.1  Classify each of the following statements as true    20.2  Select the appropriate alternative in each of the
+      or false:                                                  following questions:
+      a. Location independence in a distributed file             a. A distributed file system uses file caching to
+      system provides user convenience.                               ensure good file access performance. Which
+      b. The     session  semantics  use  multiple-image              file sharing semantics cause the least cache
+      mutable files.                                                  validation overhead?
+      c. Robustness of a file can be achieved through                 i. Session semantics
+      disk mirroring.                                                 ii. Unix semantics
+      d. File caching has exactly the same effect as                  iii. Transaction semantics.
+      file migration, i.e., movement of files among              b. File replication improves
+      nodes in the system.                                            i. Robustness of a file system
+      e. Directory caching improves file access perfor-               ii. Recoverability of a file system
+      mance in a distributed file system.                             iii. Availability of a file system
+      f. Faults that occur in a file server during a file             iv. None of (i)­(iii).
+      processing activity can be tolerated by using
+      a stateless file server.
+
+
+
+                                                                    Chapter 20  Distributed File Systems               783
+EXERCISES                                                                                                                     ·
+20.1    Discuss how session semantics can be imple-                 stateful file server design, (b) a stateless file server
+        mented.                                                     design.
+20.2    Should a DFS maintain file buffers at a server        20.6  What are the benefits and limitations of spawn-
+        node or at a client node? What is the influence of          ing  multiple   threads   in  a  file  server  to  han-
+        this decision on Unix file sharing semantics (see           dle file processing activities of different clients?
+        Section 13.10) and session semantics?                       Describe the synchronization requirements of
+20.3    Justify the following statement: "File caching              these threads.
+        integrates well with session semantics, but not       20.7  Discuss important issues to be handled during
+        so with Unix semantics."                                    recovery of a failed node in a system that uses
+20.4    Discuss the various techniques discussed in this            file replication to provide availability.
+        chapter and in Chapters 13 and 19 that can be         20.8  Discuss how locking can be used to reduce cache
+        used to ensure robustness of a file.                        validation overhead and enhance scalability of a
+20.5    Discuss how a client should protect itself against          distributed file system.
+        failures in a distributed file system using (a) a
+BIBLIOGRAPHY                                                                                                                  ·
+Svobodova (1986) and Levy and Silberschatz (1990)             files. Schmuck and Haskin (2002) discusses use of shared
+are survey papers on distributed file systems. Comer          disks in a parallel file system and describes distributed
+and Peterson (1986) discusses concepts in naming and          synchronization and fault tolerance techniques.
+discusses name resolution mechanisms in many systems.
+Lampson (1983) and Terry (1987) discuss use of                1.  Braam, P. J., and P. A. Nelson (1999): "Removing
+hints to improve performance of a distributed file system.        bottlenecks in distributed file systems: Coda and
+Makaroff and Eager (1990) discusses effect of cache sizes         InterMezzo as examples," Proceedings of Linux
+on file system performance.                                       Expo, 1999.
+Brownbridge et al. (1982) discusses the Unix United           2.  Brownbridge, D. R., L. F. Marshall, and
+system, which is an early network file system. Sandberg           B. Randell (1982): "The Newcastle Connection
+(1987)  and  Callaghan  (2000)    discuss     the  Sun  NFS.      or UNIXes of the World Unite!,"
+Satyanarayanan (1990) discusses the Andrew distributed            Software--Practice and Experience, 12 (12),
+file system, while Kistler and Satyanarayanan (1992)              1147­1162.
+describes  the  Coda  file   system.  Braam   and  Nelson     3.  Callaghan, B. (2000): NFS Illustrated,
+(1999) discusses the performance bottlenecks in Coda              Addison-Wesley, Reading, Mass.
+and Intermezzo, which is a sequel to Coda that incor-         4.  Carns, P. H., W. B. Ligon III, R. B. Ross, and
+porates journaling. Russinovich and Solomon (2005)                R. Thakur (2000): "PVFS: A parallel file system
+discusses data replication and data distribution features         for Linux Clusters," 2000 Extreme Linux
+of the Windows file system.                                       Workshop.
+Application processes running in different nodes              5.  Comer, D., and L. L. Peterson (1986): "A model
+of a cluster of computer systems may make parallel                of name resolution in distributed mechanisms,"
+accesses to files. Thekkath et al. (1997) discusses a scal-       Proceedings of the 6th International Conference on
+able distributed file system for clusters of computer             Distributed Computing Systems, 509­514.
+systems. Preslan et al. (2000) describes fault tolerance      6.  Ghemawat, S., H. Gobioff, and S. T. Leung
+in a cluster file system through journaling. Carns et al.         (2003): "The Google file system," Proceedings of
+(2000) discusses a parallel file system that provides high        the 19th ACM Symposium on Operating System
+bandwidth for parallel file accesses to data in shared            Principles, 29­43.
+
+
+
+784          Part 5  Distributed Operating Systems
+7.   Gray, C. G., and D. R. Cheriton (1989): "Leases:          journaling in a Linux shared disk file system,"
+     an efficient fault-tolerant mechanism for                 Proceedings of the 7th IEEE Symposium on Mass
+     distributed file cache consistency," Proceedings of       Storage Systems, 351­378.
+     the 12th ACM Symposium on Operating Systems          14.  Russinovich, M. E., and D. A. Solomon (2005):
+     Principles, 202­210.                                      Microsoft Windows Internals, 4th ed., Microsoft
+8.   Kistler, J. J., and M. Satyanarayanan (1992):             Press, Redmond, Wash.
+     "Disconnected operation in the Coda file             15.  Sandberg, R. (1987): The Sun Network File
+     system," ACM Transactions on Computer                     System: Design, Implementation, and experience,
+     Systems, 10, 1, 3­25.                                     Sun Microsystems, Mountain View, Calif.
+9.   Lampson, B. W. (1983): "Hints for computer           16.  Satyanarayanan, M. (1990): "Scalable, secure,
+     system designers," Proceedings of the 9th                 and highly available distributed file access,"
+     Symposium of Operating Systems Principles,                Computer, 23 (5), 9­21.
+     33­48.                                               17.  Schmuck, F., and R. Haskin (2002): "GPFS: A
+10.  Levy, E., and A. Silberschatz (1990): "Distributed        shared-disk file system for large computing
+     File Systems: Concepts and Examples,"                     clusters," Proceedings of the First USENIX
+     Computing Surveys, 22 (4), 321­374.                       Conference on File and Storage Technologies,
+11.  Melamed, A. S. (1987): "Performance analysis of           231­244.
+     Unix-based network file systems," IEEE Micro,        18.  Svobodova, L. (1986): "File servers for
+     25­38.                                                    network-based distributed systems," Computing
+12.  Makaroff, D. J., and D. L. Eager (1990): "Disk            Surveys, 16 (4), 353­398.
+     cache performance for distributed systems,"          19.  Terry, D. B. (1987): "Caching hints in distributed
+     Proceedings of the 10th International Conference          systems," IEEE Transactions on Software
+     on Distributed Computing Systems, 212­219.                Engineering, 13 (1), 48­54.
+13.  Preslan, K. W., A. P. Barry, J. Brassow,             20.  Thekkath, C. A., T. Mann, and E. K. Lee (1997):
+     R. Cattelan, A. Manthei, E. Nygaard, S. V. Oort,          "Frangipani: A scalable DFS," Proceedings of the
+     D. Teigland, M Tilstra, M. O'Keefe, G. Erickson,          16th ACM symposium on Operating System
+     and M. Agarwal (2000): "Implementing                      Principles, 224­237.

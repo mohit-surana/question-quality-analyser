@@ -1,0 +1,143 @@
+Deadlock Prevention
+The four conditions described in Table 8.2 must hold simultaneously for a resource
+deadlock to arise in a system. To prevent deadlocks, the kernel must use a resource
+allocation policy that ensures that one of these conditions cannot arise. In this
+section, we first discuss different approaches to deadlock prevention and then
+present some resource allocation policies that employ these approaches.
+Nonshareable Resources   Wait-for relations will not exist in the system if all
+resources could be made shareable. This way paths in an RRAG would con-
+tain  only   allocation  edges,  so  circular  waits  could  not  arise.  Figure                8.6(a)
+illustrates the effect of employing this approach: the request edge (Pi, Rl ) would
+be replaced by an allocation edge (Rl , Pi) because the resource unit of class Rl is
+shareable.
+
+
+
+292  Part 2  Process  Management
+                                  Approach                           Illustration
+                                                      Without  this  approach       In  this approach
+                      Make resources shareable                 Rl                       Rl
+                          No waits
+                      Process Pi does not get
+                      blocked on resource Rl.
+                                                      Pi             Pj             Pi      Pj
+                      Make resources preemptible      Rk             Rl             Rk      Rl
+                          No circular paths
+                      Resource Rl is preempted
+                      and allocated to Pi.                     Pi                       Pi
+                                                      Rk             Rl             Rk      Rl
+                      Prevent Hold-and-wait                                    (1)
+                          No paths in RRAG
+                         with > 1 process
+                      Process Pi is either (1)                 Pi                       Pi
+                      not permitted to block on
+                      resource Rl, or (2) not                                       Rk      Rl
+                      allowed to hold Rk while
+                      requesting Rl.                                           (2)
+                                                                                        Pi
+                      Prevent circular waits                   Pj                       Pj
+                      Process Pj is not permitted to  Rk             Rl             Rk      Rl
+                      request resource Rl.
+                                                               Pi                       Pi
+             Figure 8.6  Approaches to deadlock prevention.
+                      However, some resources such as printers are inherently nonshareable, so
+             how can they be made shareable? OSs use some innovative techniques to solve
+             this problem. An example is found in the THE multiprogramming system of
+             the 1960s. It contained only one printer, so it buffered the output produced by
+             different processes, formatted it to produce "page images," and used the printer
+             to print one page image at a time. This arrangement mixed up the printed pages
+             produced by different processes, and so the output of different processes had
+             to be separated manually. (Interestingly, the reason the THE system performed
+             page formatting was not to prevent deadlocks, but to improve printer utilization.
+             In fact, the THE system made no provisions for handling resource deadlocks.)
+             The nonshareability of a device can also be circumvented by creating virtual
+             devices (see Section 1.3.2); e.g., virtual printers can be created and allocated
+             to processes. However, this approach cannot work for software resources like
+
+
+
+                                                                               Chapter 8    Deadlocks  293
+shared files, which should be modified in a mutually exclusive manner to avoid
+race conditions.
+Preemption of Resources    If resources are made preemptible, the kernel can
+ensure that some processes have all the resources they need, which would pre-
+vent circular paths in RRAG. For example, in Figure 8.6(b), resource Rl can be
+preempted from its current holder and allocated to process Pi. However, nonpre-
+emptibility of resources can be circumvented only selectively. The page formatting
+approach of the THE system can be used to make printers preemptible, but, in
+general, sequential I/O devices cannot be preempted.
+Hold-and-Wait      To prevent the hold-and-wait condition, either a process that
+holds resources should not be permitted to make resource requests, or a process
+that gets blocked on a resource request should not be permitted to hold any
+resources. Thus, in Figure 8.6(c), either edge (Pi, Rl ) would not arise, or edge
+(Rk, Pl ) would not exist if (Pi, Rl ) arises. In either case, RRAG paths involving
+more than one process could not arise, and so circular paths could not exist.
+A simple policy for implementing this approach is to allow a process to make
+only one resource request in its lifetime in which it asks for all the resources it
+needs. We discuss this policy in Section 8.5.1.
+Circular Wait      A circular wait can result from the hold-and-wait condition, which
+is a consequence of the non-shareability and non-preemptibility conditions, so it
+does not arise if either of these conditions does not arise. Circular waits can be
+separately prevented by not allowing some processes to wait for some resources;
+e.g., process Pj in Figure 8.6(d) may not be allowed to wait for resource Rl .
+It can be achieved by applying a validity constraint to each resource request.
+The validity constraint is a boolean function of the allocation state. It takes
+the value false if the request may lead to a circular wait in the system, so such
+a request is rejected right away. If the validity constraint has the value true, the
+resource is allocated if it is available; otherwise, the process is blocked for the
+resource. In Section 8.5.2 we discuss a deadlock prevention policy taking this
+approach.
+8.5.1 All Resources Together
+This is the simplest of all deadlock prevention policies. A process must ask
+for all resources it needs in a single request; the kernel allocates all of them
+together.  This    way  a  blocked  process  does  not  hold  any  resources,  so      the
+hold-and-wait condition is never satisfied. Consequently, circular waits and dead-
+locks cannot arise. Under this policy, both processes of Example 8.1 must
+request a tape drive and a printer together. Now a process will either hold
+both resources or hold none of them, and the hold-and-wait condition will
+not be satisfied.
+
+
+
+294  Part 2  Process Management
+                     Simplicity of implementation makes "all resources together" an attractive
+                  policy for small operating systems. However, it has one practical drawback--it
+                  adversely influences resource efficiency. For example, if a process Pi requires a
+                  tape drive at the start of its execution and a printer only toward the end of its
+                  execution, it will be forced to request both a tape drive and a printer at the start.
+                  The printer will remain idle until the latter part of Pi's execution and any process
+                  requiring a printer will be delayed until Pi completes its execution. This situation
+                  also reduces the effective degree of multiprogramming and, therefore, reduces
+                  CPU efficiency.
+                  8.5.2 Resource Ranking
+                  Under this deadlock prevention policy, a unique number called a resource rank
+                  is associated with each resource class. When a process Pi makes a request for a
+                  resource, the kernel applies a validity constraint to decide whether the request
+                  should be considered. The validity constraint takes the value true only if the
+                  rank of the requested resource is larger than the rank of the highest ranked
+                  resource currently allocated to Pi. In this case, the resource is allocated to Pi if
+                  it is available; otherwise, Pi is blocked for the resource. If the validity constraint
+                  is false, the request is rejected and process Pi, which made the request, would be
+                  aborted.
+                     Absence of circular wait-for relationships in a system using resource ranking
+                  can be explained as follows: Let rankk denote the rank assigned to resource class
+                  Rk, and let process Pi hold some units of resource class Rk. Pi can get blocked on a
+                  request for a unit of some resource class Rl only if rankk < rankl . Now consider
+                  a process Pj that holds some units of resource class Rl . Process Pj cannot request
+                  a unit of resource class Rk since rankk > rankl . Thus, if Pi can wait for Pj , Pj
+                  cannot wait for Pi! Hence two processes cannot get into a circular wait condition.
+                  An analogous argument holds for the absence of a circular wait involving a larger
+                  number of processes.
+                     Example 8.9 illustrates operation of the resource ranking policy.
+·
+     Example 8.9  Resource Ranking
+                  In Example 8.1, let rankprinter > ranktape. Request 1 leads to allocation of
+                  the tape drive to Pi and request 2 leads to allocation of the printer to Pj.
+                  Request 3, which is Pi's request for the printer, satisfies the validity constraint
+                  because rankprinter > ranktape, but it remains pending because the printer is
+                  not available. Request 4 will be rejected since it violates the validity constraint
+                  and process Pj will be aborted. This action will release the printer, which will
+                  then be allocated to Pi.
+                  ·
+                     The resource ranking policy works best when all processes require their
+                  resources in the order of increasing resource rank. However, difficulties arise

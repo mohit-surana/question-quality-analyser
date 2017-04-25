@@ -1,0 +1,173 @@
+Virtual Memory Using Segmentation
+A segment is a logical entity in a program, such as a function, a data structure,
+or an object; or it is a module that consists of some or all of these. A program is
+composed of segments. During a program's execution, the kernel treats segments
+as the unit for memory allocation. This results in noncontiguous memory alloca-
+tion for processes, which provides efficient use of memory by reducing memory
+fragmentation. Being a logical entity, a segment is also a convenient unit for shar-
+ing and protection. This feature is useful in constructing large software systems
+that comprise of a set of modules or objects.
+A logical address in a segmented process is viewed as a pair (si, bi) where si
+and bi are the segment and byte ids, respectively. There are variations in the way si
+and bi are indicated in a logical address. One method is to represent each of them
+numerically. The logical address thus consists of a segment number and a byte
+number. We shall discuss the second method separately later in this section. The
+logical address space of a process is two-dimensional in nature. One dimension is
+defined by the set of segments in the process. The number of segments can vary,
+subject to a maximum number that may be specified by the computer architecture
+or the virtual memory manager. The other dimension is defined by the set of bytes
+in a segment. The number of bytes in a segment can vary, subject to the maximum
+imposed by the number of bits available to represent bi in a logical address. The
+two-dimensional nature of the address space implies that the last byte of a segment
+and the first byte of another segment are not logically adjoining bytes--if we add
+1 to the address of the last byte in a segment, it does not spill over into the
+next segment; it is merely an invalid address. These are significant differences
+from paging. There are also significant similarities, which we now discuss in the
+context of address translation.
+Figure 12.26 shows how address translation is performed in virtual memory
+using segmentation. Some parallels with paging are the existence of a segment
+table (ST) for a process, and a special hardware register called the segment table
+address register (STAR) that points to the segment table of a process. For a
+             Memory                  MMU
+                                                                   Valid        Misc
+                                          STAR                     bit    Addr         info
+        Add     si   bi                            2
+                         1
+                                     si   bi                       1      ai
+                                                3
+                                 ai       bi                            Segment Table
+             4
+Figure  12.26   Virtual memory implementation using segmentation.
+
+
+
+466  Part 3  Memory Management
+                  logical address (si, bi), address translation is performed by using the memory
+                  address found in si's entry in the segment table and the byte number bi in the
+                  segment. A missing segment fault is raised if segment si does not exist in memory.
+                  A difference with paging is that segments do not have a standard length. Hence
+                  address translation involves adding the byte number bi to the start address of si; it
+                  cannot be performed by using bit concatenation as in paging. Address translation
+                  can be speeded up by using address translation buffers. An entry in the address
+                  translation buffer would contain a segment id and its address in memory, which
+                  is copied from its segment table entry.
+                     In a logical address (si, bi), si and bi could also be specified in a symbolic
+                  form, i.e., as ids. In this case, a logical address is of the form (alpha, beta)
+                  where alpha is the name of a segment and beta is an id associated with a byte
+                  contained in segment alpha. Address translation of such logical addresses is
+                  performed as follows: While compiling a segment, the compiler builds a table
+                  showing byte ids defined in the segment and the byte numbers of corresponding
+                  bytes in the segment. This table is made available to the virtual memory manager
+                  for use during address translation. We will call it the segment linking table (SLT),
+                  and refer to the segment linking table for alpha as SLTalpha. During address
+                  translation, the MMU obtains the start address of alpha from the segment table,
+                  picks up the address of SLTalpha from the misc info field of alpha's entry and
+                  obtains the byte number of beta from SLTalpha, and adds the two to obtain the
+                  effective memory address.
+·
+   Example 12.10  Effective Address Calculation in Segmentation
+                  Figure 12.27 illustrates effective address calculation for the logical address
+                  (alpha, beta). Part (a) of the figure shows segment alpha. beta and gamma
+                  are two ids associated with specific instructions or data in alpha. These ids are
+                  associated with the bytes numbered 232 and 478 in the segment, respectively.
+                  The segment linking table SLTalpha contains entries for beta and gamma,
+                  showing their byte numbers as 232 and 476, respectively. The segment table
+                  entry of alpha indicates that it exists in the memory area with the start address
+                  23480. The byte number associated with beta is 232. Hence the effective
+                  address of (alpha, beta) would be computed as 23480 + 232 = 23712.
+                  ·
+                     Both numeric and symbolic ids have been used in segmented virtual memory.
+                  MULTICS is a well-known system that used symbolic identifiers.
+                  12.9.1 Management of Memory
+                  Memory management in virtual memory using segmentation has some simi-
+                  larities to memory management in paging. A segment fault indicates that a
+                  required segment is not present in memory. A segment-in operation is performed
+                  to load the segment. If there is insufficient free memory, some segment-out oper-
+                  ations may have to precede loading of the required segment. The virtual memory
+
+
+
+                                                                  Chapter 12             Virtual Memory  467
+(a)     Segment  (b)            Valid                       Misc
+        alpha         Name      bit    Addr           Size  info  Name   Offset
+     beta:...
+                                                                  beta   232
+                      alpha     1      23480          764         gamma  478
+     gamma:...
+                                     Segment Table                Segment Linking Table
+                                                                  (SLT alpha)
+Figure  12.27  Use of symbolic segment and word ids.
+manager can use a working set of segments to control memory allocation for
+a process. Segments could be replaced on an NRU basis by collecting segment
+reference information in each segment entry.
+     One difference from virtual memory using paging is that segments do not
+have a fixed size. The memory freed by removing one segment from memory may
+not suffice for loading another segment. Hence many segments may have to be
+removed before a new segment can be loaded. Differences in segment sizes can
+lead to external fragmentation, which can be tackled either through compaction
+or through memory reuse techniques such as first-fit or best-fit. Compaction is
+aided by presence of the MMU--only the address field of the segment table entry
+needs to be modified when a segment is moved in memory. However, the virtual
+memory manager should ensure that segments being moved are not involved in
+I/O operations.
+     The two-dimensional nature of the logical address space permits a segment to
+dynamically grow or shrink in size. Dynamic growth can be handled by allocating
+a larger memory area to a segment and releasing the memory area allocated to it
+earlier. A segment can be permitted to grow in its present location in memory if
+an adjoining free area exists.
+12.9.2 Sharing and Protection
+Two important issues in sharing and protection of segments are:
+· Static and dynamic sharing of segments
+· Detecting use of invalid addresses
+     A segment is a convenient unit for sharing because it is a logical entity in a
+process. It can be shared statically or dynamically by using the schemes described
+earlier in Section 12.6. If segment ids are numeric, segments must occupy iden-
+tical positions in logical address spaces of sharing processes. This requirement is
+analogous to that concerning shared pages in virtual memory using paging (see
+Section 12.6 and Figure 12.23). It does not apply if segment ids are symbolic.
+Processes sharing a segment may have different access privileges to programs and
+data in it. The virtual memory manager puts the access privileges in the misc
+info field of a segment table entry. While translating a logical address (si, bi), the
+
+
+
+468            Part 3  Memory Management
+                           MMU makes two kinds of protection checks. It checks whether the kind of access
+                           being made to the logical address is consistent with the access privileges of the
+                           process for the segment. It also checks whether (si, bi) is a valid address by check-
+                           ing whether bi < size of si. It raises a memory protection violation interrupt if
+                           any of these checks fails.
+                           12.9.3 Segmentation with Paging
+                           External fragmentation exists in a virtual memory using segmentation because
+                           segment sizes are different. This problem can be addressed by superimposing
+                           paging on a segment-oriented addressing scheme. A system using this approach
+                           retains the fundamental advantage of segmentation--the logical address space
+                           is two-dimensional, which permits dynamic changes in the size of a segment--
+                           while avoiding external fragmentation. Each segment contains an integral number
+                           of pages, and memory management is performed through demand paging. This
+                           arrangement may achieve more effective utilization of memory since only required
+                           pages of a segment need to be present in memory at any time. However, paging
+                           introduces internal fragmentation in the last page of a segment.
+                               A logical address in such a system has the form (si, pi, bi). Since each segment
+                           consists of a number of pages, a page table is built for each segment. The segment
+                           table entry of a segment points to its page table. Figure 12.28 illustrates this
+                           arrangement. The name field of the segment table is needed only if symbolic
+                           segment ids are used. Address translation now involves an access to the segment
+                           table followed by an access to the page table of the segment. It requires two
+                           memory references if the segment and page tables are held in memory. To speed
+                           up address translation, address translation buffers would have to be employed
+                           for both the segment and page table references. A simple extension to the scheme
+                           described earlier in Section 12.2.2 can be used for this purpose. Alternatively,
+                           a single address translation buffer may be employed, each entry in the buffer
+                           containing a pair (si, pi) and the corresponding page frame number.
+                                                                        Valid       Page table  Misc
+                                                                 Name   bit         addr        info
+                                              Segment table
+                       Memory
+                                              MMU
+                                          si  pi       bi        Valid  Page        Misc
+                                                                 bit    frame #     info
+               Add     si  pi  bi
+                                                                        ai
+                                              ai       bi               Page table
+Figure  12.28  Address translation in segmentation with paging.

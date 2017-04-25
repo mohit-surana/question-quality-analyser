@@ -1,0 +1,507 @@
+Communication in ClientServer Systems
+
+
+136  Chapter 3  Processes
+                Client                                               Server
+                             Connection
+                             request     Connection          Handle
+                                         Port
+                             Handle      Client
+                                         Communication Port
+                                         Server              Handle
+                                         Communication Port
+                                         Shared
+                                         Section Object
+                                         (> 256 bytes)
+                Figure 3.19  Advanced local procedure calls in Windows.
+3.6  Communication in Client­ Server Systems
+     In Section 3.4, we described how processes can communicate using shared
+     memory and message passing. These techniques can be used for communica-
+     tion in client­server systems (Section 1.11.4) as well. In this section, we explore
+     three other strategies for communication in client­server systems: sockets,
+     remote procedure calls (RPCs), and pipes.
+     3.6.1  Sockets
+     A socket is defined as an endpoint for communication. A pair of processes
+     communicating over a network employs a pair of sockets--one for each
+     process. A socket is identified by an IP address concatenated with a port
+     number. In general, sockets use a client­server architecture. The server waits
+     for incoming client requests by listening to a specified port. Once a request
+     is received, the server accepts a connection from the client socket to complete
+     the connection. Servers implementing specific services (such as telnet, FTP, and
+     HTTP) listen to well-known ports (a telnet server listens to port 23; an FTP
+     server listens to port 21; and a web, or HTTP, server listens to port 80). All
+     ports below 1024 are considered well known; we can use them to implement
+     standard services.
+     When a client process initiates a request for a connection, it is assigned a
+     port by its host computer. This port has some arbitrary number greater than
+     1024. For example, if a client on host X with IP address 146.86.5.20 wishes to
+     establish a connection with a web server (which is listening on port 80) at
+     address 161.25.19.8, host X may be assigned port 1625. The connection will
+     consist of a pair of sockets: (146.86.5.20:1625) on host X and (161.25.19.8:80)
+     on the web server. This situation is illustrated in Figure 3.20. The packets
+     traveling between the hosts are delivered to the appropriate process based on
+     the destination port number.
+     All connections must be unique. Therefore, if another process also on host
+     X wished to establish another connection with the same web server, it would be
+     assigned a port number greater than 1024 and not equal to 1625. This ensures
+     that all connections consist of a unique pair of sockets.
+
+
+
+                      3.6     Communication  in Client ­ Server     Systems         137
+                      host X
+                      (146.86.5.20)
+                      socket
+                  (146.86.5.20:1625)
+                                             web server
+                                             (161.25.19.8)
+                                             socket
+                                             (161.25.19.8:80)
+                      Figure 3.20     Communication using sockets.
+Although most program examples in this text use C, we will illustrate
+sockets using Java, as it provides a much easier interface to sockets and has a
+rich library for networking utilities. Those interested in socket programming
+in C or C++ should consult the bibliographical notes at the end of the chapter.
+Java provides three different types of sockets. Connection-oriented (TCP)
+sockets are implemented with the Socket class. Connectionless (UDP) sockets
+use the DatagramSocket class. Finally, the MulticastSocket class is a subclass
+of the DatagramSocket class. A multicast socket allows data to be sent to
+multiple recipients.
+Our example describes a date server that uses connection-oriented TCP
+sockets. The operation allows clients to request the current date and time from
+the server. The server listens to port 6013, although the port could have any
+arbitrary number greater than 1024. When a connection is received, the server
+returns the date and time to the client.
+The date server is shown in Figure 3.21. The server creates a ServerSocket
+that specifies that it will listen to port 6013. The server then begins listening
+to the port with the accept() method. The server blocks on the accept()
+method waiting for a client to request a connection. When a connection request
+is received, accept() returns a socket that the server can use to communicate
+with the client.
+The details of how the server communicates with the socket are as follows.
+The server first establishes a PrintWriter object that it will use to communicate
+with the client. A PrintWriter object allows the server to write to the socket
+using the routine print() and println() methods for output. The server
+process sends the date to the client, calling the method println(). Once it
+has written the date to the socket, the server closes the socket to the client and
+resumes listening for more requests.
+A client communicates with the server by creating a socket and connecting
+to the port on which the server is listening. We implement such a client in the
+Java program shown in Figure 3.22. The client creates a Socket and requests
+a connection with the server at IP address 127.0.0.1 on port 6013. Once the
+connection is made, the client can read from the socket using normal stream
+I/O statements. After it has received the date from the server, the client closes
+
+
+
+138  Chapter 3     Processes
+     import java.net.*;
+     import java.io.*;
+     public class DateServer
+     {
+            public static void main(String[] args) {
+                try   {
+                   ServerSocket sock = new ServerSocket(6013);
+                   /*    now  listen  for   connections         */
+                   while (true) {
+                         Socket  client  =     sock.accept();
+                         PrintWriter     pout  =  new
+                         PrintWriter(client.getOutputStream(), true);
+                         /*  write  the  Date     to  the  socket   */
+                         pout.println(new java.util.Date().toString());
+                         /*  close  the  socket       and  resume   */
+                         /* listening for connections */
+                         client.close();
+                   }
+                }
+                catch (IOException ioe) {
+                   System.err.println(ioe);
+                }
+            }
+     }
+                                    Figure 3.21   Date server.
+     the socket and exits. The IP address 127.0.0.1 is a special IP address known as the
+     loopback. When a computer refers to IP address 127.0.0.1, it is referring to itself.
+     This mechanism allows a client and server on the same host to communicate
+     using the TCP/IP protocol. The IP address 127.0.0.1 could be replaced with the
+     IP address of another host running the date server. In addition to an IP address,
+     an actual host name, such as www.westminstercollege.edu, can be used as
+     well.
+     Communication using sockets--although common and efficient--is con-
+     sidered a low-level form of communication between distributed processes.
+     One reason is that sockets allow only an unstructured stream of bytes to be
+     exchanged between the communicating threads. It is the responsibility of the
+     client or server application to impose a structure on the data. In the next two
+     subsections, we look at two higher-level methods of communication: remote
+     procedure calls (RPCs) and pipes.
+     3.6.2     Remote Procedure Calls
+     One of the most common forms of remote service is the RPC paradigm, which
+     we discussed briefly in Section 3.5.2. The RPC was designed as a way to
+
+
+
+                 3.6  Communication in Client ­ Server Systems                      139
+import   java.net.*;
+import   java.io.*;
+public   class  DateClient
+{
+   public static void main(String[] args) {
+      try  {
+         /*   make   connection          to    server  socket    */
+         Socket     sock   =       new   Socket("127.0.0.1",6013);
+         InputStream       in         =  sock.getInputStream();
+         BufferedReader bin = new
+              BufferedReader(new               InputStreamReader(in));
+         /*   read   the   date          from  the  socket   */
+         String line;
+         while   (   (line         =     bin.readLine())     !=  null)
+              System.out.println(line);
+         /*   close   the     socket     connection*/
+         sock.close();
+      }
+      catch (IOException ioe) {
+         System.err.println(ioe);
+      }
+   }
+}
+                      Figure 3.22        Date client.
+abstract the procedure-call mechanism for use between systems with network
+connections. It is similar in many respects to the IPC mechanism described in
+Section 3.4, and it is usually built on top of such a system. Here, however,
+because we are dealing with an environment in which the processes are
+executing on separate systems, we must use a message-based communication
+scheme to provide remote service.
+In contrast to IPC messages, the messages exchanged in RPC communication
+are well structured and are thus no longer just packets of data. Each message is
+addressed to an RPC daemon listening to a port on the remote system, and each
+contains an identifier specifying the function to execute and the parameters
+to pass to that function. The function is then executed as requested, and any
+output is sent back to the requester in a separate message.
+A port is simply a number included at the start of a message packet.
+Whereas a system normally has one network address, it can have many ports
+within that address to differentiate the many network services it supports. If a
+remote process needs a service, it addresses a message to the proper port. For
+instance, if a system wished to allow other systems to be able to list its current
+users, it would have a daemon supporting such an RPC attached to a port--
+say, port 3027. Any remote system could obtain the needed information (that
+
+
+
+140  Chapter 3   Processes
+     is, the list of current users) by sending an RPC message to port 3027 on the
+     server. The data would be received in a reply message.
+     The semantics of RPCs allows a client to invoke a procedure on a remote
+     host as it would invoke a procedure locally. The RPC system hides the details
+     that allow communication to take place by providing a stub on the client side.
+     Typically, a separate stub exists for each separate remote procedure. When the
+     client invokes a remote procedure, the RPC system calls the appropriate stub,
+     passing it the parameters provided to the remote procedure. This stub locates
+     the port on the server and marshals the parameters. Parameter marshalling
+     involves packaging the parameters into a form that can be transmitted over
+     a network. The stub then transmits a message to the server using message
+     passing. A similar stub on the server side receives this message and invokes
+     the procedure on the server. If necessary, return values are passed back to the
+     client using the same technique. On Windows systems, stub code is compiled
+     from a specification written in the Microsoft Interface Definition Language
+     (MIDL), which is used for defining the interfaces between client and server
+     programs.
+     One issue that must be dealt with concerns differences in data representa-
+     tion on the client and server machines. Consider the representation of 32-bit
+     integers. Some systems (known as big-endian) store the most significant byte
+     first, while other systems (known as little-endian) store the least significant
+     byte first. Neither order is "better" per se; rather, the choice is arbitrary within
+     a computer architecture. To resolve differences like this, many RPC systems
+     define a machine-independent representation of data. One such representation
+     is known as external data representation (XDR). On the client side, parameter
+     marshalling involves converting the machine-dependent data into XDR before
+     they are sent to the server. On the server side, the XDR data are unmarshalled
+     and converted to the machine-dependent representation for the server.
+     Another important issue involves the semantics of a call. Whereas local
+     procedure calls fail only under extreme circumstances, RPCs can fail, or be
+     duplicated and executed more than once, as a result of common network
+     errors. One way to address this problem is for the operating system to ensure
+     that messages are acted on exactly once, rather than at most once. Most local
+     procedure calls have the "exactly once" functionality, but it is more difficult to
+     implement.
+     First, consider "at most once." This semantic can be implemented by
+     attaching a timestamp to each message. The server must keep a history of
+     all the timestamps of messages it has already processed or a history large
+     enough to ensure that repeated messages are detected. Incoming messages
+     that have a timestamp already in the history are ignored. The client can then
+     send a message one or more times and be assured that it only executes once.
+     For "exactly once," we need to remove the risk that the server will never
+     receive the request. To accomplish this, the server must implement the "at
+     most once" protocol described above but must also acknowledge to the client
+     that the RPC call was received and executed. These ACK messages are common
+     throughout networking. The client must resend each RPC call periodically until
+     it receives the ACK for that call.
+     Yet another important issue concerns the communication between a server
+     and a client. With standard procedure calls, some form of binding takes place
+     during link, load, or execution time (Chapter 8) so that a procedure call's name
+
+
+
+                        3.6  Communication in Client ­ Server Systems                       141
+          client                         messages                  server
+     user calls kernel
+     to send RPC
+     message to
+     procedure X
+     kernel sends                    From: client                  matchmaker
+     message to                          To: server                receives
+     matchmaker to                   Port: matchmaker              message, looks
+     find port number                Re: address                   up answer
+                                         for RPC X
+                                     From: server
+     kernel places                       To: client                matchmaker
+     port P in user                  Port: kernel                  replies to client
+     RPC message                         Re: RPC X                 with port P
+                                         Port: P
+                                     From: client                  daemon
+     kernel sends                        To: server                listening to
+     RPC                             Port: port P                  port P receives
+                                         <contents>                message
+                                         From: RPC                 daemon
+     kernel receives                     Port: P                   processes
+     reply, passes                       To: client                request and
+     it to user                      Port: kernel                  processes send
+                                         < output>                 output
+          Figure 3.23        Execution of a remote procedure call (RPC).
+is replaced by the memory address of the procedure call. The RPC scheme
+requires a similar binding of the client and the server port, but how does a client
+know the port numbers on the server? Neither system has full information
+about the other, because they do not share memory.
+Two  approaches         are  common.     First,      the  binding  information         may  be
+predetermined, in the form of fixed port addresses. At compile time, an RPC
+call has a fixed port number associated with it. Once a program is compiled,
+the server cannot change the port number of the requested service. Second,
+binding can be done dynamically by a rendezvous mechanism. Typically, an
+operating system provides a rendezvous (also called a matchmaker) daemon
+on a fixed RPC port. A client then sends a message containing the name of
+the RPC to the rendezvous daemon requesting the port address of the RPC it
+needs to execute. The port number is returned, and the RPC calls can be sent
+to that port until the process terminates (or the server crashes). This method
+requires the extra overhead of the initial request but is more flexible than the
+first approach. Figure 3.23 shows a sample interaction.
+The  RPC  scheme        is   useful  in  implementing     a  distributed         file  system
+(Chapter 17). Such a system can be implemented as a set of RPC daemons
+
+
+
+142  Chapter 3  Processes
+     and clients. The messages are addressed to the distributed file system port on a
+     server on which a file operation is to take place. The message contains the disk
+     operation to be performed. The disk operation might be read, write, rename,
+     delete, or status, corresponding to the usual file-related system calls. The
+     return message contains any data resulting from that call, which is executed by
+     the DFS daemon on behalf of the client. For instance, a message might contain
+     a request to transfer a whole file to a client or be limited to a simple block
+     request. In the latter case, several requests may be needed if a whole file is to
+     be transferred.
+     3.6.3    Pipes
+     A pipe acts as a conduit allowing two processes to communicate. Pipes were
+     one of the first IPC mechanisms in early UNIX systems. They typically provide
+     one of the simpler ways for processes to communicate with one another,
+     although they also have some limitations. In implementing a pipe, four issues
+     must be considered:
+     1.    Does the pipe allow bidirectional communication, or is communication
+           unidirectional?
+     2.    If two-way communication is allowed, is it half duplex (data can travel
+           only one way at a time) or full duplex (data can travel in both directions
+           at the same time)?
+     3.    Must a relationship (such as parent­child) exist between the communi-
+           cating processes?
+     4.    Can the pipes communicate over a network, or must the communicating
+           processes reside on the same machine?
+     In the following sections, we explore two common types of pipes used on both
+     UNIX and Windows systems: ordinary pipes and named pipes.
+     3.6.3.1  Ordinary Pipes
+     Ordinary pipes allow two processes to communicate in standard producer­
+     consumer fashion: the producer writes to one end of the pipe (the write-end)
+     and the consumer reads from the other end (the read-end). As a result, ordinary
+     pipes are unidirectional, allowing only one-way communication. If two-way
+     communication is required, two pipes must be used, with each pipe sending
+     data in a different direction. We next illustrate constructing ordinary pipes
+     on both UNIX and Windows systems. In both program examples, one process
+     writes the message Greetings to the pipe, while the other process reads this
+     message from the pipe.
+         On UNIX systems, ordinary pipes are constructed using the function
+                pipe(int fd[])
+     This  function   creates  a  pipe  that  is  accessed  through  the  int  fd[]     file
+     descriptors: fd[0] is the read-end of the pipe, and fd[1] is the write-end.
+
+
+
+                         3.6     Communication in Client ­ Server Systems                     143
+       parent                                                                   child
+fd(0)          fd(1)                                                     fd(0)         fd(1)
+                                       pipe
+                  Figure 3.24    File descriptors for an ordinary pipe.
+UNIX treats a pipe as a special type of file. Thus, pipes can be accessed using
+ordinary read() and write() system calls.
+An ordinary pipe cannot be accessed from outside the process that created
+it. Typically, a parent process creates a pipe and uses it to communicate with
+a child process that it creates via fork(). Recall from Section 3.3.1 that a child
+process inherits open files from its parent. Since a pipe is a special type of file,
+the child inherits the pipe from its parent process. Figure 3.24 illustrates the
+relationship of the file descriptor fd to the parent and child processes.
+In the UNIX program shown in Figure 3.25, the parent process creates a
+pipe and then sends a fork() call creating the child process. What occurs after
+the fork() call depends on how the data are to flow through the pipe. In
+this instance, the parent writes to the pipe, and the child reads from it. It is
+important to notice that both the parent process and the child process initially
+close their unused ends of the pipe. Although the program shown in Figure
+3.25 does not require this action, it is an important step to ensure that a process
+reading from the pipe can detect end-of-file (read() returns 0) when the writer
+has closed its end of the pipe.
+Ordinary pipes on Windows systems are termed anonymous pipes, and
+they behave similarly to their UNIX counterparts: they are unidirectional and
+               #include  <sys/types.h>
+               #include  <stdio.h>
+               #include  <string.h>
+               #include  <unistd.h>
+               #define   BUFFER SIZE      25
+               #define   READ END 0
+               #define   WRITE    END  1
+               int    main(void)
+               {
+               char write msg[BUFFER SIZE]    =  "Greetings";
+               char read msg[BUFFER SIZE];
+               int    fd[2];
+               pid    t  pid;
+                         /* Program continues in Figure 3.26 */
+                         Figure 3.25   Ordinary pipe in UNIX.
+
+
+
+144  Chapter 3  Processes
+        /*      create    the     pipe  */
+        if (pipe(fd) == -1) {
+                fprintf(stderr,"Pipe          failed");
+                return    1;
+        }
+        /*      fork  a   child    process    */
+        pid     =   fork();
+        if (pid < 0) { /* error occurred */
+                fprintf(stderr, "Fork Failed");
+                return    1;
+        }
+        if (pid > 0) { /* parent process                       */
+                /*  close     the  unused     end    of  the   pipe    */
+                close(fd[READ END]);
+                /*  write     to   the  pipe  */
+                write(fd[WRITE         END],  write      msg,  strlen(write  msg)+1);
+                /*  close     the  write    end    of    the  pipe   */
+                close(fd[WRITE END]);
+        }
+        else { /* child process */
+                /*  close     the  unused     end    of  the   pipe    */
+                close(fd[WRITE END]);
+                /*  read   from    the  pipe     */
+                read(fd[READ       END],    read msg,    BUFFER SIZE);
+                printf("read       %s",read msg);
+                /*  close     the  write    end    of    the  pipe   */
+                close(fd[READ END]);
+        }
+        return 0;
+     }
+                               Figure 3.26    Figure 3.25, continued.
+     employ parent­child relationships between the communicating processes.
+     In addition, reading and writing to the pipe can be accomplished with the
+     ordinary   ReadFile()        and   WriteFile()      functions.    The  Windows  API  for
+     creating pipes is the CreatePipe() function, which is passed four parameters.
+     The parameters provide separate handles for (1) reading and (2) writing to the
+     pipe, as well as (3) an instance of the STARTUPINFO structure, which is used to
+     specify that the child process is to inherit the handles of the pipe. Furthermore,
+     (4) the size of the pipe (in bytes) may be specified.
+        Figure 3.27 illustrates a parent process creating an anonymous pipe for
+     communicating with its child. Unlike UNIX systems, in which a child process
+
+
+
+                       3.6  Communication in Client ­ Server Systems                145
+         #include      <stdio.h>
+         #include      <stdlib.h>
+         #include      <windows.h>
+         #define       BUFFER SIZE     25
+         int     main(VOID)
+         {
+         HANDLE ReadHandle, WriteHandle;
+         STARTUPINFO        si;
+         PROCESS       INFORMATION     pi;
+         char          message[BUFFER  SIZE]  =  "Greetings";
+         DWORD         written;
+                       /* Program continues in Figure 3.28 */
+         Figure 3.27   Windows anonymous pipe--parent process.
+automatically inherits a pipe created by its parent, Windows requires the
+programmer to specify which attributes the child process will inherit. This is
+accomplished by first initializing the SECURITY ATTRIBUTES structure to allow
+handles to be inherited and then redirecting the child process's handles for
+standard input or standard output to the read or write handle of the pipe.
+Since the child will be reading from the pipe, the parent must redirect the
+child's standard input to the read handle of the pipe. Furthermore, as the
+pipes are half duplex, it is necessary to prohibit the child from inheriting the
+write-end of the pipe. The program to create the child process is similar to the
+program in Figure 3.11, except that the fifth parameter is set to TRUE, indicating
+that the child process is to inherit designated handles from its parent. Before
+writing to the pipe, the parent first closes its unused read end of the pipe. The
+child process that reads from the pipe is shown in Figure 3.29. Before reading
+from the pipe, this program obtains the read handle to the pipe by invoking
+GetStdHandle().
+Note that ordinary pipes require a parent­child relationship between the
+communicating processes on both UNIX and Windows systems. This means
+that these pipes can be used only for communication between processes on the
+same machine.
+3.6.3.2  Named Pipes
+Ordinary pipes provide a simple mechanism for allowing a pair of processes
+to communicate. However, ordinary pipes exist only while the processes are
+communicating with one another. On both UNIX and Windows systems, once
+the processes have finished communicating and have terminated, the ordinary
+pipe ceases to exist.
+Named pipes provide a much more powerful communication tool. Com-
+munication can be bidirectional, and no parent­child relationship is required.
+Once a named pipe is established, several processes can use it for communi-
+cation. In fact, in a typical scenario, a named pipe has several writers. Addi-
+tionally, named pipes continue to exist after communicating processes have
+
+
+
+146  Chapter 3   Processes
+     /*  set    up  security       attributes        allowing      pipes     to  be   inherited       */
+     SECURITY ATTRIBUTES           sa  =   {sizeof(SECURITY ATTRIBUTES),NULL,TRUE};
+     /*  allocate        memory    */
+     ZeroMemory(&pi,          sizeof(pi));
+     /*  create     the    pipe    */
+     if (!CreatePipe(&ReadHandle, &WriteHandle,                          &sa,    0))     {
+         fprintf(stderr,           "Create     Pipe  Failed");
+         return     1;
+     }
+     /*  establish       the  START INFO        structure         for  the   child    process     */
+     GetStartupInfo(&si);
+     si.hStdOutput         =  GetStdHandle(STD OUTPUT HANDLE);
+     /*  redirect        standard      input    to   the   read    end   of  the     pipe   */
+     si.hStdInput = ReadHandle;
+     si.dwFlags      =   STARTF USESTDHANDLES;
+     /*  don't      allow     the  child   to   inherit       the  write     end     of     pipe  */
+     SetHandleInformation(WriteHandle,                     HANDLE FLAG INHERIT,             0);
+     /*  create     the    child    process     */
+     CreateProcess(NULL,            "child.exe",          NULL, NULL,
+        TRUE, /* inherit handles */
+        0,  NULL, NULL,       &si,     &pi);
+     /*  close      the  unused     end    of   the  pipe     */
+     CloseHandle(ReadHandle);
+     /*  the    parent     writes      to  the  pipe      */
+     if  (!WriteFile(WriteHandle,               message,BUFFER SIZE,&written,NULL))
+         fprintf(stderr,           "Error   writing       to  pipe.");
+     /* close the write end of                 the   pipe     */
+     CloseHandle(WriteHandle);
+     /*  wait   for      the  child    to  exit      */
+     WaitForSingleObject(pi.hProcess,                     INFINITE);
+     CloseHandle(pi.hProcess);
+     CloseHandle(pi.hThread);
+     return 0;
+     }
+                              Figure 3.28       Figure 3.27, continued.
+     finished. Both UNIX and Windows systems support named pipes, although the
+     details of implementation differ greatly. Next, we explore named pipes in each
+     of these systems.

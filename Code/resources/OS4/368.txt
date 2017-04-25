@@ -1,0 +1,196 @@
+Process Synchronization
+Process synchronization involves use of critical sections or indivisible signaling
+operations. As discussed in Section 6.5.2, each of these is implemented by using
+a lock variable that has only two possible values--open and closed. A process
+cannot begin execution of a critical section or an indivisible operation if the lock
+variable associated with the critical section or indivisible operation has the value
+closed. If it finds the value of the lock variable to be open, it changes the value to
+closed, executes the critical section or indivisible signaling operation, and changes
+the value back to open. A process that finds the value of a lock variable to be
+closed must wait until the value is changed to open. We refer to this arrangement
+involving use of a lock variable as a synchronization lock, or simply a lock, and
+refer to the actions of closing and opening the lock as setting and resetting it.
+Two qualities of synchronization locks are important for performance of a
+multiprocessor system. The first quality is scalability of a synchronization lock,
+which indicates the degree to which the performance of an application using the
+lock is independent of the number of processes in the application and the number
+
+
+
+348  Part 2  Process Management
+             Table 10.4             Kinds   of  Synchronization Locks
+             Lock                                Description
+             Queued lock                         A process waiting for a queued lock becomes blocked
+                                                 and its id is entered into a queue of processes waiting
+                                                 for the lock. The process is activated when the lock is
+                                                 reset and it is the first process in the queue.
+             Spin lock                           If a spin lock is already set when a process tries to set it,
+                                                 the process enters into a busy wait for the lock. The
+                                                 CPU on which the process is operating can handle
+                                                 interrupts during the busy wait.
+             Sleep lock                          When a process waits for a sleep lock, the CPU on
+                                                 which it is running is put into a special sleep state in
+                                                 which it does not execute instructions or process
+                                                 interrupts. The CPU is activated when the CPU that
+                                                 resets the lock sends it an interprocessor interrupt.
+                                         Pi           Pk              Pi               Pi
+                                    C1           C1            C1                  C1      IPI
+                                         L            L               L                L
+                                                      Pi
+                                    (a)          (b)           (c)           (d)
+             Figure  10.5  Synchronization locks in multiprocessor operating systems. (a)         General
+             schematic diagram of a lock guarding a mutual exclusion region; (b) Queued           lock; (c)  Spin
+             lock; (d) Sleep lock.
+             of CPUs in the system. The second quality concerns ability of a CPU to handle
+             interrupts while the process operating on the CPU is engaged in trying to set the
+             synchronization lock. This ability helps the kernel in providing a quick response
+             to events in the system.
+             Table 10.4 summarizes the features of three kinds of synchronization locks,
+             the queued, spin, and sleep locks. Processes waiting for a queued lock become
+             blocked; they are activated in FCFS order when the lock is opened. The spin lock
+             is the synchronization lock we illustrated in Figures 6.9 and 6.10; it leads to a busy
+             wait because a process that is trying to set it is not blocked. Interestingly, we had
+             discarded the spin lock because of a busy wait, but it is useful in a multiprocessor
+             system! The sleep lock is a new kind of lock. We discuss characteristics of all three
+             kinds of locks in the following.
+             Figure        10.5     illustrates  use  of  the  three  kinds  of    synchronization           locks.
+             Figure 10.5(a) shows a process Pi executing on CPU C1 and a lock L that is
+
+
+
+                  Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  349
+used to guard a mutual exclusion region. The × mark inside the box representing
+the lock indicates that the lock is set. A similar mark inside a circle representing
+a process indicates that the process is in the blocked state. We discuss features of
+these synchronization locks in the following.
+Queued Lock       A queued lock is a conventional lock used for process synchro-
+nization. The kernel performs the following actions when process Pi executing
+on CPU C1 requests a lock L: Lock L is tested. If it is not already set, the kernel
+sets the lock on behalf of Pi and resumes its execution. If the lock is already set
+by another process, Pi is blocked and its request for the lock is recorded in a
+queue. Figure 10.5(b) illustrates the situation after blocking of Pi. The id of Pi
+is entered in the queue of lock L and CPU C1 has switched to execution of some
+other process Pk. When the process that had set lock L completes its use of the
+critical section, the process at the head of L's queue is activated and the lock is
+awarded to it.
+A process that cannot set a queued lock relinquishes the CPU on which it
+is executing. Such a process will not be using a CPU and will not be accessing
+memory while it waits to set the lock. The average length of the queue for a lock
+determines whether the solution is scalable. If processes do not require lock L
+frequently, the queue length is bounded by some constant c (that is, it is never
+larger than c). Hence increasing the number of CPUs or processes in the system
+does not increase the average delay in acquiring the lock. The solution is scalable
+under these conditions. If processes require lock L frequently, the length of the
+queue may be proportional to the number of processes. In this case the solution
+is not scalable.
+Spin Lock  A spin lock differs from a queued lock in that a process that makes an
+unsuccessful attempt to set a lock does not relinquish the CPU. Instead it enters
+into a loop in which it makes repeated attempts to set the lock until it succeeds
+[see Figure 10.5(c)]. Hence the name spin lock. We depict the situation in which
+CPU C1 spins on lock L by drawing an arrow from C1 to L. CPU C1 repeatedly
+accesses the value of the lock and tests it, using an indivisible instruction like
+a test-and-set instruction (see Section 6.9.4). This action creates traffic on the
+memory bus or across the network.
+Use of spin locks may degrade system performance on two counts: First, the
+CPU remains with the process looping on the spin lock and so other processes
+are denied use of the CPU. Second, memory traffic is generated as the CPU
+spins on the lock. The latter drawback may not be significant if the memory
+bus or the network is lightly loaded, but it causes performance degradation in
+other situations. However, use of spin locks can be justified in two situations:
+(1) when the number of processes does not exceed the number of CPUs in the
+system, because there is no advantage in preempting a process, and (2) when a
+lock is used to control a critical section and the CPU time needed to execute the
+critical section is smaller than the total CPU time needed to block a process and
+schedule another one, and activate and reschedule the original process. In the
+first case blocking is unnecessary. In the second case it is counterproductive.
+
+
+
+350  Part 2  Process Management
+             A spin lock has an interesting advantage over a queued lock. A CPU spinning
+             on a lock can handle interrupts and the process operating on it can handle signals.
+             This feature is particularly important in a real-time application as delays in ser-
+             vicing interrupts and signals can degrade response times. Nevertheless, spin locks
+             are not scalable, because of the memory or network traffic that they generate.
+             In a NUMA system, a process using spin locks may face a situation called
+             lock starvation, in which it might be denied the lock for long periods of time,
+             possibly indefinitely. Consider a process Pi that is trying to set a spin lock that is
+             in its nonlocal memory. Let processes Pj and Pk, which exist in the same node as
+             the lock, try to set it. Since access to local memory is much faster than access to
+             nonlocal memory, processes Pj and Pk are able to spin much faster on the lock
+             than process Pi. Hence they are likely to get an opportunity to set the lock before
+             Pi. If they repeatedly set and use the lock, Pi may not be able to set the lock for
+             a long time. A scheme that we will see in Section 10.4.2 avoids lock starvation.
+             Sleep Lock  When a process makes an unsuccessful attempt to set a sleep lock,
+             the CPU on which it is operating is put into a special state called a sleep state. In
+             this state it does not execute instructions and does not respond to any interrupts
+             except interprocessor interrupts. In Figure 10.5(d) we depict this situation by
+             putting a × mark against all interrupts except IPI. The CPU waiting for the lock
+             does not spin on it, and so it does not cause memory or network traffic.
+             The CPU that releases the lock has the responsibility to send interprocessor
+             interrupts to those CPUs that are sleeping on the lock. This feature leads to the
+             overhead of generating and servicing interprocessor interrupts, both of which
+             involve a context switch and execution of kernel code. The sleep lock will scale
+             poorly if heavy contention exists for a lock; however, it will perform well if this is
+             not the case. Use of sleep locks in a real-time application can also affect response
+             times of the application. Nevertheless sleep locks may be preferred to spin locks
+             if the memory or network traffic densities are high.
+             Scheduling Aware Synchronization  As discussed earlier, some kinds of synchro-
+             nization are effective only when processes involved in the synchronization are
+             scheduled to run at the same time. The Solaris OS for Sun systems provides a
+             synchronization lock called an adaptive lock. A process waiting for this lock spins
+             on it if the holder of the lock is scheduled to run in parallel; otherwise, the pro-
+             cess is preempted and queued as in a queued lock. Thus, implementation of a
+             synchronization lock depends on scheduling decisions in the system.
+             10.4.1 Special Hardware for Process Synchronization
+             Some systems use special hardware to avoid the performance problems caused
+             by queued, spin, and sleep locks. The Sequent Balance system uses a special bus
+             called the system link and interface controller (SLIC) for synchronization. SLIC
+             consists of a special 64-bit register in each CPU in the system. The registers
+             of different CPUs are connected over the SLIC bus (see Figure 10.6). Each bit
+             represents a spin lock. Thus SLIC can support 64 spin locks. When a CPU C1
+             wishes to set a lock Lk, it tries to set the corresponding bit, say bk, in its special
+
+
+
+                       Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  351
+                                   SLIC bus          ...
+                        C1                       C2  SLIC
+                                                     register
+                                                     ...
+                                   Memory bus
+Figure 10.6 SLIC bus.
+register. If the bit is not already set, an attempt to set it results in communication
+over the SLIC bus. If no other CPU is simultaneously trying to set the same bit,
+the lock is awarded to C1 and bit bk is set in the special registers of all CPUs. C1
+can now proceed with its execution. When it releases the lock, bit bk is reset in
+special registers of all CPUs. If two or more CPUs simultaneously try to set the
+same lock, the hardware arbiter awards the lock to one CPU. The attempt to set
+lock Lk fails if bit bk is already set on behalf of some other CPU. In this case, the
+CPU keeps spinning on this lock, i.e., on bit bk of its special register.
+The advantage of the SLIC approach is that a CPU spins on a lock located
+within the CPU. Therefore spinning does not generate memory or network traffic.
+Use of spinning rather than sleeping also avoids use of interprocessor interrupts
+for synchronization. Use of a special synchronization bus relieves pressure on the
+memory bus. This is a significant advantage when memory traffic density is high.
+10.4.2 A Scalable Software Scheme for Process
+Synchronization
+We describe a scheme for process synchronization in NUMA and NORMA archi-
+tectures that achieves scalable performance by minimizing the synchronization
+traffic to nonlocal memory units in a NUMA architecture and over the network
+in a NORMA architecture. It does not require any special hardware and provides
+an effect that is analogous to the SLIC chip. It also avoids the lock starvation
+problem of spin locks.
+The scheme uses two types of locks. A primary lock is like a conventional
+lock used for synchronization. When a process is unable to set a primary lock, it
+creates a shadow lock in the local memory of the node where it resides, associates
+the shadow lock with the primary lock, and spins on the shadow lock. This way
+spinning does not generate nonlocal memory traffic or network traffic. When
+a process wishes to reset a primary lock that it has set, it checks whether any
+shadow locks are associated with the primary lock. If so, it resets one of the
+shadow locks, which enables one of the processes waiting for the primary lock to
+proceed; otherwise, it resets the primary lock.
+Figure 10.7 illustrates an implementation of this scheme, using the same
+notation as in Figure 10.5. A queue of shadow locks is maintained for each
+primary lock. Each entry in the queue contains the address of a shadow lock
+and a pointer to the next shadow lock in the queue. If a process fails to set the

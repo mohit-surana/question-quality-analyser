@@ -1,0 +1,95 @@
+Practical Issues in Using Distributed Control Algorithms
+                   18.8.1 Resource Management
+                   When a process requests access to a resource, the resource allocator must find
+                   the location of matching resources in the system, determine their availability,
+
+
+
+                                                                  Chapter 18        Distributed  Control  Algorithms  737
+                Node Ni                                                      Node Nk
+        Resource manager                                              Resource manager
+                1                           3,5
+        Name             Resource                                 Resource              Name
+        server           allocator                                allocator             server
+                2
+                1  ,  3  ,  5                                         3  ,   5
+                                            4
+                               Pi                                 Pk            rk
+Figure  18.11   Resource allocation  in  a  distributed  system.
+and allocate one of the resources. Figure 18.11 contains a schematic of resource
+allocation. A resource manager exists in each node of the system. It consists of
+a name server and a resource allocator. The numbered arcs in the schematic
+correspond to steps in the following resource allocation procedure:
+1.  When process Pi wishes to use a resource named resj, it constructs a pair
+    (resj, Pi) and forwards it to the resource manager in its node. The resource
+    manager forwards the request to the name server.
+2.  The name server locates resj, using its name and attributes, and constructs
+    the triple (rk, Nk, Pi), where resj is resource rk at node Nk. It forwards the
+    triple to the resource allocator.
+3.  The resource allocator finds whether resource rk of node Nk is available. If
+    so, it passes Pk, the id of the resource controller process for the resource, to
+    Pi. It also sends an allocation message containing the id of Pi to Pk. If the
+    resource is not available, it stores the request in a queue of pending requests.
+    The request would be honored sometime in future when the resource becomes
+    available.
+4.  Process Pk interacts with process Pi to fulfill Pi's service requests.
+5.  After completing its use of the resource, process Pi makes a release request.
+    The resource manager sends a release                 message  to     Pk     and   allocates  the
+    resource to a pending request, if any.
+    The important issue in Step 3 is ensuring noninterference of resource alloca-
+tors of different nodes. It could be achieved either through a distributed mutual
+exclusion algorithm or through an election algorithm to elect a coordinator that
+would perform all allocations in the system. Use of a mutual exclusion algorithm
+would incur overhead at every allocation. Use of an election algorithm would
+avoid this overhead. However, it would require a protocol to ensure that resource
+status information would be accessible to a new coordinator if the present coor-
+dinator failed. A simpler arrangement would be to entrust allocation of resources
+in a node to the resource allocator of that node. This scheme would avoid the
+overhead of mutual exclusion, election, and fault tolerance. It would also be more
+robust because a resource could be allocated to a process so long as the nodes
+
+
+
+738  Part 5  Distributed Operating Systems
+             containing the process and the resource, and a network path between the two,
+             are functional. The name server in each node would have to be updated when
+             resources are added. This problem can be solved through an arrangement of name
+             servers as in the domain name service (DNS) (see Section 16.4.1), where only the
+             name server of a domain needs to be updated when a resource is added.
+             18.8.2 Process Migration
+             The process migration mechanism is used to transfer a process between nodes in
+             a distributed system. It is used to achieve load balancing, or to reduce network
+             traffic involved in utilizing a remote resource. It may also be used to provide
+             availability of services when a node has to be shut down for maintenance. The
+             schematic Figure 18.8 made process migration look deceptively simple; however,
+             in reality, it is quite complex for several reasons. The state of a process comprises
+             the following:
+             ·  Process identifier and ids of its child processes
+             ·  Pending signals and messages
+             ·  Current working directory and internal ids of files (see Section 13.8)
+             Two kinds of problems are faced in transferring process state: Process state is
+             often spread across many data structures in the kernel, so it is difficult to extract
+             it from kernel data structures. Process ids and internal ids of files have to be
+             unique in the node where a process operates; such information may have to be
+             changed when a process is migrated. This requirement creates difficulties in pro-
+             cess synchronization and in I/O. Providing globally unique process ids as in the
+             Sun Cluster (see Section 16.3) and transparency of resources and services (see
+             Section 16.8) are important in this context.
+                When a message is sent to a process, the DNS converts the process name
+             (<host_name>, <process_id>) into the pair (IP address, <process_id>). Such a
+             message may be in transit when its destination process is migrated, so arrange-
+             ments have to be made to deliver the message to the process at its new location.
+             Each node could maintain the residual state of a process that was migrated out of
+             it. This state would contain the id of the node to which it was migrated. If a mes-
+             sage intended for such a process reaches this node, the node would simply redirect
+             the message to its new location. If the process had been migrated out of that node
+             in the meanwhile, the node would similarly redirect the message, using the resid-
+             ual state maintained by it. In this manner a message would reach the process
+             irrespective of its migration. However, the residual state causes poor reliability
+             because a message would not be delivered if the residual state of its destination
+             process in some node has been lost or has become inaccessible because of a fault.
+             An alternative scheme would be to inform the changed location of a process (as
+             also a change in the process id, if any) to all processes that communicate with it.
+             This way, a message could be sent to the process directly at its new location. If
+             a message that was in transit when a process was migrated reached the old node
+             where the process once existed, the node would return a "no longer here" reply

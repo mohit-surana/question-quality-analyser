@@ -1,0 +1,73 @@
+INTERPROCESS COMMUNICATION
+Processes frequently need to communicate with other processes. For example,
+in a shell pipeline, the output of the first process must be passed to the second
+process, and so on down the line. Thus there is a need for communication between
+processes, preferably in a well-structured way not using interrupts.  In the follow-
+ing sections we will look at some of the issues related to this InterProcess Com-
+munication, or IPC.
+Very briefly, there are three issues here. The first was alluded to above: how
+one process can pass information to another. The second has to do with making
+sure two or more processes do not get in each other's way, for example, two proc-
+esses in an airline reservation system each trying to grab the last seat on a plane for
+a different customer. The third concerns proper sequencing when dependencies are
+present: if process A produces data and process B prints them, B has to wait until A
+has produced some data before starting to print. We will examine all three of these
+issues starting in the next section.
+It is also important to mention that two of these issues apply equally well to
+threads. The first one--passing information--is easy for threads since they share a
+common address space (threads in different address spaces that need to communi-
+cate fall under the heading of communicating processes).  However, the other
+two--keeping out of each other's hair and proper sequencing--apply equally well
+to threads. The same problems exist and the same solutions apply.     Below we will
+discuss the problem in the context of processes, but please keep in mind that the
+same problems and solutions also apply to threads.
+2.3.1 Race Conditions
+In some operating systems, processes that are working together may share
+some common storage that each one can read and write. The shared storage may be
+in main memory (possibly in a kernel data structure) or it may be a shared file; the
+location of the shared memory does not change the nature of the communication or
+the problems that arise. To see how interprocess communication works in practice,
+let us now consider a simple but common example: a print spooler. When a process
+
+
+
+120                                 PROCESSES AND THREADS                              CHAP. 2
+wants to print a file, it enters the file name in a special spooler directory.         Another
+process, the printer daemon, periodically checks to see if there are any files to be
+printed, and if there are, it prints them and then removes their names from the di-
+rectory.
+      Imagine that our spooler directory has a very large number of slots, numbered
+0, 1, 2, ..., each one capable of holding a file name. Also imagine that there are two
+shared variables, out, which points to the next file to be printed, and in, which
+points to the next free slot in the directory. These two variables might well be kept
+in a two-word file available to all processes.              At a certain instant, slots 0 to 3 are
+empty (the files have already been printed) and slots 4 to 6 are full (with the names
+of files queued for printing).           More or less simultaneously, processes A and B
+decide they want to queue a file for printing. This situation is shown in Fig. 2-21.
+                                                 Spooler
+                                                 directory
+                                         4       abc                 out = 4
+                         Process A       5       prog.c
+                                         6       prog.n
+                                         7                           in = 7
+                         Process B
+            Figure 2-21. Two processes want to access shared memory at the same time.
+      In jurisdictions where Murphy's law is applicable, the following could hap-
+pen.  Process         A  reads  in  and  stores  the     value,  7,  in  a     local  variable  called
+next  free     slot.     Just then a clock interrupt occurs and the CPU decides that proc-
+ess A has run long enough, so it switches to process B. Process B also reads in and
+also gets a 7.  It, too, stores it in its local variable next            free  slot.  At this instant
+both processes think that the next available slot is 7.
+      Process B now continues to run.            It stores the name of its file in slot 7 and
+updates in to be an 8. Then it goes off and does other things.
+      Eventually, process A runs again, starting from the place it left off.           It looks at
+next  free     slot, finds a 7 there, and writes its file name in slot 7, erasing the name
+that process B just put there. Then it computes next             free    slot + 1, which is 8, and
+sets in to 8.   The spooler directory is now internally consistent, so the printer dae-
+mon will not notice anything wrong, but process B will never receive any output.
+User B will hang around the printer for years, wistfully hoping for output that
+ If something can go wrong, it will.
+
+
+
+SEC. 2.3                 

@@ -7,6 +7,7 @@ import sys
 
 import nltk
 import numpy as np
+import gensim
 from gensim import corpora, models, similarities
 from gensim.matutils import cossim, sparse2full
 from nltk import stem
@@ -107,7 +108,6 @@ def predict_know_label(question, models, subject='ADA'):
 
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
 
-
 def load_texts(subject):
     global docs, texts
     docs = {}
@@ -130,40 +130,39 @@ def load_texts(subject):
 #                            MAIN BEGINS HERE                           #
 #########################################################################
 if __name__ == '__main__':
-    load_texts(subject)
     MODEL = ['LDA', 'LSA', 'D2V']
 
     USE_MODELS = MODEL[0:1]
 
     dictionary = corpora.Dictionary(texts)
-    dictionary.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' %subject))  # store the dictionary, for future reference
+    dictionary.save('models/Nsquared/%s/dictionary.dict' %subject)  # store the dictionary, for future reference
 
     corpus = []
     for k in docs:
         corpus.extend([dictionary.doc2bow(sentence.split()) for sentence in nltk.sent_tokenize(docs[k])])
-    corpora.MmCorpus.serialize(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/corpus.mm' %subject), corpus)  # store to disk, for later use
+    corpora.MmCorpus.serialize('models/Nsquared/%s/corpus.mm' %subject, corpus)  # store to disk, for later use
 
     tfidf_model = models.TfidfModel(corpus, id2word=dictionary, normalize=True)
-    tfidf_model.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/tfidf.model' %subject))
+    tfidf_model.save('models/Nsquared/%s/tfidf.model' %subject)
 
     if MODEL[0] in USE_MODELS:
         TRAIN_LDA = False
         
         if TRAIN_LDA:
-            lda = models.LdaModel(corpus=corpus,
+            lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 10000),
                                   id2word=dictionary,
                                   num_topics=len(docs),
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
             lda.minimum_phi_value = 0.01
-            lda.per_word_topics = False
             lda.minimum_probability = 0.01
-            lda.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
+            lda.per_word_topics = False
+            lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
-            lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
+            lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
             lda.minimum_phi_value = 0.01
             lda.minimum_probability = 0.01
             lda.per_word_topics = False
@@ -178,14 +177,14 @@ if __name__ == '__main__':
                                         onepass=False,
                                         power_iters=2,
                                         extra_samples=300)
-            lsi_model.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.model' %subject))
+            lsi_model.save('models/Nsquared/%s/lsi.model' %subject)
             
             print('Model training done')
         else:
-            lsi_model = models.LsiModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.model' %subject))
+            lsi_model = models.LsiModel.load('models/Nsquared/%s/lsi.model' %subject)
         
         index = similarities.MatrixSimilarity(lsi_model[tfidf_model[corpus]], num_features=lsi_model.num_topics)
-        index.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lsi.index' %subject))
+        index.save('models/Nsquared/%s/lsi.index' %subject)
 
     if MODEL[2] in USE_MODELS:
         
@@ -203,12 +202,12 @@ if __name__ == '__main__':
                 d2v_model.alpha -= 0.002
                 d2v_model.min_alpha = d2v_model.alpha
             
-            d2v_model.save(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/d2v.model' %subject))
+            d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
         else:
-            d2v_model = models.doc2vec.Doc2Vec.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/d2v.model' %subject))
+            d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
 
 
-    clf = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
+    clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
 
     x_data, y_data = get_data_for_knowledge_classifiers(subject)
 
@@ -217,19 +216,15 @@ if __name__ == '__main__':
     y = np.bincount(y_data)
     ii = np.nonzero(y)[0]
     print(list(zip(ii, y[ii])))
-
     data_dict = { i : [] for i in range(4) }
     for x, y in zip(x_data, y_data):
         data_dict[y] = x
-
     x_data = []
     y_data = []
-
     for k in data_dict:
         x = data_dict[k][:128]
         x_data.extend(x)
         y_data.extend(list(np.repeat(k, len(x))))
-
     x_all_data = list(zip(x_data, y_data))
     random.shuffle(x_all_data)
     x_data = [x[0] for x in x_all_data]
@@ -284,6 +279,7 @@ if __name__ == '__main__':
     #print('Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
 
     x_train, x_test, y_train, y_test = train_test_split(y_probs, y_data, test_size=0.20)
+    print(x_train[0])
 
 
     ###### NEURAL NETWORK BASED SIMVAL -> KNOW MAPPING ########
@@ -291,12 +287,25 @@ if __name__ == '__main__':
         ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 8), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
         ann_clf.fit(x_train, y_train)
         print('ANN training completed')
-        joblib.dump(ann_clf, os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
+        joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
 
     else:
-        ann_clf = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
+        ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+        
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
     print(classification_report(y_real, y_pred))
 
     print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+
+    ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
+    ann_clf.fit(x_train, y_train)
+    print('ANN training completed')
+    joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
+
+    y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
+
+    print(classification_report(y_real, y_pred))
+
+    print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+

@@ -1,0 +1,69 @@
+SYSTEM STRUCTURE
+In the previous sections we examined Windows as seen by the programmer
+writing code for user mode. Now we are going to look under the hood to see how
+the system is organized internally, what the various components do, and how they
+interact with each other and with user programs.             This is the part of the system
+seen by the programmer implementing low-level user-mode code, like subsystems
+and native services, as well as the view of the system provided to device-driver
+writers.
+Although there are many books on how to use Windows, there are many fewer
+on how it works inside.    One of the best places to look for additional information
+on this topic is Microsoft Windows Internals, 6th ed., Parts 1 and 2 (Russinovich
+and Solomon, 2012).
+11.3.1 Operating System Structure
+As described earlier, the Windows operating system consists of many layers, as
+depicted in Fig. 11-4.     In the following sections we will dig into the lowest levels
+of the operating system: those that run in kernel mode.           The central layer is the
+NTOS      kernel  itself,  which  is  loaded  from  ntoskrnl.exe      when          Windows  boots.
+NTOS itself consists of two layers, the executive, which containing most of the
+services, and a smaller layer which is (also) called the kernel and implements the
+underlying thread scheduling and synchronization abstractions (a kernel within the
+kernel?), as well as implementing trap handlers, interrupts, and other aspects of
+how the CPU is managed.
+
+
+
+878                                CASE STUDY 2: WINDOWS 8                                           CHAP. 11
+     The     division  of    NTOS  into  kernel       and  executive       is  a         reflection  of  NT's
+VAX/VMS roots. The VMS operating system, which was also designed by Cutler,
+had four hardware-enforced layers: user, supervisor, executive, and kernel corres-
+ponding to the four protection modes provided by the VAX processor architecture.
+The Intel CPUs also support four rings of protection, but some of the early target
+processors for NT did not, so the kernel and executive layers represent a soft-
+ware-enforced       abstraction,   and  the  functions     that       VMS  provides            in  supervisor
+mode, such as printer spooling, are provided by NT as user-mode services.
+     The kernel-mode layers of NT are shown in Fig. 11-11.                               The kernel layer of
+NTOS is shown above the executive layer because it implements the trap and inter-
+rupt mechanisms used to transition from user mode to kernel mode.
+User mode                       System library kernel user-mode dispatch routines (ntdll.dll)
+Kernel mode
+             NTOS                                     Trap/exception/interrupt dispatch
+             kernel
+             layer                 CPU scheduling and synchronization: threads, ISRs, DPCs, APCs
+                    Drivers        Procs and threads  Virtual memory     Object manager        Config manager
+             File systems,
+             volume manager,       LPC                Cache manager      I/O manager           Security monitor
+             TCP/IP stack,
+             net interfaces                           Executive run-time library
+             graphics devices,
+             all other devices                                                                 NTOS executive layer
+                                             Hardware abstraction layer
+Hardware                     CPU,  MMU, interrupt controllers, memory, physical devices, BIOS
+                             Figure 11-11. Windows kernel-mode organization.
+     The uppermost layer in Fig. 11-11 is the system library (ntdll.dll), which ac-
+tually runs in user mode.          The system library includes a number of support func-
+tions for the compiler run-time and low-level libraries, similar to what is in libc in
+UNIX.      ntdll.dll also contains special code entry points used by the kernel to ini-
+tialize threads and dispatch exceptions and user-mode APCs (Asynchronous Pro-
+cedure Calls). Because the system library is so integral to the operation of the ker-
+nel, every user-mode process created by NTOS has ntdll mapped at the same fixed
+address.     When NTOS is initializing the system it creates a section object to use
+when mapping ntdll, and it also records addresses of the ntdll entry points used by
+the kernel.
+     Below the NTOS kernel and executive layers is a layer of software called the
+HAL (Hardware Abstraction Layer) which abstracts low-level hardware details
+like access to device registers and DMA operations, and the way the parentboard
+
+
+
+SEC. 11.3                     

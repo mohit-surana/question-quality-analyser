@@ -1,0 +1,423 @@
+Heap Management
+             11.5.1 Reuse of Memory
+             The speed of memory allocation and efficient use of memory are the two fun-
+             damental concerns in the design of a memory allocator. Stack-based allocation
+             addresses both these concerns effectively since memory allocation and deallo-
+             cation is very fast--the allocator modifies only the SB, FB, and TOS pointers
+             to manage the free and allocated memory (see Section 11.4.1)--and released
+             memory is reused automatically when fresh allocations are made. However, stack-
+             based allocation cannot be used for data that are allocated and released in an
+             unordered manner. Hence heap allocators are used by run-time support of pro-
+             gramming languages to manage PCD data, and by the kernel to manage its own
+             memory requirements.
+             In a heap, reuse of memory is not automatic; the heap allocator must try
+             to reuse a free memory area while making fresh allocations. However, the size
+             of a memory request rarely matches the size of a previously used memory area,
+             so some memory area is left over when a fresh allocation is made. This memory
+             area will be wasted if it is too small to satisfy a memory request, so the allocator
+             must carefully select the memory area that is to be allocated to the request.
+             This requirement slows down the allocator. Because of the combined effect of
+             unusably small memory areas and memory used by the allocator for its own data
+
+
+
+                                                                              Chapter 11          Memory Management  381
+Table 11.2          Kernel Functions for Reuse of Memory
+Function                          Description
+Maintain a free list              The free list contains information about each free
+                                  memory area. When a process frees some memory,
+                                  information about the freed memory is entered in the
+                                  free list. When a process terminates, each memory area
+                                  allocated to it is freed, and information about it is
+                                  entered in the free list.
+Select a memory area for          When a new memory request is made, the kernel selects
+allocation                        the most suitable memory area from which memory
+                                  should be allocated to satisfy the request.
+Merge free memory areas           Two or more adjoining free areas of memory can be
+                                  merged to form a single larger free area. The areas
+                                  being merged are removed from the free list and the
+                                  newly formed larger free area is entered in it.
+               (a)                                                      -
+                    free list
+                    header     a  x   b        y   c         d             z        e
+               (b)                -                                     -
+                    free list
+                    header     a  x   b        y   c         d             z        e
+Figure  11.10  Free area management:  (a)  singly  linked  free  list;  (b) doubly  linked  free  list.
+structures, a heap allocator may not be able to ensure a high efficiency of memory
+utilization.
+The kernel uses the three functions described in Table 11.2 to ensure efficient
+reuse of memory. The kernel maintains a free list to keep information about free
+memory areas in the system. A memory request is satisfied by using the free
+memory area that is considered most suitable for the request, and the memory
+left over from this memory area is entered in the free list. The allocation policy
+prevents free memory areas from becoming unusably small. The kernel tries to
+merge free areas of memory into larger free areas so that larger memory requests
+can be granted.
+11.5.1.1 Maintaining a Free List
+The kernel needs to maintain two items of control information for each memory
+area in the free list: the size of the memory area and pointers used for forming
+the list. To avoid incurring a memory overhead for this control information, the
+kernel stores it in the first few bytes of a free memory area itself. Figure 11.10(a)
+shows a singly linked free list in a heap that contains five areas marked a­e in
+active use and three free areas x­z. Each memory area in the free list contains
+its size and a pointer to the next memory area in the list. This organization is
+
+
+
+382  Part 3  Memory Management
+             simple; however, it requires a lot of work when a memory area is to be inserted
+             into the list or deleted from it. For example, deletion of a memory area from the
+             list requires a change in the pointer stored in the previous memory area in the list.
+             Insertion of a memory area at a specific place in the list also involves a similar
+             operation. Therefore, insertion and deletion operations on a singly linked list are
+             performed by processing the list from its start. It requires an order of m work,
+             where m is the number of memory areas in the free list.
+                A doubly linked free list is used to facilitate faster insertion and deletion
+             operations on memory areas. Each entry in this list contains two pointers--one
+             points to the next memory area in the list, while the other points to the previous
+             memory area [see Figure 11.10(b)]. If a memory area with a specific address is to
+             be deleted from the list, the kernel can simply take the pointers to the previous and
+             following memory areas in the list, and manipulate the pointers in these areas to
+             perform the deletion. Analogous operations would suffice to add a new memory
+             area at a specific place in the list. Thus the amount of work required to insert or
+             delete a memory area is a constant, irrespective of the number of memory areas
+             in the free list.
+             11.5.1.2 Performing Fresh Allocations by Using a Free List
+             Three techniques can be used to perform memory allocation by using a free list:
+             ·  First-fit technique
+             ·  Best-fit technique
+             ·  Next-fit technique
+                To service a request for n bytes of memory, the first-fit technique uses the
+             first free memory area it can find whose size is  n bytes. It splits this memory
+             area in two parts. n bytes are allocated to the request, and the remaining part
+             of the memory area, if any, is put back into the free list. This technique may
+             split memory areas at the start of the free list repeatedly, so free memory areas
+             become smaller with time. Consequently, the allocator may not have any large free
+             memory areas left to satisfy large memory requests. Also, several free memory
+             areas may become unusably small.
+                The best-fit technique uses the smallest free memory area with size  n. Thus,
+             it avoids needless splitting of large memory areas, however it tends to generate a
+             small free memory area at every split. Hence in the long run it, too, may suffer
+             from the problem of numerous small free memory areas. The best-fit technique
+             also incurs higher allocation overhead because it either has to process the entire
+             free list at every allocation or maintain the free list in ascending order by size of
+             free memory areas.
+                The next-fit technique remembers which entry in the free list was used to make
+             the last allocation. To make a new allocation, it searches the free list starting from
+             the next entry and performs allocation using the first free memory area of size  n
+             bytes that it can find. This way, it avoids splitting the same free area repeatedly
+             as in the first-fit technique and also avoids the allocation overhead of the best-fit
+             technique.
+
+
+
+                                                                                     Chapter 11            Memory  Management        383
+        (a)
+             Free list
+             header                 200           170                  500
+        (b)
+                               100  50                                 400                      First-fit
+                                         50       170                                100
+        (c)
+                                              100 50                   400                      Best-fit
+                                    200                20                            100
+        (d)
+                               100            50                       400                      Next-fit
+                                         100      120                                100
+Figure  11.11 (a) Free  list;  (b)­(d) allocation using    first-fit,  best-fit and  next-fit.
+                                                                                                                                     ·
+First, Best, and Next-Fit Allocation                                                                               Example     11.6
+The free list in Figure 11.11(a) contains three free memory areas of size 200,
+170, and 500 bytes, respectively. Processes make allocation requests for 100,
+50, and 400 bytes. The first-fit technique will allocate 100 and 50 bytes from
+the first free memory area, thus leaving a free memory area of 50 bytes, and
+allocates 400 bytes from the third free memory area. The best-fit technique
+will allocate 100 and 50 bytes from the second free memory area, leaving a
+free memory area of 20 bytes. The next-fit technique allocates 100, 50, and 400
+bytes from the three free memory areas.
+                                                                                                           ·
+Knuth (1973) presents experimental data on memory reuse and concludes
+that both first-fit and next-fit perform better than best-fit. However, next-fit
+tends to split all free areas if the system has been in operation long enough,
+whereas first-fit may not split the last few free areas. This property of first-fit
+facilitates allocation of large memory areas.
+11.5.1.3 Memory Fragmentation
+Definition 11.3 Memory Fragmentation                       The existence of unusable areas in
+the memory of a computer system.
+Table 11.3 describes two forms of memory fragmentation. External fragmen-
+tation occurs when a memory area remains unused because it is too small to be
+allocated. Internal fragmentation occurs when some of the memory allocated to
+a process remains unused, which happens if a process is allocated more memory
+than it needs. In Figure 11.11(c), best-fit allocation creates a free memory area of
+20 bytes, which is too small to be allocated. It is an example of external fragmen-
+tation. We would have internal fragmentation if an allocator were to allocate, say,
+100 bytes of memory when a process requests 50 bytes; this would happen if an
+
+
+
+384  Part 3  Memory Management
+             Table 11.3         Forms of Memory Fragmentation
+             Form of fragmentation    Description
+             External fragmentation   Some area of memory is too small to be allocated.
+             Internal fragmentation   More memory is allocated than requested by a process,
+                                      hence some of the allocated memory remains unused.
+             allocator dealt exclusively with memory blocks of a few standard sizes to limit its
+             overhead.
+             Memory fragmentation results in poor utilization of memory. In this section,
+             and in the remainder of this chapter, we discuss several techniques to avoid or
+             minimize memory fragmentation.
+             11.5.1.4 Merging of Free Memory Areas
+             External fragmentation can be countered by merging free areas of memory to
+             form larger free memory areas. Merging can be attempted every time a new
+             memory area is added to the free list. A simple method would be to search the
+             free list to check whether any adjoining area is already in the free list. If so, it can
+             be removed from the free list and merged with the new area to form a larger free
+             memory area. This action can be repeated until no more merging is possible, and
+             the free memory area at hand can be added to the free list. However, this method
+             is expensive because it involves searching of the free list every time a new memory
+             area is freed. We now describe two generic techniques that perform merging more
+             efficiently; in Section 11.5.2 we describe a special merging technique used in the
+             buddy system allocator.
+             Boundary Tags      A tag is a status descriptor for a memory area. It consists of an
+             ordered pair giving allocation status of the area; whether it is free or allocated,
+             represented by F or A, respectively; and its size. Boundary tags are identical tags
+             stored at the start and end of a memory area, i.e., in the first and last few bytes
+             of the area. If a memory area is free, the free list pointer can be put following the
+             tag at its starting boundary. Figure 11.12 shows this arrangement.
+             When an area of memory becomes free, the kernel checks the boundary tags
+             of its neighboring areas. These tags are easy to find because they immediately
+             precede and follow boundaries of the newly freed area. If any of the neighbors
+             are free, it is merged with the newly freed area. Figure 11.13 shows actions to
+             be performed when memory areas X, Y, and Z are freed while a system using
+             boundary tags is in the situation depicted in Figure 11.13(a). In Figure 11.13(b),
+             memory area X is freed. Only its left neighbor is free, and so X is merged with
+             it. Boundary tags are now set for the merged area. The left neighbor already
+             existed in the free list, so it is enough to simply change its size field. Only the right
+             neighbor of Y is free. Hence when Y is freed, it is merged with its right neighbor
+             and boundary tags are set for the merged area. Now the free list has to be modified
+             to remove the entry for the right neighbor and add an entry for the merged area
+             [see Figure 11.13(c)]. Both neighbors of memory area Z are free. Hence when Z
+
+
+
+                                                                                           Chapter 11  Memory Management  385
+                            boundary tag                           boundary tag
+                        of left neighbor                           of right neighbor
+                                           allocated/free area
+                    free list
+                    pointer        allocation          allocation
+                                   status      size    status      size
+                                   boundary tag        boundary tag
+Figure  11.12  Boundary tags and the free list pointer.
+               (a)             30  30  40      40  40     40   20  20    45        45  30  30
+                    Free list  F   F   A   X   A   A   Y  A    F   F     A   Z     A   F   F
+                    header
+               (b)             70              70  40     40   20  20    45        45  30  30
+                               F               F   A   Y  A    F   F     A   Z     A   F   F
+               (c)             30  30  40      40  60              60    45        45  30  30
+                               F   F   A   X   A   F               F     A   Z     A   F   F
+               (d)             30  30  40      40  40     40   95                          95
+                               F   F   A   X   A   A   Y  A    F                           F
+                                       Status flag values: A: Allocated, F: Free
+Figure 11.13   Merging using boundary tags: (a) free list; (b)­(d) freeing of areas X, Y, and Z,
+respectively.
+is freed, it is merged with both of them to form a single free area. The size field
+of the left neighbor's entry in the free list is modified to reflect the merging. Since
+the right neighbor also had an entry in the free list, the free list is modified to
+remove this entry [see Figure 11.13(d)]. Whenever merging occurs with the right
+neighbor, management of the free list requires an order of m work, where m is
+the number of entries in the free list. As mentioned earlier in Section 11.5.1.1,
+maintaining the free list as a doubly linked list would enable this operation to be
+performed efficiently.
+A relation called the 50-percent rule holds when we use this method of merg-
+ing. When an area of memory is freed, the total number of free areas in the system
+increases by 1, decreases by 1 or remains the same depending on whether the area
+being freed has zero, two, or one free areas as neighbors. These areas of memory
+are shown as areas of type C, A, and B, respectively, in the following:
+               A               B   C       B           A                 B      B          A
+When an allocation is made, the number of free areas of memory reduces by
+1 if the requested size matches the size of some free area; otherwise, it remains
+unchanged since the remaining free area would be returned to the free list.
+
+
+
+386  Part 3  Memory Management
+                            (a)
+                                 Free list  a            b          c      d              e
+                                 header
+                            (b)
+                                            a   b     c       d  e
+             Figure  11.14  Memory compaction.
+             Assuming a large memory so that the situation at both ends of memory can be
+             ignored, and assuming that each area of memory is equally likely to be released,
+             we have
+                                 Number of allocated areas, n = #A + #B + #C
+                                 Number     of  free  areas,  m  =  1  (2  ×  #A  +  #B)
+                                                                    2
+             where #A is the number of free areas of type A etc. In the steady state #A = #C.
+             Hence m = n/2, that is, the number of free areas is half the number of allocated
+             areas. This relation is called the 50-percent rule.
+             The 50-percent rule helps in estimating the size of the free list and, hence,
+             the effort involved in an allocation method like the best-fit method that requires
+             the entire free list to be analyzed. It also gives us a method of estimating the free
+             area in memory at any time. If sf is the average size of free areas of memory, the
+             total free memory is sf × n/2.
+             Memory Compaction              In this approach memory bindings are changed in such a
+             manner that all free memory areas can be merged to form a single free memory
+             area. As the name suggests, it is achieved by "packing" all allocated areas toward
+             one end of the memory. Figure 11.14 illustrates compaction to merge free areas.
+             Compaction is not as simple as suggested by this discussion because it invol-
+             ves movement of code and data in memory. If area b in Figure 11.14 contains a
+             process, it needs to be relocated to execute correctly from the new memory area
+             allocated to it. Relocation involves modification of all addresses used by a process,
+             including addresses of heap-allocated data and addresses contained in general-
+             purpose registers. It is feasible only if the computer system provides a relocation
+             register (see Section 11.3.1); relocation can be achieved by simply changing the
+             address in the relocation register.
+             11.5.2 Buddy System and Power-of-2 Allocators
+             The buddy system and power-of-2 allocators perform allocation of memory
+             in blocks of a few standard sizes. This feature leads to internal fragmentation
+             because some memory in each allocated memory block may be wasted. How-
+             ever, it enables the allocator to maintain separate free lists for blocks of different
+             sizes. This arrangement avoids expensive searches in a free list and leads to fast
+             allocation and deallocation.
+             Buddy System Allocator            A buddy system splits and recombines memory blocks
+             in a predetermined manner during allocation and deallocation. Blocks created by
+             splitting a block are called buddy blocks. Free buddy blocks are merged to form
+             the block that was split to create them. This operation is called coalescing. Under
+
+
+
+                                                                Chapter 11  Memory Management                387
+this system, adjoining free blocks that are not buddies are not coalesced. The
+binary buddy system, which we describe here, splits a block into two equal-size
+buddies. Thus each block b has a single buddy block that either precedes b in
+memory or follows b in memory. Memory block sizes are 2n for different values
+of n  t, where t is some threshold value. This restriction ensures that memory
+blocks are not meaninglessly small in size.
+The buddy system allocator associates a 1-bit tag with each block to indicate
+whether the block is allocated or free. The tag of a block may be located in the
+block itself, or it may be stored separately. The allocator maintains many lists of
+free blocks; each free list is maintained as a doubly linked list and consists of free
+blocks of identical size, i.e., blocks of size 2k for some k  t. Operation of the
+allocator starts with a single free memory block of size 2z, for some z > t. It is
+entered in the free list for blocks of size 2z. The following actions are performed
+when a process requests a memory block of size m. The system finds the smallest
+power of 2 that is  m. Let this be 2i. If the list of blocks with size 2i is not empty,
+it allocates the first block from the list to the process and changes the tag of the
+block from free to allocated. If the list is empty, it checks the list for blocks of
+size 2i+1. It takes one block off this list, and splits it into two halves of size 2i.
+These blocks become buddies. It puts one of these blocks into the free list for
+blocks of size 2i and uses the other block to satisfy the request. If a block of size
+2i+1 is not available, it looks into the list for blocks of size 2i+2, splits one of them
+to obtain blocks of size 2i+1, splits one of these blocks further to obtain blocks
+of size 2i, and allocates one of them, and so on. Thus, many splits may have to
+be performed before a request can be satisfied.
+When a process frees a memory block of size 2i, the buddy system changes
+the tag of the block to free and checks the tag of its buddy block to see whether
+the buddy block is also free. If so, it merges these two blocks into a single block of
+size 2i+1. It now repeats the coalescing check transitively; i.e., it checks whether
+the buddy of this new block of size 2i+1 is free, and so on. It enters a block in a
+free list only when it finds that its buddy block is not free.
+                                                                                                             ·
+Operation of a Buddy System                                                                   Example  11.7
+Figure 11.15 illustrates operation of a binary buddy system. Parts (a) and (b)
+of the figure show the status of the system before and after the block marked
+with the  symbol is released by a process. In each part we show two views of
+the system. The upper half shows the free lists while the lower half shows the
+layout of memory and the buddy blocks. For ease of reference, corresponding
+blocks in the two halves carry identical numbers. The block being released has
+a size of 16 bytes. Its buddy is the free block numbered 1 in Figure 11.15(a),
+and so the buddy system allocator merges these two blocks to form a new
+block of 32 bytes. The buddy of this new block is block 2, which is also free.
+So block 2 is removed from the free list of 32-byte blocks and merged with the
+new block to form a free block of size 64 bytes. This free block is numbered 4
+in Figure 11.15(b). It is now entered in the appropriate free list.
+                                                                                           ·
+
+
+
+388  Part 3  Memory Management
+                             Block       Free list       Free           Block   Free list          Free
+                             size        header     memory blocks       size    header      memory blocks
+                                  16                     1              16               -
+                                  32                     2              32               -
+                                  64     -                              64                         4
+                             128                                        ...
+                                                                        128
+                                                         3                                         3
+                        Memory layout
+                             1        2                  3                   4                     3
+                        Buddy blocks     layout
+                             1
+                                      2
+                                                                             4
+                                                         3                                         3
+                        (a)                                             (b)
+             Figure  11.15   Buddy       system  operation  when  a  block is released.
+                    The check for a buddy's tag can be performed efficiently because block
+             sizes are powers of 2. Let the block being freed have a size of 16 bytes. Since
+             16 is 24, its address is of the form . . . y0000, where four 0s follow y, and y
+             is  0  or  1.   Its  buddy  block      has  the   address  . . . z0000      where  z  =     1 - y.  This
+             address can be obtained simply by performing an exclusive or operation with
+             a number . . . 10000, i.e., with 24. For example, if the address of a block is
+             101010000, its buddy's address is 101000000. In general, address of the buddy
+             of a block of size 2n bytes can be found by performing exclusive or with 2n.
+             This advantage is applicable even if the tags are stored separately in a bitmap
+             (see Exercise 11.8).
+             Power-of-2 Allocator        As in the binary buddy system, the sizes of memory blocks
+             are powers of 2, and separate free lists are maintained for blocks of different
+             sizes. Similarity with the buddy system ends here, however. Each block contains
+             a header element that contains the address of the free list to which it should be
+             added when it becomes free. When a request is made for m bytes, the allocator
+             first checks the free list containing blocks whose size is 2i for the smallest value
+             of i such that 2i  m. If this free list is empty, it checks the list containing blocks
+             that are the next higher power of 2 in size, and so on. An entire block is allocated
+             to a request, i.e., no splitting of blocks takes place. Also, no effort is made to
+             coalesce adjoining blocks to form larger blocks; when released, a block is simply
+             returned to its free list.
+
+
+
+                                                               Chapter 11     Memory Management  389
+System operation starts by forming blocks of desired size and entering them
+into the appropriate free lists. New blocks can be created dynamically either
+when the allocator runs out of blocks of a given size, or when a request cannot
+be fulfilled.
+11.5.3 Comparing Memory Allocators
+Memory allocators can be compared on the basis of speed of allocation and
+efficient use of memory. The buddy and power-of-2 allocators are faster than the
+first-fit, best-fit, and next-fit allocators because they avoid searches in free lists.
+The power-of-2 allocator is faster than the buddy allocator because it does not
+need to perform splitting and merging.
+To compare memory usage efficiency in different memory allocators, we
+define a memory utilization factor as follows:
+               Memory utilization factor =      memory in use
+                                            total memory committed
+where memory in use is the amount of memory being used by requesting pro-
+cesses, and total memory committed includes memory allocated to processes, free
+memory existing with the memory allocator, and memory occupied by the alloca-
+tor's own data structures. Memory in use may be smaller than memory allocated
+to processes because of internal fragmentation and smaller than total memory
+committed because of external fragmentation. The largest value of the memory
+utilization factor represents the best-case performance of an allocator and the
+smallest value at which the allocator fails to grant a memory request represents
+its worst-case performance.
+Allocators using the first-fit, best-fit, or next-fit techniques do not incur
+internal  fragmentation.  However,  external    fragmentation  limits  their  worst-
+case performance because free blocks may be too small to satisfy a request
+(see Exercise 11.4). The buddy and power-of-2 allocators allocate blocks whose
+sizes are powers of 2, so internal fragmentation exists unless memory requests
+match block sizes. These allocators also use up additional memory to store the free
+list headers and tags or header elements for blocks. In a power-of-2 allocator, the
+header element in a block cannot be used by a process. Thus the useful portion of
+a block is somewhat smaller than a power of 2. If a memory request is for an area
+that is exactly a power of 2 in size, this method uses up twice that amount of mem-
+ory. A power-of-2 allocator fails to satisfy a request if a sufficiently large free block
+does not exist. Since it does not merge free blocks into larger blocks, this situation
+can arise even when the total free memory available in smaller-size blocks exceeds
+the size of the request. In a buddy system this situation can arise only if adjoining
+free blocks are not buddies. This is rare in practice. In fact, Knuth (1973) reports
+that in simulation studies the best-case performance of a buddy allocator was
+95 percent.

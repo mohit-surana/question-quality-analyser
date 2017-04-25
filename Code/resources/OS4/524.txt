@@ -1,0 +1,129 @@
+Interface Between File System and IOCS
+The file system uses the IOCS to perform I/O operations and the IOCS imple-
+ments them through kernel calls. The interface between the file system and the
+IOCS consists of three data structures--the file map table (FMT), the file con-
+trol block (FCB), and the open files table (OFT)--and functions that perform
+I/O operations. Use of these data structures avoids repeated processing of file
+attributes by the file system, and provides a convenient method of tracking the
+status of ongoing file processing activities.
+As discussed earlier in Section 13.7.2, the file system allocates disk space to
+a file and stores information about the allocated disk space in the file map table
+(FMT). The FMT is typically held in memory during the processing of a file.
+A file control block (FCB) contains all information concerning an ongoing
+file processing activity. This information can be classified into the three categories
+shown in Table 13.3. Information in the file organization category is either sim-
+ply extracted from the file declaration statement in an application program, or
+inferred from it by the compiler, e.g., information such as the size of a record and
+number of buffers is extracted from a file declaration, while the name of the access
+method is inferred from the type and organization of a file. The compiler puts this
+information as parameters in the open call. When the call is made during execu-
+tion of the program, the file system puts this information in the FCB. Directory
+information is copied into the FCB through joint actions of the file system and
+the IOCS when a new file is created. Information concerning the current state of
+processing is written into the FCB by the IOCS. This information is continually
+updated during the processing of a file.
+The open files table (OFT) holds the FCBs of all open files. The OFT resides
+in the kernel address space so that user processes cannot tamper with it. When a
+      Table 13.3  Fields in the File Control Block (FCB)
+      Category                     Fields
+      File organization            File name
+                                   File type, organization, and access method
+                                   Device type and address
+                                   Size of a record
+                                   Size of a block
+                                   Number of buffers
+                                   Name of access method
+      Directory information        Information about the file's directory entry
+                                   Address of parent directory's FCB
+                                   Address of the file map table (FMT)
+                                   (or the file map table itself)
+                                   Protection information
+      Current state of processing  Address of the next record to be processed
+                                   Addresses of buffers
+
+
+
+504  Part 4  File Systems and I/O Management
+                internal idalpha= 6                        File alpha
+                                              fcbalpha     is opened                     fmtalpha
+                                                                           alpha
+                     fmtalpha                              File alpha
+                                                           is closed       Directory
+                                     Open files table
+                                              (OFT)
+                     File system data structures
+                               in memory
+             Figure  13.18  Interface between file system  and IOCS--OFT,  FCB and FMT.
+             file is opened, the file system stores its FCB in a new entry of the OFT. The offset
+             of this entry in the OFT is called the internal id of the file. The internal id is passed
+             back to the process, which uses it as a parameter in all future file system calls.
+                Figure 13.18 shows the arrangement set up when a file alpha is opened.
+             The file system copies fmtalpha in memory; creates fcbalpha, which is an FCB for
+             alpha, in the OFT; initializes its fields appropriately; and passes back its offset
+             in OFT, which in this case is 6, to the process as internal_idalpha.
+                The file system supports the following operations:
+             ·  open (<file_name>, <processing_mode>, <file_attributes>)
+             ·  close (<internal_id_of_file>)
+             ·  read/write (<internal_id_of_file>, <record_info>, <I/O_area_addr>)
+                <file_name> is an absolute or relative path name of the file to be opened.
+             <processing_mode> indicates what kind of operations will be performed on the
+             file--the values "input," "create," and "append" of it have obvious meanings,
+             while "update" indicates that the process intends to update existing data in place.
+             <file_attributes> is a list of file attributes, such as the file's organization, record
+             size, and protection information. It is relevant only when a new file is being
+             created--attributes from the list are copied into the directory entry of the file at
+             this time. <record_info> indicates the identity of the record to be read or written
+             if the file is being processed in a nonsequential mode. <I/O_area addr> indicates
+             the address of the memory area where data from the record should be read, or
+             the memory area that contains the data to be written into the record.
+                The IOCS interface supports the following operations:
+             ·  iocs-open (<internal_id_of_file>, <directory_entry_address>)
+             ·  iocs-close (<internal_id_of_file>, <directory_entry_address>)
+             ·  iocs-read/write (<internal_id_of_file>, <record_info>, <I/O_area_
+                addr>)
+                Each of these operations is a generic operation for the various file organi-
+             zations supported by the file system. It works in two parts: It performs some
+
+
+
+                                                                                Chapter 13   File  Systems  505
+                                            Open  files table (OFT)
+                       internal_ idalpha                             Directory
+                                                                     ~U         alpha ...
+                                                  fcbalpha
+<file declaration>
+                                                                                3         8
+open (alpha,           open (alpha,`read',        1                      2
+    `read')            <file_ attributes>)
+read (alpha,           read (internal idalpha,    4         File         5
+    <record_info>,     <record_info>,                       system                 IOCS
+    xyz)               Ad(xyz))
+close (alpha)          close (internal idalpha)   6                      7
+Source program         Compiled program                     File system and IOCS actions
+Figure 13.19 Overview  of file processing.
+actions that are common to all file organizations, and invokes a module of the
+access method mentioned in the FCB of the file for performing special actions
+required for specific file organizations.
+    The iocs-open and iocs-close operations are specialized read and
+write operations that copy information into the FCB from the directory entry
+or from the FCB into the directory entry. The iocs-read/write operations
+access the FCB to obtain information concerning the current state of the file
+processing activity, such as the address of the next record to be processed. When
+a write operation requires more disk space, iocs-write invokes a function of
+the file system to perform disk space allocation (see Section 13.7).
+    Figure 13.19 is a schematic diagram of the processing of an existing file alpha
+in a process executed by some user U. The compiler replaces the statements open,
+read, and close in the source program with calls on the file system operations
+open, read, and close, respectively. The following are the significant steps in
+file processing involving the file system and the IOCS, shown by numbered arrows
+in Figure 13.19:
+1.  The process executes the call open (alpha, `read,' <file_attributes>). The
+    call returns with internal_idalpha if the processing mode "read" is consistent
+    with protection information of the file. The process saves internal_idalpha
+    for use while performing operations on file alpha.
+2.  The file system creates a new FCB in the open files table. It resolves the
+    path name alpha as described later in Section 13.9.1, locates the directory
+    entry of alpha, and stores the information about it in the new FCB for use
+    while closing the file. Thus, the new FCB becomes fcbalpha. The file system
+    now makes a call iocs-open with internal_idalpha and the address of the
+    directory entry of alpha as parameters.

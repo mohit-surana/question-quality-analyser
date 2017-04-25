@@ -1,0 +1,199 @@
+Distributed Mutual Exclusion
+             18.3.1 A Permission-Based Algorithm
+             The algorithm by Ricart and Agrawala (1981) grants entry to a critical section
+             in FCFS order. The algorithm is fully distributed in that all processes participate
+             equally in deciding which process should enter a CS next. A process that wishes to
+             enter a CS sends timestamped request messages to all other processes and waits
+             until it receives a "go ahead" reply from each of them. If the system contains n
+             processes, 2 ×(n - 1) messages have to be exchanged before a process can enter
+             the critical section. Safety of mutual exclusion follows from the fact that at most
+             one process can obtain (n - 1) replies at any time. Entry is granted in FCFS
+             order, hence every process gains entry to CS in finite time. This feature satisfies
+             the liveness property.
+             Algorithm 18.1 Ricart-Agrawala Algorithm
+             1.  When a process Pi wishes to enter a CS: Pi sends request messages of the
+                 form ("request", Pi, <timestamp>) to all other processes in the system, and
+                 becomes blocked.
+             2.  When a process Pi receives a request message from process Pr:
+                 a. If Pi is not interested in using a CS, it immediately sends a "go ahead"
+                   reply to Pr.
+                 b. If Pi itself wishes to enter a CS, it sends a "go ahead" reply to Pr if the
+                   timestamp in the received request is smaller than the timestamp of its
+
+
+
+                                              Chapter 18       Distributed Control Algorithms  719
+     own request; otherwise, it adds the process id found in the request to the
+     pending list.
+     c. If Pi is in a CS, it simply adds the request message to the pending list.
+3.  When a process Pi receives n - 1 "go ahead" replies: The process becomes
+    active and enters a CS.
+4.  When a process Pi exits a CS: The process sends a "go ahead" reply to every
+    process whose request message exists in its pending list.
+    Table 18.3 shows how steps of Algorithm 18.1 are implemented in the con-
+trol part of a process. The first column shows steps in the basic computation
+performed by a process. It consists of a loop in which the process requests entry
+to a CS, performs some processing inside the CS, and exits from it. The other
+columns show actions of the control part of the algorithm.
+Table 18.3      Basic and Control Actions of Pi in a Fully Distributed
+Mutual Exclusion Algorithm
+                                   Algorithm steps executed by the control part
+Actions of basic part        Steps       Details
+repeat forever
+{ Request CS entry }         1, 2(b), 3  i.   Send request messages
+                                              ("request", Pi, <timestamp>)
+                                              to all other processes and
+                                              request the kernel to block the
+                                              basic part.
+                                         ii.  When a request message is
+                                              received from another
+                                              process, send a "go ahead"
+                                              reply if the request has a
+                                              smaller timestamp; otherwise,
+                                              add the process id found in
+                                              the request to the pending list.
+                                         iii. Count the "go ahead" replies
+                                              received. Activate the basic
+                                              part of the process after
+                                              receiving (n - 1) replies.
+{ Critical Section }         2(c)        Enter all received requests in the
+                                         pending list.
+{ Perform CS exit }          4           Send a "go ahead" reply to every
+                                         process whose request message
+                                         exists in its pending list.
+{ Rest of the cycle }        2(a)        When a request is received, send
+                                         a "go ahead" reply immediately.
+end
+
+
+
+720  Part 5  Distributed Operating Systems
+                 The number of messages required per CS entry can be reduced by requiring
+             a process Pi to obtain permissions from a subset Ri of processes in the system.
+             Ri is called the request set of Pi. Safety must be ensured by forming request sets
+             carefully. The algorithm by Maekawa (1985) uses request sets of size                     n, and
+             uses the following rules to ensure safety (see Exercise 18.3):
+             1.  For all Pi     :   Pi   Ri.
+             2.  For all Pi, Pj     :   Ri  Rj    = .
+             18.3.2 Token-Based Algorithms for Mutual Exclusion
+             A token represents the privilege to use a CS; only a process possessing the token
+             can enter the CS. Safety of a token-based algorithm follows from this rule. When
+             a process makes a request to enter a CS, the mutual exclusion algorithm ensures
+             that the request reaches the process possessing the token and that the token is
+             eventually transferred to the requesting process. This feature ensures liveness.
+             Logical complexity and cost of a mutual exclusion algorithm depend on prop-
+             erties of the system model. Hence token-based algorithms use abstract system
+             models in which edges represent the paths used to pass control messages, and the
+             graph formed by nodes and these edges has certain nice properties. We discuss
+             two algorithms that use abstract ring and tree topologies.
+             An  Algorithm      Employing       the     Ring      Topology  Figure  18.2  shows  the  logical
+             model of a distributed computation and its abstract unidirectional ring model.
+             The token is an object, i.e., a data structure, containing a request queue. In
+             Figure 18.2(b), the token is currently with process P4, P4 is in a CS, and the
+             request queue in the token contains P2 and P5. The algorithm works as fol-
+             lows: A process that wishes to enter a CS sends a message containing its request
+             and becomes blocked. The message is routed along the ring until it reaches the
+             token holder. If the token holder is currently in a CS, its control part enters the
+             requester's id in the request queue contained in the token. When the token holder
+             finishes using the CS, it removes the first process id from the request queue in the
+             token and sends a message containing the token and the process id. This message
+             is routed along the ring until it reaches the process whose id matches the process
+             id in the message. The control part of this process extracts and keeps the token
+             for future use, and activates its basic part, which enters a CS. In Figure 18.2(b),
+                     P2                                                     P2      P3
+                                              P3
+                                P1              P4                P1                      P4     P2
+                                                                                                 P5
+                     P6                       P5                                              token
+                                                                            P6      P5
+                     (a)                                          (b)
+             Figure  18.2  (a)  System      model; (b)  abstract  system  model.
+
+
+
+                                                                Chapter 18      Distributed Control Algorithms  721
+process P2 would receive the token when P4 exits from its CS. The algorithm is
+shown as Algorithm 18.2. The number of messages exchanged per CS entry is
+order of n, where n is the number of processes.
+Algorithm 18.2 Token-Based Mutual Exclusion Algorithm for a Ring Topology
+1.  When a process Pi wishes to enter a CS: The process sends a request message
+    ("request", Pi) along its out-edge and becomes blocked.
+2.  When a process Pi receives a request message from process Pr: If Pi does not
+    possess the token, it forwards the message along its out-edge. If Pi possesses
+    the token and it is currently not in a CS, it forms the message ("token", Pr)
+    and sends it along its out-edge. If Pi is in a CS, it merely enters Pr in the
+    request queue in the token.
+3.  When a process Pi completes execution of a CS: It checks whether the request
+    queue is empty. If not, it removes the first process id from the queue. Let this
+    id be Pr. It now forms a message ("token", Pr) and sends it along its out-edge.
+4.  When a process Pi receives the message ("token", Pj): Pi checks whether
+    Pi = Pj. If so, it creates a local data structure to store the token, becomes
+    active and enters its  CS.  If  Pi  =   Pj, it merely forwards the message      along
+    its out-edge.
+Raymond's Algorithm        Raymond's algorithm uses an abstract inverted tree as
+the system model. The inverted tree differs from a conventional tree in that a tree
+edge points from a node to its parent in the tree. Pholder designates the process in
+possession of the token. Raymond's algorithm has four key features--invariants
+that ensure that a request reaches Pholder, a local queue of requesters in each
+node, features to reduce the number of request messages and provisions to ensure
+liveness.
+    Figure 18.3 depicts the model of a distributed computation and its abstract
+inverted tree model. Process P5 holds the token, so it is at the root of the tree.
+Processes P1 and P3, which are its children, have out-edges pointing to P5. Simi-
+larly, out-edges (P6, P1), (P2, P3), and (P4, P3) point from a process to its parent.
+The algorithm maintains three invariants concerning the abstract inverted tree:
+1. Process Pholder is the root of the tree.
+2. Each process in the system belongs to the tree.
+                   P2      P4                    Pholder            P5
+              P1                        P6       P1                         P3
+                   P3      P5                               P6  P2              P4
+              (a)                                (b)
+Figure  18.3  (a) System model; (b) abstract system model.
+
+
+
+722  Part 5  Distributed Operating Systems
+             3. Each process Pi = Pholder has exactly one out-edge (Pi, Pj ), where Pj is its
+                 parent in the tree.
+             These invariants ensure that the abstract system model contains a path from every
+             process Pi = Pholder to Pholder. This property is useful for ensuring that a request
+             made by Pi would reach Pholder. These invariants are maintained by changing
+             edges in the abstract inverted tree when a process Pk sends the token to another
+             process, say process Pj--the edge (Pj, Pk) is reversed. These actions reverse the
+             direction of the tree edges along which the token is sent, and establish a path
+             from previous holder of the token to the new holder. For example, edge (P3, P5)
+             in Figure 18.3(b) would be reversed when P5 sends the token to P3.
+                 Each process maintains a local queue of requesters. A request message con-
+             tains a single field requester_id. A process wishing to enter a CS puts its own id
+             in its local queue and also sends a request message along its out-edge. When a
+             process Pi receives a request message, it enters the requesting process's id in its
+             local queue. It now forms a request message in which it puts its own id, i.e., Pi,
+             and sends it along its out-edge. Thus the request reaches Pholder along a path
+             ensured by invariant 3; however, the requester id is different in each edge of the
+             path. To reduce the number of request messages, a process does not originate or
+             send a request if a request sent earlier by it has not been honored yet. (It knows
+             this because it would have received the token if its request had been honored.)
+                 Pholder enters all requests it receives in its local queue. On exiting the CS,
+             it removes the first process id from its local queue and sends the token to that
+             process. The process receiving the token sends it to the first process in its local
+             queue, unless its own id is at the head of the local queue. This action is repeated
+             until the token reaches a process that is at the head of its own local queue. The
+             control part of this process keeps the token with itself. Its basic part becomes
+             active and enters a CS.
+                 Liveness requires that every process that requests entry to a CS gets to enter it
+             in finite time. To ensure this property, a process transferring the token to another
+             process checks whether its local queue is empty. If the local queue still contains
+             some requests, it forms a new request with its own id in the requester_id field and
+             sends it to the process to which it has sent the token. This action ensures that it will
+             receive the token sometime in future for servicing other requests in its local queue.
+             Algorithm 18.3 Raymond's Algorithm
+             1.  When a process Pi wishes to enter a CS: Process Pi enters its own id in its
+                 local queue. It also sends a request message containing its own id along its
+                 outgoing edge if it has not sent a request message earlier, or if its last request
+                 has been already honored.
+             2.  When a process Pi receives a request message from process Pr: Process Pi
+                 performs the following actions:
+                 a. Put Pr in its local queue.
+                 b. If Pi  =  Pholder, send a request message containing its own id, i.e., Pi,
+                 along its outgoing edge if it has not sent a request message earlier or if its
+                 last request has been already honored.

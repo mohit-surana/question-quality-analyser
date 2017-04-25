@@ -1,7 +1,7 @@
 import os
 import sys
 
-import dill
+import pickle
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 
@@ -223,12 +223,12 @@ class BiDirectionalRNN:
 
 
 def save_model(clf):
-    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'wb') as f:
-        dill.dump(clf, f)
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model_pkl.pkl'), 'wb') as f:
+        pickle.dump(clf, f)
 
 def load_model():
-    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'rb') as f:
-        clf = dill.load(f)
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model_pkl.pkl'), 'rb') as f:
+        clf = pickle.load(f)
     return clf
 
 if __name__ == "__main__":
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     X_data = []
     Y_data = []
 
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.1, 0.15, 0.2, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 
     X_data = X_train + X_test
     Y_data = Y_train + Y_test
@@ -264,9 +264,9 @@ if __name__ == "__main__":
                 finally:
                     print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
 
-        dill.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
+        pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
     else:
-        w2v = dill.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
+        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
 
     X_data = sent_to_glove(X_data, w2v)
 
@@ -294,7 +294,7 @@ if __name__ == "__main__":
     EPOCHS = 5
     LEARNING_RATE = 0.010
 
-    TRAIN = False
+    TRAIN = True
     RETRAIN = False
 
     BRNN = None

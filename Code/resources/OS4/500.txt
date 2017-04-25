@@ -1,0 +1,142 @@
+Overview of File Processing
+We use the term file processing to describe the general sequence of operations
+of opening a file, reading data from the file or writing data into it, and closing
+the file. Figure 13.1 shows the arrangement through which an OS implements file
+processing activities of processes. Each directory contains entries describing some
+files. The directory entry of a file indicates the name of its owner, its location on a
+disk, the way its data is organized, and which users may access it in what manner.
+   The code of a process Pi is shown in the left part of Figure 13.1. When it
+opens a file for processing, the file system locates the file through the directory
+                                                                                               479
+
+
+
+480  Part 4  File  Systems and I/O Management
+                                                            Directory structure
+                                                                                            Directory
+                                                                                                       File
+                                                                                                       system
+                           Process                                                          File
+                           Pi                  beta         beta                 phi
+                   open         beta
+                                                            Logical
+                   read         beta,                       view of
+                           ...                              file data
+                   close         beta
+                                                                                 File data
+                                                                                 in memory
+                                                                                                       IOCS
+                                                                                 File data
+                                                                                 on disk
+                   Figure  13.1  File system and the IOCS.
+                   structure, which is an arrangement of many directories. In Figure 13.1, there are
+                   two files named beta located in different directories. When process Pi opens
+                   beta, the manner in which it names beta, the directory structure, and identities
+                   of the user who initiated process Pi will together determine which of the two files
+                   will be accessed.
+                   A file system provides several file types (see Section 13.2). Each file type pro-
+                   vides its own abstract view of data in a file--we call it a logical view of data.
+                   Figure 13.1 shows that file beta opened by process Pi has a record-oriented log-
+                   ical view, while file phi has a byte stream­oriented logical view in which distinct
+                   records do not exist.
+                   The IOCS organizes a file's data on an I/O device in accordance with its file
+                   type. It is the physical view of the file's data. The mapping between the logical
+                   view of the file's data and its physical view is performed by the IOCS. The IOCS
+                   also provides an arrangement that speeds up a file processing activity--it holds
+                   some data from a file in memory areas organized as buffers, a file cache, or a disk
+                   cache. When a process performs a read operation to get some data from a file,
+                   the IOCS takes the data from a buffer or a cache if it is present there. This way,
+                   the process does not have to wait until the data is read off the I/O device that
+                   holds the file. Analogously, when a process performs a write operation on a file,
+                   the IOCS copies the data to be written in a buffer or in a cache. The actual I/O
+
+
+
+                                                                Chapter 13               File  Systems  481
+operations to read data from an I/O device into a buffer or a cache, or to write it
+from there onto an I/O device, are performed by the IOCS in the background.
+13.1.1 File System and the IOCS
+A file system views a file as a collection of data that is owned by a user, can be
+shared by a set of authorized users, and has to be reliably stored over an extended
+period of time. A file system gives users freedom in naming their files, as an aspect
+of ownership, so that a user can give a desired name to a file without worrying
+whether it conflicts with names of other users' files; and it provides privacy by
+protecting against interference by other users. The IOCS, on the other hand, views
+a file as a repository of data that need to be accessed speedily and are stored on
+an I/O device that needs to be used efficiently.
+   Table 13.1 summarizes the facilities provided by the file system and the IOCS.
+The file system provides directory structures that enable users to organize their
+data into logical groups of files, e.g., one group of files for each professional
+activity. The file system provides protection against illegal file accesses and ensures
+correct operation when processes access and update a file concurrently. It also
+ensures that data is reliably stored, i.e., data is not lost when system crashes occur.
+Facilities of the IOCS are as described earlier.
+   The file system and the IOCS form a hierarchy. Each of them has policies and
+provides mechanisms to implement the policies. In the language of Section 1.1, the
+IOCS and the file system provide different abstractions that lead to the following
+division of functions:
+·  The file system provides an interface through which a process can perform
+   open, read/write, and close operations on files. Its policy modules handle
+   protection and sharing of files during open and read/write operations. Its
+   mechanism modules assist in the implementation of open and close opera-
+   tions by accessing directories. They also pass on read/write requests for file
+   data to the IOCS.
+·  The IOCS policy modules ensure efficient operation of I/O devices and effi-
+   cient file processing in each process through the IOCS mechanism modules.
+   The mechanism modules in the IOCS, in turn, invoke the kernel through
+   system calls to initiate I/O operations.
+   Table 13.1           Facilities Provided by the File System
+   and the Input-Output Control System
+   File System
+   · Directory structures for convenient grouping of files
+   · Protection of files against illegal accesses
+   · File sharing semantics for concurrent accesses to a file
+   · Reliable storage of files
+   Input-Output Control System (IOCS)
+   · Efficient operation of I/O devices
+   · Efficient access to data in a file
+
+
+
+482  Part 4  File Systems and I/O Management
+             Data and Metadata     A file system houses two kinds of data--data contained
+             within files, and data used to access files. We call the data within files file data, or
+             simply data. The data used to access files is called control data, or metadata. In
+             the logical view shown in Figure 13.1, data contained in the directory structure
+             is metadata. As discussed later in this chapter and in Chapter 14, other metadata
+             play a role in implementing file operations.
+             13.1.2 File Processing in a Program
+             At the programming language level, a file is an object that possesses attributes
+             describing the organization of its data and the method of accessing the data.
+             A program contains a declaration statement for a file, which specifies values of
+             its attributes, and statements that open it, perform read/write operations on it,
+             and close it (we call them file processing statements). During execution of the
+             program, file processing is actually implemented by library modules of the file
+             system and the IOCS.
+                  Figure 13.2 illustrates how file processing is actually implemented. The pro-
+             gram of Figure 13.2(a) declares alpha as a sequential-access file that contains
+             records with a size of 60 bytes (see Section 13.2 for a discussion of records in a
+             file). It also contains statements to open alpha and read a record from it. The
+             compiler of the programming language processes the file declaration statement in
+             the program and determines attributes of the file. It now replaces open, close,
+             read, and write statements with calls on file system library modules open,
+             close, read, and write, and passes the file attributes as parameters to the
+             open call [see Figure 13.2(b)]. The file system modules invoke modules of the
+             IOCS to actually perform I/O operations. The linker links the file system library
+             (a)                              (b)                 (c)
+                  file  alpha
+                  sequential
+                  record=60
+                  open  alpha,                call  open(alpha,`       call...
+                     `read'                         read',..)
+                                                                       call...
+                  read  alpha,                call  read(alpha,
+                        xyz                         xyz)
+                                                                       File system
+                                                                       modules open
+                                                                       & close
+                                                                       IOCS module
+                                                                       seq_read
+             Figure  13.2    Implementing a file processing activity: (a) program containing file declaration
+             statements; (b) compiled program showing calls on file system modules; (c) process invoking
+             file system and IOCS modules during operation.

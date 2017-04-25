@@ -1,0 +1,1163 @@
+Synchronization and Scheduling in Multiprocessor Operating Systems
+
+
+10   Chapter
+     Synchronization and
+     Scheduling in
+     Multiprocessor Operating
+     Systems
+     A multiprocessor  system  has  the  potential  to  provide  three  benefits--
+             high throughput, computation speedup, and graceful degradation. High
+             throughput can be obtained by using the CPUs to service many processes
+     simultaneously. Computation speedup for an application can be obtained if many
+     of its processes are serviced by the CPUs at the same time. Graceful degradation is
+     the feature by which the system can continue to operate even if some of its CPUs
+     fail. This way, the system can offer continuity of operation, though with reduced
+     capabilities.
+     To realize the benefits of a multiprocessor system, the operating system
+     exploits the presence of multiple CPUs through three special features: First, a
+     symmetric multiprocessor kernel--SMP kernel for short--permits many CPUs
+     to execute kernel code in parallel so that control functions of the kernel do not
+     become a performance bottleneck. Second, special synchronization locks called
+     spin locks and sleep locks reduce synchronization delays in processes that operate
+     on different CPUs in parallel. Third, scheduling policies such as affinity scheduling
+     and coscheduling ensure that processes of an application can operate efficiently
+     on many CPUs.
+     We begin with an overview of the architecture of multiprocessor systems,
+     which provides the background for a discussion of the three OS features described
+     above.
+     10.1    ARCHITECTURE OF MULTIPROCESSOR SYSTEMS                                         ·
+     Performance of a uniprocessor system depends on the performance of the CPU
+     and memory, which can be enhanced through faster chips, and several levels of
+336
+
+
+
+                      Chapter 10  Synchronization and Scheduling in Multiprocessor Operating  Systems  337
+Table 10.1      Benefits of Multiprocessors
+Benefit               Description
+High throughput       Several processes can be serviced by the CPUs at the
+                      same time. Hence more work is accomplished.
+Computation speedup   Several processes of an application may be serviced at
+                      the same time, leading to a reduction in the duration,
+                      i.e., running time, of an application; it provides better
+                      response times.
+Graceful degradation  Failure of a CPU does not halt operation of the system;
+                      the system can continue to operate with somewhat
+                      reduced capabilities.
+caches. However, chip speeds cannot be increased beyond technological limits.
+Further improvements in system performance can be obtained only by using
+multiple CPUs.
+As a result of the presence of multiple CPUs, multiprocessor architectures
+possess the potential to provide the three benefits summarized in Table 10.1.
+High throughput is possible because the OS can schedule several processes in par-
+allel, and so several applications can make progress at the same time. The actual
+increase in throughput compared with a uniprocessor system may be limited by
+memory contention that occurs when several CPUs try to make memory accesses
+at the same time, which increases the effective memory access time experienced
+by processes. Computation speedup is obtained when processes of an applica-
+tion are scheduled in parallel. The extent of the speedup may be limited by the
+amount of parallelism within an application, that is, whether processes of the
+application can operate without requiring synchronization frequently. Graceful
+degradation provides continuity of operation despite CPU failures. This feature is
+vital for supporting mission-critical applications like online services and real-time
+applications.
+A System Model   Figure 10.1 shows a model of a multiprocessor system. The
+CPUs, the memory, and the I/O subsystem are connected to the interconnection
+network. Each CPU chip may contain level 1 and level 2 caches, i.e., L1 and L2
+caches, that hold blocks of instructions and data recently accessed by the CPU.
+However, for simplicity, we assume that the CPU contains only an L1 cache.
+The memory comprises several memory units. We assume that an L3 cache is
+associated with each memory unit and holds blocks of instructions and data
+accessed recently from it. Every time a CPU or an I/O device wishes to make a
+memory access, the interconnection network establishes a path between it and the
+memory unit containing the required byte, and the access takes place over this
+path. Ignoring delays in the interconnection network, effective memory access
+time depends on hit ratios in the L1, L2, and L3 caches, and on the memory
+access time (see Section 2.2.3).
+
+
+
+338  Part 2  Process Management
+                                      CPU       ...          CPU
+                                      L1 cache               L1 cache
+                                      Interconnection                  I/O
+                                                network
+                                      L3 cache  ...          L3 cache
+                                      Memory                 Memory
+             Figure 10.1 Model   of  multiprocessor system.
+             Cache and TLB Coherence  When processes use shared data, several copies of a
+             data item d may be present in the system at the same time. One of these copies
+             would be in a memory unit and one may exist in the L3 cache associated with
+             the memory unit, while the rest would exist in the L1 caches of CPUs where
+             the processes were scheduled. When a process operating on one CPU updates a
+             copy of d, the other copies of d become stale. Their use by processes would cause
+             correctness and data consistency problems, so the system uses a cache coherence
+             protocol to ensure that a stale copy is never used in a computation.
+             Cache coherence protocols are based on two fundamental approaches, sev-
+             eral variants of which are applied in practice. The snooping-based approach can
+             be used if the interconnection network is a bus. A CPU snoops on the bus to detect
+             messages that concern caching, and eliminates stale copies from its L1 cache. In
+             the write-invalidate variant of this approach, any process updating a copy of a
+             shared data item d is required to update the copy of d existing in memory. Hence
+             the memory never holds a stale copy. A CPU that updates d sends a "cache inval-
+             idate" message for d on the bus. On seeing this message, every snooping CPU
+             discards the copy of d, if present, from its L1 cache. The next time such a CPU
+             accesses d, the value is copied afresh into the CPU's L1 cache.
+             A directory-based cache coherence approach requires maintaining a directory
+             of information about cached copies of data items in the system; the directory could
+             indicate which CPUs contain cached copies of each data item. While updating
+             a data item d, a CPU would send point-to-point cache invalidation signals to
+             these CPUs. Alternatively, the dictionary could indicate the location of the most
+             recently updated copy of each shared data item. When a CPU C1 wishes to access
+             a data item d, it would send a "read d" request to the directory. The directory
+             would send the request to the memory unit or the CPU that has the most recent
+             copy of d in its cache, which would forward the value of d to C1. After the update,
+             the directory entry of d would be set to point to C1.
+             TLB coherence is an analogous problem, whereby information in some entries
+             in a CPU's TLB becomes stale when other CPUs perform page replacements or
+             change access privileges of processes to shared pages. A shared page pi of a process
+             has entries in the TLBs of many CPUs. If a page fault arises in a process operating
+             on one of the CPUs, say, CPU C1, and page pi is replaced by a new page, the TLB
+
+
+
+                    Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  339
+entry of pi in C1 would be erased (see Section 12.2.2.2). The TLB entries of pi in
+other CPUs are now stale, so they need to be erased too. It is achieved through a
+TLB shootdown action, in which CPU C1 sends interprocessor interrupts to other
+CPUs with details of pi's id, and the other CPUs invalidate pi's entries in their
+TLBs. Similar actions are performed when access privileges of shared pages are
+changed. The overhead of a TLB shootdown is reduced in two ways. The page
+table entry of pi indicates which CPUs have TLB entries for pi, and C1 sends the
+interrupts to only these CPUs. A CPU receiving the intimation for shootdown
+could implement it in a lazy, i.e., need-based, manner. If the shootdown concerns
+the currently operating process, it erases the TLB entry immediately; otherwise,
+it queues the intimation and handles it when the process that it concerns is next
+scheduled.
+Classification of Multiprocessor Systems  Multiprocessor systems are classified
+into three kinds of systems according to the manner in which CPUs and memory
+units are associated with one another.
+·  Uniform memory access architecture (UMA architecture): All CPUs in the
+   system can access the entire memory in an identical manner, i.e., with the same
+   access speed. Some examples of UMA architecture are the Balance system
+   by Sequent and VAX 8800 by Digital. The UMA architecture is called the
+   tightly coupled multiprocessor architecture in older literature. It is also called
+   symmetrical multiprocessor (SMP) architecture.
+·  Nonuniform memory access architecture (NUMA architecture): The system
+   consists of a number of nodes, where each node consists of one or more
+   CPUs, a memory unit, and an I/O subsystem. The memory unit of a node
+   is said to be local to the CPUs in that node. Other memory units are said
+   to be nonlocal. All memory units together constitute a single address space.
+   Each CPU can access the entire address space; however, it can access the local
+   memory unit faster than it can access nonlocal memory units. Some examples
+   of the NUMA architecture are the HP AlphaServer and the IBM NUMA-Q.
+·  No-remote-memory-access architecture (NORMA architecture): Each CPU
+   has its local memory. CPUs can access remote memory units, but this access is
+   over the network, and so it is very slow compared with access to local memory.
+   The Hypercube system by Intel is an example of a NORMA architecture. A
+   NORMA system is a distributed system according to Definition 3.8; there-
+   fore, we shall not discuss architecture of NORMA systems in this chapter.
+Interconnection Networks  CPUs in a multiprocessor system access memory
+units  through  an  interconnection     network.  Two  important  attributes  of       an
+interconnection network are cost and effective access speed. Table 10.2 lists
+the characteristics and relative advantages of three popular interconnection
+networks. Figure 10.2 contains schematic diagrams of these networks.
+   A bus in a multiprocessor system is simply an extension of a bus in a unipro-
+cessor system. All memory units and all CPUs are connected to the bus. Thus the
+bus supports data traffic between any CPU and any memory unit. However, only
+one CPU­memory conversation can be in progress at any time. The bus is simple
+
+
+
+340  Part 2  Process Management
+             Table 10.2          Features       of Interconnection Networks
+             Interconnection network            Features
+             Bus                                Low cost. Reasonable access speed at low traffic
+                                                density. Only one CPU­memory conversation can be in
+                                                progress at any time.
+             Crossbar switch                    High cost. Low expandability. CPUs and memory units
+                                                are connected to the switch. A CPU­memory
+                                                conversation is implemented by selecting a path
+                                                between a CPU and a memory unit. Permits many
+                                                CPU­memory conversations in parallel.
+             Multistage inter-                  A compromise between a bus and a crossbar switch. It
+             connection network                 consists of many stages of 2 × 2 crossbar switches. A
+             (MIN)                              CPU­memory conversation is set up by selecting a
+                                                path through each stage. Permits some parallel
+                                                conversations.
+                                                                       M0  M1     M2        M3
+                                                                C0
+                                 C0                             C1
+                                                     M0
+                                 C1                             C2
+                                                     M1
+                                 C2                             C3
+                                           Bus                       Crossbar switch
+                                                Bits in address of a memory unit
+                                           First bit     Second bit    Third bit
+                                                01        01               01
+                                     C0         S11       S21              S31        M0
+                                     C1
+                                                                                      M1
+                                                01        01               01
+                                     CC23       S12       S22              S32        MM23
+                                                01        01               01
+                                     CC54       S13       S23              S33        M4
+                                                                                      M5
+                                                01        01               01
+                                     CC76       S14       S24              S34        M6
+                                                                                      M7
+                                                First     Second       Third
+                                           stage          stage            stage
+                                           Multistage interconnection network (MIN)
+             Figure  10.2  Bus,  crossbar switch, and multistage interconnection network        (MIN).
+
+
+
+Chapter 10               Synchronization and Scheduling in Multiprocessor Operating Systems  341
+and inexpensive but it is slow because of bus contention at medium or high traffic
+densities because more than one CPU might wish to access memory at the same
+time. The bus may become a bottleneck when the number of CPUs is increased.
+A crossbar switch reduces the contention problem by providing many paths
+for CPU­memory conversations. It uses a matrix organization wherein CPUs are
+arranged along one dimension and memory units along the other dimension (see
+Figure 10.2). Every CPU and every memory unit has its own independent bus.
+When a CPU, say CPU C1, wishes to access a byte located in a memory unit, say
+memory unit M3, the switch connects the bus of C1 with the bus of M3 and the
+CPU­memory conversation takes place over this path. This conversation does not
+suffer contention due to conversations between other CPUs and other memory
+units because such conversations would use different paths through the switch.
+Thus, the switch can provide a large effective memory bandwidth. Contention
+would arise only if two or more CPUs wish to converse with the same memory
+unit, which has a low probability of happening at low overall traffic densities
+between CPUs and memory units. However, a crossbar switch is expensive. It
+also suffers from poor expandability.
+A multistage interconnection network (MIN) is a compromise between a bus
+and a crossbar switch in terms of cost and parallelism; it has been used in the
+BBN Butterfly, which has a NUMA architecture. Figure 10.2 shows an 8×8
+Omega interconnection network, which permits 8 CPUs to access 8 memory
+units whose binary addresses range from 000 to 111. It contains three stages
+because memory units have three bits in their binary addresses. Each column
+contains 2×2 crossbar switches of one stage in the interconnection network. For
+each switch, a row represents a CPU and a column represents the value of one bit
+in the binary address of the memory unit to be accessed. If an address bit is 0, the
+upper output of the crossbar switch is selected. If the bit is 1, the lower output of
+the switch is selected. These outputs lead to switches in the next stage.
+When CPU C1 wishes to access memory unit M4, the interconnection takes
+place as follows: The address of memory unit M4 is 100. Because the first bit is 1,
+the lower output of switch S11 is selected. This leads to S22, whose upper output
+is selected because the next address bit is 0. This leads to S33, whose upper output
+is selected. It leads to M4 as desired. Switches S13, S24, and S34 would be selected
+if CPU C4 wishes to access memory unit 7. The interconnection network uses
+twelve 2×2 switches. The cost of these switches is much lower than that of an 8×8
+crossbar switch. In general, an N×N multistage network uses log2N stages, and
+each stage contains (N/2) 2×2 switches.
+Other interconnection networks use combinations of these three fundamen-
+tal interconnection networks. For example, the IEEE scalable coherent interface
+(SCI) uses a ring-based network that provides bus-like services but uses fast point-
+to-point unidirectional links to provide high throughput. A crossbar switch is used
+to select the correct unidirectional link connected to a CPU.
+10.1.1 SMP Architecture
+SMP architectures popularly use a bus or a crossbar switch as the interconnec-
+tion network. As discussed earlier, only one conversation can be in progress over
+
+
+
+342          Part 2  Process Management
+                       the bus at any time; other conversations are delayed. Hence CPUs face unpre-
+                       dictable delays while accessing memory. The bus may become a bottleneck and
+                       limit the performance of the system. When a crossbar switch is used, the CPUs
+                       and the I/O subsystem face smaller delays in accessing memory, so system per-
+                       formance would be better than when a bus is used. Switch delays are also more
+                       predictable than bus delays. Cache coherence protocols add to the delays in mem-
+                       ory access in both of these variations of the SMP architecture. Hence SMP systems
+                       do not scale well beyond a small number of CPUs.
+                       10.1.2 NUMA Architecture
+                       Figure 10.3 illustrates the architecture of a NUMA system. Each dashed box
+                       encloses a node of the system. A node could consist of a single-CPU system;
+                       however, it is common to use SMP systems as nodes. Hence a node consists of
+                       CPUs, local memory units, and an I/O subsystem connected by a local intercon-
+                       nection network. Each local interconnection network also has a global port, and
+                       the global ports of all nodes are connected to a high-speed global interconnection
+                       network capable of providing transfer rates upward of 1 GB/s, i.e., 109 bytes per
+                       second. They are used for the traffic between CPUs and nonlocal memory units. A
+                       global port of a node may also contain a cache to hold instructions and data from
+                       nonlocal memories that were accessed by CPUs of the node. The global inter-
+                       connection network shown in Figure 10.3 resembles the IEEE scalable coherent
+                       interface (SCI). It uses a ring-based network that provides fast point-to-point
+                       unidirectional links between nodes.
+                                As in an SMP system, the hardware of a NUMA system must ensure coher-
+                       ence between caches in CPUs of a node. It must also ensure coherence between
+                       nonlocal caches. This requirement can slow down memory accesses and consume
+                       part of the bandwidth of interconnection networks. Ignoring delays in the local
+             CPU       ...       CPU                                     CPU    ...      CPU
+                                           Global
+             L1 cache           L1 cache   port                       L1 cache           L1 cache
+                       Local               Remote             Remote            Local
+     I/O             interconnection    ·  cache              cache        interconnection         I/O
+                       network                                                  network
+                                                   High
+             L3 cache           L3 cache           speed              L3 cache           L3 cache
+                                                   global
+             Memory    ...      Memory             intercon-          Memory    ...      Memory
+                                                   nection
+                                                   network
+                                      ...  Remote             Remote  ...
+                                           cache              cache
+Figure 10.3  NUMA architecture.
+
+
+
+                     Chapter 10  Synchronization and Scheduling in Multiprocessor Operating  Systems  343
+and nonlocal interconnection networks, the effective memory access time to a
+local memory would depend on the hit ratios in the L1 and L3 caches, and the
+memory access time. The access time to a nonlocal memory would depend on
+hit ratios in the L1 cache and the remote cache in the global port, and on the
+memory access time.
+The nodes in a NUMA system are typically high-performance SMP systems
+containing 4 or 8 CPUs. Because of the high speed nonlocal interconnection net-
+work, performance of such NUMA architectures is scalable as nodes are added.
+The actual performance of a NUMA system would depend on the nonlocal mem-
+ory accesses made by processes during their execution. This is an OS issue, which
+we discuss in the next section.
+10.2   ISSUES IN MULTIPROCESSOR OPERATING SYSTEMS                                                     ·
+To realize the benefits of high throughput and computation speedup offered by
+a multiprocessor system, the CPUs must be used effectively and processes of an
+application should be able to interact harmoniously. These two considerations
+will, of course, influence process scheduling and process synchronization. They
+also affect the operating system's own methods of functioning in response to
+interrupts and system calls. Table 10.3 highlights the three fundamental issues
+raised by these considerations.
+Early multiprocessor operating systems functioned in the master­slave mode.
+In this mode, one CPU is designated as the master, and all other CPUs operate as
+its slaves. Only the master CPU executes the kernel code. It handles interrupts and
+system calls, and performs scheduling. It communicates its scheduling decisions
+to other CPUs through interprocessor interrupts ( IPIs). The primary advantage
+of the master­slave kernel structure is its simplicity. When a process makes a
+system call, the CPU on which it operated is idle until either the process resumes
+its operation or the master CPU assigns new work to the CPU. None of these can
+Table 10.3        Issues in  Synchronization and Scheduling
+in a Multiprocessor OS
+Issue                        Description
+Kernel structure             Many CPUs should be able to execute kernel code in
+                             parallel, so that execution of kernel functions does not
+                             become a bottleneck.
+Process synchronization      Presence of multiple CPUs should be exploited to
+                             reduce the overhead of switching between processes,
+                             and synchronization delays.
+Process scheduling           The scheduling policy should exploit presence of
+                             multiple CPUs to provide computation speedup for
+                             applications.
+
+
+
+344  Part 2  Process Management
+             happen until the master CPU handles the system call and performs scheduling.
+             Hence execution of kernel functions by the master is a bottleneck that affects
+             system performance. This problem can be solved by structuring the kernel so
+             that many CPUs can execute its code in parallel.
+             Presence of multiple CPUs can be exploited to reduce synchronization delays.
+             In a uniprocessor system, letting a process loop until a synchronization condi-
+             tion is met denies the CPU to other processes and may lead to priority inversion
+             (see Section 6.5.1). Hence synchronization is performed through blocking of a
+             process until its synchronization condition is met. However, in a multiproces-
+             sor system, synchronization through looping does not lead to priority inversion
+             because the process holding the lock can execute on another CPU in parallel with
+             the looping process. It would be preferable to let a process loop, rather than block
+             it, if the amount of time for which it would loop is less than the total CPU overhead
+             of blocking it and scheduling another process, and activating and rescheduling it
+             sometime in future. This condition would be met if a process looping for entry to
+             a critical section and the holder of the critical section are scheduled in parallel.
+             Multiprocessor operating systems provide special synchronization techniques for
+             exploiting this feature.
+             Scheduling of processes is influenced by two factors--cache performance
+             during operation of a process, and synchronization requirements of processes
+             of an application. Scheduling a process on the same CPU every time may lead
+             to a high cache hit ratio, which would improve performance of the process and
+             also contribute to better system performance. If the processes of an application
+             interact frequently, scheduling them at the same time on different CPUs would
+             provide them an opportunity to interact in real time, which would lead to a
+             speedup of the application. For example, a producer and a consumer in a single-
+             buffer producers­consumers system may be able to perform several cycles of
+             producing and consuming of records in a time slice if they are scheduled to run
+             in parallel.
+             Thus, kernel structure and the algorithms it uses for scheduling and syn-
+             chronization together determine whether a multiprocessor OS will achieve high
+             throughput. However, computer systems grow in size with advances in technology
+             or requirements of their users, so another aspect of performance, called scalabil-
+             ity, is equally important. Scalability of a system indicates how well the system will
+             perform when its size grows. The size of a multiprocessor OS may grow through
+             addition of more CPUs, memory units and other resources to the system, or
+             through creation of more processes in applications. Two kinds of performance
+             expectations arise when a system grows in size--the throughput of the system
+             should increase linearly with the number of CPUs and delays faced by individual
+             processes, due to either synchronization or scheduling, should not increase as the
+             number of processes in the system increases.
+             Scalability is important in the design of both hardware and software. Inter-
+             connection technologies that work well when the system contains a small number
+             of CPUs and memory units may not work as well when their number grows. To be
+             scalable, the effective bandwidth of an interconnection network should increase
+             linearly as the number of CPUs is increased. As we discussed in Section 10.1,
+
+
+
+                  Chapter 10    Synchronization and Scheduling in Multiprocessor Operating  Systems  345
+the crossbar switch is more scalable than the bus as an interconnection network.
+In the software realm, special techniques are employed to ensure scalability of
+algorithms. We will discuss this aspect in Sections 10.4 and 10.5.
+10.3     KERNEL STRUCTURE                                                                            ·
+The kernel of a multiprocessor operating system for an SMP architecture is called
+an SMP kernel. It is structured so that any CPU can execute code in the kernel, and
+many CPUs could do so in parallel. This capability is based on two fundamental
+provisions: The code of the SMP kernel is reentrant (see Section 11.3.3 for a
+discussion of reentrant code), and the CPUs executing it in parallel coordinate
+their activities through synchronization and interprocessor interrupts.
+Synchronization   The kernel uses binary semaphores to ensure mutual exclusion
+over kernel data structures (see Section 6.9)--we will refer to them as mutex
+locks. Locking is said to be coarse-grained if a mutex lock controls accesses to a
+group of data structures, and it is said to be fine-grained if a mutex lock controls
+accesses to a single data item or a single data structure. Coarse-grained locking
+provides simplicity; however, two or more of the data structures controlled by
+a lock cannot be accessed in parallel, so execution of kernel functionalities may
+become a bottleneck. Fine-grained locking permits CPUs to access different data
+structures in parallel. However, fine-grained locking may increase the locking
+overhead because a CPU executing the kernel code would have to set and release
+a larger number of locks. It may also cause deadlocks if all CPUs do not set the
+locks in the same order. Hence deadlock prevention policies such as the resource
+ranking policy (see Section 8.8) would have to be used--numerical ranks could
+be associated with locks and a CPU could set locks in the order of increasing
+ranks.
+   Good performance of SMP kernels is obtained by ensuring parallelism
+without incurring substantial locking overhead. It is achieved through two
+means:
+·  Use of separate locks for kernel functionalities: CPUs can perform different
+   kernel functionalities in parallel without incurring high locking overhead.
+·  Partitioning of the data structures of a kernel functionality: CPUs can perform
+   the same kernel functionality in parallel by locking different partitions of the
+   data structures. Locking can be dispensed with altogether by permanently
+   associating a different partition with each CPU.
+Heap Management   Parallelism in heap management can be provided by main-
+taining  several  free  lists,  i.e.,  lists  of  free  memory  areas    in  the  heap
+(see Section 11.5.1). Locking is unnecessary if each CPU has its own free list;
+however, this arrangement would degrade performance because the allocation
+decisions would not be optimal. Forming separate free lists to hold free memory
+areas of different sizes and letting a CPU lock an appropriate free list would pro-
+vide parallelism between CPUs that seek memory areas of different sizes. It would
+
+
+
+346  Part 2  Process Management
+                                 CPU  Assigned
+                     Lawt        id   work          Lrq
+                                 C1          Pi                    Pi       Highest-priority queue
+                                 C2          Pj                    Pj       Lower-than-highest
+                                                                   ...      priority queue
+                           Assigned workload table                          Lowest-priority queue
+                                      (AWT)
+             Figure  10.4  Scheduling data structures in  an  SMP  kernel.
+             also avoid suboptimal performance caused by associating a free list permanently
+             with a CPU.
+             Scheduling          Figure 10.4 illustrates simple scheduling data structures used by
+             an SMP kernel. CPUs C1 and C2 are engaged in executing processes Pi and
+             Pj, respectively. The ready queues of processes are organized as discussed in
+             Section 7.4.3--each ready queue contains PCBs of ready processes having a spe-
+             cific priority. The kernel maintains an additional data structure named assigned
+             workload table (AWT) in which it records the workload assigned to various CPUs.
+             Mutex locks called Lrq and Lawt guard the ready queues data structure and the
+             AWT, respectively. Let us assume that CPUs set these locks in the order Lrq
+             followed by Lawt.
+             However, use of the scheduling data structures shown in Figure 10.4 suffers
+             from heavy contention for mutex locks Lrq and Lawt because every CPU needs
+             to set and release these locks while scheduling. To reduce this overhead, some
+             operating systems partition the set of processes into several subsets of processes,
+             and entrust each subset to a different CPU for scheduling. In this arrangement,
+             the ready queues and the assigned workload table get partitioned on a per-CPU
+             basis. Now, each CPU would access the ready queues data structure that has only
+             the ready processes in its charge. In a preemptible kernel, mutex locks would still
+             be needed to avoid race conditions on each of the per-CPU data structures because
+             the CPU may be diverted due to interrupts; however, these locks would rarely
+             face contention, so the synchronization overhead would be low. The price for this
+             reduction in the synchronization overhead is either poor system performance
+             because some CPUs may be idle while others are heavily loaded, or the overhead
+             of balancing the load across the CPUs by periodically transferring some processes
+             from heavily loaded CPUs to lightly loaded CPUs.
+             An SMP kernel provides graceful degradation because it continues to oper-
+             ate despite failures, even though its efficiency may be affected. For example,
+             failure of a CPU when it is not executing kernel code does not interfere with
+             operation of other CPUs in the system. Hence they would continue to execute
+             normally. Nonavailability of the failed CPU would affect the process whose code
+             it was executing when the failure occurred. It would also affect throughput and
+             response times in the system to some extent, as fewer processes can be scheduled in
+             parallel.
+
+
+
+                   Chapter 10   Synchronization and Scheduling in Multiprocessor Operating  Systems  347
+NUMA Kernel  CPUs in a NUMA system experience different memory access
+times for local and nonlocal memory. A process would operate more efficiently
+if instructions and operands accessed by it are found predominantly in local
+memory. In keeping with this principle, each node in a NUMA system has its
+own separate kernel, and exclusively schedules processes whose address spaces
+are in local memory of the node. This approach is analogous to the partitioning
+of processes across CPUs of an SMP system, hence it inherits the drawbacks of
+that arrangement.
+Operating systems for most NUMA architectures generalize this concept
+of managing each node separately. They use the notion of an application region
+to ensure good performance of an application. An application region consists
+of a resource partition and an instance of the kernel. The resource partition
+contains one or more CPUs, some local memory units and a few I/O devices. The
+kernel of the application region manages processes of only one application. The
+advantage of this arrangement is that the kernel can optimize the performance
+of the application through clever scheduling. It can also ensure high hit ratios
+in the L1 cache by scheduling a process on the same CPU most of the time.
+Good hit ratios are obtained in the L3 cache as well because memory units in the
+application region contain address spaces of processes of only one application.
+Use of a separate kernel for a node of a NUMA system or for an application
+region also has some disadvantages. Accesses to nonlocal memory units become
+more complex, since they span the domains of more than one kernel. The sepa-
+rate kernel arrangement also suffers from the generic problems associated with
+partitioning--underutilization of resources may result because idle resources in a
+partition cannot be used by processes of other partitions. Reliability is also poor
+because a computation has to be aborted or delayed if some resource (including
+a CPU) in one partition fails.
+10.4  PROCESS SYNCHRONIZATION                                                                        ·
+Process synchronization involves use of critical sections or indivisible signaling
+operations. As discussed in Section 6.5.2, each of these is implemented by using
+a lock variable that has only two possible values--open and closed. A process
+cannot begin execution of a critical section or an indivisible operation if the lock
+variable associated with the critical section or indivisible operation has the value
+closed. If it finds the value of the lock variable to be open, it changes the value to
+closed, executes the critical section or indivisible signaling operation, and changes
+the value back to open. A process that finds the value of a lock variable to be
+closed must wait until the value is changed to open. We refer to this arrangement
+involving use of a lock variable as a synchronization lock, or simply a lock, and
+refer to the actions of closing and opening the lock as setting and resetting it.
+Two qualities of synchronization locks are important for performance of a
+multiprocessor system. The first quality is scalability of a synchronization lock,
+which indicates the degree to which the performance of an application using the
+lock is independent of the number of processes in the application and the number
+
+
+
+348  Part 2  Process Management
+             Table 10.4             Kinds   of  Synchronization Locks
+             Lock                                Description
+             Queued lock                         A process waiting for a queued lock becomes blocked
+                                                 and its id is entered into a queue of processes waiting
+                                                 for the lock. The process is activated when the lock is
+                                                 reset and it is the first process in the queue.
+             Spin lock                           If a spin lock is already set when a process tries to set it,
+                                                 the process enters into a busy wait for the lock. The
+                                                 CPU on which the process is operating can handle
+                                                 interrupts during the busy wait.
+             Sleep lock                          When a process waits for a sleep lock, the CPU on
+                                                 which it is running is put into a special sleep state in
+                                                 which it does not execute instructions or process
+                                                 interrupts. The CPU is activated when the CPU that
+                                                 resets the lock sends it an interprocessor interrupt.
+                                         Pi           Pk              Pi               Pi
+                                    C1           C1            C1                  C1      IPI
+                                         L            L               L                L
+                                                      Pi
+                                    (a)          (b)           (c)           (d)
+             Figure  10.5  Synchronization locks in multiprocessor operating systems. (a)         General
+             schematic diagram of a lock guarding a mutual exclusion region; (b) Queued           lock; (c)  Spin
+             lock; (d) Sleep lock.
+             of CPUs in the system. The second quality concerns ability of a CPU to handle
+             interrupts while the process operating on the CPU is engaged in trying to set the
+             synchronization lock. This ability helps the kernel in providing a quick response
+             to events in the system.
+             Table 10.4 summarizes the features of three kinds of synchronization locks,
+             the queued, spin, and sleep locks. Processes waiting for a queued lock become
+             blocked; they are activated in FCFS order when the lock is opened. The spin lock
+             is the synchronization lock we illustrated in Figures 6.9 and 6.10; it leads to a busy
+             wait because a process that is trying to set it is not blocked. Interestingly, we had
+             discarded the spin lock because of a busy wait, but it is useful in a multiprocessor
+             system! The sleep lock is a new kind of lock. We discuss characteristics of all three
+             kinds of locks in the following.
+             Figure        10.5     illustrates  use  of  the  three  kinds  of    synchronization           locks.
+             Figure 10.5(a) shows a process Pi executing on CPU C1 and a lock L that is
+
+
+
+                  Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  349
+used to guard a mutual exclusion region. The × mark inside the box representing
+the lock indicates that the lock is set. A similar mark inside a circle representing
+a process indicates that the process is in the blocked state. We discuss features of
+these synchronization locks in the following.
+Queued Lock       A queued lock is a conventional lock used for process synchro-
+nization. The kernel performs the following actions when process Pi executing
+on CPU C1 requests a lock L: Lock L is tested. If it is not already set, the kernel
+sets the lock on behalf of Pi and resumes its execution. If the lock is already set
+by another process, Pi is blocked and its request for the lock is recorded in a
+queue. Figure 10.5(b) illustrates the situation after blocking of Pi. The id of Pi
+is entered in the queue of lock L and CPU C1 has switched to execution of some
+other process Pk. When the process that had set lock L completes its use of the
+critical section, the process at the head of L's queue is activated and the lock is
+awarded to it.
+A process that cannot set a queued lock relinquishes the CPU on which it
+is executing. Such a process will not be using a CPU and will not be accessing
+memory while it waits to set the lock. The average length of the queue for a lock
+determines whether the solution is scalable. If processes do not require lock L
+frequently, the queue length is bounded by some constant c (that is, it is never
+larger than c). Hence increasing the number of CPUs or processes in the system
+does not increase the average delay in acquiring the lock. The solution is scalable
+under these conditions. If processes require lock L frequently, the length of the
+queue may be proportional to the number of processes. In this case the solution
+is not scalable.
+Spin Lock  A spin lock differs from a queued lock in that a process that makes an
+unsuccessful attempt to set a lock does not relinquish the CPU. Instead it enters
+into a loop in which it makes repeated attempts to set the lock until it succeeds
+[see Figure 10.5(c)]. Hence the name spin lock. We depict the situation in which
+CPU C1 spins on lock L by drawing an arrow from C1 to L. CPU C1 repeatedly
+accesses the value of the lock and tests it, using an indivisible instruction like
+a test-and-set instruction (see Section 6.9.4). This action creates traffic on the
+memory bus or across the network.
+Use of spin locks may degrade system performance on two counts: First, the
+CPU remains with the process looping on the spin lock and so other processes
+are denied use of the CPU. Second, memory traffic is generated as the CPU
+spins on the lock. The latter drawback may not be significant if the memory
+bus or the network is lightly loaded, but it causes performance degradation in
+other situations. However, use of spin locks can be justified in two situations:
+(1) when the number of processes does not exceed the number of CPUs in the
+system, because there is no advantage in preempting a process, and (2) when a
+lock is used to control a critical section and the CPU time needed to execute the
+critical section is smaller than the total CPU time needed to block a process and
+schedule another one, and activate and reschedule the original process. In the
+first case blocking is unnecessary. In the second case it is counterproductive.
+
+
+
+350  Part 2  Process Management
+             A spin lock has an interesting advantage over a queued lock. A CPU spinning
+             on a lock can handle interrupts and the process operating on it can handle signals.
+             This feature is particularly important in a real-time application as delays in ser-
+             vicing interrupts and signals can degrade response times. Nevertheless, spin locks
+             are not scalable, because of the memory or network traffic that they generate.
+             In a NUMA system, a process using spin locks may face a situation called
+             lock starvation, in which it might be denied the lock for long periods of time,
+             possibly indefinitely. Consider a process Pi that is trying to set a spin lock that is
+             in its nonlocal memory. Let processes Pj and Pk, which exist in the same node as
+             the lock, try to set it. Since access to local memory is much faster than access to
+             nonlocal memory, processes Pj and Pk are able to spin much faster on the lock
+             than process Pi. Hence they are likely to get an opportunity to set the lock before
+             Pi. If they repeatedly set and use the lock, Pi may not be able to set the lock for
+             a long time. A scheme that we will see in Section 10.4.2 avoids lock starvation.
+             Sleep Lock  When a process makes an unsuccessful attempt to set a sleep lock,
+             the CPU on which it is operating is put into a special state called a sleep state. In
+             this state it does not execute instructions and does not respond to any interrupts
+             except interprocessor interrupts. In Figure 10.5(d) we depict this situation by
+             putting a × mark against all interrupts except IPI. The CPU waiting for the lock
+             does not spin on it, and so it does not cause memory or network traffic.
+             The CPU that releases the lock has the responsibility to send interprocessor
+             interrupts to those CPUs that are sleeping on the lock. This feature leads to the
+             overhead of generating and servicing interprocessor interrupts, both of which
+             involve a context switch and execution of kernel code. The sleep lock will scale
+             poorly if heavy contention exists for a lock; however, it will perform well if this is
+             not the case. Use of sleep locks in a real-time application can also affect response
+             times of the application. Nevertheless sleep locks may be preferred to spin locks
+             if the memory or network traffic densities are high.
+             Scheduling Aware Synchronization  As discussed earlier, some kinds of synchro-
+             nization are effective only when processes involved in the synchronization are
+             scheduled to run at the same time. The Solaris OS for Sun systems provides a
+             synchronization lock called an adaptive lock. A process waiting for this lock spins
+             on it if the holder of the lock is scheduled to run in parallel; otherwise, the pro-
+             cess is preempted and queued as in a queued lock. Thus, implementation of a
+             synchronization lock depends on scheduling decisions in the system.
+             10.4.1 Special Hardware for Process Synchronization
+             Some systems use special hardware to avoid the performance problems caused
+             by queued, spin, and sleep locks. The Sequent Balance system uses a special bus
+             called the system link and interface controller (SLIC) for synchronization. SLIC
+             consists of a special 64-bit register in each CPU in the system. The registers
+             of different CPUs are connected over the SLIC bus (see Figure 10.6). Each bit
+             represents a spin lock. Thus SLIC can support 64 spin locks. When a CPU C1
+             wishes to set a lock Lk, it tries to set the corresponding bit, say bk, in its special
+
+
+
+                       Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  351
+                                   SLIC bus          ...
+                        C1                       C2  SLIC
+                                                     register
+                                                     ...
+                                   Memory bus
+Figure 10.6 SLIC bus.
+register. If the bit is not already set, an attempt to set it results in communication
+over the SLIC bus. If no other CPU is simultaneously trying to set the same bit,
+the lock is awarded to C1 and bit bk is set in the special registers of all CPUs. C1
+can now proceed with its execution. When it releases the lock, bit bk is reset in
+special registers of all CPUs. If two or more CPUs simultaneously try to set the
+same lock, the hardware arbiter awards the lock to one CPU. The attempt to set
+lock Lk fails if bit bk is already set on behalf of some other CPU. In this case, the
+CPU keeps spinning on this lock, i.e., on bit bk of its special register.
+The advantage of the SLIC approach is that a CPU spins on a lock located
+within the CPU. Therefore spinning does not generate memory or network traffic.
+Use of spinning rather than sleeping also avoids use of interprocessor interrupts
+for synchronization. Use of a special synchronization bus relieves pressure on the
+memory bus. This is a significant advantage when memory traffic density is high.
+10.4.2 A Scalable Software Scheme for Process
+Synchronization
+We describe a scheme for process synchronization in NUMA and NORMA archi-
+tectures that achieves scalable performance by minimizing the synchronization
+traffic to nonlocal memory units in a NUMA architecture and over the network
+in a NORMA architecture. It does not require any special hardware and provides
+an effect that is analogous to the SLIC chip. It also avoids the lock starvation
+problem of spin locks.
+The scheme uses two types of locks. A primary lock is like a conventional
+lock used for synchronization. When a process is unable to set a primary lock, it
+creates a shadow lock in the local memory of the node where it resides, associates
+the shadow lock with the primary lock, and spins on the shadow lock. This way
+spinning does not generate nonlocal memory traffic or network traffic. When
+a process wishes to reset a primary lock that it has set, it checks whether any
+shadow locks are associated with the primary lock. If so, it resets one of the
+shadow locks, which enables one of the processes waiting for the primary lock to
+proceed; otherwise, it resets the primary lock.
+Figure 10.7 illustrates an implementation of this scheme, using the same
+notation as in Figure 10.5. A queue of shadow locks is maintained for each
+primary lock. Each entry in the queue contains the address of a shadow lock
+and a pointer to the next shadow lock in the queue. If a process fails to set the
+
+
+
+352  Part 2  Process Management
+                                 Queue for a         ...  Address Pointer  ...
+                                 primary lock
+                                                              Shadow
+                                                                  lock     Local memory
+                                                                                of CPU C1
+                                                          C1
+                                                              Pi
+             Figure 10.7  An     efficient software  solution for process synchronization.
+             primary lock, the process allocates a shadow lock in the local memory, enters its
+             address in the primary lock's queue and starts spinning on it. The queue may span
+             different memory units in the system; so the action of entering the shadow lock
+             in the queue generates nonlocal memory traffic or network traffic. Resetting of a
+             shadow lock also generates nonlocal memory traffic or network traffic. However,
+             spinning does not generate such traffic. Needless to say, manipulation of the
+             queue should itself be done under a lock.
+             10.5       PROCESS SCHEDULING                                                       ·
+             A process can be scheduled on any CPU in a multiprocessor system. However,
+             its performance can be improved by making an intelligent choice of the CPU,
+             i.e., by deciding where to schedule it. Performance of a group of processes that
+             synchronize and communicate with one another can be improved by deciding
+             how and when to schedule them. This section discusses issues involved in making
+             these decisions.
+             Choice of the CPU   When a process Pi operates on a CPU, say, CPU C1, some
+             parts of its address space are loaded into the L1 cache of the CPU. When the
+             CPU is switched to another process, some of these parts are overwritten by parts
+             of the address space of the new process, however some other parts of Pi's address
+             space may survive in C1's cache memory for some time. These parts are called
+             the residual address space of a process. A process is said to have an affinity for
+             a CPU if it has a residual address space in its cache. The process would have a
+             higher cache hit ratio on this CPU than on a CPU for which it does not have
+             affinity.
+             Affinity scheduling schedules a process on a CPU for which it has an affinity.
+             This technique provides a good cache hit ratio, thereby speeding up operation
+             of the process and reducing the memory bus traffic. Another way to exploit
+             the affinity is to schedule the threads of a process on the same CPU in close
+             succession. However, affinity scheduling interferes with load balancing across
+             CPUs since processes and threads become tied to specific CPUs. Section 10.6.3
+             describes how it also leads to scheduling anomalies in the Windows system.
+
+
+
+                      Chapter 10   Synchronization and Scheduling in Multiprocessor Operating          Systems        353
+                      C1           C2                   C1           C2
+                 Pi            Pj           Pk                   Pi           Pj          Pk
+        Pi            Pj           Pk                   Pi           Pj            Pk
+        8             6            5                    8            6             5
+        blocked       running      running              running      running       ready
+        (a)                                             (b)
+Figure  10.8 Process  Pj is shuffled from CPU   C1  to  CPU C2       when process  Pi becomes  ready.
+In Section 10.3, we discussed how the SMP kernel permits each CPU to
+perform its own scheduling. This arrangement prevents the kernel from becoming
+a performance bottleneck; however, it leads to scheduling anomalies in which a
+higher-priority process is in the ready state even though a low-priority process has
+been scheduled. Correcting this anomaly requires shuffling of processes between
+CPUs, as indicated in the next example.
+                                                                                                                      ·
+Process Shuffling in an SMP Kernel                                                                     Example  10.1
+An SMP system contains two CPUs C1 and C2, and three processes Pi, Pj , and
+Pk with priorities 8, 6, and 5, respectively. Figure 10.8(a) shows the situation
+in which process Pi is in the blocked state due to an I/O operation (see contents
+of its PCB fields) and processes Pj and Pk are executing using CPUs C1 and
+C2, respectively. When the I/O operation of Pi completes, the I/O interrupt is
+processed by CPU C1, which changes Pi's state to ready and switches itself to
+service process Pi. So, process Pj, which is the process with the next higher
+priority, is in the ready state, and Pk, whose priority is the lowest, is in oper-
+ation. To correct this situation, process Pk should be preempted and process
+Pj should be scheduled on CPU C2. Figure 10.8(b) shows the situation after
+these actions are performed.
+                                                                                               ·
+Process shuffling can be implemented by using the assigned workload table
+(AWT), discussed in Section 10.3, and the interprocessor interrupt (IPI). How-
+ever, process shuffling leads to high scheduling overhead; this effect is more
+pronounced in a system containing a large number of CPUs. Hence some
+operating systems do not correct scheduling anomalies through process shuffling.
+Synchronization-Conscious Scheduling            Parts of a computation may be executed
+on different CPUs to achieve computation speedup. However, synchronization
+and communication among processes of an application influence the nature of
+parallelism between its processes, so a scheduling policy should take these into
+account as well. As commented earlier in Section 10.2, processes of an application
+should be scheduled on different CPUs at the same time if they use spin locks
+
+
+
+354  Part 2  Process Management
+             for synchronization. This is called coscheduling, or gang scheduling. A different
+             approach is required when processes exchange messages by using a blocking
+             protocol. When Pi sends a message to Pj, it can proceed with its computation
+             only after its message is delivered. This wait could be quite long, so it is best to
+             block Pi. In such cases special efforts are made not to schedule such processes in
+             the same time slice. Since this approach conflicts with coscheduling, the kernel
+             has to make a difficult decision. It can either base its decision on the past behavior
+             of processes in the application or base it on user preference for a specific method
+             of scheduling. The Mach operating system uses the latter approach.
+             10.6  CASE STUDIES                                                                          ·
+             10.6.1 Mach
+             The Mach operating system, developed at Carnegie Mellon University, is an OS
+             for multiprocessor and distributed systems. The multiprocessor Mach uses an
+             SMP kernel structure. Figure 10.9 shows an overview of the scheduling arrange-
+             ment used in Mach. The processors of the multiprocessor system are divided into
+             processor sets. Each processor set is assigned a subset of threads for execution.
+             Threads can have priorities between 0 and 31, where 0 is the highest priority. Each
+             processor set has 32 ready queues to hold information about threads at each of the
+             priority levels. These queues are common to all processors in the processor set.
+             In addition, every processor has a local queue of threads. These are the threads
+             that must be executed only on this processor. These threads have a higher priority
+             than all threads in the thread queues. This feature provides for affinity scheduling.
+             A thread is preempted at the end of a time slice only if some other ready thread
+             exists in the thread queues, otherwise the thread is given another time slice. The
+             time slice is varied according to the number of ready threads--a smaller time slice
+             if many ready threads exist, and a larger time slice if few ready threads exist.
+             An    interesting       feature        in   the  Mach     operating  system        is  the  technique
+             of scheduling hints. A thread issues a hint to influence processor scheduling
+                                                0                                      0
+                                 Subset of      1   ...                                1   ...
+                                 threads
+                                                31                                     31
+                                 P1                                    P4
+                                 P2                      Local queues
+                                                         of threads    P5
+                                 P3
+                                 Processor set                         Processor  set
+             Figure 10.9  Scheduling in Mach.
+
+
+
+                       Chapter 10  Synchronization and Scheduling in Multiprocessor Operating  Systems  355
+decisions. It is presumed that a hint is based on the thread's knowledge of some
+execution characteristic of an application. A thread may issue a hint to ensure
+better scheduling when threads of an application require synchronization or com-
+munication. A discouragement hint reduces the priority of a thread. This type of
+hint can be issued by a thread that has to spin on a lock that has been set by some
+other process. A hands-off hint is given by a thread to indicate that it wishes to
+relinquish the processor to another thread: The thread can also indicate the iden-
+tity of the thread to which it wishes to hand over the processor. On receiving such
+a hint, the scheduler switches the processor to execution of the named thread
+irrespective of its priority. This feature can be used effectively when a thread
+spins on a lock while the holder of the lock is preempted. The spinning thread
+can hand-off its processor to the preempted thread. This action will lead to an
+early release of the lock. It can also be used to implement the priority inheritance
+protocol discussed in Chapter 7.
+10.6.2 Linux
+Multiprocessing    support  in     Linux  was  introduced  in  the  Linux  2.0  kernel.
+Coarse-grained locking was employed to prevent race conditions over kernel
+data structures. Granularity of locks was made finer in later releases; however,
+the kernel was still nonpreemptible. With Linux 2.6 kernel, the Linux kernel
+became preemptible (see Section 4.8.2). The Linux 2.6 kernel also employs very
+fine-grained locking.
+The Linux kernel provides spin locks for locking of data structures. It also
+provides a special reader­writer spin lock which permits any number of reader
+processes, that is, processes that do not modify any kernel data, to access protected
+data at the same time; however, it permits only one writer process to update the
+data at any time.
+The Linux kernel uses another lock called the sequence lock that incurs low
+overhead and is scalable. The sequence lock is actually an integer that is used
+as a sequence counter through an atomic, i.e., indivisible, increment instruction.
+Whenever a process wishes to use a kernel data structure, it simply increments the
+integer in the sequence lock associated with the data structure, notes its new value,
+and performs the operation. After completing the operation, it checks whether
+the value in the sequence lock has changed after it had executed its increment
+instruction. If the value has changed, the operation is deemed to have failed, so
+it annuls the operation it had just performed and attempts it all over again, and
+so on until the operation succeeds.
+Linux uses per-CPU data structures to reduce contention for locks on kernel
+data structures. As mentioned in Section 10.3, a per-CPU data structure of a
+CPU is accessed only when the kernel code is executed by that CPU; however,
+even this data structure needs to be locked because concurrent accesses may be
+made to it when an interrupt occurs while kernel code is being executed to service
+a system call and an interrupt servicing routine in the kernel is activated. Linux
+eliminates this lock by disabling preemption of this CPU due to interrupts while
+executing kernel code--the code executed by the CPU makes a system call to
+
+
+
+356  Part 2  Process Management
+             disable preemption when it is about to access the per-CPU data structures, and
+             makes another system call to enable preemption when it finishes accessing the
+             per-CPU data structures.
+             As described earlier in Section 7.6.3, Linux scheduling uses the ready queues
+             data structure of Figure 7.12. Scheduling for a multiprocessor incorporates con-
+             siderations of affinity--a user can specify a hard affinity for a process by indicating
+             a set of CPUs on which it must run, and a process has a soft affinity for the last
+             CPU on which it was run. Since scheduling is performed on a per-CPU basis, the
+             kernel performs load balancing to ensure that computational loads directed at
+             different CPUs are comparable. This task is performed by a CPU that finds that
+             its ready queues are empty; it is also performed periodically by the kernel--every
+             1 ms if the system is idle, and every 200 ms otherwise.
+             The function load_balance is invoked to perform load balancing with
+             the id of an underloaded CPU. load_balance finds a "busy CPU" that has
+             at least 25 percent more processes in its ready queues than the ready queues of
+             the underloaded CPU. It now locates some processes in its ready queues that do
+             not have a hard affinity to the busy CPU, and moves them to the ready queues of
+             the underloaded CPU. It proceeds as follows: It first moves the highest-priority
+             processes in the exhausted list of the busy CPU, because these processes are less
+             likely to have a residual address space in the cache of the busy CPU than those
+             in the active list. If more processes are needed to be moved, it moves the highest-
+             priority processes in the active list of the busy CPU, which would improve their
+             response times.
+             10.6.3 SMP Support in Windows
+             The Windows kernel provides a comprehensive support for multiprocessor and
+             NUMA systems, and for CPUs that provide hyperthreading--a hyperthreaded
+             CPU is considered to be a single physical processor that has several logical pro-
+             cessors. Spin locks are used to implement mutual exclusion over kernel data
+             structures. To guarantee that threads do not incur long waits for kernel data
+             structures, the Windows kernel never preempts a thread holding a spin lock if
+             some other thread is trying to acquire the same lock.
+             The Windows Server 2003 and Windows Vista use several free lists of mem-
+             ory areas as described in Section 11.5.4, which permits CPUs to perform memory
+             allocation in parallel. These kernels also use per-processor scheduling data struc-
+             tures as described in Section 10.3. However, CPUs may have to modify each
+             other's data structures during scheduling. To reduce the synchronization over-
+             head in this operation, the kernel provides a queued spinlock that follows the
+             schematic of Section 10.4.2--a processor spins over a lock in its local memory,
+             which avoids traffic over the network in NUMA systems and makes the lock
+             scalable.
+             The Windows process and thread objects have several scheduling-related
+             attributes. The default processor affinity of a process and thread processor affinity
+             of a thread together define an affinity set for a thread, which is a set of processors.
+             In a system with a NUMA architecture, a process can be confined to a single node
+
+
+
+             Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  357
+in the system by letting its affinity set be a subset of processors in the node. The
+kernel assigns an ideal processor for each thread such that different threads of a
+process have different ideal processors. This way many threads of a process could
+operate in parallel, which provides the benefits of coscheduling. The affinity set
+and the ideal processor together define a hard affinity for a thread. A processor is
+assumed to contain a part of the address space of a thread for 20 milliseconds after
+the thread ceases to operate on it. The thread has a soft affinity for the processor
+during this interval, so its identity is stored in the last processor attribute of
+the thread.
+   When scheduling is to be performed for, say, CPU C1, the kernel examines
+ready threads in the order of diminishing priority and selects the first ready thread
+that satisfies one of the following conditions:
+·  The thread has C1 as its last processor.
+·  The thread has C1 as its ideal processor.
+·  The thread has C1 in its affinity set, and has been ready for three clock ticks.
+The first criterion realizes soft affinity scheduling, while the other two criteria
+realize hard affinity scheduling. If the kernel cannot find a thread that satisfies
+one of these criteria, it simply schedules the first ready thread it can find. If no
+such thread exists, it schedules the idle thread (see Section 7.6.4).
+   When a thread becomes ready because of an interrupt, the CPU handling the
+interrupt chooses a CPU to execute this newly readied thread as follows: It checks
+whether there are idle CPUs in the system, and whether the ideal processor or the
+last processor of the newly readied thread is one of them. If so, it schedules the
+newly readied thread on this CPU by entering the thread's id in the scheduling
+data structure of the selected CPU. The selected idle CPU would be executing
+the idle thread, which would pick up the identity of the scheduled thread in the
+next iteration of its idle loop and switch to it. If the ideal processor or the last
+processor of the newly readied thread is not idle, the CPU handling the interrupt
+is itself idle, and it is included in the affinity set of the newly readied thread, it
+itself takes up the thread for execution. If this check fails and some CPUs in the
+affinity set of the thread are idle, it schedules the thread on the lowest numbered
+such CPU; otherwise, it schedules the thread on the lowest numbered idle CPU
+that is not included in the affinity set of the thread.
+   If no CPU is idle, the CPU handling the interrupt compares the priorities
+of the newly readied thread and the thread running on the ideal processor of
+the newly readied thread. If the newly readied thread has a higher priority, an
+interprocessor interrupt is sent to its ideal processor with a request to switch
+to the newly readied thread. If this is not the case, a similar check is made on
+the last processor of the newly readied thread. If that check also fails, the CPU
+handling the interrupt simply enters the newly readied thread in the ready queue
+structure. It would be scheduled sometime in future by an idle CPU. In this case,
+an anomalous situation may exist in the system because the priority of the newly
+readied thread may exceed the priority of some thread that is executing on some
+other CPU. However, correcting this anomaly may cause too much shuffling of
+threads between CPUs, so it is not attempted by the scheduling policy.
+
+
+
+358       Part 2     Process Management
+10.7     SUMMARY                                                                                                             ·
+A  multiprocessor     OS  exploits   the  presence           of  be able to execute the kernel's code in parallel
+multiple CPUs in the computer to provide high                    so that the kernel can respond to events read-
+throughput of the system, computation speedup of                 ily and it does not become a performance bot-
+an application, and graceful degradation of the OS               tleneck. Synchronization and scheduling of user
+capabilities when faults occur in the system. In this            processes should be performed in such a manner
+chapter we studied the architecture of multipro-                 that processes do not incur large delays. The OS
+cessor systems and OS issues involved in ensuring                has to also ensure that its algorithms are scal-
+good performance.                                                able; that is, they perform well even when the size
+     Multiprocessor       systems    are  classified  into       of  the   system   increases   because       of  an  increase
+three kinds based on the manner in which mem-                    in the number of CPUs, memory units, or user
+ory can be accessed by different CPUs. In the                    processes.
+uniform memory architecture (UMA), the memory                        Multiprocessor OSs employ special kinds of
+is shared between all CPUs. This architecture is                 locks called spin locks and sleep locks to control
+also called the symmetrical multiprocessor (SMP)                 the overhead of process synchronization. Affinity
+architecture. In the nonuniform memory architec-                 scheduling is employed to schedule a process on the
+ture (NUMA), each CPU has some local memory                      same CPU so that it would obtain high cache hit
+that can be accessed faster than the rest of the mem-            ratios during its operation, and coscheduling is used
+ory which is accessible over an interconnection                  to schedule processes of an application on different
+network.                                                         CPUs at the same time so that they can com-
+     A multiprocessor OS should exploit presence                 municate efficiently among themselves. Operating
+of multiple CPUs to schedule user processes in                   systems employ process shuffling to ensure that the
+parallel, and also to ensure efficiency of its own               highest-priority ready processes are always in oper-
+functioning. Two issues are important in this con-               ation on its CPUs. We discussed features of Linux,
+text: kernel structure and delays caused by syn-                 Mach, and Windows operating systems in this
+chronization and scheduling. Many CPUs should                    context.
+TEST     YOUR CONCEPTS                                                                                                       ·
+   10.1  Classify each of the following statements as true           10.2  What would be the consequence of not imple-
+         or false:                                                         menting cache coherence in a multiprocessor
+         a. Scheduling performed by one CPU in a sym-                      system?
+          metric multiprocessor system may result in                       a. Results produced by a process that does not
+          shuffling   of  processes  operating  on    many                   interact   with  any   other  process    might  be
+          CPUs in the system.                                                wrong.
+         b. The interprocessor interrupt (IPI) is not used                 b. Results produced by a group of interacting
+          in process synchronization in a symmetric                          processes that use the same CPU might be
+          multiprocessor system.                                             wrong.
+         c. When a process spins on a lock, it affects per-                c. Results produced by a group of interacting
+          formance of processes being serviced by other                      processes  that    do  not  use  the  same  CPU
+          CPUs.                                                              might be wrong.
+         d. When affinity scheduling is used, a process                    d. None of (a)­(c).
+          may require less CPU time to complete its
+          operation.
+
+
+
+                          Chapter 10   Synchronization and Scheduling in Multiprocessor Operating Systems           359
+EXERCISES                                                                                                                 ·
+10.1  Describe two situations in which an SMP ker-                   for process synchronization discussed in Section
+      nel requires use of the interprocessor interrupt               10.4.2?
+      (IPI).                                                   10.4  Can priority inversion occur when spin or sleep
+10.2  An OS assigns the same priority to all processes               locks are used? (See Section 6.5.1 for a definition
+      (or threads) of an application, but uses different             of priority inversion.)
+      priorities for different applications.                   10.5  Discuss suitability of various kinds of locks for
+      a. In a uniprocessor system, does this assign-                 synchronization of parallel activities within an
+            ment  of   priorities  provide  an    advantage          SMP kernel.
+            that is similar to that provided by affinity       10.6  Processes   of    an  application  interact  among
+            scheduling?                                              themselves   very     frequently.  Among     queued,
+      b. In a multiprocessor system, does this assign-               spin, and sleep locks, which would you consider
+            ment of priorities provide an advantage that             suitable for implementing this application on a
+            is similar to that provided by coscheduling?             multiprocessor system, and why?
+10.3  Can the hands-off feature of Mach be used to
+      advantage in implementing the software scheme
+BIBLIOGRAPHY                                                                                                              ·
+Most books on computer architecture discuss architec-              SunOS kernel," Proceedings of the Summer 1992
+ture of multiprocessors and interconnection networks,              USENIX Conference, 11­18.
+e.g., Hennessy and Patterson (2002), Hamacher et al.           3.  Hamacher, C., Z. Vranesic, and S. Zaky (2002):
+(2002), and Stallings (2003).                                      Computer Organization, 5th ed., McGraw-Hill,
+    Mellor-Crummey and Scott (1991), Menasse et al.                New York.
+(1991), and Wisniewski et al. (1997) discuss synchroniza-      4.  Hennessy, J., and D. Patterson (2002): Computer
+tion of processes in a multiprocessor environment. The             Architecture: A Quantitative Approach, 3rd ed.,
+efficient software solution for process synchronization            Morgan Kaufmann, San Mateo, Calif.
+described in Fig. 10.7 is adapted from Mellor-Crummey          5.  Mellor-Crummey, and M. L. Scott (1991):
+and Scott (1991). Ousterhout (1982), Tucker and Gupta              "Algorithms for scalable synchronization on
+(1989), and Squillante (1990) discuss scheduling issues            shared memory multiprocessor," ACM
+in multiprocessor operating systems.                               Transactions on Computer Systems, 9 (1), 21­65.
+    Eykholt et al. (1992) discusses multithreading of          6.  Karlin, A. R., K. Li, M. S. Menasse, and
+the SunOS kernel to enhance effectiveness of its SMP               S. Owicki (1991): "Empirical studies of
+structure.  Accetta   et  al.  (1986)  describes  the   Mach       competitive spinning for shared memory
+multiprocessor operating system. Love (2005) discusses             multiprocessor," Proceedings of 13th ACM
+synchronization   and     scheduling   in  Linux  2.6,  while      Symposium on Operating System Principles,
+Russinovich and Solomon (2005) describes synchroni-                41­55.
+zation and scheduling in Windows.                              7.  Kontothanassis L. I., R. W. Wisniewski, and
+1.  Accetta, M., R. Baron, W. Bolosky, D. B. Golub,                M. L. Scott (1997): "Scheduler conscious
+    R. Rashid, A. Tevanian, and M. Young (1986):                   synchronization," ACM Transactions on
+    "Mach: A new kernel foundation for Unix                        Computer Systems, 15 (1), 3­40.
+    development," Proceedings of the Summer 1986               8.  Love, R. (2005): Linux Kernel Development, 2nd
+    USENIX Conference, June 1986, 93­112.                          ed., Novell Press.
+2.  Eykholt, J. R., S. R. Kleiman, S. Barton,                  9.  Ousterhout, J. K. (1982): "Scheduling techniques
+    S. Faulkner, A. Shivalingiah, M. Smith, D. Stein,              for concurrent systems," Proceedings of the 3rd
+    J. Voll, M. Weeks, and D. William (1992):                      International Conference on Distributed
+    "Beyond multiprocessing: multithreading the                    Computing Systems, 22­30.
+
+
+
+360  Part 2          Process Management
+10.  Russinovich, M. E., and D. A. Solomon (2005):       13.  Tanenbaum, A. S. (2001): Modern Operating
+     Microsoft Windows Internals, 4th ed., Microsoft          Systems, 2nd ed., Prentice Hall, Englewood
+     Press, Redmond, Wash.                                    Cliffs, N.J.
+11.  Squillante, M. (1990): "Issues in shared-memory     14.  Tucker, A., and A. Gupta (1989): "Process control
+     multiprocessor scheduling: A performance                 and scheduling issues for multiprogrammed
+     evaluation," Ph.D. dissertation, Dept. of                shared memory multiprocessors," Proceedings of
+     Computer Science & Engineering, University               12th ACM Symposium on Operating System
+     of Washington.                                           Principles, 159­166.
+12.  Stallings, W. (2003): Computer Organization and
+     Architecture, 6th ed., Prentice Hall, Upper Saddle
+     River, N.J.
+
+
+
+                                part                                               3
+Memory Management
+T he memory of a computer system is shared by a large number of processes,
+so memory management has traditionally been a very important task of
+an operating system. Memories keep becoming cheaper and larger every
+year; however, the pressure on memory as an OS resource persists because both
+the size of processes and the number of processes that an operating system has
+to service at any time also keep growing. The basic issues in memory manage-
+ment are efficient use of memory, protection of memory allocated to a process
+against illegal accesses by other processes, performance of individual processes,
+and performance of the system.
+Efficient use of memory is important because it determines the number of
+processes that can be accommodated in memory at any time. This number, in
+turn, influences performance of the system because presence of too few processes
+in memory could lead to CPU idling. Both memory efficiency and system perfor-
+mance deteriorate when some memory areas remain unused because they are too
+small to accommodate a process. This situation is called memory fragmentation.
+The technique of noncontiguous memory allocation enables efficient use of
+memory by countering memory fragmentation. When the OS does not find a
+memory area that is large enough to accommodate a process, it allocates several
+nonadjoining memory areas to the process. Special features exist in a computer's
+hardware to support operation of such a process. Operating systems exploit
+noncontiguous memory allocation to keep only some parts of a process, rather
+than the whole process, in memory. This technique permits the size of a process
+to exceed the size of memory, which creates an illusion that the memory of a
+computer is larger than it actually is. This illusion is called virtual memory.
+Road Map for Part 3
+Chapter 11: Memory Management
+This chapter is devoted to the fundamentals of memory management. It begins
+by discussing how memory protection is implemented in the hardware by using
+special registers in the CPU. It then discusses how efficient use of memory is
+achieved by reusing memory released by a process while handling subsequent
+                                                                                      361
+
+
+
+362  Part 3  Memory Management
+                                 Road Map for Part 3
+                                               Memory
+                                               Management
+                                               Virtual
+                                               Memory
+             Schematic diagram showing the order in which chapters of this part should be covered in a
+             course.
+             memory requests, and how techniques for fast memory allocation and dealloca-
+             tion may cause memory fragmentation. The noncontiguous memory allocation
+             approaches called paging and segmentation are then described. The chapter
+             also discusses the special techniques employed by the kernel to manage its own
+             memory requirements efficiently.
+             Chapter 12: Virtual Memory
+             This chapter deals with virtual memory implementation using paging in detail.
+             It discusses how the kernel keeps the code and data of a process on a disk and
+             loads parts of it into memory when required, and how the performance of a
+             process is determined by the rate at which parts of a process have to be loaded
+             from the disk. It shows how this rate depends on the amount of memory allocated
+             to a process, and the page replacement algorithm used to decide which pages of
+             a process should be removed from memory so that new pages can be loaded.
+             Page replacement algorithms that use clues from the empirical law of locality of
+             reference are then discussed. Virtual memory implementation using segmentation
+             is also described.

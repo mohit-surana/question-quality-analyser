@@ -1,0 +1,496 @@
+Semaphores
+As mentioned in Section 6.5.3, synchronization primitives were developed to over-
+come the limitations of algorithmic implementations. The primitives are simple
+operations that can be used to implement both mutual exclusion and control
+synchronization. A semaphore is a special kind of synchronization data that can
+be used only through specific synchronization primitives.
+Definition 6.5 Semaphore        A shared integer variable with nonnegative values
+that can be subjected only to the following operations:
+1. Initialization (specified as part of its declaration)
+2. The indivisible operations wait and signal
+     The wait and signal operations on a semaphore were originally called the
+P and V operations, respectively, by Dijkstra. Their semantics are shown in
+Figure 6.22. When a process performs a wait operation on a semaphore, the
+operation checks whether the value of the semaphore is > 0. If so, it decrements
+the value of the semaphore and lets the process continue its execution; other-
+wise, it blocks the process on the semaphore. A signal operation on a semaphore
+activates a process blocked on the semaphore, if any, or increments the value of
+the semaphore by 1. Due to these semantics, semaphores are also called counting
+semaphores. Indivisibility of the wait and signal operations is ensured by the pro-
+gramming language or the operating system that implements it. It ensures that
+race conditions cannot arise over a semaphore (see Section 6.9.4).
+     Processes  use  wait  and  signal   operations  to   synchronize  their  execution
+with respect to one another. The initial value of a semaphore determines how
+many processes can get past the wait operation. A process that does not get
+past a wait operation is blocked on the semaphore. This feature avoids busy
+waits. Section 6.9.1 describes uses of semaphores. Sections 6.9.2 and 6.9.3 discuss
+implementation of the producers­consumers and readers­writers problems using
+semaphores.
+
+
+
+198  Part 2  Process Management
+                                       procedure wait (S)
+                                       begin
+                                       if S > 0
+                                              then S := S­1;
+                                              else block the process on S;
+                                       end;
+                                       procedure signal (S)
+                                       begin
+                                       if some processes are blocked on S
+                                              then activate one blocked process;
+                                              else S := S+1;
+                                       end;
+             Figure  6.22  Semantics of the wait and signal operations on a semaphore.
+             Table 6.3           Uses of Semaphores in Implementing Concurrent             Systems
+             Use                 Description
+             Mutual              Mutual exclusion can be implemented by using a semaphore
+             exclusion           that is initialized to 1. A process performs a wait operation on
+                                 the semaphore before entering a CS and a signal operation on
+                                 exiting from it. A special kind of semaphore called a binary
+                                 semaphore further simplifies CS implementation.
+             Bounded             Bounded concurrency implies that a function may be executed,
+             concurrency         or a resource may be accessed, by n processes concurrently,
+                                 1  n  c, where c is a constant. A semaphore initialized to c
+                                 can be used to implement bounded concurrency.
+             Signaling           Signaling is used when a process Pi wishes to perform an
+                                 operation ai only after process Pj has performed an operation
+                                 aj . It is implemented by using a semaphore initialized to 0. Pi
+                                 performs a wait on the semaphore before performing operation
+                                 ai. Pj performs a signal on the semaphore after it performs
+                                 operation aj .
+             6.9.1 Uses of Semaphores in Concurrent Systems
+             Table 6.3 summarizes three uses of semaphores in implementing concurrent
+             systems. Mutual exclusion is useful in implementing critical sections. Bounded
+             concurrency is important when a resource can be shared by up to c processes,
+             where c is a constant  1. Signaling is useful in control synchronization. We
+             discuss details of these uses in this section.
+             6.9.1.1 Mutual Exclusion
+             Figure 6.23 shows implementation of a critical section in processes Pi and Pj
+             by using a semaphore named sem_CS. sem_CS is initialized to 1. Each pro-
+             cess performs a wait operation on sem_CS before entering its critical section,
+             and a signal operation after exiting from its critical section. The first process to
+             perform wait(sem_CS) finds that sem_CS is > 0. Hence it decrements sem_CS
+
+
+
+                                                                       Chapter   6  Process Synchronization       199
+             var sem_CS : semaphore := 1;
+             Parbegin
+             repeat                              repeat
+                   wait (sem_CS);                wait (sem_CS);
+                   { Critical Section }          { Critical Section }
+                   signal (sem_CS);              signal (sem_CS);
+                   { Remainder of the cycle }    { Remainder of the    cycle  }
+             forever;                            forever;
+             Parend;
+             end.
+                       Process Pi                          Process Pj
+Figure 6.23  CS implementation with semaphores.
+by 1 and goes on to enter its critical section. When the second process performs
+wait(sem_CS), it is blocked on sem_CS because its value is 0. It is activated
+when the first process performs signal(sem_CS) after exiting from its own critical
+section; the second process then enters its critical section. If no process is blocked
+on sem_CS when a signal(sem_CS) operation is performed, the value of sem_CS
+becomes 1. This value of sem_CS permits a process that is performing a wait
+operation at some later time to immediately enter its critical section. More pro-
+cesses using similar code can be added to the system without causing correctness
+problems. The next example illustrates operation of this system using snapshots.
+                                                                                                                  ·
+Critical Sections through Semaphores                                                       Example           6.4
+Figure 6.24 shows snapshots taken during operation of the system shown
+in Figure 6.23. The wait and signal operations on sem_CS are enclosed in
+a dashed rectangular box because they are mutually exclusive (refer to the
+pictorial conventions of Figure 6.11). Let process Pi perform wait(sem_CS).
+Figure 6.24(a) illustrates the situation at the start of Pi's wait operation.
+Figure 6.24(b) shows the situation after Pi completes the wait operation and Pj
+executes a wait operation--Pi's wait(sem_CS) operation has reduced the value
+of sem_CS to 0, so Pj becomes blocked on the wait operation. Figure 6.24(c)
+shows the situation after process Pi performs a signal operation. The value of
+sem_CS remains 0, but process Pj has been activated. Process Pj performs a
+signal operation on exiting from its critical section. Since no process is cur-
+rently blocked on sem_CS, Pj's signal operation simply results in increasing
+the value of sem_CS by 1 (see Figure 6.24(d)).
+                                                                                        ·
+It is interesting to check which properties of critical section implementa-
+tions mentioned in Table 6.1 are satisfied by the implementation of Figure 6.23.
+Mutual exclusion follows from the fact that sem_CS is initialized to 1. The imple-
+mentation possesses the progress property because a process performing the wait
+operation gets to enter its critical section if no other process is in its critical
+
+
+
+200  Part 2  Process Management
+                                          wait    sem_CS                             wait  sem_CS
+                                 Pi                                  Pi
+                                                  1               ·  ··                    0
+                                 Pj       signal                          Pj  signal
+                                 (a)                                 (b)
+                                          wait    sem_CS                             wait  sem_CS
+                                 Pi                                  Pi
+                                                  0                                        1
+                                 Pj       signal                     Pj       signal
+                                 (c)                                 (d)
+             Figure 6.24  Snapshots   of  the concurrent system of Figure     6.23.
+             section. However, the bounded wait property does not hold because the order in
+             which blocked processes are activated by signal operations is not defined in the
+             semantics of semaphores. Hence a blocked process may starve if other processes
+             perform wait and signal operations repeatedly.
+             Correctness problems can arise because the wait and signal operations are
+             primitives, and so a program can use them in a haphazard manner. For example,
+             process Pi of Figure 6.23 could have been erroneously written as
+                                      repeat
+                                               signal (sem_CS );
+                                               { Critical Section }
+                                               signal (sem_CS );
+                                               { Remainder of the cycle }
+                                      forever
+             where a signal(sem_CS) has been used instead of a wait(sem_CS) at Pi's entry to
+             its critical section. Now the critical section would not be implemented correctly
+             because many processes would be able to enter their critical sections at the same
+             time. As another example, consider what would happen if the code of process
+             Pi erroneously uses a wait(sem_CS) operation in place of the signal(sem_CS)
+             operation following its critical section. When Pi executes its critical section, it will
+             be blocked on the wait operation after exiting from its critical section because the
+             value of sem_CS will be 0. Other processes wishing to enter the critical section
+             will be blocked on the wait operation preceding their critical sections. Since no
+             process performs a signal operation on sem_CS, all these processes will remain
+             blocked indefinitely, which is a deadlock situation.
+             Binary Semaphores        A binary semaphore is a special kind of semaphore used
+             for implementing mutual exclusion. Hence it is often called a mutex. A binary
+             semaphore is initialized to 1 and takes only the values 0 and 1 during execution
+             of a program. The wait and signal operations on a binary semaphore are slightly
+             different from those shown in Figure 6.22; the statement S := S-1 in the wait
+             operation is replaced by the statement S := 0 and the statement S := S+1 in the
+             signal operation is replaced by the statement S := 1.
+
+
+
+                                                          Chapter 6           Process Synchronization  201
+             var sync : semaphore := 0;
+             Parbegin
+                   ···                    ···
+                   wait (sync);           { Performaction aj }
+                   { Performaction ai }   signal (sync);
+             Parend;
+             end.
+                        Process Pi             Process Pj
+Figure 6.25  Signaling using semaphores.
+6.9.1.2 Bounded Concurrency
+We use the term bounded concurrency for the situation in which up to c processes
+can concurrently perform an operation opi, where c is a constant  1. Bounded
+concurrency is implemented by initializing a semaphore sem_c to c. Every pro-
+cess wishing to perform opi performs a wait(sem_c) before performing opi and
+a signal(sem_c) after performing it. From the semantics of the wait and signal
+operations, it is clear that up to c processes can concurrently perform opi.
+6.9.1.3 Signaling between Processes
+Consider the synchronization requirements of processes Pi and Pj shown in
+Figure 6.6--process Pi should perform an operation ai only after process Pj per-
+forms an operation aj. A semaphore can be used to achieve this synchronization
+as shown in Figure 6.25. Here process Pi performs a wait(sync) before executing
+operation ai and Pj performs a signal(sync) after executing operation aj. The
+semaphore sync is initialized to 0, and so Pi will be blocked on wait(sync) if Pj
+has not already performed a signal(sync). It will proceed to perform operation
+ai only after process Pj performs a signal. Unlike the solution of Figure 6.6, race
+conditions cannot arise because the wait and signal operations are indivisible.
+The signaling arrangement can be used repetitively, as the wait operation makes
+the value of sync 0 once again.
+6.9.2 Producers--Consumers Using Semaphores
+As discussed in Section 6.7.1, the producers­consumers problem is a signaling
+problem. After producing an item of information in a buffer, a producer signals
+to a consumer that is waiting to consume from the same buffer. Analogously, a
+consumer signals to a waiting producer. Hence we should implement producers­
+consumers using the signaling arrangement shown in Figure 6.25.
+For simplicity, we first discuss the solution for the single buffer case shown
+in Figure 6.26. The buffer pool is represented by an array of buffers with a single
+element in it. Two semaphores full and empty are declared. They are used to
+indicate the number of full and empty buffers, respectively. A producer performs
+a wait(empty) before starting the produce operation and a consumer performs a
+wait(full) before a consume operation.
+
+
+
+202  Part 2  Process Management
+                                  type   item = . . .;
+                                  var
+                                           full : Semaphore := 0; { Initializations }
+                                         empty : Semaphore := 1;
+                                         buffer : array [0] of item;
+                                  begin
+                                  Parbegin
+                                  repeat                              repeat
+                                         wait (empty);                wait (full);
+                                         buffer [0] := . . .;         x := buffer [0];
+                                            { i.e., produce }                 { i.e., consume }
+                                         signal (full);               signal (empty);
+                                         { Remainder of the cycle }   { Remainder of the cycle }
+                                  forever;                            forever;
+                                  Parend;
+                                  end.
+                                            Producer                            Consumer
+                  Figure  6.26  Producers­consumers with a single buffer.
+                     Initially the semaphore full has the value 0. Hence consumer(s) will be
+                  blocked on wait(full). empty has the value 1, and so one producer will get
+                  past the wait(empty) operation. After completing the produce operation it per-
+                  forms signal(full). This enables one consumer to enter, either immediately or
+                  later. When the consumer finishes a consume operation, it performs a sig-
+                  nal(empty) that enables a producer to perform a produce operation. This solution
+                  avoids busy waits since semaphores are used to check for empty or full buffers,
+                  and so a process will be blocked if it cannot find an empty or full buffer as
+                  required. The total concurrency in this system is 1; sometimes a producer exe-
+                  cutes and sometimes a consumer executes. Example 6.5 describes the operation of
+                  this solution.
+·
+     Example 6.5  Producers-Consumers with a Single Buffer
+                  through Semaphores
+                  The snapshot of Figure 6.27(a) shows the initial situation in the producers­
+                  consumers system of Figure 6.26. Figure 6.27(b) shows the situation when the
+                  producer and consumer processes attempt to produce and consume, respec-
+                  tively. The producer process has got past its wait operation on empty since
+                  empty was initialized to 1. The value of semaphore empty becomes 0 and the
+                  producer starts producing in the buffer. The consumer process is blocked on
+                  the wait (full) operation because full is 0. When the producer performs a sig-
+                  nal(full) after the produce operation, the consumer process is activated and
+                  starts consuming from the buffer. Figure 6.27(c) shows this situation.
+                  ·
+                     Figure 6.28 shows how semaphores can be used to implement a solution of the
+                  n-buffer producers­consumers problem, n  1, containing one producer and one
+
+
+
+                                                                                           Chapter 6      Process  Synchronization  203
+        buffer           Producer           buffer             Producer            buffer           Producer
+              Produce                                 Produce                              Produce
+              Consume    Consumer                     Consume                           Consume     Consumer
+        full    wait                        full      wait                                 wait
+                                                                         ···
+        0                                   0                                      0
+                                                               Consumer
+                signal                                signal                               signal
+        empty   wait                        empty     wait                         empty   wait
+        1                                   0                                      0
+                signal                                signal                               signal
+        (a)                                 (b)                                    (c)
+Figure 6.27 Snapshots of single         buffer producers­consumers            using semaphores.
+                const     n = . . .;
+                type      item = . . .;
+                var
+                          buffer : array [0..n ­ 1] of item;
+                          full : Semaphore := 0; { Initializations }
+                          empty : Semaphore := n;
+                          prod_ ptr, cons_ ptr : integer;
+                begin
+                          prod_ ptr := 0;
+                          cons_ ptr := 0;
+                Parbegin
+                repeat                                         repeat
+                        wait (empty);                          wait (full);
+                        buffer [prod_ ptr] := . . .;           x := buffer [cons_ ptr];
+                          { i.e. produce }                               { i.e. consume }
+                        prod_ ptr := prod_ ptr + 1 mod n;      cons_ ptr := cons_ ptr + 1 mod         n;
+                        signal (full);                         signal (empty);
+                        { Remainder of the cycle }             { Remainder of the cycle }
+                forever;                                       forever;
+                Parend;
+                end.
+                          Producer                                       Consumer
+Figure  6.28    Bounded buffers using semaphores.
+consumer process. This solution is a simple extension of the single-buffer solution
+shown in Figure 6.26. The values of the semaphores empty and full indicate the
+number of empty and full buffers, respectively, hence they are initialized to n and 0,
+respectively. prod_ptr and cons_ptr are used as subscripts of the array buffer. The
+
+
+
+204  Part 2  Process Management
+             producer produces in buffer[prod_ptr] and increments prod_ptr. The consumer
+             consumes from buffer[cons_ptr] and increments cons_ptr in the same manner.
+             This feature ensures that buffers are consumed in FIFO order. A producer and a
+             consumer can operate concurrently so long as some full and some empty buffers
+             exist in the system.
+             It is easy to verify that this solution implements the correctness conditions
+             of the bounded buffer problem described in Section 6.7.1. However, if many
+             producer and consumer processes exist in the system, we need to provide mutual
+             exclusion among producers to avoid race conditions on prod_ptr. Analogously,
+             mutual exclusion should be provided among consumers to avoid race conditions
+             on cons_ptr.
+             6.9.3 Readers--Writers Using Semaphores
+             A key feature of the readers­writers problem is that readers and writers must
+             wait while a writer is writing, and when the writer exits, either all waiting readers
+             should be activated or one waiting writer should be activated (see the outline of
+             Figure 6.18). To implement this feature, we use four counters as follows:
+             runread             count of readers currently reading
+             totread             count of readers waiting to read or currently reading
+             runwrite            count of writers currently writing
+             totwrite            count of writers waiting to write or currently writing
+             With these counters, the outline of Figure 6.18 is refined as shown in
+             Figure 6.29; we do not show details of how the counters are updated. A reader
+             is allowed to begin reading when runwrite = 0 and a writer is allowed to begin
+             writing when runread = 0 and runwrite = 0. The value of totread is used to activate
+             all waiting readers when a writer finishes writing. This solution does not use an
+             explicit critical section for writers. Instead writers are blocked until they can be
+             allowed to start writing.
+                     Parbegin
+                           repeat                                 repeat
+                                 if runwrite  0                   if runread  0 or
+                                 then                                       runwrite  0
+                                     { wait };                    then { wait };
+                                 { read }                         { write }
+                                 if runread = 0 and               if totread  0 or totwrite  0
+                                     totwrite  0                  then
+                                 then                                       activate either one waiting  writer
+                                     activate one waiting writer            or all waiting readers
+                           forever;                               forever;
+                     Parend;
+                                     Reader(s)                              Writer(s)
+             Figure  6.29  Refined solution outline for readers­writers.
+
+
+
+                                                                  Chapter 6  Process Synchronization  205
+Blocking of readers and writers resembles blocking of producers and con-
+sumers in the producers­consumers problem. Hence it is best handled by using
+semaphores for signaling. We introduce two semaphores named reading and
+writing. A reader process would perform wait(reading) before starting to read.
+This operation should block the reader process if conditions permitting it to
+read are not currently satisfied; otherwise, the reader should be able to get past
+it and start reading. Similarly, a writer process would perform a wait(writing)
+before writing and it would get blocked if appropriate conditions are not sat-
+isfied. The conditions on which readers and writers are blocked may change
+when any of the counter values change, i.e., when a reader finishes reading or
+a writer finishes writing. Hence the reader and writer processes should them-
+selves perform appropriate signal operations after completing a read or a write
+operation.
+This solution is implemented as follows (see Figure 6.30): To avoid race con-
+ditions all counter values are examined and manipulated inside critical sections
+implemented by using a binary semaphore named sem_CS. When a reader wishes
+to start reading, it enters a critical section for sem_CS to check whether runwrite
+= 0. If so, it increments runread, exits the critical section and starts reading. If
+not, it must perform wait(reading); however, performing a wait(reading) opera-
+tion inside the critical section for sem_CS may cause a deadlock, so it performs
+a wait(reading) after exiting the critical section. If conditions permitting the start
+of a read operation were satisfied when it examined the counter values inside its
+critical section, it would have itself performed a signal(reading) inside the criti-
+cal section. Such a reader will get past the wait(reading) operation. A writer will
+similarly perform a signal(writing) inside its critical section for sem_CS under
+the correct set of conditions and wait(writing) after exiting from the critical
+section.
+Readers and writers that get blocked on their respective wait operations
+are activated as follows: When a reader finishes reading, it performs a signal
+operation to activate a writer if no readers are active and a writer is waiting.
+When a writer finishes writing, it performs signal operations to activate all wait-
+ing readers, if any; otherwise, it performs a signal operation to wake a waiting
+writer, if any. Hence the resulting system is a readers-preferred readers­writers
+system.
+The solution appears to have two redundant features (see Exercise 6.10).
+First,  it  uses  two  semaphores,  reading  and  writing,  even  though     only       one
+resource--the     shared  data--is  to  be  controlled.  Second,  every      reader  per-
+forms a wait(reading) operation even though the operation is clearly redundant
+when some other readers are already engaged in reading. However, both fea-
+tures are needed to implement a writers-preferred readers­writers system (see
+Exercise 6.11).
+6.9.4 Implementation of Semaphores
+Figure 6.31 shows a scheme for implementing semaphores. A semaphore type
+is defined. It has fields for the value of a semaphore, a list that is used to store
+
+
+
+206  Part 2  Process Management
+                     var
+                                 totread, runread, totwrite, runwrite : integer;
+                                 reading, writing : semaphore := 0;
+                                 sem_CS : semaphore := 1;
+                     begin
+                                 totread := 0;
+                                 runread := 0;
+                                 totwrite := 0;
+                                 runwrite := 0;
+                     Parbegin
+                           repeat                              repeat
+                                 wait (sem_CS);                wait (sem_CS);
+                                 totread := totread + 1;       totwrite := totwrite + 1;
+                                 if runwrite = 0 then          if runread = 0 and runwrite =      0  then
+                                   runread := runread +    1;          runwrite := 1;
+                                   signal (reading);                   signal (writing);
+                                 signal (sem_CS);              signal (sem_CS);
+                                 wait (reading);               wait (writing);
+                                 { Read }                      { Write }
+                                 wait (sem_CS);                wait (sem_CS);
+                                 runread := runread­1;         runwrite := runwrite­1;
+                                 totread := totread­1;         totwrite := totwrite­1;
+                                 if runread = 0 and            while (runread < totread) do
+                                     totwrite > runwrite       begin
+                                     then                                runread := runread + 1;
+                                     runwrite := 1;                      signal (reading);
+                                     signal (writing);         end;
+                                 signal (sem_CS);              if runread = 0 and
+                           forever;                            totwrite > runwrite then
+                                                                         runwrite := 1;
+                                                                         signal (writing);
+                                                               signal (sem_CS);
+                                                               forever;
+                     Parend;
+                     end.
+                                     Reader(s)                           Writer(s)
+             Figure  6.30  A readers­preferred readers­writers system using semaphores.
+             ids of processes blocked on the semaphore, and a lock variable that is used to
+             ensure indivisibility of the wait and signal operations on the semaphore. The wait
+             and signal operations on semaphores are implemented as procedures that take a
+             variable of the semaphore type as a parameter. A concurrent program declares
+             semaphores as variables of the semaphore type, and its processes invoke the wait
+             and signal procedures to operate on them.
+             To avoid race conditions while accessing the value of the semaphore, proce-
+             dures wait and signal first invoke the function Close_lock to set the lock variable
+             sem.lock. Close_lock uses an indivisible instruction and a busy wait; however, the
+             busy waits are short since the wait and signal operations are themselves short.
+             The procedures invoke the function Open_lock to reset the lock after completing
+
+
+
+                                                                                Chapter 6  Process Synchronization  207
+Type declaration for Semaphore
+type
+        semaphore =       record
+                          value : integer;       { value of the semaphore }
+                          list : . . .           { list of blocked processes }
+                          lock : boolean;        { lock variable for operations on this semaphore }
+                          end;
+Procedures for implementing wait and signal operations
+procedure wait (sem)
+begin
+        Close_lock (sem.lock);
+        if sem.value > 0
+              then
+                    sem.value := sem.value­1;
+                    Open_lock (sem.lock);
+              else
+                    Add id of the process to list of processes blocked on sem;
+                    block_me (sem.lock);
+end;
+procedure signal (sem)
+begin
+        Close_lock (sem.lock);
+        if some processes are blocked on sem
+              then
+                    proc_id := id of a process blocked on sem;
+                    activate (proc_id);
+              else
+                    sem.value := sem.value + 1;
+        Open_lock (sem.lock);
+end;
+Figure  6.31  A scheme for implementing wait and signal operations on           a  semaphore.
+their execution. Recall from Section 6.5.1 that a busy wait may lead to priority
+inversion in an OS using priority-based scheduling; we assume that a priority
+inheritance protocol is used to avoid this problem. In a time-sharing system, a
+busy wait can cause delays in synchronization, but does not cause more serious
+problems.
+The wait procedure checks whether the value of sem is > 0. If so, it decre-
+ments the value and returns. If the value is 0, the wait procedure adds the id
+of the process to the list of processes blocked on sem and makes a block me
+system call with the lock variable as a parameter. This call blocks the process that
+invoked the wait procedure and also opens the lock passed to it as a parameter.
+Note that the wait procedure could not have performed these actions itself--
+race conditions would arise if it opened the lock before making a block_me call,
+and a deadlock would arise if it made made a block_me call before opening
+the lock!

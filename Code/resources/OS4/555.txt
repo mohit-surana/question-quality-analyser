@@ -1,0 +1,108 @@
+Performance of File Systems
+             File systems employ five techniques to provide high file access performance:
+             ·  Use of efficient data structures: Directories are organized by using data
+                structures that facilitate fast search.
+             ·  Effective disk space allocation: Disk space is allocated to a file in such a
+                manner that little disk head movement and rotational delays are involved in
+                processing of a sequential file.
+             ·  Caching: Part of memory is used as a cache for data stored on an I/O device.
+                As discussed in Section 2.2.3, caching speeds up accesses to information that
+                exhibits either temporal locality or spatial locality--that is, data that is either
+                repeatedly accessed or located in proximity of previously accessed data.
+             ·  Buffering: A buffer is a memory area that is used to store data temporarily.
+                The file system loads data from an I/O device into a buffer before a process
+                needs it, so that the process can access the data without having to wait for an
+                I/O operation to complete. Converse actions are performed when a process
+                wishes to write data in a file.
+             ·  Disk scheduling: I/O operations on a disk are performed in an order that
+                reduces disk head movement; it ensures high throughput of a disk.
+                Figure 13.34 summarizes how a file system uses these techniques to speed up
+             file processing. Hash tables and B+ trees enable fast searches in a directory (see
+             Section 13.4.3). Disk space allocation of a file is confined to extents and cylinder
+
+
+
+                                                                             Chapter 13  File  Systems  535
+                          Cached and buffered
+                          data and metadata
+        Process Pi        phi
+                               Directories
+        open   phi
+                               FMTs
+        read   phi,..
+                               File data
+Operation                 Techniques employed for speedup
+Directory access          Directory cache
+Directory search          Hashtables, B+ trees
+Accessing file map table  File map table cache in memory
+Accessing a disk block    Disk block allocation in extents and cylinder groups,
+                          Disk block cache in memory, disk scheduling, disk
+                          block cache in I/O device
+Accessing data            Buffering and blocking of data, or use of a file cache
+Figure  13.34  Techniques employed to provide high file access performance.
+groups to reduce disk head movement and rotational delays (see Section 13.7).
+The other techniques provide fast access to file data and metadata of a file system,
+such as directory entries and file map tables.
+Directories are cached in memory when accessed for the first time. Thus a
+directory used to resolve a path name is retained in the cache to speed up future
+references to files located in it. This cache is called a directory names cache. A
+file map table is buffered in memory when the file is opened, in anticipation of
+accesses to it. It may be cached after its first access. Buffering may not be feasible
+if a file map table is large in size. In that case, parts of it may be cached in memory
+when first referenced.
+A disk cache stores disk blocks in memory following their first use in a file
+processing activity. Hit ratios better than 0.9 are possible in the disk cache. Hence
+its use reduces the number of I/O operations on a disk significantly. An access
+method uses buffering and blocking of file data or stores file data in a file cache
+to reduce the wait time involved in an I/O operation. Disk scheduling is used to
+reduce disk head movement and the average wait time for I/O operations. These
+techniques are employed by the IOCS; they are discussed later in Chapter 14.
+As technology advances, techniques that were developed for use in soft-
+ware become implemented in the hardware. Modern I/O device technology
+incorporates some of the techniques mentioned in Figure 13.34. Thus SCSI disks
+
+
+
+536  Part 4  File Systems and I/O Management
+                  provide disk scheduling in the device itself. RAID units contain a disk block
+                  buffer, which can be used to both buffer and cache disk blocks. These technologies
+                  are discussed later in Chapter 14.
+                  13.15.1 Log-Structured File System
+                  Disk caching reduces the number of read operations directed at a disk. Hence
+                  disk usage is dominated by disk head movement and write operations. Disk head
+                  movement can be reduced through disk scheduling and through the use of cylinder
+                  groups in disk space allocation for files. However, these techniques are less effective
+                  when files located in different parts of a disk are processed simultaneously, which
+                  is the case most of the time in a shared computer system. For example, in a Unix
+                  system, write operations to a disk consume only about 10 percent of the disk
+                  time; the rest of the time is spent in disk head movement, which leads to poor
+                  throughput of a disk.
+                     A log-structured file system reduces disk head movement through a radically
+                  different file organization. It writes file data of all files together in a single sequen-
+                  tial structure that resembles a journal. We call it the log file. When an update or
+                  write operation is performed on any file, the new data is simply added to the end
+                  of the log file. Hence little disk head movement is involved in this operation. The
+                  file system writes special index blocks into the log file to contain metadata about
+                  the location of each file's data in the log file. These index blocks are used when file
+                  data has to be read off the disk. Thus, little disk head movement is required for
+                  reading data that was written into a file recently; however, more disk head move-
+                  ment is involved for older data. Performance studies on the Sprite log-structured
+                  file system showed that disk head movement accounted for only 30 percent of the
+                  disk time consumed during file processing, and its performance was superior to
+                  the conventional file system for frequent small writes. Example 13.12 illustrates
+                  operation of a log-structured file system.
+·
+   Example 13.12  Log-Structured File System
+                  Figure 13.35(a) is a schematic diagram of the arrangement used in a log-
+                  structured file system. For simplicity, it shows the metadata and file data of
+                  a single file in the log file. The data blocks in the log file are numbered for
+                  convenience. The directory entry of a file points to an index block in the log
+                  file; we assume the index block to contain the FMT of the file. When file data
+                  residing in block 1 is updated, the new values are written into a new disk block,
+                  i.e., block 4. Similarly some file data is written into disk block 5 when the data in
+                  block 3 is updated. The file system now writes a new index block that contains
+                  the updated FMT of the file and sets the FMT pointer in the directory entry
+                  of the file to point to the new index block. The new FMT contains pointers to
+                  the two new data blocks and to data block 2 that has not been modified [see
+                  Figure 13.35(b)]. The old index block and disk blocks 1 and 3 are now free.
+                  ·

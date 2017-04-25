@@ -1,0 +1,59 @@
+IMPLEMENTATION
+Turning away from the user and system-call interfaces, let us now look at how
+to implement an operating system.   In the following sections we will examine
+some general conceptual issues relating to implementation strategies. After that we
+will look at some low-level techniques that are often helpful.
+12.3.1 System Structure
+Probably the first decision the implementers have to make is what the system
+structure should be.  We  examined  the  main  possibilities    in  Sec. 1.7,   but      will
+review them here.     An unstructured monolithic design is not a good idea, except
+maybe for a tiny operating system in, say, a toaster, but even there it is arguable.
+Layered Systems
+A reasonable approach that has been well established over the years is a lay-
+ered system. Dijkstra's THE system (Fig. 1-25) was the first layered operating sys-
+tem.  UNIX and Windows 8 also have a layered structure, but the layering in both
+
+
+
+994                         OPERATING SYSTEM DESIGN                             CHAP. 12
+of them is more a way of trying to describe the system than a real guiding principle
+that was used in building the system.
+     For a new system, designers choosing to go this route should first very careful-
+ly choose the layers and define the functionality of each one. The bottom layer
+should always try to hide the worst idiosyncracies of the hardware, as the HAL
+does in Fig. 11-4. Probably the next layer should handle interrupts, context switch-
+ing, and the MMU, so above this level the code is mostly machine independent.
+Above this, different designers will have different tastes (and biases).        One possi-
+bility is to have layer 3 manage threads, including scheduling and interthread syn-
+chronization, as shown in Fig. 12-2.        The idea here is that starting at layer 4 we
+have proper threads that are scheduled normally and synchronize using a standard
+mechanism (e.g., mutexes).
+                  Layer
+                  7                         System call handler
+                  6      File system 1           ...             File system m
+                  5                         Virtual memory
+                  4      Driver 1 Driver 2  ...                  Driver n
+                  3      Threads, thread scheduling, thread synchronization
+                  2         Interrupt handling, context switching, MMU
+                  1         Hide the low-level        hardware
+     Figure 12-2. One possible design for a modern layered operating system.
+     In layer 4 we might find the device drivers, each one running as a separate
+thread, with its own state, program counter, registers, and so on, possibly (but not
+necessarily) within the kernel address space. Such a design can greatly simplify the
+I/O structure because when an interrupt occurs, it can be converted into an unlock
+on a mutex and a call to the scheduler to (potentially) schedule the newly readied
+thread that was blocked on the mutex.       MINIX 3 uses this approach, but in UNIX,
+Linux, and Windows 8, the interrupt handlers run in a kind of no-man's land, rather
+than as proper threads like other threads that can be scheduled, suspended, and the
+like. Since a huge amount of the complexity of any operating system is in the I/O,
+any technique for making it more tractable and encapsulated is worth considering.
+     Above layer 4, we would expect to find virtual memory, one or more file sys-
+tems, and the system-call handlers. These layers are focused on providing services
+to applications.  If the virtual memory is at a lower level than the file systems, then
+the block cache can be paged out, allowing the virtual memory manager to dynam-
+ically determine how the real memory should be divided among user pages and
+kernel pages, including the cache. Windows 8 works this way.
+
+
+
+SEC. 12.3   

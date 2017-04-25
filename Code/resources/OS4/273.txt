@@ -1,0 +1,289 @@
+Real-Time Scheduling
+                   Real-time scheduling must handle two special scheduling constraints while try-
+                   ing to meet the deadlines of applications. First, the processes within a real-time
+                   application are interacting processes, so the deadline of an application should be
+                   translated into appropriate deadlines for the processes. Second, processes may be
+                   periodic, so different instances of a process may arrive at fixed intervals and all
+                   of them have to meet their deadlines. Example 7.10 illustrates these constraints;
+                   in this section, we discuss techniques used to handle them.
+·
+     Example 7.10  Dependences and Periods in a Real-Time Application
+                   Consider a restricted form of the real-time data logging application of Exam-
+                   ple 5.1, in which the buffer_area can accommodate a single data sample. Since
+                   samples arrive at the rate of 500 samples per second, the response requirement
+                   of the application is 1.99 ms. Hence, processes copy_sample and record_sample
+                   must operate one after another and complete their operation within 1.99 ms.
+                   If process record_sample requires 1.5 ms for its operation, process copy_sample
+                   has a deadline of 0.49 ms after arrival of a message. Since a new sample arrives
+                   every 2 ms, each of the processes has a period of 2 ms.
+                   ·
+                   7.5.1 Process Precedences and Feasible Schedules
+                   Processes of a real-time application interact among themselves to ensure that they
+                   perform their actions in a desired order (see Section 6.1). We make the simplifying
+                   assumption that such interaction takes place only at the start or end of a process.
+                   It causes dependences between processes, which must be taken into account while
+                   determining deadlines and while scheduling. We use a process precedence graph
+                   (PPG) to depict such dependences between processes.
+                        Process Pi is said to precede process Pj if execution of Pi must be completed
+                   before Pj can begin its execution. The notation Pi  Pj shall indicate that process
+                   Pi directly precedes process Pj. The precedence relation is transitive; i.e., Pi  Pj
+                   and Pj  Pk implies that Pi precedes Pk. The notation Pi * Pk is used to indicate
+                   that process Pi directly or indirectly precedes Pk. A process precedence graph is
+                   a directed graph G  (N, E) such that Pi  N represents a process, and an edge
+                   (Pi, Pj )  E implies Pi  Pj . Thus, a path Pi, . . . , Pk in PPG implies Pi * Pk. A
+                   process Pk is a descendant of Pi if Pi * Pk.
+
+
+
+                                                                                  Chapter 7      Scheduling  253
+In Section 3.7, we defined a hard real-time system as one that meets the
+response requirement of a real-time application in a guaranteed manner, even
+when fault tolerance actions are required. This condition implies that the time
+required by the OS to complete operation of all processes in the application does
+not exceed the response requirement of the application. On the other hand, a
+soft real-time system meets the response requirement of an application only in
+a probabilistic manner, and not necessarily at all times. The notion of a feasible
+schedule helps to differentiate between these situations.
+Definition 7.1 Feasible Schedule          A sequence of scheduling decisions that
+enables the processes of an application to operate in accordance with their
+precedences and meet the response requirement of the application.
+Real-time scheduling focuses on implementing a feasible schedule for an
+application, if one exists. Consider an application for updating airline depar-
+ture information on displays at 15-second intervals. It consists of the following
+independent processes, where process P5 handles an exceptional situation that
+seldom occurs.
+                         Process       P1  P2      P3  P4  P5
+                         Service time  3        3  2   4   5
+A feasible schedule does not exist for completing all five processes in 15 seconds,
+so a deadline overrun would occur. However, several schedules are possible when
+process P5 is not active. The scheduler in a soft real-time system can use any one
+of them.
+Table 7.3 summarizes three main approaches to real-time scheduling. We
+discuss   the  features  and  properties   of   these  scheduling  approaches           in  the
+following.
+Table 7.3       Approaches to Real-Time Scheduling
+Approach                      Description
+Static scheduling             A schedule is prepared before operation of the real-time
+                              application begins. Process interactions, periodicities,
+                              resource constraints, and deadlines are considered in
+                              preparing the schedule.
+Priority-based                The real-time application is analyzed to assign
+scheduling                    appropriate priorities to processes in it. Conventional
+                              priority-based scheduling is used during operation of
+                              the application.
+Dynamic scheduling            Scheduling is performed when a request to create a
+                              process is made. Process creation succeeds only if
+                              response requirement of the process can be satisfied in
+                              a guaranteed manner.
+
+
+
+254  Part 2  Process Management
+             Static Scheduling   As the name indicates, a schedule is prepared before the
+             system is put into operation. The schedule considers process precedences, peri-
+             odicities, resource constraints, and possibilities of overlapping I/O operations in
+             some processes with computations in other processes. This schedule is represented
+             in the form of a table whose rows indicate when operation of different processes
+             should begin. No scheduling decisions are made during operation of the system.
+             The real-time OS simply consults the table and starts operation of processes as
+             indicated in it. Static scheduling leads to negligible scheduling overhead during
+             system operation. However, it is inflexible and cannot handle issues like fault
+             tolerance.
+             The size of the scheduling table will depend on periods of processes. If all
+             processes have the same period, or if processes are nonperiodic, the scheduling
+             table will have only as many rows as the number of processes in the application.
+             This schedule is used repeatedly during operation of the system. If periodicities
+             of processes are different, the length of the schedule that needs to be represented
+             in the scheduling table will be the least common multiple of periodicities of all
+             processes in the application.
+             Priority-Based      Scheduling  A  system  analyst   uses  two  considerations  while
+             assigning priorities to processes: criticality of processes and periodicity of pro-
+             cesses. A process with a smaller period must complete its operation earlier than
+             a process with a larger period, so it must have a higher priority. This approach
+             has the benefits and drawbacks normally associated with the use of priorities. It
+             provides graceful degradation capabilities because critical functions would con-
+             tinue to be performed even when failures occur. However, it incurs scheduling
+             overhead during operation.
+             Dynamic     Scheduling  In      systems  using  the  dynamic    scheduling  approach,
+             scheduling is performed during the system's operation. Multimedia systems like
+             video on demand use a dynamic scheduling approach in which a scheduling deci-
+             sion is performed when a process arrives. A request to initiate a process contains
+             information such as the process's resource requirement, service time, and a dead-
+             line or a specification of service quality. On receiving such a request, the scheduler
+             checks whether it is possible to assign the resources needed by the process and
+             meet its deadline or provide it the desired quality of service. It creates the process
+             only if these checks succeed.
+             Another approach to dynamic scheduling is to optimistically admit processes
+             for execution. In this approach, there is no guarantee that the deadline or ser-
+             vice quality requirements can be met. Soft real-time systems often follow this
+             approach.
+             7.5.2 Deadline Scheduling
+             Two kinds of deadlines can be specified for a process: a starting deadline, i.e., the
+             latest instant of time by which operation of the process must begin, and a com-
+             pletion deadline, i.e., the time by which operation of the process must complete.
+             We consider only completion deadlines in the following.
+
+
+
+                                                                         Chapter 7           Scheduling        255
+                                     2   P1                 6  P5
+                     P2       3              5  P3
+                                 P4  4
+                                 P6  5
+Figure 7.13  The process precedence graph (PPG) for a real-time system.
+Deadline Estimation  A system analyst performs an in-depth analysis of a real-
+time application and its response requirements. Deadlines for individual processes
+are determined by considering process precedences and working backward from
+the response requirement of the application. Accordingly, Di, the completion
+deadline of a process Pi, is
+                     Di = Dapplication -        k  descendant(i) xk      (7.2)
+where Dapplication is the deadline of the application, xk is the service time of process
+Pk, and descendant(i) is the set of descendants of Pi in the PPG, i.e., the set of all
+processes that lie on some path between Pi and the exit node of the PPG. Thus,
+the deadline for a process Pi is such that if it is met, all processes that directly or
+indirectly depend on Pi can also finish by the overall deadline of the application.
+This method is illustrated in Example 7.11.
+                                                                                                               ·
+Determining Process Deadlines                                                                Example     7.11
+Figure 7.13 shows the PPG of a real-time application containing 6 processes.
+Each circle is a node of the graph and represents a process. The number in
+a circle indicates the service time of a process. An edge in the PPG shows a
+precedence constraint. Thus, process P2 can be initiated only after process P1
+completes, process P4 can be initiated only after processes P2 and P3 complete,
+etc. We assume that processes do not perform I/O operations and are serviced
+in a nonpreemptive manner. The total of the service times of the processes is
+25 seconds. If the application has to produce a response in 25 seconds, the
+deadlines of the processes would be as follows:
+                     Process         P1  P2     P3  P4  P5     P6
+                     Deadline        8   16     16  20  20     25
+                                                                                          ·
+A practical method of estimating deadlines will have to incorporate several
+other constraints as well. For example, processes may perform I/O. If an I/O
+
+
+
+256        Part 2  Process Management
+                       operation of one process can be overlapped with execution of some independent
+                       process, the deadline of its predecessors (and ancestors) in the PPG can be relaxed
+                       by the amount of I/O overlap. (Independent processes were formally defined in
+                       Section 6.1.) For example, processes P2 and P3 in Figure 7.13 are independent of
+                       one another. If the service time of P2 includes 1 second of I/O time, the deadline
+                       of P1 can be made 9 seconds instead of 8 seconds if the I/O operation of P2 can
+                       overlap with P3's processing. However, overlapped execution of processes must
+                       consider resource availability as well. Hence determination of deadlines is far
+                       more complex than described here.
+                       Earliest Deadline First (EDF) Scheduling          As its name suggests, this policy always
+                       selects the process with the earliest deadline. Consider a set of real-time processes
+                       that do not perform I/O operations. If seq is the sequence in which processes are
+                       serviced by a deadline scheduling policy and pos(Pi) is the position of process
+                       Pi in seq, a deadline overrun does not occur for process Pi only if the sum of its
+                       own service time and service times of all processes that precede it in seq does not
+                       exceed its own deadline, i.e.,
+                                                       k:pos(Pk )pos(Pi )  xk      Di                            (7.3)
+                       where xk is the service time of process Pk, and Di is the deadline of process Pi. If
+                       this condition is not satisfied, a deadline overrun will occur for process Pi.
+                              When a feasible schedule exists, it can be shown that Condition 7.3 holds
+                       for all processes; i.e., a deadline overrun will not occur for any process. Table 7.4
+                       illustrates operation of the EDF policy for the deadlines of Example 7.11. The
+                       notation  P4    :  20  in  the  column   processes  in     system   indicates  that  process  P4
+                       has the deadline 20. Processes P2, P3 and P5, P6 have identical deadlines, so three
+                       schedules other than the one shown in Table 7.4 are possible with EDF scheduling.
+                       None of them would incur deadline overruns.
+                              The primary advantages of EDF scheduling are its simplicity and nonpre-
+                       emptive nature, which reduces the scheduling overhead. EDF scheduling is a
+                       good policy for static scheduling because existence of a feasible schedule, which
+                       can be checked a priori, ensures that deadline overruns do not occur. It is also
+     Table  7.4       Operation of Earliest Deadline First (EDF) Scheduling
+                   Process    Deadline                                                                Process
+     Time          completed  overrun         Processes in system                                     scheduled
+     0             ­          0               P1 : 8, P2 : 16, P3 : 16, P4 : 20, P5 : 20, P6  :  25   P1
+     2             P1         0               P2 : 16, P3 : 16, P4 : 20, P5 : 20, P6 : 25             P2
+     5             P2         0               P3 : 16, P4 : 20, P5 : 20, P6 : 25                      P3
+     10            P3         0               P4 : 20, P5 : 20, P6 : 25                               P4
+     14            P4         0               P5 : 20, P6 : 25                                        P5
+     20            P5         0               P6 : 25                                                 P6
+     25            P2         0               ­                                                       ­
+
+
+
+                                                                               Chapter 7  Scheduling        257
+a good dynamic scheduling policy for use in soft real-time system; however, the
+number of processes that miss their deadlines is unpredictable. The next example
+illustrates this aspect of EDF scheduling.
+                                                                                                            ·
+Problems of EDF Scheduling                                                                Example     7.12
+Consider the PPG of Figure 7.13 with the edge (P5, P6) removed. It contains
+two independent applications, one contains the processes P1­P4 and P6, while
+the other contains P5 alone. If all processes are to complete by 19 seconds, a
+feasible schedule does not exist. Now deadlines of the processes determined
+by using Eq. (7.2) are as follows:
+                        Process   P1       P2  P3  P4     P5  P6
+                        Deadline  2        10  10  14     19  19
+EDF  scheduling         may      schedule  the     processes  either  in  the  sequence
+P1, P2, P3, P4, P5, P6, which is the same as in Table 7.4, or in the sequence
+P1, P2, P3, P4, P6, P5. Processes P5 and P6 miss their deadlines in the first
+sequence, whereas only process P5 misses its deadline in the second sequence.
+We cannot predict which sequence will be chosen by an implementation of
+EDF scheduling, so the number of processes that miss their deadlines is
+unpredictable.
+                                                                                       ·
+7.5.3 Rate Monotonic Scheduling
+When processes in an application are periodic, the existence of a feasible schedule
+can be determined in an interesting way. Consider three independent processes
+that do not perform I/O operations:
+                 Process                       P1      P2     P3
+                 Time period (ms)              10      15     30
+                 Service time (ms)              3         5       9
+Process P1 repeats every 10 ms and needs 3 ms of CPU time. So the fraction
+of the CPU's time that it uses is 3/10, i.e., 0.30. The fractions of CPU time used
+by P2 and P3 are analogously 5/15 and 9/30, i.e., 0.33 and 0.30. They add up to
+0.93, so if the CPU overhead of OS operation is negligible, it is feasible to service
+these three processes. In general, a set of periodic processes P1, . . . , Pn that do
+not perform I/O operations can be serviced by a hard real-time system that has a
+negligible overhead if                         xi
+                                      i=1...n  Ti  1                           (7.4)
+where Ti is the period of Pi and xi is its service time.
+
+
+
+258  Part 2  Process Management
+                     P1          3             3                3
+                     P2             5                    5
+                     P3                    2          2                5
+                           0               10               20               30  Time (ms)
+             Figure  7.14  Operation   of  real-time  processes using  rate  monotonic scheduling.
+             We still have to schedule these processes so that they can all operate without
+             missing their deadlines. The rate monotonic (RM) scheduling policy does it as
+             follows: It determines the rate at which a process has to repeat, i.e., the number of
+             repetitions per second, and assigns the rate itself as the priority of the process. It
+             now employs a priority-based scheduling technique to perform scheduling. This
+             way, a process with a smaller period has a higher priority, which would enable it
+             to complete its operation early.
+             In the above example, priorities of processes P1, P2, and P3 would be 1/0.010,
+             1/0.015, and 1/0.025, i.e., 100, 67, and 45, respectively. Figure 7.14 shows how
+             these processes would operate. Process P1 would be scheduled first. It would
+             execute once and become dormant after 3 ms, because x1 = 3 ms. Now P2
+             would be scheduled and would complete after 5 ms. P3 would be scheduled
+             now, but it would be preempted after 2 ms because P1 becomes ready for the
+             second time, and so on. As shown in Figure 7.14, process P3 would complete
+             at 28 ms. By this time, P1 has executed three times and P2 has executed two
+             times.
+             Rate monotonic scheduling is not guaranteed to find a feasible schedule
+             in all situations. For example, if process P3 had a time period of 27 ms, its
+             priority would be different; however, relative priorities of the processes would
+             be unchanged, so P3 would complete at 28 ms as before, thereby suffering a
+             deadline overrun of 1 ms. A feasible schedule would have been obtained if
+             P3 had been scheduled at 20 ms and P1 at 25 ms; however, it is not possi-
+             ble under RM scheduling because processes are scheduled in a priority-based
+             manner. Liu and Layland (1973) have shown that RM scheduling may not be
+             able to avoid deadline overruns if the total fraction of CPU time used by the
+             processes according to Eq. (7.4) exceeds m(21/m - 1), where m is the number
+             of processes. This expression has a lower bound of 0.69, which implies that
+             if an application has a large number of processes, RM scheduling may not be
+             able to achieve more than 69 percent CPU utilization if it is to meet deadlines
+             of processes.
+             Liu and Layland also report a deadline-driven scheduling algorithm that
+             dynamically assigns priorities to processes based on their current deadlines--a
+             process with an earlier deadline is assigned a higher priority than a process with a
+             later deadline. It can avoid deadline overruns even when the fraction of Eq. (7.4)
+             has the value 1; that is, it can achieve 100 percent CPU utilization. However,

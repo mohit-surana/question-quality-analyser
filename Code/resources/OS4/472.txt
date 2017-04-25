@@ -1,0 +1,117 @@
+Shared Pages
+Sharing of programs was discussed in Section 11.3.3. Static sharing results from
+static binding performed by a linker or loader before execution of a program
+begins (see Section 11.3.3.2). Figure 12.22(a) shows the logical address space of
+program C. The Add (4,12) instruction in page 1 has its operand in page 4. With
+static binding, if two processes A and B statically share program C, then C is
+included in the code of both A and B. Let the 0th page of C become page i of
+process A [see Figure 12.22(a)]. The instruction Add (4,12) in page 1 of program C
+would be relocated to use the address (i +4,12). If the 0th page of C becomes page
+j in process B, the Add instruction would be relocated to become Add            (j + 4, 12)
+Thus, each page of program C has two copies in the address spaces of A and B.
+These copies may exist in memory at the same time if processes A and B are in
+operation simultaneously.
+Dynamic binding (see Section 11.2) can be used to conserve memory by bind-
+ing the same copy of a program or data to several processes. In this case, the
+program or data to be shared would retain its identity [see Figure 12.22(c)]. It is
+achieved as follows: The virtual memory manager maintains a shared pages table
+to hold information about shared pages in memory. Process A makes a system
+call to bind program C as a shared program starting at a specific page, say, page
+i, in its logical address space. The kernel invokes the virtual memory manager,
+which creates entries in the page table of A for pages of program C, and sets an
+s flag in each of these entries to indicate that it pertains to a shared page. It now
+checks whether the pages of program C have entries in the shared pages table. If
+not, it makes such entries now, sets up the swap space for program C, and invokes
+
+
+
+452  Part 3  Memory Management
+             the dynamic linker, which dynamically binds program C to the code of process
+             A. During this binding, it relocates the address-sensitive instructions of C. Thus,
+             the Add instruction in page 1 of program C is modified to read Add (i + 4, 12)
+             [see Figure 12.22(c)]. When a reference to an address in program C page faults,
+             the virtual memory manager finds that it is a shared page, so it checks the shared
+             pages table to check whether the required page is already in memory, which would
+             happen if another process had used it recently. If so, it copies the page frame num-
+             ber of the page from the shared pages table into the entry of that page in A's page
+             table; otherwise, it loads the page in memory and updates its entry in A's page
+             table and in the shared pages table. Similar actions are performed when process
+             B dynamically binds program C to the start address of page i and references to
+             C's pages in process B's instructions cause page faults. Figure 12.23 shows the
+             resulting arrangement.
+             Two conditions should be satisfied for dynamic binding of programs to work.
+             The program to be shared should be coded as a reentrant program so that it
+             can be invoked by many processes at the same time (see Section 11.3.3.2). The
+             program should also be bound to identical logical addresses in every process that
+                                                   Page  Process A      Page  Process A
+                                                   #0                   #0
+                                        Program    i     Add (i+4, 12)
+                                             C     i+1
+             Page    Program C                                                                   Page  Program C
+             #0                                                                                  #0
+                     Add (4, 12)                   Page  Process B      Page  Process B                Add (i+4, 12)
+                                                   #0                   #0
+                                        Program    j     Add (i+4, 12)
+                                             C     j+1
+             (a)                        (b)                             (c)
+             Figure  12.22  Sharing of program C by processes A and B: (a) program         C; (b) static binding      of
+             C to the codes of processes A and B; and (c) dynamic binding of C.
+                                                         Page table              Swap space
+                                  Page  Process A            of A            Memory        of C
+                                  #
+                     Pages of     i     s                i                                       Page Frame
+                                        s               i+1
+                     program C    i+1   s
+                                                                                                 id     #
+                                                                                                 C, 0
+                                                                                                 C, 1
+                                                         Page table
+                                  Page
+                                        Process B            of B            Add (i+4,12)
+                                  #
+                     Pages of     i     s                i                                       Shared pages
+                     program C    i+1   s               i+1                                      table
+                                        s
+             Figure  12.23  Dynamic sharing of     program C by processes A and B.
+
+
+
+                                                                                    Chapter 12      Virtual Memory  453
+shared it. It would ensure that an instruction like Add           (i + 4, 12) in page i + 1 of
+Figure 12.23 will function correctly in each of the processes. These conditions are
+unnecessary when data, rather than a program, is dynamically bound to several
+processes; however, processes sharing the data would have to synchronize their
+accesses to the shared data to prevent race conditions.
+When sharing of pages is implemented by making the page table entries of
+sharing processes point at the same page frame, page reference information for
+shared pages will be dispersed across many page tables. The page replacement
+algorithm will have to gather this information together to get the correct picture
+about references to shared pages. This is rather cumbersome. A better method
+would be to maintain information concerning shared pages in the shared pages
+table and collect page reference information for shared pages in entries in this
+table. This arrangement also permits a different page replacement criterion to be
+used for managing shared pages. In Section 12.8.4, we describe a related technique
+used in Windows operating systems.
+12.6.1 Copy-on-Write
+The copy-on-write feature is used to conserve memory when data in shared pages
+could be modified but the modified values are to be private to a process. When
+processes A and B dynamically bind such data, the virtual memory manager
+sets up the arrangement shown in Figure 12.24(a), which is analogous to the
+arrangement illustrated in Figure 12.23 except for a copy-on-write flag in each page
+table entry, which indicates whether the copy-on-write feature is to be employed
+for that page. The mark c in a page table entry in Figure 12.23 indicates that
+the copy-on-write flag is set for that page. If process A tries to modify page k,
+the MMU raises a page fault on seeing that page k is a copy-on-write page. The
+virtual memory manager now makes a private copy of page k for process A,
+accordingly changes the page frame number stored in page k's entry in the page
+table of A, and also turns off the copy-on-write flag in this entry [ Figure 12.24(b)].
+               Page table                         Page table
+                     of A    Memory                     of A             Memory
+               k+k1  c                            k+k1 c
+                     c
+               Page table                         Page table
+                     of B                               of B
+               k+k1  c                            k+k1  c
+                     c                                  c
+               (a)                                (b)
+Figure  12.24  Implementing  copy-on-write:  (a)  before and (b)  after  process A  modifies  page  k.

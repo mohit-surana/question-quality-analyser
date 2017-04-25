@@ -73,7 +73,7 @@ def get_cog_models():
     print('Loaded BiRNN model')
 
     ################# MLP MODEL #################
-    nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter_89_sgd.pkl'))
+    nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
     # nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
     print('Loaded MLP model')
 
@@ -82,10 +82,16 @@ def get_cog_models():
 ##################### PREDICTION WITH PARAMS ############################
 def predict_cog_label(question, models, subject='ADA'):
     clf_svm, clf_maxent, clf_brnn, nn = models
-    X1 = np.array( get_filtered_questions(question, threshold=0.25, what_type=subject)[0].split() ).reshape(1, -1)
+    question2 = get_filtered_questions(question, threshold=0.25, what_type=subject.lower()) # svm and birnn
+    if len(question2) > 0:
+        question = question2[0]
     X1 = np.array(question.split()).reshape(1, -1)
-    # X2 = np.array( get_filtered_questions(question, threshold=0.75, what_type=subject)[0].split() ).reshape(1, -1)
-    
+
+    question2 = get_filtered_questions(question, threshold=0.75, what_type=subject.lower()) # maxEnt
+    if len(question2) > 0:
+        question = question2[0]
+    X2 = np.array(question.split()).reshape(1, -1)
+
     # softmax probabilities
     ptest_svm = clf_svm.predict_proba(X1)
     for i in range(len(ptest_svm)):
@@ -94,7 +100,7 @@ def predict_cog_label(question, models, subject='ADA'):
     ptest_svm = np.array(ptest_svm)
 
     ptest_maxent = []
-    for x in [features(X1[i]) for i in range(len(X1))]:
+    for x in [features(X2[i]) for i in range(len(X1))]:
         p_dict = clf_maxent.prob_classify(x)._prob_dict
         probs = np.array([p_dict[x] for x in range(6)])
         probs = np.exp(probs) / np.sum(np.exp(probs))

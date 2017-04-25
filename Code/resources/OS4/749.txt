@@ -1,0 +1,139 @@
+Distributed Scheduling Algorithms
+             Both system performance and computation speedup in applications would be
+             adversely affected if computational loads in the nodes of a distributed system
+             are uneven. A distributed scheduling algorithm balances computational loads
+             in the nodes by transferring some processes from a heavily loaded node to a
+
+
+
+                                                                     Chapter 18   Distributed Control Algorithms  729
+                               Process Pi       State of Pi          Process Pi
+                               operates at      is transferred       operates at
+                               node N1          node N2              node N2
+             Activities in
+             node N2
+             Activities in
+             node N1
+                            0               ti                  tj   Time
+Figure 18.8  Migration of process Pi from   node N1 to node     N2.
+lightly loaded node. Figure 18.8 illustrates this technique, which is called pro-
+cess migration. Process Pi is created in node N1 at time t = 0. At time ti the
+scheduling function decides to transfer the process to node N2, so operation of
+the process is halted in node N1 and the kernel starts transferring its state to node
+N2. At time tj the transfer of state is complete and the process starts operating
+in node N2.
+To perform load balancing through process migration, a scheduling algo-
+rithm needs to measure the computational loads in nodes, and apply a threshold
+to decide which ones are heavily loaded and which ones are lightly loaded. At
+appropriate times, it transfers processes from heavily loaded nodes to lightly
+loaded nodes. These nodes are called sender nodes and receiver nodes, respec-
+tively. CPU utilization is a direct indicator of the computational load serviced in
+a node; however, monitoring of CPU utilization incurs high execution overhead.
+Hence operating systems prefer to use the number of processes in a node or the
+length of the ready queue of processes, as measures of computational loads. These
+measures possess a good correlation with the average response time in a node,
+and their use incurs a low overhead.
+Actual migration of a process can be performed in two ways. Preemp-
+tive migration involves suspending a process, recording its state, transferring it
+to another node and resuming operation of the process in the new node (see
+Figure 18.8); it requires extensive kernel support. In nonpreemptive migration,
+the load balancing decision is taken during creation of a new process. If the node
+in which a "create process" call is performed is heavily loaded, the process is
+simply created in a remote node. Nonpreemptive migration does not require any
+special support in the kernel.
+Stability is an important issue in the design of a distributed scheduling algo-
+rithm. An algorithm is unstable if, under some load conditions, its overhead is not
+bounded. Consider a distributed scheduling algorithm that transfers a process
+from a heavily loaded node to a randomly selected node. If the node to which
+the process is sent is itself heavily loaded, the process would have to be migrated
+once again. Under heavy load conditions, this algorithm would lead to a situa-
+tion that resembles thrashing--the scheduling overhead would be high because
+
+
+
+730  Part 5  Distributed Operating Systems
+             process migration is frequent, but processes being transferred would not make
+             much progress.
+                 A sender-initiated algorithm transfers a process nonpreemptively, i.e., from
+             a sender node to a receiver node. While creating a process in a heavily loaded
+             node, it polls other nodes to find a lightly loaded node so that it can migrate the
+             process to that node. This action makes the scheduling algorithm unstable at high
+             system loads because a sender that cannot find a lightly loaded node would poll
+             continuously and waste a considerable fraction of its CPU's time. Instability can
+             be prevented by limiting the number of attempts a sender is allowed to make to
+             find a receiver. If this number is exceeded, the sender would abandon the process
+             migration attempt and create the new process locally. Instability may also result if
+             several processes are sent to the same receiver node, which now becomes a sender
+             node and has to migrate some of the processes it received. This situation can be
+             avoided by using a protocol whereby a node accepts a process only if it is still a
+             receiver node (see Exercise 18.10).
+                 A receiver-initiated algorithm checks whether a node is a receiver node every
+             time a process in the node completes. It now polls other nodes in the system to
+             find a node that would not become a receiver node even if a process is transferred
+             out of it, and transfers a process from such a node to the receiver node. Thus,
+             process migration is necessarily preemptive. At high system loads, the polling
+             overhead would be bounded because the receiver would be able to find a sender
+             quickly. At low system loads, continuous polling by a receiver would not be
+             harmful because idle CPU times would exist in the system. Unbounded load
+             balancing overhead can be prevented by abandoning a load balancing attempt
+             if a sender cannot be found in a fixed number of polls; however, a receiver must
+             repeat load balancing attempts at fixed intervals of time to provide the liveness
+             property.
+                 We discuss a symmetrically initiated algorithm that contains features of
+             both sender-initiated and receiver-initiated algorithms. It behaves like a sender-
+             initiated algorithm at low system loads and like a receiver-initiated algorithm at
+             high system loads. Each node maintains a status flag to indicate whether it is
+             presently a sender, a receiver, or an OK node, i.e., neither a sender nor a receiver.
+             It also maintains three lists, called senders list, receivers list, and OK list, to
+             contain ids of nodes that are known to be senders, receivers, and OK nodes,
+             respectively.
+             Algorithm 18.5 Symmetrically Initiated Load Balancing Algorithm
+             1.  When a node becomes a sender as a result of creation of a process: Change
+                 the status flag to "sender." If the receivers list is nonempty, poll the nodes
+                 included in it, subject to the limit on number of nodes that can be polled.
+                 a. If the polled node replies that it is a receiver node, transfer a process to it.
+                 Examine local load and set the status flag accordingly.
+                 b. Otherwise, move the polled node to the appropriate list, based on its reply.
+             2.  When a node becomes a receiver as a result of completion of a process: Change
+                 the status flag to "receiver." Poll the nodes included in the senders list,
+
+
+
+                                                                   Chapter 18  Distributed Control  Algorithms  731
+    followed by those in the receivers list and OK list, subject to the limit on
+    number of nodes that can be polled.
+    a. If the polled node replies that it is a sender node, transfer a process from
+        it. Examine local load and set the status flag accordingly.
+    b. Otherwise, move the polled node to the appropriate list, based on its reply.
+3.  When a node is polled by a receiver node: Move the polling node to the receivers
+    list. Send a reply containing own current status.
+4.  When a node is polled by a sender node: Move the polling node to the senders
+    list. Send a reply containing own current status.
+5.  When a process is transferred from or to a node: Examine local load and set
+    the status flag accordingly.
+    Instability would arise in this algorithm if too many processes are trans-
+ferred to a receiver node simultaneously. To prevent it, a receiver node should
+change its flag in Step 3 by anticipating a transfer, rather than in Step 5 as at
+present.
+    Figure 18.9 depicts comparative performance of distributed scheduling algo-
+rithms. A sender-initiated algorithm incurs low overhead at low system loads
+because few senders exist in the system. Hence, the system can provide good
+response times to processes. As the load increases, the number of senders increases
+and the overhead of the algorithm increases. At high system loads the algo-
+rithm is unstable because a large number of senders exists in the system and
+few, if any, receivers exist. Consequently, the response time increases sharply. A
+receiver-initiated algorithm incurs a higher overhead at low system loads than a
+sender-initiated algorithm because a large number of receivers exists at low system
+loads. Hence the response time is not as good as when a sender-initiated algorithm
+is used. At high system loads, few receivers exist in the system, so a receiver-
+initiated algorithm performs distinctly better than a sender-initiated algorithm.
+The performance of a symmetrically initiated algorithm would resemble that of
+                                                       Sender
+                                                       initiated
+              Response
+              time
+                                                       Receiver
+                                                                   initiated
+                        0.5                                        0.9
+                                                      System load
+Figure  18.9  Performance of distributed  scheduling  algorithms.

@@ -1,0 +1,59 @@
+IMPLEMENTATION ISSUES
+Implementers of virtual memory systems have to make choices among the
+major theoretical algorithms, such as second chance versus aging, local versus glo-
+bal page allocation, and demand paging versus prepaging. But they also have to be
+aware of a number of practical implementation issues as well.    In this section we
+will take a look at a few of the common problems and some solutions.
+3.6.1 Operating System Involvement with Paging
+There are four times when the operating system has paging-related work to do:
+process creation time, process execution time, page fault time, and process termi-
+nation time. We will now briefly examine each of these to see what has to be done.
+When a new process is created in a paging system, the operating system has to
+determine how large the program and data will be (initially) and create a page table
+
+
+
+234                         MEMORY MANAGEMENT                              CHAP. 3
+for them. Space has to be allocated in memory for the page table and it has to be
+initialized. The page table need not be resident when the process is swapped out
+but has to be in memory when the process is running. In addition, space has to be
+allocated in the swap area on disk so that when a page is swapped out, it has some-
+where to go. The swap area also has to be initialized with program text and data so
+that when the new process starts getting page faults, the pages can be brought in.
+Some systems page the program text directly from the executable file, thus saving
+disk space and initialization time. Finally, information about the page table and
+swap area on disk must be recorded in the process table.
+     When a process is scheduled for execution, the MMU has to be reset for the
+new process and the TLB flushed, to get rid of traces of the previously executing
+process. The new process' page table has to be made current, usually by copying it
+or a pointer to it to some hardware register(s).  Optionally, some or all of the proc-
+ess' pages can be brought into memory to reduce the number of page faults ini-
+tially (e.g., it is certain that the page pointed to by the program counter will be
+needed).
+     When a page fault occurs, the operating system has to read out hardware regis-
+ters to determine which virtual address caused the fault. From this information, it
+must compute which page is needed and locate that page on disk. It must then find
+an available page frame in which to put the new page, evicting some old page if
+need be. Then it must read the needed page into the page frame.            Finally, it must
+back up the program counter to have it point to the faulting instruction and let that
+instruction execute again.
+     When a process exits, the operating system must release its page table, its
+pages, and the disk space that the pages occupy when they are on disk.     If some of
+the pages are shared with other processes, the pages in memory and on disk can be
+released only when the last process using them has terminated.
+3.6.2 Page Fault Handling
+     We are finally in a position to describe in detail what happens on a page fault.
+The sequence of events is as follows:
+     1.   The hardware traps to the kernel, saving the program counter on the
+          stack.  On most machines, some information about the state of the
+          current instruction is saved in special CPU registers.
+     2.   An assembly-code routine is started to save the general registers and
+          other volatile information, to keep the operating system from destroy-
+          ing it. This routine calls the operating system as a procedure.
+     3.   The operating system discovers that a page fault has occurred, and
+          tries to discover which virtual page is needed. Often one of the hard-
+          ware registers contains this information.  If not, the operating system
+
+
+
+SEC. 3.6                  

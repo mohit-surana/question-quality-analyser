@@ -1,0 +1,100 @@
+Deadlock Handling in Practice
+                   An    operating    system   manages        numerous  and  diverse   resources--hardware
+                   resources such as memory and I/O devices, software resources such as files
+                   containing programs or data and interprocess messages, and kernel resources
+                   such    as  data   structures   and    control  blocks   used  by   the  kernel.  The  over-
+                   head of deadlock detection-and-resolution and deadlock avoidance make them
+                   unattractive      deadlock  handling       policies  in  practice.  Hence,  an    OS   either
+
+
+
+                                                                                Chapter 8   Deadlocks  307
+uses the deadlock prevention approach, creates a situation in which explicit
+deadlock     handling  actions  are    unnecessary,  or  simply  does  not  care  about
+possibility  of  deadlocks.  Further,    since  deadlock   prevention     constrains   the
+order in which processes request their resources, operating systems tend to
+handle  deadlock  issues     separately  for  each   kind  of  resources  like  memory,
+I/O devices, files, and kernel resources. We discuss these approaches in the
+following.
+Memory       Memory is a preemptible resource, so its use by processes cannot cause
+a deadlock. Explicit deadlock handling is therefore unnecessary. The memory
+allocated to a process is freed by swapping out the process whenever the memory
+is needed for another process.
+I/O Devices      Among deadlock prevention policies, the "all resources together"
+policy requires processes to make one multiple request for all their resource
+requirements. This policy incurs the least CPU overhead, but it has the draw-
+back mentioned in Section 8.5.1--it leads to underutilization of I/O devices that
+are allocated much before a process actually needs them. Resource ranking, on
+the other hand, is not a feasible policy to control use of I/O devices because
+any assignment of resource ranks causes inconvenience to some group of users.
+This difficulty is compounded by the fact that I/O devices are generally nonpre-
+emptible. Operating systems overcome this difficulty by creating virtual devices.
+For example, the system creates a virtual printer by using some disk area to store
+a file that is to be printed. Actual printing takes place when a printer becomes
+available. Since virtual devices are created whenever needed, it is not necessary to
+preallocate them as in the "all resources together" policy unless the system faces
+a shortage of disk space.
+Files and Interprocess Messages          A file is a user-created resource. An OS con-
+tains a large number of files. Deadlock prevention policies such as resource
+ranking could cause high overhead and inconvenience to users. Hence operat-
+ing systems do not extend deadlock handling actions to files; processes accessing
+a common set of files are expected to make their own arrangements to avoid dead-
+locks. For similar reasons, operating systems do not handle deadlocks caused by
+interprocess messages.
+Control Blocks    The kernel allocates control blocks such as process control
+blocks (PCBs) and event control blocks (ECBs) to processes in a specific order--a
+PCB is allocated when a process is created, and an ECB is allocated when the
+process becomes blocked on an event. Hence resource ranking can be a solution
+here. If a simpler policy is desired, all control blocks for a job or process can be
+allocated together at its initiation.
+8.8.1 Deadlock Handling in Unix
+Most operating systems simply ignore the possibility of deadlocks involving user
+processes, and Unix is no exception. However, Unix addresses deadlocks due to
+sharing of kernel data structures by user processes. Recall from Section 5.4.1 that a
+
+
+
+308  Part 2  Process Management
+             Unix process that was running on the CPU executes kernel code when an interrupt
+             or system call occurs, hence user processes could concurrently execute kernel code.
+             The kernel employs the resource ranking approach to deadlock prevention (see
+             Section 8.5.2) by requiring processes to set locks on kernel data structures in
+             a standard order; however, there are exceptions to this rule, and so deadlocks
+             could arise. We present simplified views of two arrangements used to prevent
+             deadlocks.
+             The Unix kernel uses a buffer cache (see Section 14.13.1.2) to speed up
+             accesses to frequently used disk blocks. It consists of a pool of buffers in memory
+             and a hashed data structure to check whether a specific disk block is present in a
+             buffer. To facilitate reuse of buffers, a list of buffers is maintained in least recently
+             used (LRU) order--the first buffer in the list is the least recently used buffer and
+             the last buffer is the most recently used buffer. The normal order of accessing a
+             disk block is to use the hashed data structure to locate a disk block if it exists
+             in a buffer, put a lock on the buffer containing the disk block, and then put a
+             lock on the list of buffers to update the LRU status of the buffer. However, if a
+             process merely wants to obtain a buffer for loading a new disk block, it directly
+             accesses the list of buffers and takes off the first buffer that is not in use at the
+             moment. To perform this action, the process puts a lock on the list. Then it tries
+             to set the lock on the first buffer in the list. Deadlocks are possible because this
+             order of locking the list and a buffer is different from the standard order of setting
+             these locks.
+             Unix uses an innovative approach to avoid such deadlocks. It provides a
+             special operation that tries to set a lock, but returns with a failure condition code
+             if the lock is already set. The process looking for a free buffer uses this operation
+             to check whether a buffer is free. If a failure condition code is returned, it simply
+             tries to set the lock on the next buffer, and so on until it finds a buffer that it can
+             use. This approach avoids deadlocks by avoiding circular waits.
+             Another situation in which locks cannot be set in a standard order is in the
+             file system function that establishes a link (see Section 13.4.2). A link command
+             provides path names for a file and a directory that is to contain the link to the file.
+             This command can be implemented by locking the directories containing the file
+             and the link. However, a standard order cannot be defined for locking these
+             directories. Consequently, two processes concurrently trying to lock the same
+             directories may become deadlocked. To avoid such deadlocks, the file system
+             function does not try to acquire both locks at the same time. It first locks one
+             directory, updates it in the desired manner, and releases the lock. It then locks the
+             other directory and updates it. Thus it requires only one lock at any time. This
+             approach prevents deadlocks because the hold-and-wait condition is not satisfied
+             by these processes.
+             8.8.2 Deadlock Handling in Windows
+             Windows     Vista   provides  a  feature  called  wait  chain  traversal  (WCT),  which
+             assists applications and debuggers in detecting deadlocks. A wait chain starts

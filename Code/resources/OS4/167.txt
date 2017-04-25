@@ -1,0 +1,621 @@
+Case Studies of Processes and Threads
+             5.4.1 Processes in Unix
+             Data Structures     Unix uses two data structures to hold control data about
+             processes:
+             ·    proc structure: Contains process id, process state, priority, information about
+                  relationships with other processes, a descriptor of the event for which a
+                  blocked process is waiting, signal handling mask, and memory management
+                  information.
+             ·    u area (stands for "user area"): Contains a process control block, which stores
+                  the CPU state for a blocked process; pointer to proc structure, user and group
+                  ids, and information concerning the following: signal handlers, open files and
+                  the current directory, terminal attached to the process, and CPU usage by
+                  the process.
+             These data structures together hold information analogous to the PCB data struc-
+             ture discussed in Section 5.2. The proc structure mainly holds scheduling related
+             data while the u area contains data related to resource allocation and signal han-
+             dling. The proc structure of a process is always held in memory. The u area needs
+             to be in memory only when the process is in operation.
+             Types of Processes  Two types of processes exist in Unix--user processes and
+             kernel processes. A user process executes a user computation. It is associated
+             with the user's terminal. When a user initiates a program, the kernel creates the
+             primary process for it, which can create child processes (see Section 5.1.2). A
+             daemon process is one that is detached from the user's terminal. It runs in the
+             background and typically performs functions on a systemwide basis, e.g., print
+             spooling and network management. Once created, daemon processes can exist
+             throughout the lifetime of the OS. Kernel processes execute code of the kernel.
+             They are concerned with background activities of the kernel like swapping. They
+             are created automatically when the system is booted and they can invoke kernel
+             functionalities or refer to kernel data structures without having to perform a
+             system call.
+             Process Creation and Termination  The system call fork creates a child process
+             and sets up its context (called the user-level context in Unix literature). It allocates
+             a proc structure for the newly created process and marks its state as ready, and
+             also allocates a u area for the process. The kernel keeps track of the parent­child
+             relationships using the proc structure. fork returns the id of the child process.
+
+
+
+                                                                 Chapter 5     Processes and Threads  147
+The user-level context of the child process is a copy of the parent's user-
+level context. Hence the child executes the same code as the parent. At creation,
+the program counter of the child process is set to contain the address of the
+instruction at which the fork call returns. The fork call returns a 0 in the child
+process, which is the only difference between parent and child processes.A child
+process can execute the same program as its parent, or it can use a system call
+from the exec family of system calls to load some other program for execution.
+Although this arrangement is cumbersome, it gives the child process an option of
+executing the parent's code in the parent's context or choosing its own program
+for execution. The former alternative was used in older Unix systems to set up
+servers that could service many user requests concurrently.
+The complete view of process creation and termination in Unix is as follows:
+After booting, the system creates a process init. This process creates a child process
+for every terminal connected to the system. After a sequence of exec calls, each
+child process starts running the login shell. When a programmer indicates the
+name of a file from the command line, the shell creates a new process that executes
+an exec call for the named file, in effect becoming the primary process of the
+program. Thus the primary process is a child of the shell process. The shell process
+now executes the wait system call described later in this section to wait for end of
+the primary process of the program. Thus it becomes blocked until the program
+completes, and becomes active again to accept the next user command. If a shell
+process performs an exit call to terminate itself, init creates a new process for the
+terminal to run the login shell.
+A  process       Pi  can  terminate  itself  through  the  exit  system  call  exit  (sta-
+tus_code), where status_code is a code indicating the termination status of the
+process. On receiving the exit call the kernel saves the status code in the proc
+structure of Pi, closes all open files, releases the memory allocated to the process,
+and destroys its u area. However, the proc structure is retained until the parent
+of Pi destroys it. This way the parent of Pi can query its termination status any
+time it wishes. In essence, the terminated process is dead but it exists, hence it is
+called a zombie process. The exit call also sends a signal to the parent of Pi. The
+child processes of Pi are made children of the kernel process init. This way init
+receives a signal when a child of Pi, say Pc, terminates so that it can release Pc's
+proc structure.
+Waiting for Process Termination      A process Pi can wait for the termination of
+a child process through the system call wait (addr(. . .)), where addr(. . .) is the
+address of a variable, say variable xyz, within the address space of Pi. If process
+Pi has child processes and at least one of them has already terminated, the wait call
+stores the termination status of a terminated child process in xyz and immediately
+returns with the id of the terminated child process. If more terminated child
+processes exist, their termination status will be made available to Pi only when
+it repeats the wait call. The state of process Pi is changed to blocked if it has
+children but none of them has terminated. It will be unblocked when one of the
+child processes terminates. The wait call returns with a "-1" if Pi has no children.
+The following example illustrates benefits of these semantics of the wait call.
+
+
+
+148  Part 2  Process Management
+·
+     Example 5.8  Child Processes in Unix
+                  Figure 5.18 shows the C code of a process that creates three child processes
+                  in the for loop and awaits their completion. This code can be used to set
+                  up processes of the real-time data logging system of Example 5.1. Note that
+                  the fork call returns to the calling process with the id of the newly created
+                  child process whereas it returns to the child process with a 0. Because of this
+                  peculiarity, child processes execute the code in the if statement while the
+                  parent process skips the if statement and executes a wait statement. The wait
+                  is satisfied whenever a child process terminates through the exit statement.
+                  However, the parent process wishes to wait until the last process finishes, so
+                  it issues another wait if the value returned is anything other than -1. The
+                  fourth wait call returns with a -1, which brings the parent process out of
+                  the loop. The parent process code does not contain an explicit exit() call.
+                  The language compiler automatically adds this at the end of main().
+                  ·
+                  Waiting for Occurrence of Events         A process that is blocked on an event is said
+                  to sleep on it; e.g., a process that initiates an I/O operation would sleep on its
+                  completion event. Unix uses an interesting arrangement to activate processes
+                  sleeping on an event. It does not use event control blocks (ECBs) described earlier
+                  in Section 5.2.4; instead it uses event addresses. A set of addresses is reserved
+                  in the kernel, and every event is mapped into one of these addresses. When a
+                  process wishes to sleep on an event, the address of the event is computed, the
+                  state of the process is changed to blocked, and the address of the event is put in
+                  its process structure. This address serves as the description of the event awaited
+                  by the process. When the event occurs, the kernel computes its event address and
+                  activates all processes sleeping on it.
+                     main()
+                     {
+                                int  saved_status;
+                                for  (i=0;     i<3;  i++)
+                                {
+                                       if  (fork()==0)
+                                       {   /*  code  for   child  processes        */
+                                               ...
+                                               exit();
+                                       }
+                                }
+                                while  (wait(&saved_status)                !=-1);
+                                          /*   loop  till  all    child    processes   terminate  */
+                     }
+                  Figure  5.18  Process creation and termination in Unix.
+
+
+
+                                                              Chapter 5  Processes          and  Threads  149
+This     arrangement  incurs       unnecessary  overhead  in  some       situations.   For
+example, consider several processes sleeping on the same event as a result of
+data access synchronization. When the event occurs, all these processes are acti-
+vated but only one process gains access to the data and the other processes go
+back to sleep. This is analogous to the busy wait situation, which we will discuss
+in the next chapter. The method of mapping events into addresses adds to this
+problem. A hashing scheme is used for mapping, and so two or more events may
+map into the same event address. Now occurrence of any one of these events will
+activate all processes sleeping on all these events. Each activated process would
+now have to check whether the event on which it is sleeping has indeed occurred,
+and go back to sleep if this is not the case.
+Interrupt Servicing  Unix avoids interrupts during sensitive kernel-level actions
+by assigning each interrupt an interrupt priority level (ipl). Depending on the
+program being executed by the CPU, an interrupt priority level is also associated
+with the CPU. When an interrupt at a priority level l arises, it is handled only if l
+is larger than the interrupt priority level of the CPU; otherwise, it is kept pending
+until the CPU's interrupt priority level becomes < l. The kernel uses this feature
+to prevent inconsistency of the kernel data structures by raising the ipl of the
+CPU to a high value before starting to update its data structures and lowering it
+after the update is completed.
+System Calls     When a system call is made, the system call handler uses the system
+call number to determine which system functionality is being invoked. From its
+internal tables it knows the address of the handler for this functionality. It also
+knows the number of parameters this call is supposed to take. However, these
+parameters exist on the user stack, which is a part of the process context of the
+process making the call. So these parameters are copied from the process stack
+into some standard place in the u area of the process before control is passed
+to the handler for the specific call. This action simplifies operation of individual
+event handlers.
+Signals  A signal can be sent to a process, or to a group of processes. This action
+is performed by the kill system call kill (<pid>, <signum>), where <pid> is an
+integer value that can be positive, zero, or negative. A positive value of <pid> is
+the id of a process to which the signal is to be sent. A 0 value of <pid> implies
+that the signal is to be sent to some processes within the same process tree as the
+sender process, i.e., some processes that share an ancestor with the sender process.
+This feature is implemented as follows: At a fork call, the newly created process
+is assigned a group id that is the same as the process group number of its parent
+process. A process may change its group number by using the setpgrp system call.
+When <pid>= 0, the signal is sent to all processes with the same group number
+as the sender. A negative value of <pid> is used to reach processes outside the
+process tree of the sender. We will not elaborate on this feature here.
+A process specifies a signal handler by executing the statement
+              oldfunction       =  signal (<signum>, <function>)
+
+
+
+150  Part 2  Process Management
+             where signal is a function in the C library that makes a signal system call,
+             <signum> is an integer, and <function> is the name of a function within the
+             address space of the process. This call specifies that the function <function>
+             should be executed on occurrence of the signal <signum>. The signal call
+             returns with the previous action specified for the signal <signum>. A user can
+             specify SIG_DFL as <function> to indicate that the default action defined in the
+             kernel, such as producing a core dump and aborting the process, is to be executed
+             on occurrence of the signal, or specify SIG_IGN as <function> to indicate that
+             the occurrence of the signal is to be ignored.
+             The kernel uses the u area of a process to note the signal handling actions
+             specified by it, and a set of bits in the proc structure to register the occurrence
+             of signals. Whenever a signal is sent to a process, the bit corresponding to the
+             signal is set to 1 in the proc structure of the destination process. The kernel now
+             determines whether the signal is being ignored by the destination process. If not,
+             it makes provision to deliver the signal to the process. If a signal is ignored, it
+             remains pending and is delivered when the process specifies its interest in receiving
+             the signal (either by specifying an action or by specifying that the default action
+             should be used for it). A signal remains pending if the process for which it is
+             intended is in a blocked state. The signal is delivered when the process comes
+             out of the blocked state. In general, the kernel checks for pending signals when
+             a process returns from a system call or interrupt, after a process gets unblocked,
+             and before a process gets blocked on an event.
+             Invocation of the signal handling action is implemented as described earlier
+             in Section 5.2.6. A few anomalies exist in the way signals are handled. If a signal
+             occurs repeatedly, the kernel simply notes that it has occurred, but does not count
+             the number of its occurrences. Hence the signal handler may be executed once or
+             several times, depending on when the process gets scheduled to execute the signal
+             handler. Another anomaly concerns a signal sent to a process that is blocked in a
+             system call. After executing the signal handler, such a process does not resume its
+             execution of the system call. Instead, it returns from the system call. If necessary,
+             it may have to repeat the system call. Table 5.9 lists some interesting Unix signals.
+             Table 5.9           Interesting  Signals in Unix
+             Signal                           Description
+             SIGCHLD                          Child process died or suspended
+             SIGFPE                           Arithmetic fault
+             SIGILL                           Illegal instruction
+             SIGINT                           Tty interrupt (Control-C)
+             SIGKILL                          Kill process
+             SIGSEGV                          Segmentation fault
+             SIGSYS                           Invalid system call
+             SIGXCPU                          CPU time limit is exceeded
+             SIGXFSZ                          File size limit is exceeded
+
+
+
+                                                            Chapter 5   Processes       and  Threads  151
+Process  States  and  State    Transitions  There  is  one  conceptual  difference
+between the process model described in Section 5.2.1 and that used in Unix.
+In the model of Section 5.2.1, a process in the running state is put in the ready
+state the moment its execution is interrupted. A system process then handles the
+event that caused the interrupt. If the running process had itself caused a software
+interrupt by executing an <SI_instrn>, its state may further change to blocked if
+its request cannot be granted immediately. In this model a user process executes
+only user code; it does not need any special privileges. A system process may have
+to use privileged instructions like I/O initiation and setting of memory protection
+information, so the system process executes with the CPU in the kernel mode.
+Processes behave differently in the Unix model. When a process makes a
+system call, the process itself proceeds to execute the kernel code meant to handle
+the system call. To ensure that it has the necessary privileges, it needs to execute
+with the CPU in the kernel mode. A mode change is thus necessary every time
+a system call is made. The opposite mode change is necessary after processing a
+system call. Similar mode changes are needed when a process starts executing the
+interrupt servicing code in the kernel because of an interrupt, and when it returns
+after servicing an interrupt.
+The Unix kernel code is made reentrant so that many processes can execute it
+concurrently. This feature takes care of the situation where a process gets blocked
+while executing kernel code, e.g., when it makes a system call to initiate an I/O
+operation, or makes a request that cannot be granted immediately. To ensure
+reentrancy of code, every process executing the kernel code must use its own
+kernel stack. This stack contains the history of function invocations since the
+time the process entered the kernel code. If another process also enters the kernel
+code, the history of its function invocations will be maintained on its own kernel
+stack. Thus, their operation would not interfere. In principle, the kernel stack of
+a process need not be distinct from its user stack; however, distinct stacks are
+used in practice because most computer architectures use different stacks when
+the CPU is in the kernel and user modes.
+Unix uses two distinct running states. These states are called user running and
+kernel running states. A user process executes user code while in the user running
+state, and kernel code while in the kernel running state. It makes the transition from
+user running to kernel running when it makes a system call, or when an interrupt
+occurs. It may get blocked while in the kernel running state because of an I/O
+operation or nonavailability of a resource. When the I/O operation completes or
+its resource request is granted, the process returns to the kernel running state and
+completes the execution of the kernel code that it was executing. It now leaves
+the kernel mode and returns to the user mode. Accordingly, its state is changed
+from kernel running to user running.
+Because of this arrangement, a process does not get blocked or preempted in
+the user running state--it first makes a transition to the kernel running state and
+then gets blocked or preempted. In fact, user running  kernel running is the only
+transition out of the user running state. Figure 5.19 illustrates fundamental process
+states and state transitions in Unix. As shown there, even process termination
+occurs when a process is in the kernel running state. This happens because the
+
+
+
+152  Part 2  Process Management
+                                                    User
+                                                running
+                                   Interrupt/                  Return from
+                                   system call                 interrupt/
+                                                               system call
+                                                    Kernel       Exit          Zombie
+                                                running
+                                 Dispatching                     Resource or
+                                                                 wait request
+                                                    Preemption
+                                   Ready      Resource granted   Blocked
+                                              or wait completed
+             Figure  5.19  Process state transitions in Unix.
+             process executes the system call exit while in the user running state. This call
+             changes its state to kernel running. The process actually terminates and becomes
+             a zombie process as a result of processing this call.
+             5.4.2 Processes and Threads in Linux
+             Data Structures     The Linux 2.6 kernel supports the 1 : 1 threading model, i.e.,
+             kernel-level threads. It uses a process descriptor, which is a data structure of type
+             task_struct, to contain all information pertaining to a process or thread. For
+             a process, this data structure contains the process state, information about its
+             parent and child processes, the terminal used by the process, its current directory,
+             open files, the memory allocated to it, signals, and signal handlers. The kernel
+             creates substructures to hold information concerning the terminal, directory, files,
+             memory and signals and puts pointers to them in the process descriptor. This
+             organization saves both memory and overhead when a thread is created.
+             Creation and Termination of Processes and Threads              Both processes and threads
+             are created through the system calls fork and vfork, whose functionalities are
+             identical to the corresponding Unix calls. These functionalities are actually imple-
+             mented by the system call clone, which is hidden from the view of programs. The
+             clone system call takes four parameters: start address of the process or thread,
+             parameters to be passed to it, flags, and a child stack specification. Some of the
+             important flags are:
+             CLONE_VM            Shares the memory management information used
+                                 by the MMU
+             CLONE_FS            Shares the information about root and current
+                                 working directory
+
+
+
+                                                                      Chapter 5  Processes  and  Threads  153
+CLONE_FILES              Shares the information about open files
+CLONE_SIGHAND            Shares the information about signals and signal
+                         handlers
+The organization of task_struct facilitates selective sharing of this infor-
+mation since it merely contains pointers to the substructures where the actual
+information is stored. At a clone call, the kernel makes a copy of task_struct
+in which some of these pointers are copied and others are changed. A thread
+is created by calling clone with all flags set, so that the new thread shares the
+address space, files and signal handlers of its parent. A process is created by
+calling clone with all flags cleared; the new process does not share any of these
+components.
+The Linux 2.6 kernel also includes support for the Native POSIX Threading
+Library (NPTL), which provides a number of enhancements that benefit heavily
+threaded applications. It can support up to 2 billion threads, whereas the Linux
+2.4 kernel could support only up to 8192 threads per CPU. A new system call
+exit_group( ) has been introduced to terminate a process and all its threads; it can
+terminate a process having a hundred thousand threads in about 2 seconds, as
+against about 15 minutes in the Linux 2.4 kernel. Signal handling is performed
+in the kernel space, and a signal is delivered to one of the available threads in
+a process. Stop and continue signals affect an entire process, while fatal signals
+terminate the entire process. These features simplify handling of multithreaded
+processes. The Linux 2.6 kernel also supports a fast user-space mutex called futex
+that reduces the overhead of thread synchronization through a reduction in the
+number of system calls.
+Parent---Child Relationships  Information about parent and child processes or
+threads is stored in a task_struct to maintain awareness of the process tree.
+task_struct contains a pointer to the parent and to the deemed parent, which
+is a process to which termination of this process should be reported if its par-
+ent process has terminated, a pointer to the youngest child, and pointers to the
+younger and older siblings of a process. Thus, the process tree of Figure 5.2 would
+be represented as shown in Figure 5.20.
+                                                  data_logger
+              copy_sample          record_sample  housekeeping
+Figure  5.20  Linux process tree for the processes of Figure 5.2(a).
+
+
+
+154  Part 2  Process Management
+             Process States      The state field of a process descriptor contains a flag indicating
+             the state of a process. A process can be in one of five states at any time:
+                TASK_RUNNING                        The process is either scheduled or waiting to
+                                                    be scheduled.
+                TASK_INTERRUPTIBLE                  The process is sleeping on an event, but may
+                                                    receive a signal.
+                TASK_UNINTERRUPTIBLE                The process is sleeping on an event, but may
+                                                    not receive a signal.
+                TASK_STOPPED                        The operation of the process has been
+                                                    stopped by a signal.
+                TASK_ZOMBIE                         The process has completed, but the parent
+                                                    process has not yet issued a system call of
+                                                    the wait-family to check whether it has
+                                                    terminated.
+                The  TASK_RUNNING            state  corresponds    to  one  of  running   or  ready
+             states  described   in  Section        5.2.1.  The  TASK_INTERRUPTIBLE                 and
+             TASK_UNINTERRUPTIBLE states both correspond to the blocked state. Splitting
+             the blocked state into two states resolves the dilemma faced by an OS in handling
+             signals sent to a process in the blocked state (see Section 5.2.6)--a process can
+             decide whether it wants to be activated by a signal while waiting for an event to
+             occur, or whether it wants the delivery of a signal to be deferred until it comes out
+             of the blocked state. A process enters the TASK_STOPPED state when it receives a
+             SIGSTOP or SIGTSTP signal to indicate that its execution should be stopped, or
+             a SIGTTIN or SIGTTOU signal to indicate that a background process requires
+             input or output.
+             5.4.3 Threads in Solaris
+             Solaris, which is a Unix 5.4-based operating system, originally provided a hybrid
+             thread model that actually supported all three association methods of hybrid
+             threads discussed in Section 5.3.2.3, namely, many-to-one, one-to-one, and many-
+             to-many association methods. This model has been called the M × N model in
+             Sun literature. Solaris 8 continued to support this model and also provided an
+             alternative 1 : 1 implementation, which is equivalent to kernel-level threads. The
+             support for the M × N model was discontinued in Solaris 9. In this section we
+             discuss the M × N model, and the reasons why it was discontinued.
+                The M × N model employs three kinds of entities to govern concurrency and
+             parallelism within a process.
+             ·  User threads: User threads are analogous to user-level threads discussed in
+                Section 5.3.2.2; they are created and managed by a thread library, so they
+                are not visible to the kernel.
+             ·  Lightweight      processes:  A  lightweight  process   (LWP)    is  an  intermediary
+                between user threads and a kernel thread. Many LWPs may be created for
+
+
+
+                                                                    Chapter 5  Processes and Threads  155
+   a process; each LWP is a unit of parallelism within a process. User threads
+   are mapped into LWPs by the thread library. This mapping can be one-to-
+   one, many-to-one, many-to-many, or a suitable combination of all three. The
+   number of LWPs for a process and the nature of the mapping between user
+   threads and LWPs is decided by the programmer, who makes it known to the
+   thread library through appropriate function calls.
+·  Kernel threads: A kernel thread is a kernel-level thread. The kernel creates
+   one kernel thread for each LWP in a process. It also creates some kernel
+   threads for its own use, e.g., a thread to handle disk I/O in the system.
+   Figure 5.21 illustrates an arrangement of user threads, LWPs, and kernel
+threads. Process Pi has three user threads and one LWP, so a many-to-one map-
+ping exists between them. Process Pj has four user threads and three LWPs. One
+of these user threads is exclusively mapped into one of the LWPs. The remaining
+three user threads and two LWPs have a many-to-many mapping; this way each
+of the three threads can operate in any of the two LWPs.
+   LWPs can operate in parallel because each of them has a kernel thread associ-
+ated with it. The kernel creates an LWP control block for each LWP, and a kernel
+thread control block (KTCB) for each kernel thread. In addition, the thread library
+maintains a thread control block for each user thread. The information in this
+control block is analogous to that described in Section 5.3.2.2. The scheduler
+examines the KTCBs and, for each CPU in the system, selects a kernel thread
+that is in the ready state. The dispatcher dispatches the LWP corresponding to this
+kernel thread. The thread library can switch between user threads mapped into
+this LWP to achieve concurrency between user threads. The number of LWPs
+                                                                    Threads
+                                    Pi  PCB              Pj    PCB
+   Process
+   context
+   
+   thread                                                      Thread control blocks
+   library                                                     Mapping performed
+                                                                    by thread library
+                                        ···                    LWP control blocks
+                                        ···              Kernel thread control blocks
+                                    Scheduler
+                                               Selected  KTCB
+Figure 5.21  Threads  in  Solaris.
+
+
+
+156  Part 2  Process Management
+             per process and the association of user threads with LWPs is decided by the
+             programmer, thus both parallelism and concurrency within a process are under
+             the programmer's control. An n-way parallelism would be possible within a pro-
+             cess if the programmer created n LWPs for a process, 1  n  p, where p is the
+             number of CPUs. However, the degree of parallelism would reduce if a user thread
+             made a blocking system call during its operation, because the call would block
+             the LWP in which it is mapped. Solaris provides scheduler activations, described
+             later in this section, to overcome this problem.
+             A complex arrangement of control blocks is used to control switching
+             between kernel threads. The kernel thread control block contains the kernel regis-
+             ters of the CPU, stack pointer, priority, scheduling information, and a pointer to
+             the next KTCB in a scheduling list. In addition, it contains a pointer to the LWP
+             control block. The LWP control block contains saved values of user registers of
+             the CPU, signal handling information, and a pointer to the PCB of the owner
+             process.
+             Signal Handling     Signals generated by operation of a thread, such as an arith-
+             metic condition or a memory protection violation, are delivered to the thread
+             itself. Signals generated by external sources, such as a timer, have to be directed
+             to a thread that has enabled its handling. The M ×N model provided each process
+             with an LWP that was dedicated to signal handling. When a signal was generated,
+             the kernel would keep it pending and notify this LWP, which would wait until
+             it found that some thread that had enabled handling of that specific signal was
+             running on one of the other LWPs of the process, and would ask the kernel to
+             direct the pending signal to that LWP.
+             States of Processes and Kernel Threads      The kernel is aware only of states of
+             processes and kernel threads; it is oblivious to existence of user threads. A process
+             can be in one of the following states:
+             SIDL                A transient state during creation
+             SRUN                Runnable process
+             SONPROC             Running on a processor
+             SSLEEP              Sleeping
+             SSTOP               Stopped
+             SZOMB               Terminated process
+             The SRUN and SSLEEP states correspond to the ready and blocked states
+             of Section 5.2.1. A kernel thread has states TS_RUN, TS_ONPROC, TS_SLEEP,
+             TS_STOPPED, and TS_ZOMB that are analogous to the corresponding process
+             states. A kernel thread that is free is in the TS_FREE state.
+             Scheduler Activations  A scheduler activation is like a kernel thread. The kernel
+             uses scheduler activations to perform two auxiliary functions: (1) When some
+             LWP of the process becomes blocked, the kernel uses a scheduler activation to
+             create a new LWP so that other runnable threads of the process could operate.
+             (2) When an event related to the operation of the thread library occurs, the kernel
+             uses a scheduler activation to notify the thread library.
+
+
+
+                                        Chapter 5                         Processes  and  Threads  157
+Consider a many-to-one mapping between many user threads and an LWP,
+and a user thread that is currently mapped into the LWP. A kernel thread is
+associated with the LWP, so the user thread operates when the kernel thread is
+scheduled. If the user thread makes a blocking system call, the kernel thread
+would block. Effectively, the LWP with which it is associated would block. If
+some of the other threads that are mapped into the same LWP are runnable, we
+have a situation where a runnable user thread cannot be scheduled because the
+LWP has become blocked.
+In such situations, the kernel creates a scheduler activation when the user
+thread is about to block, provides the activation to the thread library, and makes
+an upcall to it. The upcall is implemented as a signal sent to the thread library.
+The thread library now executes its signal handler, using the activation provided
+by the kernel. The signal handler saves the state of the user thread that is about
+to block, releases the LWP that was used by it, and hands it over to the kernel
+for reuse. It now schedules a new user thread on the new activation provided by
+the kernel. In effect, the user thread that was about to block is removed from an
+LWP and a new user thread is scheduled in a new LWP of the process. When the
+event for which the user thread had blocked occurs, the kernel makes another
+upcall to the thread library with a scheduler activation so that it can preempt
+the user thread currently mapped into the LWP, return the LWP to the kernel,
+and schedule the newly activated thread on the new activation provided by the
+kernel.
+Switchover to the 1:1 Implementation  The M × N model was developed in the
+expectation that, because a context switch by the thread library incurred signifi-
+cantly less overhead than a context switch by the kernel, user-level scheduling of
+threads in the thread library would provide good application performance. How-
+ever, as mentioned in Section 5.3.2.2, it is possible only when schedulers in the
+thread library and in the kernel work harmoniously. The 1 : 1 implementation in
+Solaris 8 provided efficient kernel-level context switching. Use of the 1 : 1 model
+led to simpler signal handling, as threads could be dedicated to handling of spe-
+cific signals. It also eliminated the need for scheduler activations, and provided
+better scalability. Hence the M × N model was discontinued in Solaris 9.
+5.4.4 Processes and Threads in Windows
+The flavor of processes and threads in Windows differs somewhat from that pre-
+sented earlier in this chapter--Windows treats a process as a unit for resource
+allocation, and uses a thread as a unit for concurrency. Accordingly, a Win-
+dows process does not operate by itself; it must have at least one thread inside
+it. A resource can be accessed only through a resource handle. A process inherits
+some resource handles from its parent process; it can obtain more resource han-
+dles by opening new resources. The kernel stores all these handles in a handles
+table for each process. This way, a resource can be accessed by simply specifying
+an offset into the handles table.
+
+
+
+158  Part 2  Process Management
+             Windows uses three control blocks to manage a process. An executive process
+             block contains fields that store the process id, memory management information,
+             address of the handle table, a kernel process block for the process, and address
+             of the process environment block. The kernel process block contains scheduling
+             information for threads of the process, such as the processor affinity for the
+             process, the state of the process and pointers to the kernel thread blocks of its
+             threads. The executive process block and the kernel process block are situated
+             in the system address space. The process environment block contains information
+             that is used by the loader to load the code to be executed, and by the heap manager.
+             It is situated in the user address space.
+             The control blocks employed to manage a thread contain information about
+             its operation, and about the process containing it. The executive thread block of
+             a thread contains a kernel thread block, a pointer to the executive process block
+             of its parent process and impersonation information. The kernel thread block
+             contains information about the kernel stack of the thread and the thread-local
+             storage, scheduling information for the thread, and a pointer to its thread envi-
+             ronment block, which contains its id and information about its synchronization
+             requirements.
+             Windows supports the notion of a job as a method of managing a group of
+             processes. A job is represented by a job object, which contains information such
+             as handles to processes in it, the jobwide CPU time limit, per process CPU time
+             limit, job scheduling class that sets the time slice for the processes of the job,
+             processor affinity for processes of the job, and their priority class. A process can
+             be a member of only one job; all processes created by it automatically belong to
+             the same job.
+             Process Creation    The create call takes a parameter that is a handle to the parent
+             of the new process or thread. This way, a create call need not be issued by the
+             parent of a process or thread. A server process uses this feature to create a thread
+             in a client process so that it can access resources with the client's access privileges,
+             rather than its own privileges.
+             Recall from Section 4.8.4 that the environment subsystems provide support
+             for execution of programs developed for other OSs like MS-DOS, Win 32, and
+             OS/2. The semantics of process creation depend on the environment subsystem
+             used by an application process. In the Win/32 and OS/2 operating environments,
+             a process has one thread in it when it is created; it is not so in other environments
+             supported by the Windows OS. Hence process creation is actually handled by
+             an environment subsystem DLL that is linked to an application process. After
+             creating a process, it passes the id of the new process or thread to the envi-
+             ronment subsystem process so that it can manage the new process or thread
+             appropriately.
+             Creation of a child process by an application process in the Win/32 envi-
+             ronment proceeds as follows: The environment subsystem DLL linked to the
+             application process makes a system call to create a new process. This call is han-
+             dled by the executive. It creates a process object, initializes it by loading the
+             image of the code to be executed, and returns a handle to the process object. The
+
+
+
+                                                                         Chapter 5  Processes  and  Threads  159
+environment subsystem DLL now makes a second system call to create a thread,
+and passes the handle to the new process as a parameter. The executive creates
+a thread in the new process and returns a handle to it. The DLL now sends a
+message to the environment subsystem process, passing it the process and thread
+handles, and the id of their parent process. The environment subsystem process
+enters the process handle in the table of processes that currently exist in the envi-
+ronment and enters the thread handle in the scheduling data structures. Control
+now returns to the application process.
+Thread States and State Transitions                 Figure 5.22 shows the state transition
+diagram for threads. A thread can be in one of following six states:
+1.  Ready: The thread can be executed if a CPU is available.
+2.  Standby: This is a thread that has been selected to run next on a specific
+    processor. If its priority is high, the thread currently running on the processor
+    would be preempted and this thread would be scheduled.
+3.  Running: A CPU is currently allocated to the thread and the thread is in
+    operation.
+4.  Waiting: The thread is waiting for a resource or event, or has been suspended
+    by the environment subsystem.
+5.  Transition: The thread's wait was satisfied, but meanwhile its kernel stack
+    was removed from memory because it had been waiting for long. The thread
+    would enter the ready state when the kernel stack is brought back into
+    memory.
+6.  Terminated: The thread has completed its operation.
+Thread Pools       Windows provides a thread pool in every process. As described
+in Section 5.3, the pool contains a set of worker threads and an arrangement
+                      Standby    Dispatch           Running  Completion  Termi-
+                                                                         nated
+              Select            Preemption                Resource
+              for                                            or wait
+              execution                                      request
+                                 Resource granted
+                         Ready   or wait completed  Waiting
+                   Kernel stack
+                      reloaded              Kernel stack
+                                 Transi-    removed
+                                 tion
+Figure  5.22  Thread state transitions in Windows.

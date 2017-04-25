@@ -1,0 +1,323 @@
+Algorithmic Approach to Implementing Critical Sections
+             The algorithmic approach to implementing critical sections did not employ either
+             the process blocking and activation services of the kernel to delay a process, or
+             indivisible instructions in a computer to avoid race conditions. Consequently,
+             process synchronization implemented through this approach was independent of
+             both the OS and the computer. However, these features required the approach to
+             use a busy wait to delay a process at a synchronization point (see Section 6.5.1),
+             and use a complex arrangement of logical conditions to ensure absence of race
+             conditions, which complicated proofs of correctness. The algorithmic approach
+             was not widely used in practice due to these weaknesses.
+                   This section describes the algorithmic approach to implementing critical
+             sections which, as we saw in Section 6.5.2, can be used for both data access
+             synchronization and control synchronization. This study provides an insight into
+             how to ensure mutual exclusion while avoiding both deadlocks and livelocks.
+             We begin by discussing critical section implementation schemes for use by two
+             processes. Later we see how to extend some of these schemes for use by more than
+             two processes.
+             6.8.1 Two-Process Algorithms
+             Algorithm 6.1 First Attempt
+             var      turn : 1 .. 2;
+             begin
+                      turn := 1;
+             Parbegin
+                  repeat                               repeat
+                      while turn = 2                   while turn = 1
+                            do { nothing };                      do { nothing };
+                      { Critical Section }             { Critical Section }
+                      turn := 2;                       turn := 1;
+                      { Remainder of the     cycle  }  { Remainder of the cycle }
+                  forever;                             forever;
+             Parend;
+             end.
+                            Process P1                           Process P2
+
+
+
+                                                                     Chapter 6  Process Synchronization  191
+      The variable turn is a shared variable. The notation 1 .. 2 in its declaration
+indicates that it takes values in the range 1­2; i.e., its value is either 1 or 2. It is
+initialized to 1 before processes P1 and P2 are created. Each process contains a
+critical section for some shared data ds. The shared variable turn indicates which
+process can enter its critical section next. Suppose process P1 wishes to enter
+its critical section. If turn = 1, P1 can enter right away. After exiting its critical
+section, P1 sets turn to 2 so that P2 can enter its critical section. If P1 finds turn
+= 2 when it wishes to enter its critical section, it waits in the while turn = 2 do
+{ nothing } loop until P2 exits from its critical section and executes the assignment
+turn := 1. Thus the correctness condition is satisfied.
+      Algorithm 6.1 violates the progress condition of critical section implemen-
+tation described in Table 6.1 because of the way it uses shared variable turn. Let
+process P1 be in its critical section and process P2 be in the remainder of the
+cycle. When P1 exits from its critical section, it would set turn to 2. If it finishes
+the remainder of its cycle and wishes to enter its critical section once again, it will
+encounter a busy wait until after P2 uses its critical section and sets turn to 1.
+Thus, P1 is not granted entry to its critical section even though no other process
+is interested in using its critical section. Algorithm 6.2 is an attempt to eliminate
+this problem.
+Algorithm 6.2 Second Attempt
+var      c1, c2 : 0 .. 1;
+begin
+         c1 := 1;
+         c2 := 1;
+Parbegin
+     repeat                               repeat
+         while c2 = 0                     while c1 = 0
+               do { nothing };                      do { nothing };
+         c1 := 0;                         c2 := 0;
+         { Critical Section }             { Critical Section }
+         c1 := 1;                         c2 := 1;
+         { Remainder of the     cycle  }  { Remainder of the cycle }
+     forever;                             forever;
+Parend;
+end.
+               Process P1                           Process P2
+      The algorithm uses two shared variables c1 and c2, whose values are restricted
+to either a 0 or a 1. These variables can be looked upon as status flags for processes
+P1 and P2, respectively. P1 sets c1 to 0 while entering its critical section, and sets
+it back to 1 after exiting from its critical section. Thus c1 = 0 indicates that P1
+is in its critical section and c1 = 1 indicates that it is not in its critical section.
+Similarly, the value of c2 indicates whether P2 is in its critical section. Before
+entering its critical section, each process checks whether the other process is in
+its critical section. If not, it enters its own critical section right away; otherwise,
+it loops until the other process exits its critical section, and then enters its own
+
+
+
+192  Part 2  Process Management
+             critical section. The progress violation of Algorithm 6.1 is eliminated because
+             processes are not forced to take turns using their critical sections.
+                  Algorithm 6.2 violates the mutual exclusion condition when both processes
+             try to enter their critical sections at the same time. Both c1 and c2 will be 1
+             (since none of the processes is in its critical section), and so both processes will
+             enter their critical sections. To avoid this problem, the statements "while c2 = 0 do
+             { nothing };" and "c1 := 0;" in process P1 could be interchanged and the statements
+             "while c1 = 0 do { nothing };" and "c2 := 0;" could be interchanged in process
+             P2. This way c1 will be set to 0 before P1 checks the value of c2, and hence both
+             processes will not be able to be in their critical sections at the same time. However,
+             if both processes try to enter their critical sections at the same time, both c1 and
+             c2 will be 0, and so both processes will wait for each other indefinitely. This is a
+             deadlock situation (see Section 1.4.2).
+                  Both--the correctness violation and the deadlock possibility--can be elimi-
+             nated if a process defers to the other process when it finds that the other process
+             also wishes to enter its critical section. This can be achieved as follows: if P1
+             finds that P2 is also trying to enter its critical section, it can set c1 to 0. This
+             will permit P2 to enter its critical section. P1 can wait for some time and make
+             another attempt to enter its critical section after setting c1 to 1. Similarly, P2 can
+             set c2 to 0 if it finds that P1 is also trying to enter its critical section. However,
+             this approach may lead to a situation in which both processes defer to each other
+             indefinitely. This is a livelock situation we discussed earlier in the context of dining
+             philosophers (see Section 6.7.3).
+             Dekker's     Algorithm   Dekker's     algorithm  combines        the  useful  features    of
+             Algorithms 6.1 and 6.2 to avoid a livelock situation. If both processes try to
+             enter their critical sections at the same time, turn indicates which of the processes
+             should be allowed to enter. It has no effect at other times.
+             Algorithm 6.3 Dekker's Algorithm
+             var    turn : 1 .. 2;
+                    c1, c2 : 0 .. 1;
+             begin
+                    c1 := 1;
+                    c2 := 1;
+                    turn := 1;
+             Parbegin
+                  repeat                           repeat
+                    c1 := 0;                          c2 := 0;
+                    while c2 = 0 do                   while c1 = 0 do
+                          if turn = 2 then                 if turn = 1 then
+                          begin                            begin
+                          c1 := 1;                            c2 := 1;
+                          while turn = 2                      while turn = 1
+                                 do { nothing  };                 do { nothing };
+                          c1 := 0;                            c2 := 0;
+                          end;                             end;
+
+
+
+                                                                        Chapter 6  Process Synchronization  193
+         { Critical Section }               { Critical Section }
+         turn := 2;                         turn := 1;
+         c1 := 1;                           c2 := 1;
+         { Remainder of the cycle }         { Remainder of the cycle }
+     forever;                               forever;
+Parend;
+end.
+               Process P1                             Process P2
+      Variables c1 and c2 are used as status flags of the processes as in Algorithm 6.2.
+The statement while c2 = 0 do in P1 checks if it is safe for P1 to enter its critical
+section. To avoid the correctness problem of Algorithm 6.2, the statement c1 :=0
+in P1 precedes the while statement. If c2 = 1 when P1 wishes to enter a critical
+section, P1 skips the while loop and enters its critical section right away. If both
+processes try to enter their critical sections at the same time, the value of turn
+will force one of them to defer to the other. For example, if P1 finds c2 = 0, it
+defers to P2 only if turn = 2; otherwise, it simply waits for c2 to become 1 before
+entering its critical section. Process P2, which is also trying to enter its critical
+section at the same time, is forced to defer to P1 only if turn = 1. In this manner
+the algorithm satisfies mutual exclusion and also avoids deadlock and livelock
+conditions. The actual value of turn at any time is immaterial to correctness of the
+algorithm.
+Peterson's Algorithm           Peterson's algorithm is simpler than Dekker's algorithm.
+It uses a boolean array flag that contains one flag for each process; these flags
+are equivalent to the status variables c1, c2 of Dekker's algorithm. A process sets
+its flag to true when it wishes to enter a critical section and sets it back to false
+when it exits from the critical section. Processes are assumed to have the ids P0
+and P1. A process id is used as a subscript to access the status flag of a process in
+the array flag. The variable turn is used for avoiding livelocks; however, it is used
+differently than in Dekker's algorithm.
+Algorithm 6.4        Peterson's Algorithm
+var      flag : array [0 .. 1] of boolean;
+         turn : 0 .. 1;
+begin
+         flag[0] := false;
+         flag[1] := false;
+Parbegin
+     repeat                                 repeat
+         flag[0] := true;                   flag[1] := true;
+         turn := 1;                         turn := 0;
+         while flag[1] and turn = 1         while flag[0] and turn = 0
+               do {nothing};                          do {nothing};
+         { Critical Section }               { Critical Section }
+         flag[0] :=false;                   flag[1] :=false;
+         { Remainder of the cycle }         { Remainder of the cycle }
+
+
+
+194  Part 2  Process Management
+                  forever;               forever;
+             Parend;
+             end.
+                            Process P0             Process P1
+                   A process wishing to enter a critical section begins by deferring to another
+             process by setting turn to point to the other process. However, it goes ahead and
+             enters its critical section if it finds that the other process is not interested in using
+             its own critical section. If both processes try to enter their critical sections at the
+             same time, the value of turn decides which process may enter. As an example,
+             consider process P0. It sets flag[0] to true and turn to 1 when it wishes to enter its
+             critical section. If process P2 is not interested in using its critical section, flag[1]
+             will be false, and so P0 will come out of the while loop to enter its critical section
+             right away. If P1 is also interested in entering its critical section, flag[1] will be
+             true. In that case, the value of turn decides which process may enter its critical
+             section.
+                   It is interesting to consider operation of Peterson's algorithm for different
+             relative speeds of P0 and P1. Consider the situation when both P0 and P1 wish to
+             use their critical sections and P0 is slightly ahead of P1. If both processes execute
+             at the same speed, P0 will enter its critical section ahead of P1 because P1 will
+             have changed turn to 0 by the time P1 reaches the while statement. P1 now waits
+             in the while loop until P0 exits from its critical section. If, however, P0 is slower
+             than P1, it will set turn to 1 sometime after P1 sets it to 0. Hence P0 will wait in
+             the while loop and P1 will enter its critical section.
+             6.8.2 n-Process Algorithms
+             In an algorithmic implementation of a critical section, the algorithm has to know
+             the number of processes that use a critical section for the same data item. This
+             awareness is reflected in many features of its code--the size of the array of status
+             flags, the checks to determine whether any other process wishes to enter a critical
+             section, and the arrangement for one process to defer to another. Each of these
+             features has to change if the number of processes to be handled by the critical
+             section implementation changes. For example, in a two-process critical section
+             implementation, any process needs to check the status of only one other process,
+             and possibly defer to it, to ensure correctness and absence of deadlocks and
+             livelocks. In an n-process critical section implementation, a process must check
+             the status of n - 1 other processes, and do it in a manner that prevents race
+             conditions. It makes an n-process algorithm more complex. We see this in the
+             context of the algorithm by Eisenberg and McGuire [1972], which extends the
+             two-process solution of Dekker's algorithm to n processes.
+             Algorithm 6.5 An n-Process Algorithm (Eisenberg and McGuire [1972])
+             const     n = . . .;
+             var       flag : array [0 .. n - 1] of (idle, want_in, in_CS);
+
+
+
+                                                                Chapter 6  Process Synchronization  195
+         turn : 0 .. n - 1;
+begin
+         for j := 0 to n - 1 do
+          flag[j] := idle;
+Parbegin
+process Pi :
+         repeat
+          repeat
+                  flag[i] := want_in;
+                  j := turn;
+                  while j = i
+                    do if flag[j] = idle
+                             then j := turn { Loop here! }
+                             else j := j + 1 mod n;
+                  flag[i] := in_CS;
+                  j := 0;
+                  while (j < n) and (j = i or flag[j] = in_CS)
+                    do j := j + 1;
+          until (j  n) and (turn = i or flag[turn] = idle);
+          turn := i;
+          { Critical Section }
+          j := turn +1 mod n;
+          while (flag[j] = idle) do j := j + 1 mod n;
+          turn := j;
+          flag[i] := idle;
+          { Remainder of the cycle }
+         forever
+process Pk : . . .
+Parend;
+end.
+      The variable turn indicates which process may enter its critical section next.
+Its initial value is immaterial to correctness of the algorithm. Each process has
+a 3-way status flag that takes the values idle, want_in and in_CS. It is initialized
+to the value idle. A process sets its flag to want_in whenever it wishes to enter a
+critical section. It now has to decide whether it may change the flag to in_CS. To
+make this decision, it checks the flags of other processes in an order that we call
+the modulo n order. The modulo n order is Pturn, Pturn+1, . . ., Pn-1, P0, P1, . . . ,
+Pturn-1. In the first while loop, the process checks whether any process ahead of
+it in the modulo n order wishes to use its own critical section. If not, it turns its
+flag to in_CS.
+      Since processes make this check concurrently, more than one process may
+simultaneously reach the same conclusion. Hence another check is made to ensure
+correctness. The second while loop checks whether any other process has turned
+its flag to in_CS. If so, the process changes its flag back to want_in and repeats all
+the checks. All other processes that had changed their flags to in_CS also change
+their flags back to want_in and repeat the checks. These processes will not tie for
+
+
+
+196  Part 2  Process Management
+             entry to a critical section again because they have all turned their flags to want_in,
+             and so only one of them will be able to get past the first while loop. This feature
+             avoids the livelock condition. The process earlier in the modulo n order from
+             Pturn will get in and enter its critical section ahead of other processes. It changes
+             its flag to idle when it leaves its critical section. Thus the flag has the value idle
+             whenever a process is in the remainder of its cycle.
+                   This solution contains a certain form of unfairness since processes do not
+             enter their critical sections in the same order in which they requested entry to a
+             critical section. This unfairness is eliminated in the Bakery algorithm by Lamport
+             [1974].
+             Bakery Algorithm         When a process wishes to enter a critical section, it chooses
+             a number that is larger than any number chosen by any process earlier. choosing
+             is an array of boolean flags. choosing[i] is used to indicate whether process Pi is
+             currently engaged in choosing a number. number[i] contains the number chosen
+             by process Pi. number[i] = 0 if Pi has not chosen a number since the last time
+             it entered the critical section. The basic idea of the algorithm is that processes
+             should enter their critical sections in the order of increasing numbers chosen by
+             them. We discuss the operation of the algorithm in the following.
+             Algorithm 6.6       Bakery Algorithm (Lamport [1974])
+             const    n= ...;
+             var      choosing : array [0 .. n - 1] of boolean;
+                      number : array [0 .. n - 1] of integer;
+             begin
+                      for j := 0 to n - 1 do
+                       choosing[j] := false;
+                       number[j] := 0;
+             Parbegin
+                  process Pi :
+                      repeat
+                       choosing[i] := true;
+                       number[i] := max (number[0], .. ,number[n - 1])+1;
+                       choosing[i] := false;
+                       for j := 0 to n - 1 do
+                       begin
+                                 while choosing[j] do { nothing };
+                                 while number[j] = 0 and (number[j], j) < (number[i],i)
+                                      do { nothing };
+                       end;
+                       { Critical Section }
+                       number[i] := 0;
+                       { Remainder of the cycle }
+                      forever;
+                  process Pj : . . .
+             Parend;
+             end.

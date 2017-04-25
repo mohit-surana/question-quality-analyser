@@ -1,0 +1,245 @@
+Third-Party Authentication
+An open system uses standard, well-specified interfaces with other systems. A
+process in any node with matching interfaces can request access to resources
+and services of an open system. This fact gives rise to an obvious problem in
+authentication--how does a server know whether a process wishing to act as its
+client was created by an authorized user? One solution is to require each server to
+authenticate every user through a password. This approach is inconvenient since
+each server would have to possess a systemwide authentication database and each
+user would be authenticated several times while using the system. An alternative
+is to use a third-party authenticator and a secure arrangement by which the
+authenticator can introduce an authorized user to a server. This way each server
+does not have to authenticate each user.
+We discuss two protocols for third-party authentication in a distributed sys-
+tem. The Kerberos protocol employs an authentication database, whereas the
+secure sockets layer (SSL) protocol performs authentication in a decentralized
+manner.
+21.4.1 Kerberos
+Kerberos is a third-party authenticator developed in project Athena at MIT for
+use in an open system environment. It enables a user to prove his identity to the
+
+
+
+798  Part 5  Distributed Operating Systems
+                                  Message         4         Message
+                                   text                       text
+                 1                                                                               5
+             One-way                                                                       One-way
+                 hash                                                                            hash
+                     Message                                                                         Message
+                 2     digest                                                                    7     digest
+             Encryption        3   Digital                    Digital  6  Decryption                     N     Not
+                                  signature                 signature                            =?         authentic
+                                   Sent                     Received                             Y
+                                  message                   message                                         Authentic
+             Private key                                                  Public key                        message
+             of sender                                                        of sender
+                     Sender-side actions                                  Receiver-side actions
+             Step       Action                       Description
+             1.         Message digest of            A one-way hash function is applied to the message text
+                        message text                 to produce a message digest, which is a bit string of a
+                                                     standard length.
+             2.         Create digital signature     The message digest and a timestamp are encrypted by
+                                                     using the private key of the sender. The result of
+                                                     encryption is the digital signature.
+             3.         Append signature             The digital signature is added at the end of the message
+                                                     text.
+             4.         Transmission                 The message consisting of the message text and the
+                                                     digital signature is transmitted to the destination.
+             5.         Message digest of            The same one-way hash function as used in the sender is
+                        received text                applied to the message text to produce a message digest.
+             6.         Decryption of digital        The digital signature at the end of the message is
+                        signature                    extracted and decrypted by using the public key of the
+                                                     sender.
+             7.         Authenticity check           The message digest produced in Step 5 and the result of
+                                                     decryption in Step 6 are compared. The message is
+                                                     authentic if the two are identical.
+             Figure  21.5  Message authenticity   through digital signature.
+             servers in an open system without being subject to repeated authentication. A
+             user is authenticated at log in time using a password. The authentication service
+             issues tickets to an authenticated user; each ticket is like a capability--it grants
+             a privilege to access one server. The user presents a ticket to a server whenever it
+             wishes to use its service. The server provides the service if the ticket is valid. Private
+             keys are assigned to users and servers. A user's key is used to encrypt messages
+             from Kerberos to the user's processes, while a server's key is used to encrypt the
+             tickets for the server. Session keys are used to ensure message security. They are
+
+
+
+                                                         Chapter 21    Distributed System  Security  799
+generated by using a schematic similar to Figure 21.4. To limit exposure of a
+session key to intruders, it is valid for only a limited amount of time. Timestamps
+are used to implement this aspect and to foil message replay attacks. Hence nodes
+in the system must contain loosely synchronized clocks.
+A client is a process that operates on a user's computer and requests remote
+services on behalf of the user. When a client C wishes to use the services of
+a server Sj, it creates a new authenticator and presents a ticket for Sj and the
+authenticator to Sj. The ticket is used to communicate the session key to the
+server in a secure manner, while the authenticator is used to prevent message
+replay attacks. The ticket contains the client and server ids, i.e., C and Sj; the
+session key assigned to the communication session between C and Sj; a times-
+tamp indicating when the ticket was created; and the lifetime of the ticket, i.e.,
+its expiry time. It is valid only during the time period starting at timestamp
+and ending at lifetime. Typically this period is about 8 hours. This arrangement
+limits exposure of the session key to intruder attacks. The authenticator pre-
+sented by C contains C's id and address, and a timestamp encrypted by using the
+session key.
+The server decrypts the ticket by using its own key. It checks the timestamp
+and lifetime of the ticket to ensure that the ticket is valid. It now extracts the
+session key and uses it to decrypt the authenticator. It checks the timestamp in
+the authenticator to ensure that the request has originated in real time and within
+the validity period of the ticket. It performs the service requested by the client
+only if all these checks succeed. Thus, an intruder cannot replay authenticators
+and tickets to obtain a service.
+Working of Kerberos  The Kerberos system has two main components: Kerberos
+authentication server (KAS), and ticket granting server (TGS). KAS authenticates
+a user at log in time, using an authentication database and provides him with a
+ticket to TGS. TGS enables a client to obtain tickets to other servers in the
+system. A user achieves use of servers through a three-stage protocol. Figure 21.6
+illustrates various steps in the protocol. n1, n2, and n3 are nonces.
+1. Initial authentication: The user is authenticated at log in time as follows:
+              1.1    User  C      :  U, password
+              1.2    C  KAS       :  U, TGS, n1
+              1.3    KAS  C       :  EVU (n1, SK U ,TGS , TTGS )
+The user submits his id and password to the client in Step 1.1. In Step 1.2, the
+client forwards the user id to KAS. It also encloses a nonce n1 to authenticate
+KAS. This message is a request for a ticket to TGS. Note that the user's password
+is not passed to KAS. This fact avoids its exposure over the network. It also
+implies that authentication is not performed by KAS; it is actually performed by
+C in an interesting manner described later. In Step 1.3, KAS uses the user id U to
+retrieve VU , the private key of U , from the authentication database and uses it to
+encrypt its reply to C. SK U,TGS is a session key for the session between the user
+and TGS, and TTGS is a ticket for TGS encrypted with the key of TGS. TTGS is
+also called a ticket granting ticket (TGT).
+
+
+
+800  Part 5  Distributed Operating Systems
+                                                          Authentication
+                                                          database
+                                                                               Kerberos
+                                                     KAS             TGS
+                                                     1.2  1.3     2.1     2.2
+                                                                          3.1
+                                                             Client            Server
+                                                                          3.2
+                                                               1.1
+                                                             User
+             Figure 21.6 Kerberos.
+                  C has to decrypt the reply from KAS by using the key VU to obtain SK U,TGS
+             and TTGS. This step authenticates the user as follows: VU , the private key of the
+             user, satisfies the relation VU              =    f (password), where f     is a one-way function
+             known to C. C obtains VU by applying f to password. It now decrypts the reply
+             received from KAS by using this key. Decryption would be unsuccessful if the
+             password supplied by the user is invalid. In this case C cannot extract TTGS from
+             the reply sent by KAS, so the user cannot use any services or resources in the
+             system.
+                  2. Obtaining a ticket for a server: When a user wishes to use a server, C obtains
+             a ticket for the server, using the following protocol:
+                      2.1  C  TGS                 :  <Server_id>, TTGS, AU, n2
+                      2.2  TGS  C                 :  ESK U,TGS (n2, T<Server_id>, SK U ,<Server_id>,
+                                                     <Server_id>)
+             where <Server_id> is the name of the server that C wishes to use, AU is an
+             authenticator, SK U,Server_id is a session key for the session between the client and
+             the desired server, and TServer_id is the ticket for the desired server, encrypted by
+             using the key of the server. Before replying to the client, TGS verifies that the
+             ticket presented by the client is valid and that the request has originated in real
+             time and within the validity period of the ticket.
+                  3. Obtaining a service: When user U makes a service request, C generates
+             an  authenticator      and        a  nonce      and     exchanges  the    following  messages  with
+             the server:
+             3.1  C  Server                 :  T<Server_id>, AU , ESKU,<Server_id> (<service request>, n3)
+             3.2  Server  C                 :  ESKU,<Server_id> (n3)
+
+
+
+                                                          Chapter 21  Distributed System Security  801
+    The server performs the service if it finds that the ticket is valid, and the
+request originated in real time and within the validity period of the ticket. It
+returns the nonce n3 to the client so that the client can authenticate it, if it so
+desires.
+21.4.2 Secure Sockets Layer (SSL)
+SSL is a message security protocol providing authentication and communication
+privacy. It works on top of a reliable transport protocol such as the TCP/IP. Its suc-
+cessor, the transport layer security (TLS) protocol, is based on SSL 3.0; we discuss
+features that are common to both. When a client wishes to communicate with a
+server, the SSL handshake protocol is used before message exchange can start. It
+uses RSA public key encryption to authenticate the server and optionally authen-
+ticate the client, and generates symmetric session keys for message exchange
+between the client and the server. Actual message exchange is performed through
+the SSL record protocol, which performs symmetric encryption of messages and
+transmits them over the network. Thus, message communication between the
+client and the server is reliable because of the transport protocol, secure because
+of authentication performed by the handshake protocol, and private because
+of encryption performed by the record protocol. Authenticity of data is ensured
+through a digital signature on a message. If mere integrity checking is desired, it is
+provided through a message authentication code (MAC). Higher-level application
+protocols such as HTTP and FTP can be implemented on top of the SSL.
+    The SSL handshake protocol performs the following functions:
+1.  It performs authentication of the server.
+2.  It allows the client and the server to select the cryptographic algorithms to
+    be used during the session from among RC2, RC4, DES, triple-DES, and a
+    few other algorithms; and digital signature and hash algorithms from among
+    DSA, MD5, and SHA-1.
+3.  It optionally performs authentication of the client.
+4.  It enables the client and the server to generate a shared secret, which would
+    be used to generate the session keys.
+    A simplified overview of the SSL handshake protocol is as follows: The client
+sends a client_hello message to the server. This message contains a specification
+of the cryptographic and compression options, and a 28-byte random number
+that we will call nclient. The server responds with a server_hello message, which
+contains another random number nserver. Immediately following the server_hello
+message, the server sends its certificate. SSL has a list of certificate authorities
+(CAs) on the client side, using which it ensures that the server's certificate is
+from one of the listed CAs, and verifies the server's authenticity by using public
+key cryptography. The server, if it so wishes, asks for the client's certificate and
+verifies the client's identity in a similar manner. Following this, the client sends
+
+
+
+802  Part 5  Distributed Operating Systems
+             the encrypted premaster secret message, which contains a 48-byte premaster secret
+             string encrypted by the public key of the server.
+                 Both client and server now generate a 48-byte master secret string from nclient,
+             nserver, and premaster secret, using a standard one-way function. Use of nclient
+             and nserver, which are randomly chosen values, ensures that the master secret
+             would be different for different sessions between the same client­server pair.
+             The master secret string is used to obtain four symmetric session keys using a
+             standard algorithm. These keys are used as follows: Keys kccrypst and kscrypct are
+             used for encryption and decryption of messages sent by the client to the server,
+             and by the server to the client, respectively, and keys kcmacs and ksmacc are used
+             to generate message authentication codes for messages sent by the client and by
+             the server, respectively. Following key generation, both client and server send
+             finished messages to one another. At this time, the SSL handshake protocol is
+             complete.
+                 Exchange of messages is performed by the SSL record protocol using the
+             session keys generated during the handshake. The steps in sending a message m
+             from the client to the server are as follows:
+             1.  The client generates MACm, which is a message authentication code for
+                 message   m, using the     key   kcmacs .
+             2.  The pair  < m, MACm        > is  encrypted  by  using  the  key  kccrypst ,  and  the  encrypted
+                 string is sent to the server.
+                 The server decrypts the string by using the key kccrypst to obtain the pair
+             3.
+                 < m, MACm >. It accepts m if its MAC computed using the key kcmacs matches
+                 MAC m .
+                 The SSL protocol could be subverted by a man-in-the-middle attack, where
+             an intruder intercepts a client's messages to a server in the SSL handshake pro-
+             tocol and masquerades as the server in all subsequent message exchanges. It may
+             analogously masquerade as the client and set up a secured SSL connection with
+             the server. The client and server processes must take precautions to defeat the
+             man-in-the-middle attack during the initial handshake. When the server provides
+             its certificate to the client in the SSL handshake protocol, the client must verify
+             that the distinguished name and IP address mentioned in the server's certificate
+             match those of the server with which it is attempting to set up the SSL connection.
+             A mismatch would indicate that it is subject to a man-in-the-middle attack, so it
+             should abort the handshake protocol if this is the case.
+                 The server does not know the IP address where a client resides, so it has to
+             use a different approach to authenticate the client. If the server requires client
+             authentication in the SSL handshake protocol, the client is required to provide a
+             certificate and also a piece of random data known to the server which it digitally
+             signs using its private key to authenticate itself. The server obtains the public key
+             of the client from the client certificate and validates the client's digital signature.
+             A failure in this step would indicate that it is subject to a man-in-the-middle
+             attack, so it aborts the handshake protocol. This step is analogous to that in the
+             challenge­response protocol described earlier in Section 21.2.2.

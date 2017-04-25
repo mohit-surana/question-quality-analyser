@@ -1,0 +1,149 @@
+File Processing
+             In this section we discuss the processing of structured files, in which read/write
+             operations are performed on a record.
+             13.9.1 File System Actions at open
+             The   purpose     of  a  call    open  (<path_name>,    <processing_mode>,       <file_
+             attributes>), where <path_name> is an absolute or relative path name for a file
+             <file_name>, is to set up the processing of the file. As described in Section 13.8,
+             open performs the following actions:
+             1.   It aborts the process if <processing_mode> is not consistent with the pro-
+                  tection information for the file. Otherwise, it creates an FCB for the file
+                  <file_name> in the OFT, and puts relevant information in its fields. If
+                  <file_name> is a new file, it also writes <file_attributes> into its directory
+                  entry.
+             2.   It passes the internal id of the file <file_name> back to the process for use
+                  in file processing actions.
+             3.   If the file <file_name> is being created or appended to, it makes provi-
+                  sion to update the file's directory entry when a close call is made by the
+                  process.
+                  The procedure called path name resolution traverses all path components in
+             a path name and checks the validity of each component. It uses two pointers
+             called the file FCB pointer and the directory FCB pointer during the traversal. It
+             points the file FCB pointer at the FCB of the file corresponding to the current
+             component in the path name, and the directory FCB pointer at the FCB of its
+             parent directory. At the end of path name resolution, the file FCB pointer is used to
+
+
+
+                                                                     Chapter 13        File Systems        507
+determine the internal id of the file. Path name resolution consists of the following
+steps:
+1.  If an absolute path name is used, locate the FCB of the file system root
+    directory in the OFT; otherwise, locate the FCB of the current directory. (This
+    step assumes that the FCBs of these directories have already been created in
+    the OFT. If not, they should be created in this step.) Set directory FCB pointer
+    to point to this FCB.
+2.  a.  Search for the next path component of the path name in the directory
+        represented by directory FCB pointer. Indicate an error if the component
+        does not exist or if the process owner lacks privileges to access it.
+    b.  Create an FCB for the file described by the path component. Store this
+        FCB in a free entry of the OFT. Copy the directory FCB pointer in this
+        FCB.
+    c.  Set the file FCB pointer to point to this FCB.
+    d.  If this is not the last path component in the path name, initialize the
+        newly created FCB using information from the directory entry of the
+        file. Set directory FCB pointer = file FCB pointer, and repeat step 2.
+3.  a.  If the file already exists, copy the file size and the pointer to the FMT
+        from the directory entry of the file into the FCB pointed to by file FCB
+        pointer.
+    b.  If the file does not already exist, create the FMT of the file and store its
+        address in the FCB. (This action may involve allocating a disk block for
+        the FMT.)
+4.  Set internal id of the file to the offset of file FCB pointer in the OFT. Copy
+    the directory FCB pointer into the FCB of the file. Return internal id to the
+    process.
+    Apart from the actions described above, the file system may perform some
+other actions in the interest of efficiency. For example, while opening an existing
+file it may copy a part or all of the file's FMT into memory [see Step 3(a)]. This
+action ensures efficient access to data in the file. Also, only the FCBs pointed to
+by directory FCB pointer and file FCB pointer are needed during file processing,
+so other FCBs created during path name resolution may be destroyed.
+    The following example illustrates the data structures built by the file system
+when a file is opened.
+                                                                                                           ·
+    Implementation of the open Operation                                               Example       13.7
+    Figure 13.20 shows the result of the file system actions after executing the call
+                           open(/info/alpha, . .);
+    The path name used in the open call is an absolute path name. The file
+    system searches for the name info in the root directory, and creates an FCB
+
+
+
+508  Part 4  File  Systems and I/O Management
+                            Directory root
+                      info
+                                        Directory info
+                                 alpha
+                                                                6                           Directory
+                                                                   fcbinfo                  FCB pointer
+                                                                   fcbalpha                 File
+                                                                                            FCB pointer
+                                            fmtalpha
+                                                                       OFT
+                   Figure 13.20  File system actions at  open.
+                   for info in the OFT. It now searches for the name alpha in info and creates
+                   an FCB for alpha in the OFT. directory FCB pointer points to fcbinfo and
+                   file FCB pointer points to fcbalpha. Since alpha is an existing file, its FMT
+                   pointer is copied into fcbalpha from the directory entry of alpha. The call
+                   returns with the internal id of alpha, which is 6.
+                   ·
+                      The mount command mount (<FS_name>, <mount_point_name>) mounts
+                   <FS_name> at the mount point (see Section 13.4). A simple way to implement
+                   mounting is to temporarily change the directory entry of <mount_point_name>
+                   in its parent directory to point to the directory entry of <FS_name>.
+                      When a mount point is crossed during path name resolution, the file system
+                   has to switch from the directory structure of the mount point to the directory
+                   structure of the mounted file system, or vice versa. To facilitate this, while pro-
+                   cessing a mount command, the file system puts the value "M" in the flags field
+                   of the directory entry of <FS_name> and maintains a mount table to store pairs
+                   of the form (<FS_name>, <mount_point_name>). For example, when the call
+                   mount    (meeting,~A/admin) of Section 13.4 is executed, the file system adds
+                   the pair (meeting, ~A/admin) to the mount table. During path name resolu-
+                   tion, this table is consulted when a mount point is encountered during traversal
+                   of the directory structure from parent to child (for the slash (/) operator in the
+                   path name) or child to parent (for the ".." operator). The file system also has to
+                   ensure that disk space allocation performed during the processing of a mounted
+                   file is in the mounted file system rather than in the host file system.
+
+
+
+                                                                           Chapter 13         File Systems        509
+13.9.2 File System Actions during a File Operation
+After opening a file <file_name>, a process executed by user U performs some
+read or write operations on it. Each such operation is translated into a call
+         <opn> (internal id, record id, <IO_area addr>);
+where internal id is the internal id of <file_name> returned by the open call,
+and record id is absent if the operation is performed on a sequential-access file
+because the operation is necessarily performed on the next record in the file. The
+file system performs the following actions to process this call:
+1.  Locate the FCB of <file_name> in the OFT using internal id.
+2.  Search the access control list of <file_name> for the pair (U, ...). Give an
+    error if the protection information found in the file's FCB does not permit
+    user U to perform <opn> on the file.
+3.  Make a call on iocs-read or iocs-write with the parameters internal id,
+    record id and <IO_area addr>. For nonsequential-access files, the operation
+    is performed on the indicated record. For sequential-access files, the opera-
+    tion is performed on the record whose address is in the FCB field "address
+    of the next record to be processed," and the contents of this field are updated
+    to point to the next record in the file.
+    In Step 3, the IOCS and the access method invoked by it obtains the FMT
+of the file from its FCB and uses it to convert record id into a pair of the form
+(disk block id, byte offset). If it runs out of disk space during a write operation, it
+calls a module of the file system, which allocates a new disk block to the file and
+adds its address to the FMT.
+                                                                                                                  ·
+    Implementation of read/write Operations                                                   Example       13.8
+    Following the open call of Example 13.7, a call read  (alpha,          25,  ...)
+    by the process, where 25 is record id, would lead to the call iocs-read          (6,
+    25,  ..). If disk blocks have a size of 1000 bytes each, and a record is 100
+    bytes in length, the IOCS will convert record id into disk block number 3 and
+    record number 5 in the disk block, which implies a byte offset of 400. Now the
+    address of the third disk block allocated to alpha is obtained from its FMT
+    and this block is read to obtain the desired record.
+                                                                                         ·
+13.9.3 File System Actions at close
+The file system performs the following actions  when      a       process  executes      the
+statement close (internal id, ...).
+1.  If the file has been newly created or appended to.
+    a.   If it is a newly created file, create an entry for the file in the directory
+         pointed to by the directory FCB pointer. If the directory entry format

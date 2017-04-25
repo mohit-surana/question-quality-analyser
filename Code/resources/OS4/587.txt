@@ -1,0 +1,92 @@
+Device-Level  I/O
+             Four functions are involved in implementing I/O at the level of an I/O device--
+             initiating an I/O operation, performing read/write operations, checking the status
+             of an I/O device, and handling interrupts raised by devices. The first three of these
+             functions are performed through I/O instructions and I/O commands described in
+             Section 14.2. Table 14.4 describes features in the computer system that support
+
+
+
+                                                          Chapter 14  Implementation of File Operations  567
+Table 14.4         Computer System Features Supporting Functions
+in Device-Level I/O
+Function             Description of computer system feature supporting it
+Initiating an        The I/O instruction I/O-init (cu, d), command_address initiates
+I/O operation        an I/O operation (see Example 14.1). The I/O-init instruction
+                     sets a condition code to indicate whether the I/O operation has
+                     been initiated successfully.
+Performing           Device-specific I/O commands implement tasks like positioning
+read/write           of read­write heads over a record and reading of a record.
+Checking             The I/O instruction I/O-status (cu, d) obtains status information
+device status        for an I/O device. The information indicates whether the device
+                     is busy, free, or in an error state, and cause of the error, if any.
+Handling             The interrupt hardware implements the interrupt action
+interrupts           described in Section 2.2. The CPU is switched to the physical
+                     IOCS when an I/O completion interrupt occurs.
+these functions. We assume that I/O operations are performed in the DMA mode
+(see Section 2.2.4). In Section 14.4.1, we discuss details of device-level I/O and in
+Section 14.5, we discuss the facilities provided by the physical IOCS to simplify
+device-level I/O.
+14.4.1 I/O Programming
+We use the term I/O programming to describe all actions involved in performing
+an I/O operation. To understand two key aspects of I/O programming--namely,
+I/O initiation and I/O completion processing--we consider the program of
+Figure 14.11, which is an assembly language version of the following program in
+a higher-level language:
+                          read  a,  b;
+                          ...
+                          result    :=  a          +  b;
+The program uses a bare machine, i.e., a computer system that does not have any
+software layers between the program and the machine's hardware. The program
+uses the flag IO_FLAG to indicate whether the I/O operation is in progress. It sets
+the IO_FLAG to 1, initiates an I/O operation and loops until the I/O operation
+completes before performing its computations.
+I/O Initiation  When the I/O-init instruction of Figure 14.11 is executed, the
+CPU sends the device address to the DMA controller. The DMA controller
+finds whether the device is available for the I/O operation, and informs the CPU
+accordingly; the CPU sets an appropriate condition code in the condition code
+field (also called the flags field) of the PSW. If the device is available, the DMA also
+starts the I/O operation by accessing and decoding the first I/O command. The
+
+
+
+568        Part 4  File Systems
+                   SET         IO_FLAG,    `1'      To   indicate   that     I/O    is  in   progress
+RETRY:             IO_init     (cu, d), COMMANDS    Read   a,  b
+                   BC          cc1, IN_PROGRESS     Branch     if  I/O  initiation       is     successful
+                   BC          cc2, RETRY           Loop   if  the  device      is  busy
+                   BC          cc3, ERROR           Error.     Inform   system      administrator
+IN_PROGRESS:       COMP        IO_FLAG,    `1'      Check     whether   I/O     is  still    in  progress
+                   BC          EQ,  IN_PROGRESS     Loop   if  I/O  is  in      progress
+                   { Perform result      :=  a+b;}
+COMMANDS:          {I/O commands}
+                   ···
+IO_INTRPT:         SET         IO_FLAG,    `0'      Interrupt      processing:      I/O     is   complete
+                   ···
+Figure 14.11 I/O programming.
+                         I/O-init instruction is now complete. The I/O operation, if initiated, will proceed
+                         in parallel with the CPU's execution of instructions.
+                               In the next few instructions, the program examines the condition code set
+                         by the I/O-init instruction to handle any exceptional situations that might have
+                         occurred when the I/O-init instruction was executed. The instruction BC cc1,
+                         IN_PROGRESS is a conditional branch instruction. Condition code cc1 would
+                         have been set if I/O initiation was successful. In that event the I/O operation
+                         would have already started, and so execution of the program is diverted to the
+                         instruction with the label IN_PROGRESS. Condition code cc2 indicates that the
+                         device was busy, so the program would retry the I/O instruction until I/O initiation
+                         succeeds. Condition code cc3 indicates that an I/O error occurred, so the program
+                         would report the error to the system administrator. These details are not shown
+                         in Figure 14.11.
+                         I/O   Completion    Processing  The   program  cannot      perform     the  computation
+                         result     :=     a+b; until the I/O operation completes. However, the program's
+                         execution cannot be suspended because it is executing on a bare machine. The
+                         program addresses this problem by using the flag IO_flag to indicate whether
+                         the I/O operation has completed. To start with, it sets the value of IO_FLAG to 1
+                         to indicate that I/O is in progress. After starting the I/O operation, it enters a loop
+                         at IN_PROGRESS where it repeatedly checks this flag. This is a busy wait--see
+                         Section 6.5.1.
+                               When an I/O interrupt occurs indicating the end of the I/O operation, con-
+                         trol is transferred to the instruction with the label IO_INTRPT by the interrupt
+                         action (see Section 2.2). This is the start of the I/O interrupt servicing routine,
+                         which changes IO_FLAG to 0 and returns. This action ends the busy wait at
+                         IN_PROGRESS.

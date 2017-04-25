@@ -1,0 +1,1272 @@
+Distributed Control Algorithms
+
+
+18   Chapter
+     Distributed Control
+     Algorithms
+     A distributed operating system performs several control functions. Of these
+           control functions, the mutual exclusion and deadlock handling functions
+           are similar to those performed in a conventional OS. The scheduling func-
+     tion performs load balancing to ensure that computational loads in all nodes of
+     the system are comparable. The election function elects one among a group of
+     processes as the coordinator for an activity. The termination detection function
+     checks whether processes of a distributed computation operating in different
+     nodes of the system have all completed their tasks.
+        To respond speedily and reliably to events occurring in the system, a dis-
+     tributed operating system performs a control function using a distributed control
+     algorithm, whose actions are performed in several nodes of the distributed system.
+     Distributed control algorithms avoid using the global state of a system. Instead,
+     they depend on local states of different nodes, and use interprocess messages to
+     query the states and make decisions. Their correctness depends on how they use
+     the local states and interprocess messages for arriving at correct decisions, and
+     for avoiding wrong decisions. These two aspects of correctness are called liveness
+     and safety, respectively.
+        We present distributed control algorithms for the different control functions
+     and discuss their properties such as overhead and effect on system performance.
+     18.1  OPERATION OF DISTRIBUTED CONTROL ALGORITHMS                                   ·
+     A distributed operating system implements a control function through a dis-
+     tributed control algorithm, whose actions are performed in several nodes of the
+     system and whose data is also spread across several nodes. This approach has the
+     following advantages over a centralized implementation of control functions:
+     ·  The delays and overhead involved in collecting the global state of a system
+        are avoided.
+     ·  The control function can respond speedily to events in different nodes of the
+        system.
+     ·  Failure of a single node does not cripple the control function.
+714
+
+
+
+                                                       Chapter 18       Distributed Control Algorithms  715
+Table 18.1  Overview of Control Functions in a Distributed OS
+Function               Description
+Mutual exclusion       Implement a critical section (CS) for a data item ds for use
+                       by processes in a distributed system. It involves
+                       synchronization of processes operating in different nodes
+                       of the system so that at most one process is in a CS for ds
+                       at any time.
+Deadlock handling      Prevent or detect deadlocks that arise from resource
+                       sharing within and across nodes of a distributed system.
+Scheduling             Perform load balancing to ensure that computational loads
+                       in different nodes of a distributed system are comparable.
+                       It involves transferring processes from heavily loaded
+                       nodes to lightly loaded nodes.
+Termination detection  Processes of a distributed computation may operate in
+                       several nodes of a distributed system. Termination
+                       detection is the act of determining whether such a
+                       computation has completed its operation. It involves
+                       checking whether any of the processes is active
+                       and whether any interprocess message is in transit
+                       between them.
+Election               A coordinator (also called a leader process) is the one that
+                       performs some privileged function like resource allocation.
+                       An election is performed when a coordinator fails or is
+                       terminated. It selects one of the active processes to become
+                       the new coordinator and informs the identity of the new
+                       coordinator to all other processes.
+   A distributed control algorithm provides a service whose clients include both
+user applications and the kernel. Table 18.1 describes control functions in a dis-
+tributed OS. Mutual exclusion and election are services provided to user processes,
+deadlock handling and scheduling are services offered to the kernel, while the ter-
+mination detection service may be used by both user processes and the kernel.
+In OS literature, names of these functions are generally prefixed with the word
+"distributed" to indicate that the functions are performed in a distributed man-
+ner. Note that fault tolerance and recovery issues are not discussed here; they are
+discussed separately in Chapter 19.
+   A distributed control algorithm operates in parallel with its clients, so that
+it can respond readily to events related to its service. The following terminol-
+ogy is used to distinguish between actions of a client and those of a control
+algorithm.
+·  Basic computation: Operation of a client constitutes a basic computation.
+   A basic computation may involve processes in one or more nodes of the
+   system. The messages exchanged by these processes are called basic messages.
+
+
+
+716  Part 5  Distributed  Operating  Systems
+                                                         Kernel calls
+                                                   cpi   Control part     Control
+                                                                          messages
+                                     Process       Request  Reply
+                                              Pi
+                                                   bpi   Basic part       Basic
+                                                                          messages
+                                                         Kernel calls
+                   Figure 18.1  Basic and control parts of a process Pi.
+                      ·  Control computation: Operation of a control algorithm constitutes a control
+                         computation. Messages exchanged by processes of a control computation are
+                         called control messages.
+                         To understand operation of a distributed control algorithm, we visualize
+                   each process to consist of two parts that operate in parallel--a basic part and
+                   a control part. Figure 18.1 illustrates the two parts of a process Pi. The basic
+                   part of a process participates in a basic computation. It exchanges basic mes-
+                   sages with basic parts of other processes. When it requires a service offered by
+                   a control algorithm, it makes a request to the control part of the process. All
+                   other requests are made directly to the kernel. The control part of a process par-
+                   ticipates in a control computation. It exchanges control messages with control
+                   parts of other processes, and may interact with the kernel to implement its part
+                   in the control function. The basic part of a process may become blocked when it
+                   makes a resource request; however, the control part of a process never becomes
+                   blocked--this feature enables it to respond to events related to its service in a
+                   timely manner.
+·
+     Example 18.1  Basic and Control Parts of a Process
+                   A distributed application consists of four processes P1­P4. Let process P2 be
+                   currently in a CS for shared data ds. When process P1 wishes to enter a CS
+                   for ds, bp1 makes a request to cp1, which is a part of some distributed mutual
+                   exclusion algorithm discussed later in Section 18.3. To decide whether P1 may
+                   be allowed to enter a CS for ds, cp1 exchanges messages with cp2, cp3, and
+                   cp4. From their replies, it realizes that some other process is currently in a CS
+                   for ds, so it makes a kernel call to block bp1. Note that cp2 participates in this
+                   decision even while bp2 was executing in a CS. When process P2 wishes to exit
+                   the CS, bp2 makes a request to cp2, which interacts with control parts of other
+                   processes and decides that process P1 may enter a CS for ds. Accordingly, cp1
+                   makes a kernel call to activate bp1.
+                   ·
+
+
+
+                                                            Chapter 18  Distributed Control  Algorithms  717
+18.2  CORRECTNESS OF DISTRIBUTED
+      CONTROL ALGORITHMS                                                                                 ·
+Processes of a distributed control algorithm exchange control data and coordi-
+nate their actions through control messages. However, message communication
+incurs delays, so the data used by the algorithm may become stale and inconsis-
+tent, and the algorithm may either miss performing correct actions or perform
+wrong actions. Accordingly, correctness of a distributed control algorithm has
+two facets:
+·  Liveness: An algorithm will eventually perform correct actions, i.e., perform
+   them without indefinite delays.
+·  Safety: An algorithm does not perform wrong actions.
+   Lack of liveness implies that an algorithm would fail to perform correct
+actions. For example, a distributed mutual exclusion algorithm might fail to
+satisfy the progress and bounded wait properties of Section 6.3.1, or a dead-
+lock detection algorithm might not be able to detect a deadlock that exists in
+the system. Note that the amount of time needed to perform a correct action
+is immaterial for the liveness property; the action must be performed eventu-
+ally. Lack of safety implies that an algorithm may perform wrong actions like
+permitting more than one process to be in CS at the same time. Table 18.2
+summarizes   the  liveness  and  safety     properties  of  some     distributed    control
+algorithms.
+   Assuming a distributed control algorithm to consist of a set of distinct
+actions and a set of distinct conditions, we can represent the algorithm as a
+set of rules of the form <condition> : <action>, where a rule specifies that the
+algorithm should perform <action> if and only if <condition> is true. Using
+Table 18.2   Liveness and Safety of Distributed Control Algorithms
+Algorithm         Liveness                                  Safety
+Mutual exclusion  (1) If a CS is free and some              At most one process will be
+                  processes have requested                  in a CS at any time.
+                  entry to it, one of them will
+                  enter it in finite time.
+                  (2) A process requesting
+                  entry to a CS will enter it in
+                  finite time.
+Deadlock          If a deadlock arises, it will             Deadlock will not be
+handling          be detected in finite time.               declared unless one actually
+                                                            exists.
+Termination       Termination of a distributed              Termination will not be
+detection         computation will be                       declared unless it has
+                  detected within a finite time.            occurred.
+Election          A new coordinator will be                 Exactly one process will be
+                  elected in a finite time.                 elected coordinator.
+
+
+
+718  Part 5  Distributed Operating Systems
+             the notation "" for the words "eventually leads to," we define the notion of
+             correctness as follows:
+             ·   Liveness: For all rules, <condition>  <action>, i.e., <action> will be
+                 eventually performed if <condition> holds.
+             ·   Lack of safety: For some rule, ¬ <condition>  <action>, i.e., <action>
+                 may be eventually performed even if <condition> does not hold.
+                 Proving  correctness            of  a     distributed  algorithm    is  a    complex    task.
+             <condition>  and    <action>            should     be  specified  to  correctly  represent  the
+             algorithm, and formal techniques must be employed to demonstrate that an
+             algorithm    possesses         the  liveness  and  safety  properties.  Theoretical  founda-
+             tions needed for formal proofs of distributed algorithms did not exist until
+             the early 1990s. This is why many distributed algorithms developed earlier
+             contained bugs.
+                 It should be noted that liveness and safety are concerned only with correct-
+             ness of an algorithm. Other desirable properties of an algorithm, e.g., FCFS
+             service in distributed mutual exclusion algorithms, must be stated and proved
+             separately.
+             18.3  DISTRIBUTED MUTUAL EXCLUSION                                                          ·
+             18.3.1 A Permission-Based Algorithm
+             The algorithm by Ricart and Agrawala (1981) grants entry to a critical section
+             in FCFS order. The algorithm is fully distributed in that all processes participate
+             equally in deciding which process should enter a CS next. A process that wishes to
+             enter a CS sends timestamped request messages to all other processes and waits
+             until it receives a "go ahead" reply from each of them. If the system contains n
+             processes, 2 ×(n - 1) messages have to be exchanged before a process can enter
+             the critical section. Safety of mutual exclusion follows from the fact that at most
+             one process can obtain (n - 1) replies at any time. Entry is granted in FCFS
+             order, hence every process gains entry to CS in finite time. This feature satisfies
+             the liveness property.
+             Algorithm 18.1 Ricart-Agrawala Algorithm
+             1.  When a process Pi wishes to enter a CS: Pi sends request messages of the
+                 form ("request", Pi, <timestamp>) to all other processes in the system, and
+                 becomes blocked.
+             2.  When a process Pi receives a request message from process Pr:
+                 a. If Pi is not interested in using a CS, it immediately sends a "go ahead"
+                   reply to Pr.
+                 b. If Pi itself wishes to enter a CS, it sends a "go ahead" reply to Pr if the
+                   timestamp in the received request is smaller than the timestamp of its
+
+
+
+                                              Chapter 18       Distributed Control Algorithms  719
+     own request; otherwise, it adds the process id found in the request to the
+     pending list.
+     c. If Pi is in a CS, it simply adds the request message to the pending list.
+3.  When a process Pi receives n - 1 "go ahead" replies: The process becomes
+    active and enters a CS.
+4.  When a process Pi exits a CS: The process sends a "go ahead" reply to every
+    process whose request message exists in its pending list.
+    Table 18.3 shows how steps of Algorithm 18.1 are implemented in the con-
+trol part of a process. The first column shows steps in the basic computation
+performed by a process. It consists of a loop in which the process requests entry
+to a CS, performs some processing inside the CS, and exits from it. The other
+columns show actions of the control part of the algorithm.
+Table 18.3      Basic and Control Actions of Pi in a Fully Distributed
+Mutual Exclusion Algorithm
+                                   Algorithm steps executed by the control part
+Actions of basic part        Steps       Details
+repeat forever
+{ Request CS entry }         1, 2(b), 3  i.   Send request messages
+                                              ("request", Pi, <timestamp>)
+                                              to all other processes and
+                                              request the kernel to block the
+                                              basic part.
+                                         ii.  When a request message is
+                                              received from another
+                                              process, send a "go ahead"
+                                              reply if the request has a
+                                              smaller timestamp; otherwise,
+                                              add the process id found in
+                                              the request to the pending list.
+                                         iii. Count the "go ahead" replies
+                                              received. Activate the basic
+                                              part of the process after
+                                              receiving (n - 1) replies.
+{ Critical Section }         2(c)        Enter all received requests in the
+                                         pending list.
+{ Perform CS exit }          4           Send a "go ahead" reply to every
+                                         process whose request message
+                                         exists in its pending list.
+{ Rest of the cycle }        2(a)        When a request is received, send
+                                         a "go ahead" reply immediately.
+end
+
+
+
+720  Part 5  Distributed Operating Systems
+                 The number of messages required per CS entry can be reduced by requiring
+             a process Pi to obtain permissions from a subset Ri of processes in the system.
+             Ri is called the request set of Pi. Safety must be ensured by forming request sets
+             carefully. The algorithm by Maekawa (1985) uses request sets of size                     n, and
+             uses the following rules to ensure safety (see Exercise 18.3):
+             1.  For all Pi     :   Pi   Ri.
+             2.  For all Pi, Pj     :   Ri  Rj    = .
+             18.3.2 Token-Based Algorithms for Mutual Exclusion
+             A token represents the privilege to use a CS; only a process possessing the token
+             can enter the CS. Safety of a token-based algorithm follows from this rule. When
+             a process makes a request to enter a CS, the mutual exclusion algorithm ensures
+             that the request reaches the process possessing the token and that the token is
+             eventually transferred to the requesting process. This feature ensures liveness.
+             Logical complexity and cost of a mutual exclusion algorithm depend on prop-
+             erties of the system model. Hence token-based algorithms use abstract system
+             models in which edges represent the paths used to pass control messages, and the
+             graph formed by nodes and these edges has certain nice properties. We discuss
+             two algorithms that use abstract ring and tree topologies.
+             An  Algorithm      Employing       the     Ring      Topology  Figure  18.2  shows  the  logical
+             model of a distributed computation and its abstract unidirectional ring model.
+             The token is an object, i.e., a data structure, containing a request queue. In
+             Figure 18.2(b), the token is currently with process P4, P4 is in a CS, and the
+             request queue in the token contains P2 and P5. The algorithm works as fol-
+             lows: A process that wishes to enter a CS sends a message containing its request
+             and becomes blocked. The message is routed along the ring until it reaches the
+             token holder. If the token holder is currently in a CS, its control part enters the
+             requester's id in the request queue contained in the token. When the token holder
+             finishes using the CS, it removes the first process id from the request queue in the
+             token and sends a message containing the token and the process id. This message
+             is routed along the ring until it reaches the process whose id matches the process
+             id in the message. The control part of this process extracts and keeps the token
+             for future use, and activates its basic part, which enters a CS. In Figure 18.2(b),
+                     P2                                                     P2      P3
+                                              P3
+                                P1              P4                P1                      P4     P2
+                                                                                                 P5
+                     P6                       P5                                              token
+                                                                            P6      P5
+                     (a)                                          (b)
+             Figure  18.2  (a)  System      model; (b)  abstract  system  model.
+
+
+
+                                                                Chapter 18      Distributed Control Algorithms  721
+process P2 would receive the token when P4 exits from its CS. The algorithm is
+shown as Algorithm 18.2. The number of messages exchanged per CS entry is
+order of n, where n is the number of processes.
+Algorithm 18.2 Token-Based Mutual Exclusion Algorithm for a Ring Topology
+1.  When a process Pi wishes to enter a CS: The process sends a request message
+    ("request", Pi) along its out-edge and becomes blocked.
+2.  When a process Pi receives a request message from process Pr: If Pi does not
+    possess the token, it forwards the message along its out-edge. If Pi possesses
+    the token and it is currently not in a CS, it forms the message ("token", Pr)
+    and sends it along its out-edge. If Pi is in a CS, it merely enters Pr in the
+    request queue in the token.
+3.  When a process Pi completes execution of a CS: It checks whether the request
+    queue is empty. If not, it removes the first process id from the queue. Let this
+    id be Pr. It now forms a message ("token", Pr) and sends it along its out-edge.
+4.  When a process Pi receives the message ("token", Pj): Pi checks whether
+    Pi = Pj. If so, it creates a local data structure to store the token, becomes
+    active and enters its  CS.  If  Pi  =   Pj, it merely forwards the message      along
+    its out-edge.
+Raymond's Algorithm        Raymond's algorithm uses an abstract inverted tree as
+the system model. The inverted tree differs from a conventional tree in that a tree
+edge points from a node to its parent in the tree. Pholder designates the process in
+possession of the token. Raymond's algorithm has four key features--invariants
+that ensure that a request reaches Pholder, a local queue of requesters in each
+node, features to reduce the number of request messages and provisions to ensure
+liveness.
+    Figure 18.3 depicts the model of a distributed computation and its abstract
+inverted tree model. Process P5 holds the token, so it is at the root of the tree.
+Processes P1 and P3, which are its children, have out-edges pointing to P5. Simi-
+larly, out-edges (P6, P1), (P2, P3), and (P4, P3) point from a process to its parent.
+The algorithm maintains three invariants concerning the abstract inverted tree:
+1. Process Pholder is the root of the tree.
+2. Each process in the system belongs to the tree.
+                   P2      P4                    Pholder            P5
+              P1                        P6       P1                         P3
+                   P3      P5                               P6  P2              P4
+              (a)                                (b)
+Figure  18.3  (a) System model; (b) abstract system model.
+
+
+
+722  Part 5  Distributed Operating Systems
+             3. Each process Pi = Pholder has exactly one out-edge (Pi, Pj ), where Pj is its
+                 parent in the tree.
+             These invariants ensure that the abstract system model contains a path from every
+             process Pi = Pholder to Pholder. This property is useful for ensuring that a request
+             made by Pi would reach Pholder. These invariants are maintained by changing
+             edges in the abstract inverted tree when a process Pk sends the token to another
+             process, say process Pj--the edge (Pj, Pk) is reversed. These actions reverse the
+             direction of the tree edges along which the token is sent, and establish a path
+             from previous holder of the token to the new holder. For example, edge (P3, P5)
+             in Figure 18.3(b) would be reversed when P5 sends the token to P3.
+                 Each process maintains a local queue of requesters. A request message con-
+             tains a single field requester_id. A process wishing to enter a CS puts its own id
+             in its local queue and also sends a request message along its out-edge. When a
+             process Pi receives a request message, it enters the requesting process's id in its
+             local queue. It now forms a request message in which it puts its own id, i.e., Pi,
+             and sends it along its out-edge. Thus the request reaches Pholder along a path
+             ensured by invariant 3; however, the requester id is different in each edge of the
+             path. To reduce the number of request messages, a process does not originate or
+             send a request if a request sent earlier by it has not been honored yet. (It knows
+             this because it would have received the token if its request had been honored.)
+                 Pholder enters all requests it receives in its local queue. On exiting the CS,
+             it removes the first process id from its local queue and sends the token to that
+             process. The process receiving the token sends it to the first process in its local
+             queue, unless its own id is at the head of the local queue. This action is repeated
+             until the token reaches a process that is at the head of its own local queue. The
+             control part of this process keeps the token with itself. Its basic part becomes
+             active and enters a CS.
+                 Liveness requires that every process that requests entry to a CS gets to enter it
+             in finite time. To ensure this property, a process transferring the token to another
+             process checks whether its local queue is empty. If the local queue still contains
+             some requests, it forms a new request with its own id in the requester_id field and
+             sends it to the process to which it has sent the token. This action ensures that it will
+             receive the token sometime in future for servicing other requests in its local queue.
+             Algorithm 18.3 Raymond's Algorithm
+             1.  When a process Pi wishes to enter a CS: Process Pi enters its own id in its
+                 local queue. It also sends a request message containing its own id along its
+                 outgoing edge if it has not sent a request message earlier, or if its last request
+                 has been already honored.
+             2.  When a process Pi receives a request message from process Pr: Process Pi
+                 performs the following actions:
+                 a. Put Pr in its local queue.
+                 b. If Pi  =  Pholder, send a request message containing its own id, i.e., Pi,
+                 along its outgoing edge if it has not sent a request message earlier or if its
+                 last request has been already honored.
+
+
+
+                                                                     Chapter 18      Distributed Control  Algorithms        723
+                  P3  P1      P5                         P1              P5
+        P1            P1      P3  P4          P1                 P1      P3      P5
+                                          P4                                             P3
+                  P6      P2          P4                     P6      P2              P4
+        (a)                                   (b)
+Figure  18.4  An  example     of Raymond's algorithm.
+3.  When      a   process     Pi  completes   execution  of  a   CS:         Pi  performs    following
+    actions:
+    a. Remove the process id at the head of the local queue. Let it be Pj.
+    b. Send the token to Pj.
+    c. Reverse the tree edge (Pj , Pi).
+    d. If the local queue is not empty, send a request message containing its own
+        id, i.e., Pi, to Pj .
+4.  When a process Pi receives the token:
+    a. If its own id is at the top of the local queue, it removes the request from
+        the queue. Its basic part now becomes active and enters a CS.
+    b. Otherwise, it performs Steps 3(a)­(d).
+    The algorithm requires an order of log n messages for each request. It does
+not ensure FIFO entry to a critical section [see Step 2(b)]. Example 18.2 illustrates
+operation of the algorithm.
+                                                                                                                            ·
+Raymond Algorithm                                                                                         Example     18.2
+Figure 18.4(a) shows the situation in the system of Figure 18.3 after the
+requests made by P4 and P1 have reached P5, which is Pholder (see Steps 1
+and 2 of Algorithm 18.3). When process P5 exits its CS, it removes P3 from
+its local queue, passes the token to P3, and reverses the edge (P3, P5). P5 now
+sends a request to P3 since its local queue is not empty [see Step 3(d)]. P3 per-
+forms similar actions (see Step 4), which result in sending the token to process
+P4, reversal of the edge (P4, P3), and sending of a request by P3 to P4.
+        Figure 18.4(b) shows the resulting abstract inverted tree. P4 now enters its
+CS. After P4 completes the CS, the token is transferred to process P1 via P3
+and P5 in an analogous manner, which enables P1 to enter its CS. Note that this
+action would not have been possible if Step 3(d) did not exist in the algorithm.
+                                                                                             ·
+18.4    DISTRIBUTED DEADLOCK HANDLING                                                                                       ·
+The deadlock detection, prevention, and avoidance approaches discussed in
+Section 8.3 make use of state information. This section illustrates problems in
+extending these approaches to a distributed system, and then describes distributed
+
+
+
+724  Part 5  Distributed Operating Systems
+                   deadlock detection and distributed deadlock prevention approaches. No spe-
+                   cial techniques for distributed deadlock avoidance have been discussed in OS
+                   literature. For simplicity, the discussion in this section is restricted to the single-
+                   instance, single-request (SISR) model of resource allocation (see Section 8.3).
+                   18.4.1 Problems in Centralized Deadlock Detection
+                   Distributed applications may use resources located in several nodes of the system.
+                   Deadlocks involving such applications could be detected by collecting the wait-
+                   for graphs (WFGs) of all nodes at a central node, superimposing them to form
+                   a merged WFG, and employing a conventional deadlock detection algorithm
+                   to check for deadlocks. However, this scheme has a weakness. It may obtain
+                   WFGs of individual nodes at different instants of time, so the merged WFG may
+                   represent a misleading view of wait-for relationships in the system. This could
+                   lead to detection of phantom deadlocks, which is a violation of the safety property
+                   in deadlock detection. Example 18.3 illustrates such a situation.
+·
+     Example 18.3  Phantom Deadlock
+                   The sequence of events in a system containing three processes P4, P5, and P6
+                   is as follows:
+                      1.  Process P5 requests and obtains resource r5 in node N3.
+                      2.  Process P6 requests and obtains resource r4 in node N3.
+                      3.  Process P5 requests and obtains resource r6 in node N4.
+                      4.  Process P4 requests resource r5 in node N3.
+                      5.  Process P5 requests resource r4 in node N3.
+                      6.  Node N3 sends its local WFG to the coordinator node.
+                      7.  Process P6 releases resource r4 in node N3.
+                      8.  Process P6 requests resource r6 in node N4.
+                      9.  Node N4 sends its local WFG to the coordinator node.
+                   Figures 18.5(a) and (b) show WFGs of the nodes at Steps 6 and 9, respectively.
+                   It can be seen that no deadlock exists in the system at any of these times. How-
+                   ever, the merged WFG is constructed by superimposing the WFG of node N3
+                   taken at Step 6 and WFG of node N4 taken at Step 9 [see Figure 18.5(c)],
+                   so     it  contains  a  cycle  {P5, P6}  and  the  coordinator  detects  a  phantom
+                   deadlock.
+                   ·
+                   18.4.2 Distributed Deadlock Detection
+                   Recall from Chapter 8 that a cycle is a necessary and sufficient condition for
+                   a deadlock in an SISR system, whereas a knot is a necessary and sufficient
+
+
+
+                                                           Chapter 18      Distributed Control  Algorithms  725
+P4               P4              P4              P4                    P4
+r5                               r5                        r6             r5    r6
+     P5  r4  P6      P5  P6           P5   P6        P5        P6           P5  r4  P6
+     Node N3         Node N4          Node N3        Node N4
+         WFGs at Step 6                    WFGs at Step 9              Merged   WFG
+(a)                              (b)                                   (c)
+Figure 18.5 Phantom deadlock in  Example 18.3: Node WFGs at Steps  6,  9
+and the merged WFG.
+condition for a deadlock in an MISR system. In the distributed deadlock detec-
+tion approach, cycles and knots are detected through joint actions of nodes in
+the system, and every node in the system has the ability to detect and declare a
+deadlock. We discuss two such algorithms.
+Diffusion Computation-Based Algorithm      The diffusion computation was pro-
+posed by Dijkstra and Scholten (1980) for termination detection; they called
+it the diffusing computation. The diffusion computation contains two phases--
+a diffusion phase and an information collection phase. In the diffusion phase,
+the computation originates in one node and spreads to other nodes through
+control messages called queries that are sent along all edges in the system.
+A node may receive more than one query if it has many in-edges. The first
+query received by a node is called an engaging query, while queries received
+later are called nonengaging queries. When a node receives an engaging query,
+it sends queries along all its out-edges. If it receives a nonengaging query sub-
+sequently, it does not send out any queries because it would have already sent
+queries when it received the engaging query. In the information collection phase,
+each node in the system sends a reply to every query received by it. The reply
+to an engaging query contains information pertaining to the node to which
+the engaging query was directed, and about some other nodes connected to
+that node. The reply to a nonengaging query typically does not contain any
+information. It is called a dummy reply. If the initiator receives its own query
+along some edge, it sends a dummy reply immediately. The Chandy­Lamport
+algorithm for consistent state recording of a distributed system discussed in
+Section 17.4.2 actually uses the first phase of a diffusion computation (see
+Exercise 18.5).
+Algorithm 18.4 uses a diffusion computation to perform deadlock detection.
+It was proposed by Chandy, Misra, and Haas (1983), and works for both SISR and
+MISR systems. The diffusion computation spreads through edges in the WFG.
+All steps in the algorithm are performed atomically, so if a process receives two
+messages at the same time, they will be processed one after another. It is assumed
+that diffusion computations initiated by different processes are assigned distinct
+ids, and that their queries and replies carry these ids. This way, different diffusion
+computations do not interfere with one another.
+
+
+
+726  Part 5  Distributed Operating Systems
+                          P1   P2           P3  P4  P1   P2              P3    P4
+                          (a)                       (b)
+             Figure 18.6  System for illustrating diffusion computation-based distributed deadlock
+             detection.
+             Algorithm 18.4 Diffusion Computation-Based Distributed Deadlock Detection
+             1.  When a process becomes blocked on a resource request: The process initiates
+                 a diffusion computation through the following actions:
+                 a. Send queries along all its out-edges in the WFG.
+                 b. Remember the number of queries sent out, and await replies to them.
+                 c. If replies are received for all the queries sent out and it has been in the
+                 blocked state continuously since it initiated the diffusion computation,
+                 declare a deadlock.
+             2.  When a process receives an engaging query: If the process is blocked, it
+                 performs the following actions:
+                 a. Send queries along all its out-edges in the WFG.
+                 b. Remember the number of queries sent out, and await replies to them.
+                 c. If replies are received for all the queries sent out and it has been in the
+                 blocked state continuously since it received the engaging query, send a
+                 reply to the node from which it received the engaging query.
+             3.  When a process receives a nonengaging query: If the process has been in the
+                 blocked state continuously since it received the engaging query, send a dummy
+                 reply to the node from which it received the nonengaging query.
+                 Consider an SISR system that contains four processes P1­P4. The WFG of
+             Figure 18.6(a) shows the system state immediately after process P1 requests a
+             resource that is currently allocated to P2. P1, P2, and P3 are now in the blocked
+             state, whereas P4 is not. P1 initiates a diffusion computation when it becomes
+             blocked. When P2 receives its query, it sends a query to P3, which sends a query
+             to P4. However, P4 is not in the blocked state, so it does not reply to P3's query.
+             Thus, P1 does not receive a reply and consequently does not declare that it is
+             in a deadlock. Let P4 now request the resource allocated to P2 and get blocked
+             [see the WFG of Figure 18.6(b)]. P4 would now initiate a diffusion computation
+             that would spread to processes P2 and P3. Since these processes are blocked, P4
+             will get the reply to its query and declare that it is involved in a deadlock. The
+             condition that a process should be continuously in the blocked state since the time
+             it initiated the diffusion computation or since the time it received the engaging
+             query ensures that a phantom deadlock would not be detected.
+             Edge Chasing Algorithm         In this algorithm, a control message is sent over a wait-
+             for edge in the WFG to facilitate detection of cycles in the WFG, hence the name
+             edge chasing algorithm. It was proposed by Mitchell and Merritt (1982). Each
+
+
+
+                                                                Chapter 18     Distributed Control  Algorithms  727
+               Name of rule   Precondition                  After applying the rule
+                              u               x                 z           x
+                Block                                           z
+                Activate
+                Transmit      u             w                   w           w
+                                 u<w
+                              u               u                 u           u
+                Detect        u                                 u
+Figure   18.7  Rules of Mitchell­Merritt algorithm.
+process is assigned two numerical labels called a public label and a private label.
+The public and private labels of a process are identical when the process is created.
+These labels change when a process gets blocked on a resource. The public label
+of a process also changes when it waits for a process having a larger public label.
+A wait-for edge that has a specific relation between the public and private labels
+of its start and end processes indicates existence of a deadlock.
+         Figure 18.7 illustrates rules of the Mitchell­Merritt algorithm. A process is
+                u
+represented as          where u and v are its public and private labels, respectively.
+                v
+Figure 18.7 illustrates rules of the Mitchell­Merritt algorithm. A rule is applied
+when the public and private labels of processes at the start and end of a wait-for
+edge satisfy the pre-condition. It changes the labels of the processes as shown to
+the right of "  ". Details of the four rules are as follows:
+1.       Block: The public and private labels of a process are changed to a value
+         z when it becomes blocked because of a resource request. The value z is
+         generated through the statement z := inc(u, x), where u is the public label of
+         the process, x is the public label of the process for which it waits, and function
+         inc generates a unique value larger than both u and x.
+2.       Activate: The out-edge of a process is removed from WFG when it is activated
+         following a resource allocation. Its labels remain unchanged.
+3.       Transmit: If the public label of the process at the start of a wait-for edge (u)
+         is smaller than the public label of the process at the end of the edge (w), then
+         u is replaced by w.
+4.       Detect: A deadlock is declared if the public and private labels of a process at
+         the start of a wait-for edge are identical and also equal to the public label of
+         the process at the end of the edge.
+         Operation of the algorithm can be explained as follows: Consider a path in
+                                                                   uvii
+the      WFG from Pi to       Pk. Let labels of process Pi  be           and let those of Pk  be
+uvkk
+      .  According to the     transmit rule applied to all  edges        in the path from Pi  to
+Pk, ui is greater than or equal to the public label of every process on the path
+from Pi to Pk. Let Pk make a resource request that results in a wait-for edge
+(Pk, Pi). According to the block rule, public and private labels of Pk assume a
+value given by inc(uk, ui). Let this be n. Hence n > ui. According to the transmit
+
+
+
+728  Part 5  Distributed Operating Systems
+             rule, n is propagated to Pi through processes along the path from Pi to Pk. The
+             edge (Pk, Pi) now satisfies the detect rule. As an example, consider the system
+             of Figure 18.6. Process P4 would be given new public and private labels when
+             it becomes blocked. Its public label would be larger than the public labels of P2
+             and P3, so it would be propagated to P2 via P3. Consequently, process P4 would
+             detect a deadlock.
+                Correctness of the algorithm follows from the fact that the public label of a
+             process Pi at the start of a wait-for edge gets propagated to another process Pj
+             only if a path exists from Pj to Pi (see the transmit step). Thus, if the wait-for
+             edge from Pi to Pj satisfies the detect rule, it completes a cycle in the WFG, so a
+             deadlock exists. Safety follows trivially if processes are not permitted to withdraw
+             their requests spontaneously.
+             18.4.3 Distributed Deadlock Prevention
+             Deadlock prevention approaches discussed in Section 8.5 prevent cycles from
+             arising in a resource request and allocation graph (RRAG) or a wait-for graph
+             (WFG) through restrictions on resource requests. Deadlocks in a distributed sys-
+             tem can be prevented analogously: Each process creation event is timestamped by
+             a pair (local time, node id), and the timestamp is associated with the newly created
+             process. Circular waits in the RRAG or WFG are prevented by disallowing cer-
+             tain kinds of wait-for relationships through a comparison of process timestamps
+             using relation (17.1). We discuss two such schemes.
+             ·  Wait-or-die: When a process Preq makes a request for some resource currently
+                held by Pholder, Preq is permitted to wait for the resource if it is older than
+                Pholder; otherwise, it is aborted. Circular waits cannot arise because an older
+                process may wait for a younger process, but a younger process cannot wait
+                for an older process.
+             ·  Wound-or-wait: If Preq is younger than Pholder, it is allowed to wait for the
+                resource held by Pholder; otherwise, Pholder is aborted and the requested
+                resource is allocated to Preq. Thus, a younger process can wait for an older
+                process, but an older process cannot wait for a younger process.
+                In both approaches, the younger process is aborted and has to be reinitiated
+             sometime in future. To avoid starvation due to repeated aborts, a process may
+             be permitted to retain its old timestamp when it is reinitiated. The wait-or-die
+             scheme may be preferred in practice because it does not involve preemption of a
+             resource, whereas the wound-or-wait scheme does.
+             18.5  DISTRIBUTED SCHEDULING ALGORITHMS                                               ·
+             Both system performance and computation speedup in applications would be
+             adversely affected if computational loads in the nodes of a distributed system
+             are uneven. A distributed scheduling algorithm balances computational loads
+             in the nodes by transferring some processes from a heavily loaded node to a
+
+
+
+                                                                     Chapter 18   Distributed Control Algorithms  729
+                               Process Pi       State of Pi          Process Pi
+                               operates at      is transferred       operates at
+                               node N1          node N2              node N2
+             Activities in
+             node N2
+             Activities in
+             node N1
+                            0               ti                  tj   Time
+Figure 18.8  Migration of process Pi from   node N1 to node     N2.
+lightly loaded node. Figure 18.8 illustrates this technique, which is called pro-
+cess migration. Process Pi is created in node N1 at time t = 0. At time ti the
+scheduling function decides to transfer the process to node N2, so operation of
+the process is halted in node N1 and the kernel starts transferring its state to node
+N2. At time tj the transfer of state is complete and the process starts operating
+in node N2.
+To perform load balancing through process migration, a scheduling algo-
+rithm needs to measure the computational loads in nodes, and apply a threshold
+to decide which ones are heavily loaded and which ones are lightly loaded. At
+appropriate times, it transfers processes from heavily loaded nodes to lightly
+loaded nodes. These nodes are called sender nodes and receiver nodes, respec-
+tively. CPU utilization is a direct indicator of the computational load serviced in
+a node; however, monitoring of CPU utilization incurs high execution overhead.
+Hence operating systems prefer to use the number of processes in a node or the
+length of the ready queue of processes, as measures of computational loads. These
+measures possess a good correlation with the average response time in a node,
+and their use incurs a low overhead.
+Actual migration of a process can be performed in two ways. Preemp-
+tive migration involves suspending a process, recording its state, transferring it
+to another node and resuming operation of the process in the new node (see
+Figure 18.8); it requires extensive kernel support. In nonpreemptive migration,
+the load balancing decision is taken during creation of a new process. If the node
+in which a "create process" call is performed is heavily loaded, the process is
+simply created in a remote node. Nonpreemptive migration does not require any
+special support in the kernel.
+Stability is an important issue in the design of a distributed scheduling algo-
+rithm. An algorithm is unstable if, under some load conditions, its overhead is not
+bounded. Consider a distributed scheduling algorithm that transfers a process
+from a heavily loaded node to a randomly selected node. If the node to which
+the process is sent is itself heavily loaded, the process would have to be migrated
+once again. Under heavy load conditions, this algorithm would lead to a situa-
+tion that resembles thrashing--the scheduling overhead would be high because
+
+
+
+730  Part 5  Distributed Operating Systems
+             process migration is frequent, but processes being transferred would not make
+             much progress.
+                 A sender-initiated algorithm transfers a process nonpreemptively, i.e., from
+             a sender node to a receiver node. While creating a process in a heavily loaded
+             node, it polls other nodes to find a lightly loaded node so that it can migrate the
+             process to that node. This action makes the scheduling algorithm unstable at high
+             system loads because a sender that cannot find a lightly loaded node would poll
+             continuously and waste a considerable fraction of its CPU's time. Instability can
+             be prevented by limiting the number of attempts a sender is allowed to make to
+             find a receiver. If this number is exceeded, the sender would abandon the process
+             migration attempt and create the new process locally. Instability may also result if
+             several processes are sent to the same receiver node, which now becomes a sender
+             node and has to migrate some of the processes it received. This situation can be
+             avoided by using a protocol whereby a node accepts a process only if it is still a
+             receiver node (see Exercise 18.10).
+                 A receiver-initiated algorithm checks whether a node is a receiver node every
+             time a process in the node completes. It now polls other nodes in the system to
+             find a node that would not become a receiver node even if a process is transferred
+             out of it, and transfers a process from such a node to the receiver node. Thus,
+             process migration is necessarily preemptive. At high system loads, the polling
+             overhead would be bounded because the receiver would be able to find a sender
+             quickly. At low system loads, continuous polling by a receiver would not be
+             harmful because idle CPU times would exist in the system. Unbounded load
+             balancing overhead can be prevented by abandoning a load balancing attempt
+             if a sender cannot be found in a fixed number of polls; however, a receiver must
+             repeat load balancing attempts at fixed intervals of time to provide the liveness
+             property.
+                 We discuss a symmetrically initiated algorithm that contains features of
+             both sender-initiated and receiver-initiated algorithms. It behaves like a sender-
+             initiated algorithm at low system loads and like a receiver-initiated algorithm at
+             high system loads. Each node maintains a status flag to indicate whether it is
+             presently a sender, a receiver, or an OK node, i.e., neither a sender nor a receiver.
+             It also maintains three lists, called senders list, receivers list, and OK list, to
+             contain ids of nodes that are known to be senders, receivers, and OK nodes,
+             respectively.
+             Algorithm 18.5 Symmetrically Initiated Load Balancing Algorithm
+             1.  When a node becomes a sender as a result of creation of a process: Change
+                 the status flag to "sender." If the receivers list is nonempty, poll the nodes
+                 included in it, subject to the limit on number of nodes that can be polled.
+                 a. If the polled node replies that it is a receiver node, transfer a process to it.
+                 Examine local load and set the status flag accordingly.
+                 b. Otherwise, move the polled node to the appropriate list, based on its reply.
+             2.  When a node becomes a receiver as a result of completion of a process: Change
+                 the status flag to "receiver." Poll the nodes included in the senders list,
+
+
+
+                                                                   Chapter 18  Distributed Control  Algorithms  731
+    followed by those in the receivers list and OK list, subject to the limit on
+    number of nodes that can be polled.
+    a. If the polled node replies that it is a sender node, transfer a process from
+        it. Examine local load and set the status flag accordingly.
+    b. Otherwise, move the polled node to the appropriate list, based on its reply.
+3.  When a node is polled by a receiver node: Move the polling node to the receivers
+    list. Send a reply containing own current status.
+4.  When a node is polled by a sender node: Move the polling node to the senders
+    list. Send a reply containing own current status.
+5.  When a process is transferred from or to a node: Examine local load and set
+    the status flag accordingly.
+    Instability would arise in this algorithm if too many processes are trans-
+ferred to a receiver node simultaneously. To prevent it, a receiver node should
+change its flag in Step 3 by anticipating a transfer, rather than in Step 5 as at
+present.
+    Figure 18.9 depicts comparative performance of distributed scheduling algo-
+rithms. A sender-initiated algorithm incurs low overhead at low system loads
+because few senders exist in the system. Hence, the system can provide good
+response times to processes. As the load increases, the number of senders increases
+and the overhead of the algorithm increases. At high system loads the algo-
+rithm is unstable because a large number of senders exists in the system and
+few, if any, receivers exist. Consequently, the response time increases sharply. A
+receiver-initiated algorithm incurs a higher overhead at low system loads than a
+sender-initiated algorithm because a large number of receivers exists at low system
+loads. Hence the response time is not as good as when a sender-initiated algorithm
+is used. At high system loads, few receivers exist in the system, so a receiver-
+initiated algorithm performs distinctly better than a sender-initiated algorithm.
+The performance of a symmetrically initiated algorithm would resemble that of
+                                                       Sender
+                                                       initiated
+              Response
+              time
+                                                       Receiver
+                                                                   initiated
+                        0.5                                        0.9
+                                                      System load
+Figure  18.9  Performance of distributed  scheduling  algorithms.
+
+
+
+732  Part 5  Distributed Operating Systems
+             a sender-initiated algorithm at low system loads and that of receiver-initiated
+             algorithms at high system loads.
+             18.6  DISTRIBUTED TERMINATION DETECTION                                                ·
+             A process ties up system resources such as kernel data structures and memory.
+             The kernel releases these resources either when the process makes a "terminate
+             me" system call at the end of its operation, or when it is killed by another process.
+             This method is not adequate for processes of a distributed computation because
+             they may not be able to decide when they should terminate themselves or kill
+             other processes. For example, consider a distributed computation whose processes
+             have a client­server relationship. A server would not know whether any more
+             requests would be made to it, because it would not know who its clients are and
+             whether all of them have completed their operation. In such cases, the kernel
+             employs methods of distributed termination detection to check whether the entire
+             distributed computation has terminated. If so, it winds up all processes of the
+             computation and releases the resources allocated to them.
+             We define two process states in our system model to facilitate termination
+             detection. A process is in the passive state when it has no work to perform;
+             such a process is dormant and waits for some other process to send it some
+             work through an interprocess message. A process is in the active state when it
+             is engaged in performing some work. It can be performing I/O, waiting for a
+             resource, waiting for the CPU to be allocated to it, or executing instructions. The
+             state of a process changes several times during its execution. A passive process
+             becomes active immediately on receiving a message, sends an acknowledgment
+             to the sender of the message, and starts processing the message. An active process
+             acknowledges a message immediately, though it may delay its processing until a
+             convenient time. An active process becomes passive when it finishes its current
+             work and does not have other work to perform. It is assumed that both control
+             and basic messages travel along the same interprocess channels.
+             A distributed computation is said to have terminated if it satisfies the
+             distributed termination condition (DTC). The DTC comprises two parts:
+             1. All processes of a distributed computation are passive.
+             2. No basic messages are in transit.                                   (18.1)
+             The second part is needed because a message in transit will make its destination
+             process active when it is delivered. We discuss two approaches to determining
+             whether DTC holds for a distributed computation.
+             Credit-Distribution-Based Termination Detection   In this approach by Mattern
+             (1989), every activity or potential activity in a distributed computation is assigned
+             a numerical weightage called credit. A distributed computation is initiated with
+             a known finite amount of credit C. This credit is distributed among its processes.
+             The manner of its distribution is immaterial so long as each process Pi receives
+             a nonzero credit ci. When a process sends a basic message to another process,
+
+
+
+                                                         Chapter 18     Distributed Control  Algorithms  733
+it puts a part of its credit into the message--again, it is immaterial how much
+credit is put into a message, so long as it is neither zero nor the entire credit of the
+process. A process receiving a message adds the credit from the message to its own
+credit before processing the message. When a process becomes passive, it sends
+its entire credit to a special system process called the collector process, which
+accumulates all credit it receives. The distributed computation is known to have
+terminated when the credit accumulated by the collector process equals C. This
+algorithm is simple and elegant; however, credit may be distributed indefinitely,
+so a convenient representation of credit should be used in its implementation.
+Diffusion Computation-Based Termination Detection        Each process that becomes
+passive initiates a diffusion computation to determine whether the DTC holds.
+Thus, every process has the capability to detect termination. We discuss detection
+of the DTC in a system where the following three rules hold:
+1.  Processes are neither created nor destroyed dynamically during execution
+    of the computation; i.e., all processes are created when the distributed
+    computation is initiated, and remain in existence until the computation
+    terminates.
+2.  Interprocess communication channels are FIFO.
+3.  Processes communicate with one another through synchronous communi-
+    cation; i.e., the sender of a message becomes blocked until it receives an
+    acknowledgment for the message.
+    Rule 3 simplifies checking for the DTC as follows: The sender of a basic
+message becomes blocked; it resumes its operation after it receives the acknowl-
+edgment. It may enter the passive state only after finishing its work. Thus, the
+basic message sent by a process cannot be in transit when it becomes passive and
+the system cannot have any basic messages in transit when all processes are pas-
+sive. Hence it is sufficient to check only the first part of the DTC condition, i.e.,
+whether all processes are passive. Algorithm 18.6 performs this check through a
+diffusion computation over a graph whose nodes represent processes and edges
+represent interprocess communication. Example 18.4 illustrates operation of
+Algorithm 18.6.
+Algorithm 18.6 Distributed Termination Detection
+1.  When a process becomes passive: The process initiates a diffusion computa-
+    tion through the following actions:
+    a. Send "Shall I declare distributed termination?" queries along all edges
+    connected to it.
+    b. Remember the number of queries sent out, and await replies.
+    c. After  replies  are  received  for  all  of  its  queries,  declare  distributed
+    termination if all replies are yes.
+2.  When a process receives an engaging query: If the process is in the active state,
+    it sends a no reply; otherwise, it performs the following actions:
+    a. Send queries along all edges connected to it excepting the edge on which
+    it received the engaging query.
+
+
+
+734  Part 5  Distributed Operating Systems
+                      b. Remember the number of queries sent out, and await replies.
+                      c. After replies are received for all of its queries: If all replies are yes, send a yes
+                      reply to the process from which it received the engaging query; otherwise,
+                      send a no reply.
+                      3. When a process receives a nonengaging query: The process immediately sends
+                      a yes reply to the process from which it received the query.
+·
+     Example 18.4  Distributed Termination Detection
+                   Figure 18.10 shows a distributed computation. Only processes P1 and P2 are
+                   active; all other processes are passive. Now the following events occur:
+                      1. Process P2 becomes passive, initiates termination detection and sends a
+                      query to process P1.
+                      2. Process P1 sends a basic message to process P5 along the edge (P1, P5)
+                      and becomes passive at the earliest opportunity.
+                      The receive event in P5 for the basic message of P1, and events concerning
+                   sending and receipt of queries and their replies by the processes could occur in
+                   several different sequences. Two sequences of interest are as follows: If process
+                   P1 received the query from P2 before it became passive, it would send a no reply
+                   to P2, so P2 would not declare termination. If process P1 received the query
+                   from P2 after it became passive, according to Rule 3, it would have already
+                   received an acknowledgment to the basic message it had sent to process P5
+                   in Step 2, so process P5 must have become active after receiving P1's message
+                   before P1 became passive. Now, when P1 receives the query from P2, it would
+                   send a query to each of P3­P7. P5 would send a no reply to P1, which would
+                   send a no reply to P2, so P2 would not declare termination. If Rules 2 and 3
+                   of the system are removed, the algorithm would suffer from safety problems
+                   in some situations.
+                   ·
+                      Distributed termination detection algorithms become complex when they
+                   try to remove Rules 1­3 of the system. Papers cited in the Bibliography discuss
+                   details of such algorithms.
+                                                P7      P6
+                                            P2      P1                               P5
+                                                P3      P4
+                   Figure 18.10  Illustration of distributed termination detection.
+
+
+
+                                                        Chapter 18  Distributed Control Algorithms  735
+18.7  ELECTION ALGORITHMS                                                                           ·
+A critical function like replacing the lost token in a token-based algorithm is
+assigned to a single process called the coordinator for the function. Typically, pri-
+orities are assigned to processes and the highest-priority process among a group
+of processes is chosen as the coordinator for a function. Any process that finds
+that the coordinator is not responding to its request assumes that the coordinator
+has failed and initiates an election algorithm. The election algorithm chooses the
+highest-priority nonfailed process as the new coordinator and announces its id
+to all nonfailed processes.
+Election Algorithms for Unidirectional Ring Topologies  All links in the ring are
+assumed to be FIFO channels. It is further assumed that the control part of a
+failed process continues to function and simply forwards each received message
+along its out-edge. The election is performed by obtaining ids of all nonfailed
+processes in the system and electing the highest-priority process. It is achieved
+as follows: A process Pi initiates an election by sending out an ("elect me", Pi)
+message along its out-edge. A process Pj that receives this message performs two
+actions--it sends out an ("elect me", Pj) message of its own and also forwards the
+("elect me", Pi) message immediately after its own message. These messages reach
+process Pi such that the ("elect me", Pi) message follows all the other messages.
+Process Pi examines process ids contained in all these messages and elects the
+highest priority process, say Phigh, as the new coordinator. It now sends a ("new
+coordinator", Phigh) message along the ring to inform all processes about the
+outcome of the election. It is assumed that failures do not occur during an election.
+This assumption ensures identical results even if two or more processes initiate
+elections in parallel. The algorithm requires an order of n2 messages per election.
+The number of messages per election can be reduced as follows: A process Pj
+that receives an ("elect me", Pi) message sends out only one message--it sends an
+("elect me", Pj) message to start a new election if its own priority is higher than
+that of Pi; otherwise, it simply forwards the ("elect me", Pi) message. This way,
+only the highest-priority nonfailed process Phigh would get back its own "elect
+me" message. It would send a ("new coordinator", Phigh) message to announce
+its election. All other processes abandon their elections, if any, when they receive
+the ("new coordinator", Phigh) message. When this refinement is used, the number
+of messages per election can be a maximum of 3n - 1 as follows: The ("elect me",
+Pi) message sent by the process that initiates an election needs a maximum of
+n - 1 messages to reach the highest-priority process. The election initiated by the
+highest-priority process requires n messages to complete, and another n messages
+are required to inform every process about the outcome of the election. The time
+consumed by the election could be as high as (3n - 1) × twc, where twc is the
+worst-case message delivery time over a link.
+Bully Algorithm  A process Pi that initiates an election sends an ("elect me", Pi)
+message to all higher-priority processes and starts a time-out interval T1. If it
+does not hear from any of them before the time-out occurs, it assumes that all of
+them have failed, sends a ("new coordinator", Pi) message to all lower-priority
+processes, and becomes the new coordinator. If its "elect me" message reaches a
+
+
+
+736  Part 5  Distributed Operating Systems
+                   higher-priority process Pj, process Pj sends a "don't you dare!" message to it. On
+                   receiving this message, process Pi abandons its claim to become the new coordi-
+                   nator. It now expects process Pj or another higher-priority process to announce
+                   itself the new coordinator, so it starts another time-out interval to wait for such
+                   a message. If it does not receive such a message before a time-out occurs, it
+                   assumes that a higher-priority process that should have become the coordinator
+                   has failed during the interval. It now initiates another election by once again send-
+                   ing ("elect me", Pi) messages. A process Pj that receives an "elect me" message
+                   from a lower-priority process responds by sending a "don't you dare!" message to
+                   the lower-priority process. Immediately following this, Pj itself initiates an elec-
+                   tion, unless it has already initiated one, by sending ("elect me", Pj) messages to
+                   all higher priority processes.
+                      The total number of messages per election is an order of n2. If the system
+                   graph is fully connected and no nodes fail or recover during an election, the
+                   time consumed by the election could be as high as T1 + T2, where T1, T2 are
+                   the two time-out intervals. T1  2 × twc, where twc is the worst-case message
+                   delivery time over a link. T2  3 × twc; however, T2  2 × twc would suffice since
+                   transmission of the "elect me" message sent by a higher-priority process would
+                   overlap with transmission of the "don't you dare!" message sent by it. Hence the
+                   time consumed by the algorithm can be less than 5 × twc.
+·
+     Example 18.5  Election Algorithms
+                   A system contains 10 processes P1, P2, . . . , P10, with the priorities 1, . . . , 10,
+                   10 being the highest priority. Process P10 is the coordinator process. Its failure
+                   is detected by process P2. P2 sends ("elect me", P2) messages to P3­P10. Each of
+                   P3­P9 respond by sending a "don't you dare!" message to P2, and start their
+                   own elections by sending "elect me" messages to higher-priority processes.
+                   Eventually processes P2­P8 receive "don't you dare!" messages from all higher-
+                   priority processes excepting P10, which has failed. Process P9 does not receive
+                   any "don't you dare!" message, so it elects itself as the coordinator and sends a
+                   ("new coordinator", P9) message to P1­P8. During the election, 36 "elect me"
+                   messages, 28 "don't you dare!" messages and 8 "new coordinator" messages
+                   are sent. The total number of messages for this election is thus 72.
+                      If the same system had been organized as a unidirectional ring with edges
+                   (Pi, Pi+1) i < 10 and edge (P10, P1), a total of 27 messages would have been
+                   needed to complete the election.
+                   ·
+                   18.8  PRACTICAL ISSUES IN USING DISTRIBUTED
+                         CONTROL ALGORITHMS                                                                ·
+                   18.8.1 Resource Management
+                   When a process requests access to a resource, the resource allocator must find
+                   the location of matching resources in the system, determine their availability,
+
+
+
+                                                                  Chapter 18        Distributed  Control  Algorithms  737
+                Node Ni                                                      Node Nk
+        Resource manager                                              Resource manager
+                1                           3,5
+        Name             Resource                                 Resource              Name
+        server           allocator                                allocator             server
+                2
+                1  ,  3  ,  5                                         3  ,   5
+                                            4
+                               Pi                                 Pk            rk
+Figure  18.11   Resource allocation  in  a  distributed  system.
+and allocate one of the resources. Figure 18.11 contains a schematic of resource
+allocation. A resource manager exists in each node of the system. It consists of
+a name server and a resource allocator. The numbered arcs in the schematic
+correspond to steps in the following resource allocation procedure:
+1.  When process Pi wishes to use a resource named resj, it constructs a pair
+    (resj, Pi) and forwards it to the resource manager in its node. The resource
+    manager forwards the request to the name server.
+2.  The name server locates resj, using its name and attributes, and constructs
+    the triple (rk, Nk, Pi), where resj is resource rk at node Nk. It forwards the
+    triple to the resource allocator.
+3.  The resource allocator finds whether resource rk of node Nk is available. If
+    so, it passes Pk, the id of the resource controller process for the resource, to
+    Pi. It also sends an allocation message containing the id of Pi to Pk. If the
+    resource is not available, it stores the request in a queue of pending requests.
+    The request would be honored sometime in future when the resource becomes
+    available.
+4.  Process Pk interacts with process Pi to fulfill Pi's service requests.
+5.  After completing its use of the resource, process Pi makes a release request.
+    The resource manager sends a release                 message  to     Pk     and   allocates  the
+    resource to a pending request, if any.
+    The important issue in Step 3 is ensuring noninterference of resource alloca-
+tors of different nodes. It could be achieved either through a distributed mutual
+exclusion algorithm or through an election algorithm to elect a coordinator that
+would perform all allocations in the system. Use of a mutual exclusion algorithm
+would incur overhead at every allocation. Use of an election algorithm would
+avoid this overhead. However, it would require a protocol to ensure that resource
+status information would be accessible to a new coordinator if the present coor-
+dinator failed. A simpler arrangement would be to entrust allocation of resources
+in a node to the resource allocator of that node. This scheme would avoid the
+overhead of mutual exclusion, election, and fault tolerance. It would also be more
+robust because a resource could be allocated to a process so long as the nodes
+
+
+
+738  Part 5  Distributed Operating Systems
+             containing the process and the resource, and a network path between the two,
+             are functional. The name server in each node would have to be updated when
+             resources are added. This problem can be solved through an arrangement of name
+             servers as in the domain name service (DNS) (see Section 16.4.1), where only the
+             name server of a domain needs to be updated when a resource is added.
+             18.8.2 Process Migration
+             The process migration mechanism is used to transfer a process between nodes in
+             a distributed system. It is used to achieve load balancing, or to reduce network
+             traffic involved in utilizing a remote resource. It may also be used to provide
+             availability of services when a node has to be shut down for maintenance. The
+             schematic Figure 18.8 made process migration look deceptively simple; however,
+             in reality, it is quite complex for several reasons. The state of a process comprises
+             the following:
+             ·  Process identifier and ids of its child processes
+             ·  Pending signals and messages
+             ·  Current working directory and internal ids of files (see Section 13.8)
+             Two kinds of problems are faced in transferring process state: Process state is
+             often spread across many data structures in the kernel, so it is difficult to extract
+             it from kernel data structures. Process ids and internal ids of files have to be
+             unique in the node where a process operates; such information may have to be
+             changed when a process is migrated. This requirement creates difficulties in pro-
+             cess synchronization and in I/O. Providing globally unique process ids as in the
+             Sun Cluster (see Section 16.3) and transparency of resources and services (see
+             Section 16.8) are important in this context.
+                When a message is sent to a process, the DNS converts the process name
+             (<host_name>, <process_id>) into the pair (IP address, <process_id>). Such a
+             message may be in transit when its destination process is migrated, so arrange-
+             ments have to be made to deliver the message to the process at its new location.
+             Each node could maintain the residual state of a process that was migrated out of
+             it. This state would contain the id of the node to which it was migrated. If a mes-
+             sage intended for such a process reaches this node, the node would simply redirect
+             the message to its new location. If the process had been migrated out of that node
+             in the meanwhile, the node would similarly redirect the message, using the resid-
+             ual state maintained by it. In this manner a message would reach the process
+             irrespective of its migration. However, the residual state causes poor reliability
+             because a message would not be delivered if the residual state of its destination
+             process in some node has been lost or has become inaccessible because of a fault.
+             An alternative scheme would be to inform the changed location of a process (as
+             also a change in the process id, if any) to all processes that communicate with it.
+             This way, a message could be sent to the process directly at its new location. If
+             a message that was in transit when a process was migrated reached the old node
+             where the process once existed, the node would return a "no longer here" reply
+
+
+
+                                                        Chapter 18  Distributed Control Algorithms         739
+to the sender. The sender would then resend the message to the process at its new
+location.
+18.9       SUMMARY                                                                                            ·
+A distributed control algorithm is an algorithm for     aware of its own local state, and interacts with
+use in an OS, whose actions are performed in many       other nodes to convey state information. The cor-
+nodes of the distributed system. An OS uses dis-        rectness of the algorithm depends on how state
+tributed control algorithms so that it can avoid the    information is conveyed among nodes and how
+overhead of collecting state information about all      decisions are made, while performance depends
+entities in the system in one place, be responsive to   on the nature of the system model used by the
+events occurring in its nodes, and provide reliable     algorithm.
+operation in the presence of node and link faults. In   Mutual exclusion is performed by using either
+this chapter, we discussed distributed control algo-    a fully connected logical model and timestamping
+rithms for mutual exclusion, deadlock handling,         of requests, or a token to represent the privilege
+scheduling, electing coordinators for functions and     to enter a critical section. The former incurs small
+services, and detecting termination of a distributed    decision times, while the latter requires fewer mes-
+computation.                                            sages. Distributed deadlock detection algorithms
+    Parts of a distributed control algorithm exe-       use a logical model in which edges represent wait-
+cuting in different nodes of a distributed system       for relationships between processes, and special
+reach a decision by interacting among themselves        messages    are  sent  over  the  edges  for  deadlock
+through interprocess messages. This method of           detection. Either a special algorithm called diffu-
+operation may delay decisions; however, the algo-       sion computation is used to collect state informa-
+rithm must make the correct decision eventually.        tion from all relevant processes, or presence of a
+Since distributed algorithms do not have access         cycle is inferred when a sender process receives
+to states of all relevant entities at the same time,    back its own deadlock detection message. Dis-
+they must also ensure that they would not per-          tributed scheduling is performed by exchanging
+form a wrong action. These two aspects of their         state information among nodes of the system to
+correctness are called liveness and safety, respec-     decide whether processes should be transferred
+tively. They have to be interpreted in the context      between   nodes  to    balance    the  execution   loads
+of the function performed by a distributed con-         among nodes.
+trol algorithm. For example, in mutual exclusion,       A  distributed         computation     terminates  only
+liveness implies that the progress and bounded          when all its processes are idle and no messages are
+wait conditions of Section 6.3.1 are satisfied, while   in transit between them. Distributed termination
+safety implies that at most one process is in the       detection can be performed by using a diffusion
+CS  at   any  time.   Performance   of  a  distributed  computation to check whether any process is active
+control    algorithm  is  measured  in  terms  of  the  or any interprocess message is in transit. Alter-
+number of messages exchanged by the algorithm,          natively, some known amount of credit can be
+and the delay incurred until a required action is       distributed among processes and some of it can
+performed.                                              be put on every interprocess message. Termination
+    A distributed control algorithm uses a sys-         has occurred if the total credit with idle processes
+tem model that is either a physical model of the        equals the amount of credit with which the sys-
+system or a logical model in which nodes are pro-       tem started. Election algorithms use logical models
+cesses and an edge indicates that two processes         and special messages to find the highest-priority
+exchange messages. Each node in the model is            nonfailed process.
+
+
+
+740         Part 5  Distributed Operating Systems
+TEST  YOUR CONCEPTS                                                                                                    ·
+18.1  Classify each of the following statements as true         a.  Which of the following properties of a critical
+      or false:                                                     section implementation will ensure liveness
+      a. The control part of a process never blocks.                of a distributed mutual exclusion algorithm
+      b. The Ricart­Agrawala algorithm is deadlock-                 (refer to Table 6.1)?
+      free if timestamps are distinct.                              i. The progress property
+      c. In a token-based algorithm for mutual exclu-               ii. The bounded wait property
+      sion, a requesting process sends its request to               iii. The    progress    and  bounded      wait
+      every other process.                                             properties
+      d. In a diffusion computation model, a process                iv. None of (i)­(iii).
+      does not send a reply to a nonengaging query.             b.  A process Pi initiates a diffusion computa-
+      e. A centralized deadlock detection algorithm                 tion by sending out queries. A process Pk in
+      may detect phantom deadlocks.                                 the system
+      f. A  sender-initiated  distributed     scheduling            i. Receives the query initiated by Pi exactly
+      algorithm is unstable at high system loads.                      once.
+      g. A distributed computation is said to have ter-             ii. May not receive the query even once.
+      minated if all processes in the computation                   iii. Receives the query at least once, but may
+      are in the passive state.                                        receive it several times
+18.2  Select the appropriate alternative in each of the             iv. None of (i)­(iii).
+      following questions:
+EXERCISES                                                                                                              ·
+18.1  State and compare the liveness properties of (a)          detection does not possess the liveness property
+      a distributed mutual exclusion algorithm, and             if a killed process is given a new timestamp when
+      (b) an election algorithm.                                it is reinitiated.
+18.2  Step 2 of the Ricart­Agrawala algorithm is mod-     18.7  It is proposed to use an edge chasing dead-
+      ified such that a process wishing to enter a CS           lock detection algorithm for deadlocks arising
+      does not send a "go ahead" reply to any other             in interprocess communication. When a process
+      process until it has used its CS. Prove that this         gets blocked on a "receive message" request,
+      modified algorithm is not deadlock-free.                  a query is sent to the process from which it
+18.3  Prove the safety property of Maekawa's algo-              expects the message. If that process is blocked
+      rithm, which uses request sets of size    n.              on a "receive message" request, it forwards the
+18.4  Construct an example where Raymond's algo-                query to the process for which it is waiting, and
+      rithm does not exhibit FCFS behavior for entry            so on. A process declares a deadlock if it receives
+      to a CS. (Hint: Consider the following situation          its own query. Comment on the suitability of this
+      in Example 18.2: Process P2 makes a request for           algorithm for
+      CS entry while P5 is still in CS.)                        a. Symmetric communication.
+18.5  Identify the engaging and nonengaging queries             b. Asymmetric communication.
+      in the Chandy­Lamport algorithm for consis-         18.8  If use of the inc function in the block rule is omit-
+      tent state recording (Algorithm 17.2). Extend             ted from the Mitchell­Merritt algorithm, show
+      the algorithm to collect the recorded state infor-        that the modified algorithm violates the liveness
+      mation at the site of the node that initiated a           requirement.
+      state recording.                                    18.9  Prove  correctness  of      the  credit  distribution-
+18.6  Prove that a resource allocator using the wait-           based  distributed          termination  detection
+      or-die and wound-or-wait scheme for deadlock              algorithm.
+
+
+
+                                                              Chapter 18     Distributed Control Algorithms             741
+18.10     A sender-initiated distributed scheduling algo-            d. The    sender   transfers   a  process      when    it
+          rithm uses the following protocol to transfer a            receives a yes reply.
+          process from one node to another:                          e. If it receives a no reply, it selects another node
+          a. A sender polls all other nodes in the system            and repeats Steps 10(b)­10(e).
+          in search of a receiver node.                              Does    this  protocol  avoid     instability  at  high
+          b. It selects a node as the prospective receiver,          system loads?
+          and sends it a "lock yourself for a process         18.11  Define the liveness and safety properties of a
+          transfer" message.                                         distributed   scheduling  algorithm.    (Hint:     Will
+          c. The recipient of the message sends a no reply           imbalances of computational load arise in a
+          if it is no longer a receiver. Else it increases           system  if    its  scheduling  algorithm       possesses
+          the length of its CPU queue by 1 and sends                 liveness and safety properties?)
+          a yes reply.
+BIBLIOGRAPHY                                                                                                                ·
+Dijkstra and Scholten (1980) and Chang (1982) discuss         3.   Chandy, K. M., J. Misra, and L. M. Haas (1983):
+the diffusion computation model of distributed algo-               "Distributed deadlock detection," ACM
+rithms. Andrews (1991) discusses broadcast and token               Transactions on Computer Systems, 1 (2),
+passing algorithms.                                                144­152.
+    Raymond       (1989)  and  Ricart      and    Agrawala    4.   Chang, E. (1982): "Echo algorithms: depth
+(1981) discuss distributed mutual exclusion algorithms.            parallel operations on general graphs," IEEE
+Dhamdhere      and   Kulkarni  (1994)  discusses  a   fault-       Transactions on Software Engineering, 8 (4),
+tolerant  mutual    exclusion  algorithm.    The  diffusion        391­401.
+computation-based distributed deadlock detection algo-        5.   Dhamdhere, D. M., and S. S. Kulkarni (1994): "A
+rithm (Algorithm 18.4) is adapted from Chandy et al.               token based k-resilient mutual exclusion
+(1983). Knapp (1987) discusses several distributed dead-           algorithm for distributed systems," Information
+lock detection algorithms. Sinha and Natarajan (1984)              Processing Letters, 50 (1994), 151­157.
+discuss an edge chasing algorithm for distributed dead-       6.   Dhamdhere, D. M., S. R. Iyer, and E. K. K.
+lock detection. Wu et al. (2002) describes a distributed           Reddy (1997): "Distributed termination detection
+deadlock detection algorithm for the AND model.                    of dynamic systems," Parallel Computing, 22 (14),
+    Distributed termination detection is discussed in              2025­2045.
+Dijkstra  and  Scholten   (1980),  Mattern   (1989),  and     7.   Dijkstra, E. W., and C. S. Scholten (1980):
+Dhamdhere et al. (1997). The bully algorithm for dis-              "Termination detection for diffusing computa-
+tributed elections is discussed in Garcia-Molina (1982).           tions," Information Processing Letters, 11 (1).
+Smith (1988) discusses process migration techniques.          8.   Garg, V. K. (2002): Elements of Distributed
+    Singhal and Shivaratri (1994) and Lynch (1996)                 Computing, Wiley-IEEE, New York.
+describe many distributed control algorithms in detail.       9.   Garcia-Molina, H. (1982): "Elections in
+Tel (2000) and Garg (2002) discuss election and termi-             distributed computing systems," IEEE
+nation detection algorithms. Attiya and Welch (2004)               Transactions on Computers, 31 (1).
+discusses algorithms for the election problem.                10.  Knapp, E. (1987): "Deadlock detection in
+                                                                   distributed databases," Computing Surveys,
+1.  Andrews, G. R. (1991): "Paradigms for process                  19, (4), 303­328.
+    interaction in distributed programs," Computing           11.  Lynch, N. (1996): Distributed Algorithms,
+    Surveys, 23, 1, 49­40.                                         Morgan Kaufmann.
+2.  Attiya, H. and J. Welch (2004): Distributed               12.  Mattern, F. (1989): "Global quiescence detection
+    Computing: Fundamentals, Simulations and                       based on credit distribution and recovery,"
+    Advanced Topics, John Wiley, New York.                         Information Processing Letters, 30 (4), 195­200.
+
+
+
+742  Part 5  Distributed Operating Systems
+13.  Mitchell, D. P., and M. J. Merritt (1982):       18.  Sinha, M. K., and N. Natarajan (1984):
+     "A distributed algorithm for deadlock detection       "A priority based distributed deadlock detection
+     and resolution," Proceedings of the ACM               algorithm," IEEE Transactions on Software
+     Conference on Principles of Distributed               Engineering, 11 (1), 67­80.
+     Computing, August 1984, 282­284.                 19.  Smith, J. M. (1988): "A survey of process
+14.  Obermarck, R. (1982): "Distributed deadlock           migration mechanisms," Operating Systems
+     detection algorithm," ACM Transactions on             Review, 22 (3), 28­40.
+     Database Systems, 7 (2), 187­202.                20.  Tel, G. (2000): Introduction to Distributed
+15.  Raymond, K. (1989): "A tree-based algorithm for       Algorithms, 2nd ed., Cambridge University Press,
+     distributed mutual exclusion," ACM Transactions       Cambridge.
+     on Computer Systems, 7, 61­77.                   21.  Wu, H., W. Chin, and J. Jaffer (2002):
+16.  Ricart, G., and A. K. Agrawala (1981):                "An efficient distributed deadlock avoidance
+     "An optimal algorithm for mutual exclusion in         algorithm for the AND model," IEEE
+     computer networks," Communications of the             Transactions on Software Engineering,
+     ACM, 24 (1), 9­17.                                    28, 1, 18­29.
+17.  Singhal, M., and N. G. Shivaratri (1994):
+     Advanced Concepts in Operating Systems,
+     McGraw-Hill, New York.

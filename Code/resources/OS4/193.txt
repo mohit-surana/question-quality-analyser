@@ -1,0 +1,95 @@
+Control Synchronization and Indivisible Operations
+             Interacting processes need to coordinate their execution with respect to one
+             another, so that they perform their actions in a desired order. This requirement
+             is met through control synchronization.
+
+
+
+                                                                                   Chapter  6   Process  Synchronization  173
+                      {Perform operation ai only after Pj         Perform operation aj
+                       performs operation aj}                     ...
+                             Process Pi                                Process Pj
+Figure  6.5  Processes requiring control synchronization.
+        var
+                 operation_aj_ performed : boolean;
+                 pi_blocked : boolean;
+        begin
+                 operation_aj_ performed := false;
+                 pi_blocked := false;
+        Parbegin
+                 ...                                       ...
+                 if operation_aj_ performed    =  false    {perform operation aj}
+                 then                                      if pi_blocked = true
+                      pi_blocked := true;                  then
+                      block  (Pi);                                pi_blocked := false;
+                 {perform operation ai}                           activate (Pi);
+                 ...                                       else
+                 ...                                              operation_aj_ performed   :=  true;
+                 ...                                       ...
+        Parend;
+        end.
+                       Process Pi                                      Process Pj
+Figure  6.6  A naive attempt at signaling through        boolean variables.
+Figure 6.5 shows a pseudocode for processes Pi and Pj, wherein process Pi
+would perform an operation ai only after process Pj has performed an operation
+aj. Signaling is a general technique of control synchronization. It can be used
+to meet the synchronization requirement of Figure 6.5 as follows: When process
+Pi reaches the point where it wishes to perform operation ai, it checks whether
+process Pj has performed operation aj. If it is so, Pi would perform operation
+ai right away; otherwise, it would block itself waiting for process Pj to perform
+operation aj . After performing operation aj , process Pj would check whether Pi
+is waiting for it. If so, it would signal process Pi to resume its operation.
+Figure 6.6 shows a naive attempt at signaling. The synchronization data
+consists of two boolean variables: operation_aj_performed is a flag that indicates
+whether process Pj has performed operation aj, and pi_blocked is a flag which
+indicates whether process Pi has blocked itself waiting for process Pj to execute
+operation aj. Both these flags are initialized to false. The code makes system calls
+to block and activate processes to achieve the desired control synchronization.
+Before         performing           operation     ai ,   process  Pi   consults    the  variable       oper-
+ation_aj_ performed          to     check  whether         process     Pj  has     already      performed
+operation aj. If so, it goes ahead to perform operation ai; otherwise, it sets
+
+
+
+174  Part 2  Process Management
+             Table  6.2          Race Condition in       Process  Synchronization
+             Time                Actions of process P i           Actions of process Pj
+             t1          if action_aj_performed          = false
+             t2                                                   {perform action aj }
+             t3                                                   if pi_blocked = true
+             t4                                                   action_aj_performed :=true
+             ...
+             t20         pi_blocked :=true;
+             t21         block (Pi);
+             pi_blocked to true and makes a system call to block itself. Process Pj performs
+             operation aj and checks whether process Pi has already become blocked to wait
+             until it has performed operation aj. If so, it makes a system call to activate Pi;
+             otherwise, it sets operation_aj_performed to true so that process Pi would know
+             that it has performed operation aj.
+                  However, this naive signaling arrangement does not work because process Pi
+             may face indefinite blocking in some situations. Table 6.2 shows such a situation.
+             Process Pi checks the value of operation_aj_performed and finds that operation
+             aj has not been performed. At time t2, it is poised to set the variable pi_blocked
+             to true, but at this time it is preempted. Process Pj is now scheduled. It performs
+             operation aj and checks whether process Pi is blocked. However, pi_blocked is
+             false, so Pj simply sets operation_aj_performed to true and continues its execution.
+             Pi is scheduled at time t20. It sets pi_blocked to true and makes a system call to
+             block itself. Process Pi will sleep for ever!
+                  In the notation of Section 6.2, consider the if statements in processes Pi and
+             Pj to represent the operations fi and fj on the state of the system. The result of
+             their execution should have been one of the following: process Pi blocks itself,
+             gets activated by Pj and performs operation ai; or process Pi finds that Pj has
+             already performed aj and goes ahead to perform operation ai. However, in the
+             execution shown in Table 6.2, process Pi blocks itself and is never activated. From
+             Definition 6.2, this is a race condition.
+                  The race condition has two causes--process Pi can be preempted after find-
+             ing operation_aj_performed = false but before setting pi_blocked to true, and
+             process Pj can be preempted after finding pi_blocked = false but before setting
+             operation_aj_performed to true. The race condition can be prevented if we could
+             ensure that processes Pi and Pj would not be preempted before they set the respec-
+             tive flags to true. An indivisible operation (also called an atomic operation) is the
+             device that ensures that processes can execute a sequence of actions without being
+             preempted.
+             Definition 6.4 Indivisible Operation           An operation on a set of data items that
+             cannot be executed concurrently either with itself or with any other operation
+             on a data item included in the set.

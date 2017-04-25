@@ -1,0 +1,195 @@
+Buffering of Records
+To process the records in a sequential file using the physical IOCS, a process
+initiates a read operation on a record by invoking the start-io module and
+immediately invokes the await-io module to check whether the read operation
+has completed. The await-io module blocks the process until the I/O oper-
+ation completes (see Section 14.5.4). Thus the process suffers a wait time for
+each record, which affects its performance. An access method for sequential files
+reduces the wait times faced by a process through the technique of buffering of
+
+
+
+580  Part 4  File Systems
+             records, which tries to overlap the I/O and CPU activities in the process. It is
+             achieved through two means:
+             · Prefetching an input record into an I/O buffer, or
+             · Postwriting an output record from an I/O buffer
+             where an I/O buffer, or simply a buffer, is a memory area that is temporarily used
+             to hold the data involved in an I/O operation.
+             In prefetching, the I/O operation to read the next record into a buffer is
+             started sometime before the record is actually needed by the process--it may
+             be started while the process is engaged in processing the previous record. This
+             arrangement overlaps a part of the time spent in reading the next record with
+             processing of the previous record, which reduces the wait time for the next record.
+             In postwriting, the record to be written is simply copied into a buffer when the
+             process issues a write operation and the process is allowed to continue. Actual
+             writing is performed from the buffer sometime later. It can overlap with (a part
+             of) processing of the next record.
+             We use the following notation while discussing the technique of buffering:
+             tio           I/O time per record [see Eq. (14.1)]
+             tc            copying time per record (i.e., the amount of CPU time required
+                           to copy a record from one memory area to another)
+             tp            processing time per record (i.e., the amount of CPU time con-
+                           sumed by the process in processing a record)
+             tw            wait time per record (i.e., the amount of time for which the process
+                           has to wait before the next record is available for processing)
+             tee           effective elapsed time per record (i.e., the interval between the
+                           time when a process wishes to start processing a record and the
+                           time when the processing of the record is completed)
+             tw and tee are analogously defined for an output file.
+             Consider a program that reads and processes 100 records from a sequential
+             file F. We consider three versions of the program named Unbuf_P, Single_buf_P,
+             and Multi_buf_P that use zero, one, and n buffers, n > 1, respectively. We assume
+             tio = 75 ms, tp = 50 ms and tc = 5 ms.
+             Figure 14.17 illustrates the operation and performance of processes that rep-
+             resent executions of Unbuf_P, Single_buf_P, and Multi_buf_P. For convenience,
+             we assume a process to have the same name as the program it executes. Each
+             column of the figure shows the code of a program, illustrates the steps involved in
+             reading and processing a record and shows a timing chart depicting performance
+             of the process executing it. The statements "start an I/O operation" and "await
+             I/O completion" in the programs are translated into calls on the physical IOCS
+             modules start-io and await-io with appropriate operands. The start I/O
+             statement reads the next record of F, if any, into a memory area. If there are no
+             more records in F, the end_of_file condition is set when an await I/O statement
+             is executed. Unbuf_P uses a single area of memory named Rec_area to read and
+             process a record of file F [see Figure 14.17(a)]. It issues a read operation and
+
+
+
+                                                                  Chapter 14  Implementation of File Operations      581
+Programs
+Program Unbuf_P                          Program Single_buf_P                           Program Multi_buf_P
+start an I/O operation for            start an I/O operation for                    for i := 1 to n
+     read (F, Rec_area);                             read (F, Buffer);                   start an I/O operation
+await I/O completion;                 await I/O completion;                                   for read (F, Bufi);
+while (not end_of_file(F ))           while (not end_of_file(F ))                   await I/O completion on
+begin                                 begin                                                   Buf 1;
+     process Rec_area;                     copy Buffer into Rec_area;               k := 1;
+     start an I/O operation for            start an I/O operation for               while (not end_of_file(F ))
+          read (F, Rec_area);                        read (F, Buffer);                   copy Bufk into Rec_area;
+     await I/O completion;                 process Rec_area;                             start an I/O operation for
+end                                        await I/O completion;                              read (F, Buf k);
+                                      end                                                process Rec_area;
+                                                                                         k := (k mod n) +1;
+                                                                                         await I/O completion on
+                                                                                              Buf k;
+                                                                                    end
+I/O, Copying, and Processing activites (UP:Unbuf_P, SP:Single_buf_P, MP:Multi_buf_P)
+        Rec_area                         Buffer                               Buf1
+                     UP
+        Rec_area                         Buffer  Rec_area                     Buf2
+        Rec_area                                                              Buf1  Rec_area
+                                         Buffer                                                  MP
+                     UP                                       SP                    Rec_area
+        Rec_area                                 Rec_area
+                                         Buffer  Rec_area
+                                                                              Buf1
+                                         Buffer                               Buf1  Rec_area
+                                                              SP                    Rec_area     MP
+                                                 Rec_area
+Timing Diagrams (I: I/O operation, C: Copying, P: Processing)
+                                                                        I
+                                                                        C
+                                                                        Buf1        75   150
+                                 I                                      I
+                                 C                                      C
+                                 Buffer          75  155                Buf2        75   150
+     I                           C                                      C
+     P                           P                                      P
+Rec_area       75    125  200    Rec_area        75  130 160   210      Rec_area    80  130 155  205
+(a)                              (b)                                    (c)
+Figure  14.17  Unbuffered and buffered file processing. (Note: the end_of_file condition is set
+when the statement await I/O completion is executed for an operation that tried to read past
+the end of a file.)
+
+
+
+582  Part 4  File Systems
+             awaits its completion before processing the record in Rec_area itself. The timing
+             diagram shows that I/O is performed on Rec_area from 0 to 75 ms, and CPU
+             processing of the record held in Rec_area occurs between 75 ms and 125 ms.
+             Hence tw = tio and tee = tio + tp. This sequence of operations repeats 100 times,
+             hence the elapsed time of the process is 100 × (75 + 50) ms = 12.5 seconds.
+             Figure 14.17(b) illustrates operation of Single_buf_P, which uses a single
+             buffer area named Buffer. The process issues a read operation to read the first
+             record into Buffer and awaits its completion. It now enters the main loop of the
+             program, which repeats the following four-step procedure 99 times:
+             1. Copy the record from Buffer into Rec_area.
+             2. Initiate an I/O operation on Buffer.
+             3. Process the record held in Rec_area.
+             4. Await end of I/O operation on Buffer.
+             As shown in the timing diagram of Figure 14.17(b), the process faces an
+             I/O wait in Step 1 until the read operation on Buffer completes. It now per-
+             forms Steps 2­4. Hence after copying the record into Rec_area, it initiates a read
+             operation for the second record and starts processing the first record. These two
+             activities proceed in parallel, thus overlapping processing of the first record with
+             I/O for the second record. We depict this parallelism by drawing a rectangular
+             box to enclose these two actions in the activities part of Figure 14.17(b). Step 1,
+             i.e., copying of the next record from Buffer to Rec_area, is performed only after
+             both, reading of the next record and processing of the current record, complete.
+             It is once again followed by processing of a record and reading of the next record
+             in parallel. Hence, the wait time before processing each of records 2­99 is
+                           tw = (tio - tp) + tc, if tio > tp                              (14.3)
+                           = tc,                               if tio  tp
+             and so buffering is more effective when tio  tp.
+             For records 2­99, effective elapsed time per record (tee) is given by
+                           tee = tw + tp
+                           = tc + max (tio, tp)                                           (14.4)
+             Thus the process goes through three distinct phases--the start-up phase when
+             the first record is read, the steady state when a record is copied and processed
+             while the next record is read in parallel, and the final phase when the last record
+             is copied and processed. Accordingly, the total elapsed time of the process is
+             given by
+             Total elapsed time = tio + (number of records - 1) × tee + (tc + tp)         (14.5)
+             From Eqs. (14.4) and (14.5), tee is 80 ms and total elapsed time of the process is
+             75 + 99 × 80 + 55 ms = 8.05 seconds. If tio had been 50 ms, the total elapsed time
+             of the process would have been 5.55 seconds.
+             Figure 14.17(c) illustrates operation of the process Multi_buf_P, which
+             uses buffer areas named Buf 1, Buf 2, . . . , Buf n. At the start of file processing,
+
+
+
+                                                   Chapter 14  Implementation of File Operations  583
+Multi_buf_P initiates I/O operations on all n buffers. Inside the file processing
+loop, it uses the buffers in turn, following the four steps of the program loop
+for processing a record in a buffer. The statement k := (k mod n) +1; ensures
+that the buffers are used in a cyclic manner. The process waits for I/O to com-
+plete on the next buffer, copies the record from the buffer into Rec_area, invokes
+start-io for reading the next record in the buffer, and then processes the record
+in Rec_area.
+Presence of multiple buffers causes one significant difference between oper-
+ations of Multi_buf_P and Single_buf_P. Consider processing of the first two
+records by Multi_buf_P [see Figure 14.17(c)]. When I/O on Buf 1 completes,
+Multi_buf_P would copy the first record from Buf 1 into Rec_area and start pro-
+cessing it. A read operation on Buf 2 would have been requested earlier, so the
+physical IOCS would initiate this read operation when the I/O on Buf 1 completes.
+Hence this operation would overlap with the copying out of the first record from
+Buf 1. In Figure 14.17(c), we depict this parallelism as follows: The dashed rect-
+angular box around copying and processing of the record from Buf 1 is meant
+to indicate that these actions are performed sequentially. The rectangular box
+enclosing this box and the I/O operation on Buf 2 indicates that these two activi-
+ties are performed in parallel. Accordingly, the effective elapsed time per record
+is given by
+                         tw = tio - tp  if tio > tc + tp       (14.6)
+                         = tc,          if tio  tc + tp
+                         tee = max(tio, tc + tp)               (14.7)
+From Eq. (14.7), tee = 75 ms. The total elapsed time, which is governed by
+Eq. (14.5), is 75 + 99 × 75 + 55 ms = 7.555 seconds, which is marginally better
+than Single_Buf_P's elapsed time of 8.05 seconds.
+The ratio of the elapsed times of Unbuf_P and Multi_buf_P is the speedup
+factor due to use of multiple buffers. Considering the steady state, the speedup
+factor is approximately                 tio + tp
+                         max (tio, tc + tp)
+From Eq. (14.7), it can be seen that its best value is obtained when tio = tc + tp.
+This value has the upper bound of 2.
+Consider the operation of Multi_Buf_P when more than one buffer is used.
+Figure 14.18 illustrates a typical situation during execution of Multi_Buf_P. The
+CPU has recently copied the record from Buf i-1 into Rec_area and started an
+I/O operation on Buf i-1. Thus, I/O operations have been initiated on all n buffers.
+Some of the I/O operations, specifically, those on Bufi, . . . , Bufj-1, are already
+complete. I/O is currently in progress for Bufj , while Bufj+1, . . ., Bufn, Buf1, . . . ,
+Bufi-1 are currently in the queue for I/O initiation. Thus (j - i) buffers are full at
+the moment, I/O is in progress for one buffer, and (n - j + i - 1) buffers are in the
+queue for I/O.
+The value of (j - i) depends on the values of tio and tp. If tio < tp, i.e., if
+the I/O operation for a record requires less time than its processing, we can see

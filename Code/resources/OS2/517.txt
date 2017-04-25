@@ -1,0 +1,46 @@
+MEMORY VIRTUALIZATION
+     So far we have addressed the issue of how to virtualize the CPU.        But a com-
+puter system has more than just a CPU. It also has memory and I/O devices. They
+have to be virtualized, too. Let us see how that is done.
+     Modern operating systems nearly all support virtual memory, which is basical-
+ly a mapping of pages in the virtual address space onto pages of physical memory.
+This mapping is defined by (multilevel) page tables.       Typically the mapping is set
+in motion by having the operating system set a control register in the CPU that
+points to the top-level page table. Virtualization greatly complicates memory man-
+agement. In fact, it took hardware manufacturers two tries to get it right.
+     Suppose, for example, a virtual machine is running, and the guest operating
+system in it decides to map its virtual pages 7, 4, and 3 onto physical pages 10, 11,
+and 12, respectively. It builds page tables containing this mapping and loads a
+hardware register to point to the top-level page table.    This instruction is sensitive.
+On a VT CPU, it will trap; with dynamic translation it will cause a call to a hyper-
+visor procedure; on a paravirtualized operating system, it will generate a hypercall.
+For simplicity, let us assume it traps into a type 1 hypervisor, but the problem is the
+same in all three cases.
+     What does the hypervisor do now?     One solution is to actually allocate physi-
+cal pages 10, 11, and 12 to this virtual machine and set up the actual page tables to
+map the virtual machine's virtual pages 7, 4, and 3 to use them. So far, so good.
+     Now suppose a second virtual machine starts and maps its virtual pages 4, 5,
+and 6 onto physical pages 10, 11, and 12 and loads the control register to point to
+its page tables.  The hypervisor catches the trap, but what should it do?    It cannot
+use this mapping because physical pages 10, 11, and 12 are already in use.         It can
+find some free pages, say 20, 21, and 22, and use them, but it first has to create new
+page tables mapping the virtual pages 4, 5, and 6 of virtual machine 2 onto 20, 21,
+and 22. If another virtual machine starts and tries to use physical pages 10, 11, and
+12, it has to create a mapping for them.  In general, for each virtual machine the
+hypervisor needs to create a shadow page table that maps the virtual pages used
+by the virtual machine onto the actual pages the hypervisor gave it.
+     Worse yet, every time the guest operating system changes its page tables, the
+hypervisor must change the shadow page tables as well.     For example, if the guest
+OS remaps virtual page 7 onto what it sees as physical page 200 (instead of 10),
+the hypervisor has to know about this change.  The trouble is that the guest operat-
+ing system can change its page tables by just writing to memory. No sensitive oper-
+ations are required, so the hypervisor does not even know about the change and
+certainly cannot update the shadow page tables used by the actual hardware.
+     A possible (but clumsy) solution is for the hypervisor to keep track of which
+page in the guest's virtual memory contains the top-level page table. It can get this
+information the first time the guest attempts to load the hardware register that
+points to it because this instruction is sensitive and traps. The hypervisor can create
+
+
+
+SEC. 7.6                    

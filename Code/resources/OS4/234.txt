@@ -1,0 +1,286 @@
+Case Studies of Process Synchronization
+6.11.1 Synchronization of POSIX Threads
+As mentioned in Section 5.3.1, POSIX threads provide mutexes for mutual
+exclusion and condition variables for control synchronization between processes.
+A   mutex  is    a  binary  semaphore.  An   OS  may      implement  POSIX   threads
+
+
+
+214  Part 2  Process Management
+                     type Bounded_buffer_type = monitor
+                           const
+                            n = . . .;
+                                                               { Number of  buffers }
+                           type
+                            item = . . .;
+                           var
+                            buffer : array [0..n­1] of item;
+                                full, prod_ptr, cons_ptr : integer;
+                            buff_full : condition;
+                            buff_empty : condition;
+                           procedure produce (produced_info : item);
+                           begin
+                            if full = n then buff_empty.wait;
+                            buffer [prod_ptr] := produced_info;               { i.e., Produce }
+                            prod_ptr := prod_ptr + 1 mod n;
+                            full := full + 1;
+                            buff_full.signal;
+                           end;
+                           procedure consume (for_consumption : item);
+                           begin
+                            if full = 0 then buff_full.wait;
+                            for_consumption := buffer[cons_ptr];              { i.e., Consume }
+                            cons_ptr := cons_ptr + 1 mod n;
+                            full := full­1;
+                            buff_empty.signal;
+                           end;
+                           begin { initialization }
+                            full := 0;
+                            prod_ptr := 0;
+                            cons_ptr := 0;
+                     end;
+                     begin
+                     var B_buf : Bounded_buffer_type;
+                     Parbegin
+                     var info : item;                var info : item;         var area : item;
+                     repeat                          repeat                   repeat
+                            info := . . .              info := . . .                   B_buf.consume (area);
+                            B_buf.produce (info);      B_buf.produce (info);           { Consume area }
+                            { Remainder of             { Remainder of                  { Remainder of
+                                 the cycle }                  the cycle }              the cycle }
+                     forever;                        forever;                 forever;
+                     Parend;
+                     end.
+                            Producer P1                Producer P2                     Consumer P3
+             Figure  6.35   Producers­consumers using monitors.
+
+
+
+                                                                            Chapter 6  Process Synchronization  215
+           P1    produce                             P1            produce             P2
+                                 buff_empty                                        ?  buff_empty
+                                 buff_ full                                            buff_ full
+                 consume                             P3            consume
+       P3  P2
+(a)                                                  (b)
+Figure 6.36    Snapshots of the  monitor of Example  6.7  with  a  single buffer.
+as kernel-level threads or user-level threads. Accordingly, mutexes would be
+implemented through either a kernel-level implementation or a hybrid imple-
+mentation described in Section 6.9.4 when threads are implemented as kernel-
+level  threads,  and  through    the  user-level     implementation         when       threads     are
+implemented through user-level threads. Analogously, condition variables are
+also implemented through a kernel-level, hybrid, or user-level implementation
+scheme.
+6.11.2 Process Synchronization in Unix
+Unix system V provides a kernel-level implementation of semaphores. The name
+of a semaphore is called a key. The key is actually associated with an array of
+semaphores, and individual semaphores in the array are distinguished with the
+help of subscripts. Processes share a semaphore by using the same key. A process
+wishing to use a semaphore obtains access to it by making a semget system call
+with a key as a parameter. If a semaphore array with matching key already exists,
+the kernel makes that array accessible to the process making the semget call;
+otherwise, it creates a new semaphore array, assigns the key to it and makes it
+accessible to the process.
+       The kernel provides a single system call semop for wait and signal opera-
+tions. It takes two parameters: a key, i.e., the name of a semaphore array, and
+a list of (subscript, op) specifications where subscript identifies a semaphore in
+the semaphore array and op is a wait or signal operation to be performed. The
+entire set of operations defined in the list is performed in an atomic manner; that
+is, either all the operations are performed and the process is free to continue its
+execution, or none of the operations is performed and the process is blocked.
+A blocked process is activated only when all operations indicated in semop can
+succeed.
+       The semantics of semop can be used to prevent deadlocks. Consider the
+following example: Semaphores sem1 and sem2 are associated with resources R1
+and R2, respectively. A process performs a wait(semi) before using a resource Ri
+and a signal(semi) after finishing with it. If each of processes P1 and P2 require
+both resources simultaneously, it is possible that P1 will obtain access to R1
+but will become blocked on wait(sem2) and process P2 will obtain access to R2
+
+
+
+216  Part 2  Process Management
+             but will become blocked on wait(sem1). This is a deadlock situation because both
+             processes wait for each other indefinitely. Such a deadlock would not arise if
+             processes performed both wait operations through a single semop, since a process
+             would be either allocated both resources or it would not be allocated any of the
+             resources. The situation now resembles the all resources together approach to
+             deadlock prevention described later in Section 8.5.1.
+             Unix SVR4 provides an interesting feature to make programs using sema-
+             phores more reliable. It keeps track of all operations performed by a process
+             on each semaphore used by it, and performs an undo on these operations when
+             the process terminates. This action helps to prevent disruptions in a concurrent
+             application due to misbehavior of some process. For example, if a process Pi
+             performed more wait operations than signal operations on semaphore semi and
+             terminated, it could cause indefinite waits for other processes in the application.
+             Performing an undo operation on all wait and signal operations performed by Pi
+             might prevent such disasters. To perform undo operations efficiently, the kernel
+             maintains a cumulative count of changes in the value of a semaphore caused by
+             the operations in a process, and subtracts it from the value of the semaphore when
+             the process terminates. If a process Pi performed more wait operations than signal
+             operations on semaphore semi, its cumulative count for semi would be negative.
+             Subtracting this count would nullify the effect of Pi on semi. Pi's cumulative count
+             would be 0 if it had performed an equal number of wait and signal operations
+             on semi. Thus the undo operation does not interfere with normal operation of
+             processes using semaphores.
+             Unix 4.4BSD places a semaphore in memory areas shared by a set of pro-
+             cesses, and provides a hybrid implementation of semaphores along the lines
+             discussed in Section 6.9.4. This way, it avoids making system calls in cases
+             where a wait operation does not lead to blocking of a process and a sig-
+             nal operation does not lead to activation of a process, which provides fast
+             synchronization.
+             6.11.3 Process Synchronization in Linux
+             Linux provides a Unix-like semaphore (see Section 6.11.2) for use by user
+             processes. It also provides two kinds of semaphores for use by the kernel--
+             a conventional semaphore and a reader­writer semaphore. The conventional
+             semaphore is implemented by a kernel-level scheme that is more efficient than
+             the kernel-level scheme discussed in Section 6.9.4. It uses a data structure that
+             contains the value of a semaphore, a flag to indicate whether any processes
+             are blocked on it, and the actual list of such processes. Unlike the scheme of
+             Section 6.9.4, a lock is not used to avoid race conditions on the value of the
+             semaphore; instead, the wait and signal operations use indivisible instructions
+             to decrement or increment the value of the semaphore. These operations lock
+             the list of blocked processes only if they find that processes are to be added to
+             it or removed from it--the wait operation locks the list only if the process that
+             performed the wait operation is to be blocked, whereas the signal operation locks
+             it only if the semaphore's flag indicates that the list is nonempty.
+
+
+
+                                                           Chapter 6  Process Synchronization  217
+The reader­writer semaphore provides capabilities that can be used to imple-
+ment the readers­writers problem of Section 6.9.3 within a kernel so that many
+processes can read a kernel data structure concurrently but only one process can
+update it at a time. Its implementation does not favor either readers or writers--it
+permits processes to enter their critical sections in FIFO order, except that con-
+secutive readers can read concurrently. It is achieved by simply maintaining a list
+of processes waiting to perform a read or write operation, which is organized in
+the chronological order.
+Kernels older than the Linux 2.6 kernel implemented mutual exclusion in the
+kernel space through system calls. However, as mentioned in Section 6.9.4, a wait
+operation has a low failure rate; i.e., a process is rarely blocked on a wait call, so
+many of the system calls are actually unnecessary. The Linux 2.6 kernel provides
+a fast user space mutex called futex. A futex is an integer in shared memory on
+which only certain operations can be performed. The wait operation on a futex
+makes a system call only when a process needs to be blocked on the futex, and
+the signal operation on a futex makes a system call only when a process is to be
+activated. The wait operation also provides a parameter through which a process
+can indicate how long it is prepared to be blocked on the wait. When this time
+elapses, the wait operation fails and returns an error code to the process that made
+the call.
+6.11.4 Process Synchronization in Solaris
+Process synchronization in the Sun Solaris operating system contains three inter-
+esting features--reader­writer semaphores and adaptive mutexes, a data structure
+called a turnstile, and use of the priority inversion protocol. The reader­writer
+semaphore is analogous to the reader­writer semaphore in Linux. An adaptive
+mutex is useful in a multiprocessor OS, hence it is discussed in Chapter 10; only
+an overview is included here.
+Recall from Section 5.4.3 that the Solaris kernel provides parallelism through
+kernel threads. When a thread Ti performs a wait operation on a semaphore that
+is currently used by another thread Tj, the kernel can either block Ti or let it spin.
+The blocking approach involves the overhead of blocking thread Ti, scheduling
+another thread, and activating thread Ti when Tj releases the semaphore. Spin-
+ning, on the other hand, incurs the overhead of a busy wait until Tj releases
+the semaphore. If Tj is currently operating on another CPU, it may release the
+semaphore before either Ti or Tj is preempted, so it is better to let Ti spin. If Tj
+is not operating currently, Ti may spin for long, so it is better to conserve CPU
+time by blocking it. The adaptive mutex uses this method.
+The Solaris kernel uses a data structure called a turnstile to hold informa-
+tion concerning threads that are blocked on a mutex or reader­writer semaphore.
+This information is used for both synchronization and priority inheritance. To
+minimize the number of turnstiles needed at any time, the kernel of Solaris 7
+attaches a turnstile with every new thread it creates. It performs the follow-
+ing actions when a kernel thread is to be blocked on a mutex: If no threads
+
+
+
+218  Part 2  Process Management
+             are already blocked on the mutex, it detaches the turnstile from the thread,
+             associates it with the mutex, and enters the thread's id in the turnstile. If a turn-
+             stile is already associated with the mutex, i.e., if some other threads are already
+             blocked on it, the kernel detaches the turnstile of the thread and returns it to
+             the pool of free turnstiles, and enters the thread's id into the turnstile that is
+             already associated with the mutex. When a thread releases a mutex or a reader­
+             writer semaphore, the kernel obtains information about threads blocked on the
+             mutex or reader­writer semaphore, and decides which thread(s) to activate. It
+             now attaches a turnstile from the pool of free turnstiles with the activated thread.
+             A turnstile is returned to the pool of free turnstiles when the last thread in it
+             wakes up.
+                 The Solaris kernel uses a priority inheritance protocol to reduce synchro-
+             nization delays. Consider a thread Ti that is blocked on a semaphore because
+             thread Tj is in a critical section implemented through the semaphore. Thread
+             Ti might suffer a long synchronization delay if Tj is not scheduled for a long
+             time, which would happen if Tj has a lower priority than Ti. To reduce the
+             synchronization       delay  for  Ti ,  the  kernel   raises  the  priority  of  Tj  to  that  of
+             Ti  until  Tj  exits  the    critical   section.  If  many    processes  become      blocked   on
+             the semaphore being used by Tj, Tj's priority should be raised to that of the
+             highest-priority process blocked on the semaphore. It is implemented by obtain-
+             ing priorities of the blocked processes from the turnstile associated with the
+             semaphore.
+             6.11.5 Process Synchronization in Windows
+             Windows is an object-oriented system, hence processes, files and events are
+             represented by objects. The kernel provides a uniform interface for thread syn-
+             chronization over different kinds of objects as follows: A dispatcher object is a
+             special kind of object that is either in the signaled state or in the nonsignaled state.
+             A dispatcher object is embedded in every object over which synchronization may
+             be desired, e.g., an object representing a process, file, event, mutex, or semaphore.
+             Any thread that wishes to synchronize with an object would be put in the waiting
+             state if the dispatcher object embedded in the object is in the nonsignaled state.
+             Table 6.4 describes the semantics of various kinds of objects, which determine
+             when the state of an object would change, and which of the threads waiting on it
+             would be activated when it is signaled.
+                 A thread object enters the signaled state when the thread terminates, whereas
+             a process object enters the signaled state when all threads in the process terminate.
+             In both cases, all threads waiting on the object are activated. The file object enters
+             the signaled state when an I/O operation on the file completes. If any threads are
+             waiting on it, all of them are activated and its synchronization state is changed
+             back to nonsignaled. If no threads are waiting on it, a thread that waits on it
+             sometime in future will get past the wait operation and the synchronization state
+             of the file object would be changed to nonsignaled. The console input object has
+             an analogous behavior except that only one waiting thread is activated when it
+
+
+
+                                                              Chapter 6        Process Synchronization  219
+Table 6.4      Windows Objects Used for Synchronization
+Object           Nonsignaled state    Signaled state          Signal time action
+Process          Not terminated       Last thread             Activate all threads
+                                      terminates
+Thread           Not terminated       The thread              Activate all threads
+                                      terminates
+File             I/O request          I/O completed           Activate all threads
+                 pending
+Console input    Input not            Input provided          Activate one thread
+                 provided
+File change      No changes           Change noticed          Activate one thread
+Notify event     Not yet set          Set event executed      Activate all threads
+Synchronization  Reset                Set event executed      Activate one thread
+event                                                         and reset event
+Semaphore        Successful wait      Released                Activate one thread
+Mutex            Successful wait      Released                Activate one thread
+Condition        Initially and after  wake or wakeall         Activate one thread or
+variable         a wake or            function is             all threads
+                 wakeall              performed
+                 function call
+Timer            Reinitialization     Set time arrives or     Same as notify
+                                      interval elapses        and synchroniza-
+                                                              tion events
+is signaled. The file change object is signaled when the system detects changes in
+the file. It behaves like the file object in other respects.
+Threads use the event, semaphore, mutex, and condition variable objects for
+mutual synchronization. They signal these objects by executing library functions
+that lead to appropriate system calls. An event object is signaled at a set event
+system call. If it is a notification event, all threads waiting on it are activated. If
+it is a synchronization event, only one thread is activated and the event is reset.
+The timer object is also designed for use in the notification and synchronization
+modes. The kernel changes the state of the object to signaled when the specified
+time arrives or the specified interval elapses. Its signal time actions are similar to
+those of the notify and synchronization events.
+The semaphore object implements a counting semaphore, which can be used
+to control a set of resources. The number of resources is specified as the initial
+value of the semaphore. A count in the semaphore object indicates how many of
+these resources are currently available for use by threads. The semaphore object
+is in the nonsignaled state when the count is 0, so any process performing a wait
+on it would be put in the waiting state. When a thread releases a resource, the
+kernel increments the number of available resources, which puts the semaphore
+in the signaled state. Consequently, some thread waiting on it would be activated.

@@ -1,0 +1,257 @@
+Case Studies in Message Passing
+             9.5.1 Message Passing in Unix
+             Unix supports three interprocess communication facilities called pipes, message
+             queues, and sockets. A pipe is a data transfer facility, while message queues and
+             sockets are used for message passing. These facilities have one common feature--
+             processes can communicate without knowing each other's identities. The three
+             facilities are different in scope. Unnamed pipes can be used only by processes that
+             belong to the same process tree, while named pipes can be used by other processes
+             as well. Message queues can be used only by processes existing within the "Unix
+             system domain," which is the domain of Unix operating on one computer system.
+             Sockets can be used by processes within the Unix system domain and within
+             certain Internet domains. Figure 9.10 illustrates the concepts of pipes, message
+             queues, and sockets.
+             Pipes  A pipe is a first-in, first-out (FIFO) mechanism for data transfer between
+             processes called reader processes and writer processes. A pipe is implemented in
+             the file system in many versions of Unix; however, it differs from a file in one
+             important respect--the data put into a pipe can be read only once. It is removed
+             from the pipe when it is read by a process. Unix provides two kinds of pipes,
+             called named and unnamed pipes. Both kinds of pipes are created through the
+             system call pipe. Their semantics are identical except for the following differences:
+             A named pipe has an entry in a directory and can thus be used by any process,
+             subject to file permissions, through the system call open. It is retained in the
+             system until it is removed by an unlink system call. An unnamed pipe does not
+             have an entry in a directory; it can be used only by its creator and its descendants
+
+
+
+                                                                                Chapter 9        Message  Passing  329
+Writer process(es)        Sender process(es)
+      write                                           Client                            Server
+      offset              Message                                     Messages
+Pipe                      queue                                       ···
+      read                                                    Socket            Socket
+Data  offset                            Message
+Reader process(es)        Receiver process(es)
+(a)                       (b)                         (c)
+Figure 9.10 Interprocess  communication in Unix: (a)  pipe;   (b) message queue; (c)    socket.
+in the process tree. The kernel deletes an unnamed pipe when readers or writers
+no longer exist for it.
+A pipe is implemented like a file, except for two differences (see Section 13.14.1
+for a discussion of file implementation in Unix). The size of a pipe is limited so that
+data in a pipe is located in the direct blocks of the inode. The kernel treats a pipe
+as a queue by maintaining two offsets--one offset is used for writing data into the
+pipe and the other for reading data from the pipe [see Figure 9.10(a)]. The read
+and write offsets are maintained in the inode instead of in the file structure. This
+arrangement forbids a process from changing the offset of a pipe through any
+means other than reading or writing of data. When data is written, it is entered
+into the pipe by using the write offset, and the write offset is incremented by the
+number of bytes written. Data written by multiple writers gets mixed up if their
+writes are interleaved. If a pipe is full, a process wishing to write data into it would
+be put to sleep. A read operation is performed by using the read offset, and the
+read offset is incremented by the number of bytes read. A process reading data
+from a pipe would be put to sleep if the pipe is empty.
+Message Queues      A message queue in Unix is analogous to a mailbox. It is
+created and owned by one process. Other processes can send or receive messages
+to or from a queue in accordance with access permissions specified by the creator
+of the message queue [see Figure 9.10(b)]. These permissions are specified by
+using the same conventions as file permissions in Unix (see Section 15.6.3). The
+size of a message queue, in terms of the number of bytes that it can buffer, is
+specified at the time of its creation.
+A message queue is created by a system call msgget (key, flag) where key
+specifies the name of the message queue and flag indicates some options. The
+kernel maintains an array of message queues and their keys. The position of a
+message queue in this array is used as the message queue id; it is returned by
+the msgget call, and the process issuing the call uses it for sending or receiving
+messages. The naming issue is tackled as follows: If a process makes a msgget
+call with a key that matches the name of an existing message queue, the kernel
+simply returns its message queue id. This way, a message queue can be used by
+any process in the system. If the key in a msgget call does not match the name of
+
+
+
+330  Part 2  Process Management
+                  an existing message queue, the kernel creates a new message queue, sets the key as
+                  its name, and returns its message queue id. The process making the call becomes
+                  the owner of the message queue.
+                  Each message consists of a message type, in the form of an integer, and a
+                  message text. The kernel copies each message into a buffer and builds a message
+                  header for it indicating the size of the message, its type, and a pointer to the
+                  memory area where the message text is stored. It also maintains a list of mes-
+                  sage headers for each message queue to represent messages that were sent to the
+                  message queue but have not yet been received.
+                  Messages are sent and received by using following system calls:
+                                 msgsnd (msgqid, msg_struct_ ptr, count, flag)
+                                 msgrcv (msgqid, msg_struct_ ptr, maxcount, type, flag)
+                  The count and flag parameters of a msgsnd call specify the number of bytes in
+                  a message and the actions to be taken if sufficient space is not available in the
+                  message queue, e.g., whether to block the sender, or return with an error code.
+                  msg_struct_ ptr is the address of a structure that contains the type of a message,
+                  which is an integer, and the text of the message; maxcount is the maximum length
+                  of the message; and type indicates the type of the message to be received.
+                  When a process makes a msgrcv call, the type parameter, which is an integer,
+                  indicates the type of message it wishes to receive. When the type parameter has a
+                  positive value, the call returns the first message in the queue with a matching type.
+                  If the type value is negative, it returns the lowest numbered message whose type
+                  is smaller than the absolute value of the type. If the type value is zero, it returns
+                  with the first message in the message queue, irrespective of its type. The process
+                  becomes blocked if the message queue does not contain any message that can be
+                  delivered to it.
+                  When a process makes a msgsnd call, it becomes blocked if the message queue
+                  does not contain sufficient free space to accommodate the message. The kernel
+                  activates it when some process receives a message from the message queue, and
+                  the process repeats the check to find whether its message can be accommodated
+                  in the message queue. If the check fails, the process becomes blocked once again.
+                  When it eventually inserts its message into the message queue, the kernel activates
+                  all processes blocked on a receive on the message queue. When scheduled, each
+                  of these processes checks whether a message of the type desired by it is available
+                  in the message queue. If the check fails, it becomes blocked once again.
+                  Example 9.2 shows how these features can be used to code the reservation
+                  server of Example 9.1.
+·
+     Example 9.3  Unix Message Queues
+                  Figure 9.11 shows the reservation server coded using the system calls of
+                  Unix 5.4. The cancellation, booking, and enquiry messages are assigned the
+                  types 1, 2, and 3, respectively. The msgrcv call with type = -4 and flag =
+                  "no wait" returns a cancellation message, if one is present. If no cancellation
+
+
+
+                                                                          Chapter 9       Message  Passing  331
+reservation_server()
+{
+         msgqid = msgget  (reservation_data,        flags);
+         ...
+         repeat
+               msgrcv   (msgqid,  &msg_struct,      200,     -4,   "no    wait");
+               if  ...    /* a message exists */
+               then  ...          /* process it */
+         while(true);
+}
+Figure   9.11    A reservation server in Unix 5.4.
+messages are present, it returns a bookings message if present, or an enquiry
+message. This arrangement results in processing of cancellations before book-
+ings, and bookings before enquiries, as desired. It also obviates the need for
+the three mailboxes used in Figure 9.8.
+                                                                                          ·
+Sockets  A socket is simply one end of a communication path. Sockets can be
+used for interprocess communication within the Unix system domain and in the
+Internet domain; we limit this discussion to the Unix system domain. A com-
+munication path between a client and the server is set up as follows: The client
+and server processes create a socket each. These two sockets are then connected
+together to set up a communication path for sending and receiving messages [see
+Figure 9.10(c)]. The server can set up communication paths with many clients
+simultaneously.
+The naming issue is tackled as follows: The server binds its socket to an
+address that is valid in the domain in which the socket will be used. The address
+is now widely advertised in the domain. A client process uses the address to
+perform a connect between its socket and that of the server. This method avoids
+the use of process ids in communication; it is an instance of indirect naming (see
+Section 9.1.1).
+A server creates a socket s using the system call
+                        s = socket (domain, type, protocol)
+where type and protocol are irrelevant in the Unix system domain. The socket call
+returns a socket identifier to the process. The server process now makes a call bind
+(s, addr, . . . ), where s is the socket identifier returned by the socket call and addr
+is the address for the socket. This call binds the socket to the address addr; addr
+now becomes the `name' of the socket, which is widely advertised in the domain
+for use by clients. The server performs the system call listen (s, . . . ) to indicate
+that it is interested in considering some connect calls to its socket s.
+A client creates a socket by means of a socket call, e.g., cs = socket (. . .), and
+attempts to connect it to a server's socket using the system call
+               connect (cs, server_socket_addr, server_socket_addrlen)
+
+
+
+332  Part 2  Process Management
+             The server is activated when a client tries to connect to its socket. It now makes
+             the call new_soc = accept (s, client_addr, client_addrlen). The kernel creates a
+             new socket, connects it to the socket mentioned in a client's connect call, and
+             returns the id of this new socket. The server uses this socket to implement the
+             client­server communication. The socket mentioned by the server in its listen
+             call is used merely to set up connections. Typically, after the connect call the
+             server forks a new process to handle the new connection. This method leaves
+             the original socket created by the server process free to accept more connections
+             through listen and connect calls. Communication between a client and a server
+             is implemented through read and write or send and receive calls. A send call has
+             the format
+                                 count = send (s, message, message_length, flags)
+             It returns the count of bytes actually sent. A socket connection is closed by using
+             the call close (s) or shutdown (s, mode).
+             9.5.2 Message Passing in Windows
+             Windows provides several facilities for secure message passing within a host and
+             within a Windows domain, which consists of a group of hosts. A named pipe
+             is used for reliable bidirectional byte or message mode communication between
+             a server and its clients. It is implemented through the file system interface and
+             supports both synchronous and asynchronous message passing. The name of a
+             pipe follows the Windows universal naming convention (UNC), which ensures
+             unique names within a Windows network. The first createnamedpipe call for a
+             named pipe is given by a server, which specifies its name, a security descriptor,
+             and the number of simultaneous connections it is to support. The kernel notes
+             this information and creates one connection to the pipe. The server now makes a
+             connectnamedpipe call, which blocks it until a client connects to the pipe. A client
+             connects to a pipe through a createfile or callnamedpipe function with the name
+             of the pipe as a parameter. The call succeeds if the kind of access requested by it
+             matches with the security descriptor of the pipe. Now the client can use readfile
+             and writefile functions to access the pipe. The server can give additional create-
+             namedpipe calls to create additional connections to the pipe. Windows provides
+             a mailslot for unreliable unidirectional communication. It can be used for both
+             point-to-point message passing and broadcasting of a short message across a
+             Windows domain.
+             Local Procedure Call (LPC)  The LPC facility performs message passing between
+             processes located within the same host. It is used by components of the Windows
+             OS for purposes such as invocation of the security authentication server, and
+             by processes in user computations to communicate with environment subsystem
+             processes. It is also invoked by the remote procedure call facility when the sender
+             and receiver processes are located within the same host.
+             LPC provides a choice of three methods of message passing that suit passing
+             of small and large messages, and special messages for use by Win32 GUI. The
+
+
+
+                                                                   Chapter 9            Message  Passing  333
+first two types of LPC use port objects to implement message passing. Each port
+object is like a mailbox. It contains a set of messages in a data structure called
+a message queue. To set up communication with clients, a server creates a port,
+publishes its name within the host, and awaits connection requests from clients.
+It is activated when a client sends a connection request to the port and gives a
+port handle to the client. The client uses this handle to send a message. The server
+can communicate with many clients over the same port. For small messages, the
+message queue contains the text of the message. As discussed in Section 9.1.2,
+such messages are copied twice during message passing. When a process sends a
+message, it is copied into the message queue of the port. From there, it is copied
+into the address space of the receiver. To control the overhead of message passing,
+the length of a message is limited to 256 bytes.
+       The second method of message passing is used for large messages. The client
+and server processes map a section object into their address spaces. When the
+client wishes to send a message, it writes the text of the message in the section
+object and sends a short message containing its address and size to the port. On
+receiving this message, the server views the message text in the section object.
+This way, the message is copied only once.
+       The third method of LPC is called quick LPC. It uses a section object to pass
+messages and an event pair object to perform synchronization between client and
+server processes. The server creates an event pair object for each client, which
+consists of two event objects. It also creates a thread for every client, which is
+devoted exclusively for handling requests made by the client. Message passing
+takes place as follows: The client process deposits a message in the section object,
+signals the event object on which the server thread is waiting and itself waits
+on the other event object of the pair. The server thread processes the message,
+signals the event object on which the client is waiting, and itself waits on the other
+event object. To facilitate message passing, the kernel provides a function that
+atomically signals one event object of the pair and issues a wait on the other event
+object.
+Sockets and Remote Procedure Calls  Windows socket (Winsock) was originally
+modeled on the Unix BSD socket but later included several extensions. Its fea-
+tures and implementation are analogous to those of Unix sockets described in
+Section 9.5. Winsock is integrated with Windows message passing. Hence a pro-
+gram can perform an asynchronous socket operation and receive a notification
+of completion of the operation through a Windows callback message.
+       The remote procedure call (RPC) facility of Windows is compatible with
+the OSF/DCE standard. It is implemented by using the LPC if the procedure
+being invoked exists on the same host as its client; otherwise, it is implemented
+along the lines discussed in Section 9.4.2. An asynchronous RPC is also sup-
+ported, where the remote procedure operates concurrently with its client and
+at its completion the client is notified in the manner specified in the call--
+through an event synchronization object, through an asynchronous procedure
+call,  through  an  I/O  port,  or  through  status  information,  which  the  client
+can poll.

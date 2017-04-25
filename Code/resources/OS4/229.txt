@@ -1,0 +1,183 @@
+Monitors
+             Recall from Section 6.5.3 that a concurrent programming construct provides data
+             abstraction and encapsulation features specifically suited to the construction of
+             concurrent programs. A monitor type resembles a class in a language like C++ or
+
+
+
+                                                         Chapter 6        Process Synchronization  209
+Java. It contains declarations of shared data. It may also contain declarations of
+special synchronization data called condition variables on which only the built-in
+operations wait and signal can be performed; these operations provide convenient
+means of setting up signaling arrangements for process synchronization. Proce-
+dures of the monitor type encode operations that manipulate shared data and
+perform process synchronization through condition variables. Thus, the monitor
+type provides two of the three components that make up a concurrent system (see
+Section 6.6).
+A concurrent system is set up as follows: A concurrent program has a monitor
+type. The program creates an object of the monitor type during its execution. We
+refer to the object as a monitor variable, or simply as a monitor. The monitor con-
+tains a copy of the shared and synchronization data declared in the monitor type
+as its local data. The procedures defined in the monitor type become operations
+of the monitor; they operate on its local data. The concurrent program creates
+processes through system calls. These processes invoke operations of the monitor
+to perform data sharing and control synchronization; they become blocked or
+activated when the monitor operations perform wait or signal operations.
+The data abstraction and encapsulation features of the monitor assist in syn-
+chronization as follows: Only the operations of a monitor can access its shared
+and synchronization data. To avoid race conditions, the compiler of the pro-
+gramming language implements mutual exclusion over operations of a monitor
+by ensuring that at most one process can be executing a monitor operation at any
+time. Invocations of the operations are serviced in a FIFO manner to satisfy the
+bounded wait property.
+Condition Variables  A condition is some situation of interest in a monitor. A
+condition variable, which is simply a variable with the attribute condition, is asso-
+ciated with a condition in the monitor. Only the built-in operations wait and
+signal can be performed on a condition variable. The monitor associates a queue
+of processes with each condition variable. If a monitor operation invoked by a
+process performs a wait operation on a condition variable, the monitor blocks the
+process, enters its id in the process queue associated with the condition variable,
+and schedules one of the processes, if any, waiting to begin or resume execution
+of a monitor operation. If a monitor operation performs the signal operation
+on a condition variable, the monitor activates the first process in the process
+queue associated with the condition variable. When scheduled, this process would
+resume execution of the monitor operation in which it was blocked. The signal
+operation has no effect if the process queue associated with a condition variable
+is empty when the condition is signaled.
+Implementation of a monitor maintains several process queues--one for each
+condition variable and one for processes waiting to execute monitor operations.
+To ensure that processes do not get stuck halfway through execution of an oper-
+ation, the monitor favors processes that were activated by signal operations over
+those wishing to begin execution of monitor operations.
+The following example describes use of a monitor to implement a binary
+semaphore. We discuss an interesting implementation issue after the example.
+
+
+
+210  Part 2  Process Management
+·
+     Example 6.6  Monitor Implementation of a Binary Semaphore
+                  The upper half of Figure 6.32 shows a monitor type Sem_Mon_type that
+                  implements a binary semaphore, and the lower half shows three processes
+                  that use a monitor variable binary_sem. Recall from Section 6.9.1 that a binary
+                  semaphore takes only values 0 and 1, and is used to implement a critical section.
+                  The boolean variable busy is used to indicate whether any process is currently
+                  using the critical section. Thus, its values true and false correspond to the
+                  values 0 and 1 of the binary semaphore, respectively. The condition variable
+                  non_busy corresponds to the condition that the critical section is not busy; it is
+                  used to block processes that try to enter a critical section while busy = true. The
+                  procedures sem_wait and sem_signal implement the wait and signal operations
+                  on the binary semaphore. Binary_sem is a monitor variable. The initialization
+                  part of the monitor type, which contains the statement busy :=false; is invoked
+                  when binary_sem is created. Hence variable busy of binary_sem is initialized
+                  to false.
+                                type Sem_Mon_type = monitor
+                                       var
+                                            busy : boolean;
+                                            non_busy : condition;
+                                       procedure sem_wait;
+                                       begin
+                                             if busy = true then non_busy.wait;
+                                             busy := true;
+                                       end;
+                                       procedure sem_signal;
+                                       begin
+                                             busy := false;
+                                             non_busy.signal;
+                                       end;
+                                       begin { initialization }
+                                             busy := false;
+                                end;
+                                var binary_sem : Sem_Mon_type;
+                                begin
+                                Parbegin
+                             repeat                          repeat                      repeat
+                                binary_sem.sem_wait;             binary_sem.sem_wait;    binary_sem.sem_wait;
+                                { Critical Section }             { Critical Section }    { Critica lSection }
+                                binary_sem.sem_signal;           binary_sem.sem_signal;  binary_sem.sem_signal;
+                                { Remainder of                   { Remainder of          { Remainder of
+                                     the cycle }                     the cycle }                 the cycle }
+                             forever;                        forever;                    forever;
+                                Parend;
+                                end.
+                                Process P1                       Process P2              Process P3
+                  Figure  6.32  Monitor implementation of a binary semaphore.
+
+
+
+                                                                      Chapter 6       Process Synchronization  211
+                                 Queue 2      busy
+                                                                Data
+                                 ···          non_busy
+                                          Procedure sem_wait
+                    Queue 1                   non_busy.wait
+               ···                                                Operations
+                                          Procedure sem_signal
+                                              non_busy.signal
+                                              busy := false     Initializations
+Figure  6.33   A monitor implementing a binary semaphore.
+      Figure 6.33 depicts the monitor Sem_Mon_type. The monitor maintains
+two queues of processes. Queue 1 contains processes waiting to execute opera-
+tion sem_wait or sem_signal of the monitor, while queue 2 contains processes
+waiting for a non_busy.signal statement to be executed.
+      Let P1 be the first process to perform binary_sem.sem_wait. Since busy
+is false, it changes busy to true and enters its critical section. If P2 performs
+binary_sem.sem_wait while P1 is still inside its critical section, it will be blocked
+on the statement non_busy.wait. It will wait in queue 2. Now let P1 start exe-
+cuting binary_sem.sem_signal and let P3 try to perform binary_sem.sem_wait
+before P1 finishes executing binary_sem.sem_signal. Due to mutual exclusion
+over monitor operations, P3 will be blocked and put in the queue associated
+with entry to the monitor, i.e., in queue 1. Figure 6.34 shows a snapshot of the
+system at this instant. When process P1 executes the statement non_busy.signal
+and exits from the monitor, P2 will be activated ahead of P3 because queues
+associated with condition variables enjoy priority over the queue associated
+with entry to the monitor. Process P3 will start executing binary_sem.sem_wait
+only when process P2 completes execution of binary_sem.sem_wait, exits the
+monitor and enters its critical section. P3 will now block itself on the condi-
+tion non_busy. It will be activated when P2 executes the binary_sem.sem_signal
+operation.
+                                                                                        ·
+     If procedure sem_signal of Example 6.6 contained some statements following
+the  signal  statement,      an  interesting  synchronization     problem        would  arise
+when  process  P1   invokes      binary_sem.sem_signal       and  executes       the  statement
+non_busy.signal. The signal statement is expected to activate process P2, which
+
+
+
+212  Part 2  Process Management
+                                                   P1   sem_wait
+                                                                                 busy
+                                   Queue 1    ...                          non-busy
+                                                   P3   sem_signal                              ...  Queue 2
+                                                                                           P2
+                  Figure 6.34 A snapshot of the         system of Example  6.6.
+                  should resume its execution of binary_sem.sem_wait. At the same time, process
+                  P1 should continue its execution of binary_sem.sem_signal by executing state-
+                  ments that follow the non_busy.signal statement. Since monitor operations are
+                  performed in a mutually exclusive manner, only one of them can execute and the
+                  other one will have to wait. So which of them should be selected for execution?
+                        Selecting process P2 for execution would delay the signaling process P1,
+                  which   seems       unfair.      Selecting   P1  would   imply       that    P2    is  not  really  acti-
+                  vated   until    P1  leaves      the  monitor.    Hoare  (1974)      proposed          the  first  alterna-
+                  tive. Brinch Hansen (1973) proposed that a signal statement should be the
+                  last  statement      of   a      monitor    procedure,   so    that  the     process   executing       sig-
+                  nal   exits   the   monitor          procedure   immediately   and       the  process       activated     by
+                  the signal statement can be scheduled. We will follow this convention in our
+                  examples.
+·
+     Example 6.7  Producers-Consumers Using Monitors
+                  Figure  6.35       shows     a   solution   to   the  producers­consumers              problem     that
+                  uses monitors. It follows the same approach as the solution of Figure 6.28,
+                  using semaphores. The upper half of Figure 6.35 shows a monitor type
+                  Bounded_buffer_type. Variable full is an integer that indicates the number of
+                  full buffers. In the procedure produce, a producer executes a buffer_empty.wait
+                  if full = n. It would be activated only when at least one empty buffer exists in
+                  the pool. Similarly, the consumer executes a buffer_ full.wait if full = 0. Waiting
+                  consumers and producers are activated by the statements buff_ full.signal and
+                  buff_empty.signal in the procedures produce and consume, respectively.
+                          The lower half of Figure 6.35 shows a system containing two producer
+                  processes P1, P2 and a consumer process P3. Operation of a single buffer sys-
+                  tem;   i.e.,  n  =   1  in  Figure    6.35,     can  be  depicted    as  shown     in  Figure      6.36.
+                  Let processes P1 and P2 try to produce and let process P3 try to consume,
+                  all at the same time. Let us assume that process P1 enters the procedure
+                  produce, gets past the wait statement and starts producing, while processes P2

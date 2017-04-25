@@ -1,0 +1,179 @@
+Memory Allocation to a Process
+             11.4.1 Stacks and Heaps
+             The compiler of a programming language generates code for a program and allo-
+             cates its static data. It creates an object module for the program (see Section 11.3).
+             The linker links the program with library functions and the run-time support of
+             the programming language, prepares a ready-to-execute form of the program,
+             and stores it in a file. The program size information is recorded in the directory
+             entry of the file.
+             The run-time support allocates two kinds of data during execution of the
+             program. The first kind of data includes variables whose scope is associated with
+             functions, procedures, or blocks, in a program and parameters of function or
+             procedure calls. This data is allocated when a function, procedure or block is
+             entered and is deallocated when it is exited. Because of the last-in, first-out nature
+             of the allocation/deallocation, the data is allocated on the stack. The second kind
+             of data is dynamically created by a program through language features like the
+             new statement of Pascal, C++, or Java, or the malloc, calloc statements of
+             C. We refer to such data as program-controlled dynamic data (PCD data). The
+             PCD data is allocated by using a data structure called a heap.
+             Stack  In a stack, allocations and deallocations are performed in a last-in, first-
+             out (LIFO) manner in response to push and pop operations, respectively. We
+             assume each entry in the stack to be of some standard size, say, l bytes. Only the
+             last entry of the stack is accessible at any time. A contiguous area of memory is
+             reserved for the stack. A pointer called the stack base (SB) points to the first entry
+             of the stack, while a pointer called the top of stack (TOS) points to the last entry
+             allocated in the stack. We will use the convention that a stack grows toward the
+             lower end of memory; we depict it as upward growth in the figures.
+             During execution of a program, a stack is used to support function calls. The
+             group of stack entries that pertain to one function call is called a stack frame;
+             it is also called an activation record in compiler terminology. A stack frame is
+             pushed on the stack when a function is called. To start with, the stack frame
+             contains either addresses or values of the function's parameters, and the return
+             address, i.e., the address of the instruction to which control should be returned
+             after completing the function's execution. During execution of the function, the
+             run-time support of the programming language in which the program is coded
+             creates local data of the function within the stack frame. At the end of the func-
+             tion's execution, the entire stack frame is popped off the stack and the return
+             address contained in it is used to pass control back to the calling program.
+             Two provisions are made to facilitate use of stack frames: The first entry in
+             a stack frame is a pointer to the previous stack frame on the stack. This entry
+             facilitates popping off of a stack frame. A pointer called the frame base (FB) is
+
+
+
+                                                                            Chapter 11  Memory  Management        377
+                                                   Top of
+                                                   stack       Local data       Stack
+                                                   (TOS)       of calc          frame
+                                                               sum              for
+                                                               b                call on
+                                                               a                calc
+                                                   Frame       ret_ad (sample)
+        Top of                                     base        Previous FB
+        stack       Local data                     (FB)        Local data
+        (TOS)       of sample       Stack                      of sample        Stack
+                    i               frame                      i                frame
+                    y               for                        y                for
+                    x               call on                    x                call on
+        Frame       ret_ad (main)   sample                     ret_ad (main)    sample
+        base        Previous FB                                Previous FB
+        (FB)
+        (a)                                        (b)
+Figure  11.7 Stack  after (a) main  calls sample;  (b) sample  calls calc.
+used to point to the start of the topmost stack frame in the stack. It helps in
+accessing various stack entries in the stack frame. Example 11.4 illustrates how
+the stack is used to implement function calls.
+                                                                                                                  ·
+Use of a Stack                                                                                  Example     11.4
+Figure 11.7 shows the stack during execution of a program containing nested
+function calls. Figure 11.7(a) shows the stack after main, the primary function
+of the program, has made a function call sample(x,y,i). A stack frame
+was pushed on the stack when the call was made. The first entry in the stack
+frame contains the previous value of the frame base, i.e., a pointer to the
+previous stack frame in the stack. The second entry is ret_ad(main), which
+is the return address into function main. The next three entries pertain to
+the parameters x, y, and i, while the entries following them pertain to the
+local data of function sample. The frame base (FB) points to the first entry
+in this stack frame. The TOS pointer points to the last local data in the stack
+frame. The code for function sample accesses the return address, information
+about the parameters, and its local data using displacements from the frame
+base (FB): Assuming each stack entry to be 4 bytes, the return address is at a
+displacement of 4 from the address in the frame base, the first parameter is at
+a displacement of 8, etc.
+        Figure 11.7(b) shows the stack after function sample has made a function
+call calc(a, b, sum). A new stack frame has been pushed on the stack, the
+value of the FB has been saved in the first entry of this stack frame, the FB has
+been set to point at the start of the new stack frame, and the top of stack pointer
+now points at the last entry in the new stack frame. At the completion of the
+function, the TOS pointer would be set to point at the stack entry preceding the
+entry pointed to by FB, and FB would be loaded with the address contained
+
+
+
+378  Part 3  Memory Management
+                   in the stack entry to which it was pointing. These actions would effectively
+                   pop off the stack frame of calc and set FB to point at the start of the stack
+                   frame for sample. The resulting stack would be identical to the stack before
+                   function sample called calc.
+                   ·
+                   Heap  A heap permits allocation and deallocation of memory in a random order.
+                   An allocation request by a process returns with a pointer to the allocated memory
+                   area in the heap, and the process accesses the allocated memory area through this
+                   pointer. A deallocation request must present a pointer to the memory area to be
+                   deallocated. The next example illustrates use of a heap to manage the PCD data
+                   of a process. As illustrated there, "holes" develop in the memory allocation as
+                   data structures are created and freed. The heap allocator has to reuse such free
+                   memory areas while meeting future demands for memory.
+·
+     Example 11.5  Use of a Heap
+                   Figure 11.8 shows the status of a heap after executing the following C program:
+                         float   *floatptr1,      *floatptr2;
+                         int    *intptr;
+                         floatptr1  =     (float  *)  calloc (5,     sizeof (float));
+                         floatptr2  =     (float  *)  calloc (4,     sizeof (float));
+                         intptr  =  (int      *)  calloc (10,  sizeof (int));
+                         free (floatptr2);
+                   The calloc routine is used to make a request for memory. The first call
+                   requests sufficient memory to accommodate 5 floating point numbers. The
+                   heap allocator allocates a memory area and returns a pointer to it. This pointer
+                   is stored in floatptr1. The first few bytes of each allocated memory area
+                   are assumed to contain a length field. This field is used during deallocation
+                   when the routine free is called with a pointer to an allocated memory area.
+                   Figure 11.8(a) shows the heap after all calloc calls have been processed.
+                   Figure 11.8(b) shows the heap after the free call. free has freed the mem-
+                   ory area pointed to by floatptr2. This action has created a "hole" in the
+                   allocation.
+                   ·
+                   11.4.2 The Memory Allocation Model
+                   The kernel creates a new process when a user issues a command to execute a
+                   program. At this time, it has to decide how much memory it should allocate to
+                   the following components:
+                      ·  Code and static data of the program
+                      ·  Stack
+                      ·  Program-controlled dynamic data (PCD data)
+
+
+
+                                                                                  Chapter 11  Memory Management  379
+        floatptr1                 20               floatptr1                   20
+        floatptr2                                  floatptr2        ­  Free
+        intptr                    16               intptr              area
+                                  40                                           40
+                Length
+                   field  Free                                         Free
+                          area                                         area
+        (a)                                        (b)
+Figure  11.8   (a) A heap; (b) A  "hole"  in  the  allocation when  memory is  deallocated.
+                          Low end of
+                          allocated memory         Code
+                                                   Static data
+                                                   PCD Data            Direction
+                                                                       of growth
+                                            Free
+                                            area
+                                                   Stack               Direction
+                          High end of                                  of growth
+                          allocated memory
+Figure  11.9   Memory allocation model for         a process.
+The size of the program can be obtained from its directory entry. Sizes of
+the stack and the PCD data vary during execution of a program, so the kernel
+does not know how much memory to allocate to these components. It can guess
+the maximum sizes the stack and the heap would grow to, and allocate them
+accordingly. However, this amounts to static allocation, which lacks flexibility.
+As discussed in Section 11.2, the allocated memory may be wasted or a process
+may run out of memory during its operation.
+To avoid facing these problems individually for these two components, oper-
+ating systems use the memory allocation model shown in Figure 11.9. The code
+and static data components in the program are allocated memory areas that
+exactly match their sizes. The PCD data and the stack share a single large area of
+memory but grow in opposite directions when memory is allocated to new data.
+The PCD data is allocated by starting at the low end of this area while the stack
+is allocated by starting at the high end of the area. The memory between these
+two components is free. It can be used to create new data in either component.
+In this model the stack and PCD data components do not have individual size
+restrictions.
+A program creates or destroys PCD data by calling appropriate routines of
+the run-time library of the programming language in which it is coded. The library
+routines perform allocations/deallocations in the PCD data area allocated to the
+process. Thus, the kernel is not involved in this kind of memory management. In
+fact it is oblivious to it.

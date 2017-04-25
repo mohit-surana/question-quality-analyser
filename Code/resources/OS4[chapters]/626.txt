@@ -1,0 +1,2050 @@
+Security and Protection
+
+
+                                                           Chapte                           r  15
+Security and Protection
+O perating systems employ security and protection measures to prevent a
+      person from illegally using resources in a computer system, or interfering
+      with them in any manner. These measures ensure that data and programs
+are used only by authorized users and only in a desired manner, and that they
+are neither modified nor denied to authorized users. Security measures deal with
+threats to resources that come from outside a computer system, while protection
+measures deal with internal threats.
+Passwords are the principal security tool. A password requirement thwarts
+attempts by unauthorized persons to masquerade as legitimate users of a system.
+The confidentiality of passwords is upheld by encryption.
+Computer users need to share data and programs stored in files with collabo-
+rators, and here is where an operating system's protection measures come in. The
+owner of a file informs the OS of the specific access privileges other users are to
+have--whether and how others may access the file. The operating system's protec-
+tion function then ensures that all accesses to the file are strictly in accordance
+with the specified access privileges.
+We begin by discussing how different kinds of security breaches are car-
+ried out: Trojan horses, viruses, worms, and buffer overflows. Their description is
+followed by a discussion of encryption techniques. We then describe three popu-
+lar protection structures called access control lists, capability lists, and protection
+domains, and examine the degree of control provided by them over sharing of files.
+In the end, we discuss how security classifications of computer systems reflect the
+degree to which a system can withstand security and protection threats.
+15.1  OVERVIEW OF SECURITY AND PROTECTION                                                ·
+Ensuring noninterference with the computations and resources of users is one
+of the three fundamental goals of an OS mentioned in Section 1.2. A resource
+could be a hardware resource such as an I/O device, a software resource such as
+a program or data stored in a file, or a service offered by the OS. Several kinds
+of interference can arise during operation of a computer system; we call each of
+them a threat. Some of the threats depend on the nature of specific resources or
+services and the manner of their use, while others are of a generic nature.
+                                                                                               605
+
+
+
+606  Part 4  File Systems and I/O Management
+                Unauthorized access to resources is an obvious threat in an OS. Persons who
+             are not registered users of a computer system may try to access its resources, while
+             registered users may try to access resources that they have not been authorized
+             to use. Such persons may maliciously try to corrupt or destroy a resource. This
+             is a potent threat for programs and data stored in files. A less obvious threat
+             is interference in legitimate access of resources and services by users. It tends to
+             disrupt computational activities of users by preventing them from using resources
+             and services of an OS. This threat is called denial of service. In this chapter, we
+             discuss how an OS counters generic threats and threats concerning programs and
+             data stored in files.
+                Operating systems use two categories of techniques to counter threats to data
+             and programs:
+             ·  Security measures guard a user's data and programs against interference from
+                persons or programs outside the operating system; we broadly refer to such
+                persons and their programs as nonusers.
+             ·  Protection measures guard a user's data and programs against interference
+                from other users of the system.
+                Table 15.1 describes two key methods used by operating systems for imple-
+             menting security and protection. Authentication, which is aimed at security,
+             consists of verifying the identity of a person. Computer-based authentication rests
+             on either of two kinds of assumptions. One common assumption is that a person
+             is the user he claims to be if he knows something that only the OS and the user
+             are expected to know, e.g., a password. It is called authentication by knowledge.
+             The other authentication method relies on things that only the user is assumed
+             to possess. For example, biometric authentication is based on some unique and
+             inalterable biological feature such as fingerprints, retina, or iris. Authorization is
+             the key method of implementing protection. It consists of: (1) granting an access
+             Table 15.1      Terminology Used in Security and Protection
+             of Information
+             Term                             Explanation
+             Authentication                   Authentication is verification of a user's identity.
+                                              Operating systems most often perform authentication by
+                                              knowledge. That is, a person claiming to be some user X is
+                                              called upon to exhibit some knowledge shared only
+                                              between the OS and user X, such as a password.
+             Authorization                    Authorization has two aspects:
+                                              1. Granting a set of access privileges to a user; for
+                                              example, some users may be granted read and write
+                                              privileges for a file, while others are granted read-only
+                                              privileges,
+                                              2. Verifying a user's right to access a resource in a specific
+                                              manner.
+
+
+
+                                                                    Chapter 15          Security  and  Protection  607
+                       Login id and
+        User          authentication information
+        + kernel                                    Authentication
+                       Authentication               service
+                       token
+                                                                    Authentication
+                       Process                                                database
+        Requests and                                                          Security
+        responses      Requests and                                           setup
+                       responses                      Changes in
+                                                      privileges              Protection
+                                    Authentication                            setup
+                                       token
+                       Service and                  Authorization
+                       resource        yes/no       service
+                       manager
+                                                                    Authorization
+                                                                              database
+Figure  15.1 Generic  security and protection setups in an operating system.
+privilege for a resource to a user, which is a right to access the resource in the
+specified manner (see Chapter 13), and (2) determining whether a user possesses
+the right to access a resource in a specific manner.
+Figure 15.1 shows a generic scheme for implementing security and protection
+in an operating system. The security setup is shown in the dashed box in the upper
+part of the figure. It consists of the authentication service and the authentication
+database. The authentication database contains a pair of the form (login id, val-
+idating information) for every registered user of the operating system, where the
+validating information is typically an encrypted form of a user's password. To
+log into the system, a person submits his login id and password to the kernel.
+The kernel passes this information to the authentication service, which encrypts
+the password and compares it with the validating information for the user stored
+in the authentication database. If the check succeeds, the authentication service
+generates an authentication token for the user and passes it back to the kernel.
+The authentication token is typically the user id assigned to the user. Whenever
+the user or a process initiated by the user makes a request to access a resource, the
+kernel appends the user's authentication token to the request to facilitate making
+of protection checks.
+The protection setup is shown in the dashed box in the lower part of
+Figure 15.1. It consists of the authorization service and the authorization database.
+The authorization database contains triples of the form (authentication token,
+resource id, privileges). When a user wishes to grant access privileges for one of
+his files to some users, or withdraw some previously granted access privileges for
+the file, he makes a request to the kernel. As shown in Figure 15.1, the kernel
+passes on the request to the authorization service along with the authentication
+token for the user. The authorization service now makes appropriate changes in
+the authorization database. To access a resource, a user or his process makes a
+resource request to the service and resource manager. The request contains the
+
+
+
+608  Part 4  File Systems and I/O Management
+             id of a resource, the kind of access desired to it, and the authentication token
+             of the user. The service and resource manager passes the request to the autho-
+             rization service, which determines whether the user possesses the privilege to use
+             the resource in the desired manner and sends a yes/no reply to the service and
+             resource manager. Depending on this reply, the service and resource manager
+             decides whether the user's request should be granted.
+             Not all operating systems incorporate all the elements shown in Figure 15.1
+             in their security and protection setups. For example, in most modern operating
+             systems, the authorization information is typically maintained and used by the
+             file system, so the operating system does not maintain the authorization database
+             and does not perform authorization.
+             The distinction between security and protection provides a neat separation
+             of concerns for the OS. In a conventional operating system, the security concern
+             is limited to ensuring that only registered users can use the system. A security
+             check is performed when a person logs in. It decides whether the person is a user
+             of the OS and determines his user id. Following this check, all threats to infor-
+             mation stored in the system are protection concerns; the OS uses the user id of a
+             person to determine whether he can access a specific file in the OS. In a distributed
+             system, however, security concerns are more complex because of the presence of
+             the networking component (see Chapter 21). We confine the discussion in this
+             chapter to conventional operating systems only.
+             Mechanisms and Policies          Table 15.2 describes mechanisms and policies in secu-
+             rity and protection. Security policies specify whether a person should be allowed
+             to use a system. Protection policies specify whether a user should be allowed to
+             access a specific file. Both these policies are applied outside the OS domain--a
+             system administrator decides whether a person should be allowed to become a
+             user of a system, and a user specifies what users may access his files. Security and
+             protection mechanisms implement these policies by maintaining the authentica-
+             tion and authorization databases and using their contents to make specific checks
+             during system operation.
+             Table 15.2  Policies and Mechanisms in Security and Protection
+             Security    ·  Policy: Whether a person can become a user of the system.
+                            The system administrator employs the policy while
+                            registering new users.
+                         ·  Mechanisms: Add or delete users, verify whether a person is a
+                            registered user (i.e., perform authentication), perform
+                            encryption to ensure confidentiality of passwords.
+             Protection  ·  Policy: The file owner specifies the authorization policy for a
+                            file. It decides which user can access a file and in what manner.
+                         ·  Mechanisms: Set or change authorization information for a
+                            file. Check whether a file processing request conforms to the
+                            user's privileges.
+
+
+
+                                                         Chapter 15    Security and Protection  609
+Table 15.3    Goals of Computer Security and Protection
+Goal          Description
+Secrecy       Only authorized users should be able to access information.
+              This goal is also called confidentiality.
+Privacy       Information should be used only for the purposes for which it
+              was intended and shared.
+Authenticity  It should be possible to verify the source or sender of
+              information, and also verify that the information has been
+              preserved in the form in which it was created or sent.
+Integrity     It should not be possible to destroy or corrupt information,
+              for example, by erasing a disk.
+15.1.1 Goals of Security and Protection
+Table 15.3 describes the four goals of security and protection, namely, secrecy,
+privacy, authenticity, and integrity of information.
+Of the four goals, only privacy is exclusively a protection concern. An OS
+addresses privacy through the authorization service and the service and resource
+manager (see Figure 15.1). The authorization service verifies whether a user pos-
+sesses the privilege to access a resource in a specific manner, and the service and
+resource manager disallows requests that do not conform to a user's privileges.
+It is up to users to ensure privacy of their information by using this setup. A user
+who wishes to share his data and programs with a few other users should set
+the authorization for his information according to the well-known need-to-know
+principle: Only those persons who need to use some information for a legitimate
+function should be authorized to access it.
+Secrecy, authenticity, and integrity are both protection and security concerns.
+As protection concerns, secrecy, authenticity, and integrity are easy to satisfy
+because the identity of a user would have already been verified and the service
+and resource manager would use the authorization information, which is a part of
+the protection setup shown in Figure 15.1. However, elaborate arrangements are
+needed to satisfy secrecy, authenticity, and integrity as security concerns. These
+are discussed in Chapter 21.
+15.1.2 Security and Protection Threats
+To see how and when security and protection threats arise in an OS, first consider
+a conventional OS. Its authentication procedures ensure that only registered users
+can log into the system and initiate processes. Hence the OS knows which user has
+initiated a specific process, and with that knowledge it can readily check whether a
+process should be allowed to use a specific resource. When processes communicate
+with other processes, OS actions concerning communication are also confined to
+the same computer system. Hence an illegal access to a resource or a service by
+
+
+
+610  Part 4  File Systems and I/O Management
+             a process and an attempt to tamper with messages are both protection threats
+             rather than security threats.
+                The situation is different when a system has an Internet connection and a
+             user downloads data or programs from the Internet. Some person or programs
+             external to the OS may be able to corrupt the data and programs being down-
+             loaded. Threats raised by such data and programs are, by definition, security
+             threats.
+                Security threats can arise more easily in a distributed OS. An interprocess
+             message may cross boundaries between nodes as it travels between a sender and
+             a receiver. Communication between nodes takes place over open communication
+             links, including public links. Hence it is possible for an external entity to tamper
+             with messages. We discuss measures to counter such threats in Chapter 21.
+             15.2      SECURITY ATTACKS                                                            ·
+             Attempts to breach the security of a system are called security attacks, and the
+             person or the program making the attack is called an adversary or intruder. Two
+             common forms of security attacks are:
+             ·  Masquerading: Assuming the identity of a registered user of the system
+                through illegitimate means.
+             ·  Denial of service: Preventing registered users of the system from accessing
+                resources for which they possess access privileges.
+                In a successful masquerading attack, the intruder gains access to resources
+             that the impersonated user is authorized to access, hence he can corrupt or destroy
+             programs and data belonging to the impersonated user at will. The obvious way to
+             launch a masquerading attack is to crack a user's password and use this knowledge
+             to pass the authentication test at log in time. Another approach is to perform
+             masquerading in a more subtle manner through programs that are imported into
+             a software environment. We discuss this approach in Section 15.2.1.
+                A denial-of-service attack, also called a DoS attack, is launched by exploiting
+             some vulnerability in the design or operation of an OS. A DoS attack can be
+             launched through several means; some of these means can be employed only by
+             users of a system, while others may be employed by intruders located in other
+             systems. Many of these means are legitimate, which makes it easy to launch DoS
+             attacks and hard for an OS to detect and prevent them. For example, a DoS
+             attack can be launched by overloading a resource through phantom means to
+             such an extent that genuine users of the resource are denied its use. If the kernel
+             of an OS limits the total number of processes that can be created in order to
+             control pressure on kernel data structures, a user may create a large number of
+             processes so that no other users can create processes. Use of network sockets
+             may be similarly denied by opening a large number of sockets. A DoS attack
+             can also be launched by corrupting a program that offers some service, or by
+             destroying some configuration information within the kernel, e.g., use of an I/O
+
+
+
+                                                              Chapter 15         Security and Protection  611
+device can be denied by changing its entry in the physical device table of the kernel
+(see Section 14.5.2).
+A network DoS attack may be launched by flooding the network with mes-
+sages intended for a particular server so that network bandwidth is denied to
+genuine messages, and the server is so busy receiving messages that it cannot get
+around to responding to any messages. A distributed DoS attack is one that is
+launched by a few intruders located in different hosts in the network; it is even
+harder to detect and prevent than a nondistributed one.
+Many other security attacks are launched through the message commu-
+nication  system.  Reading  of  messages  without         authorization,  which  is      also
+called eavesdropping, and tampering with messages are two such attacks. These
+attacks primarily occur in distributed operating systems, so we discuss them in
+Chapter 21.
+15.2.1 Trojan Horses, Viruses, and Worms
+Trojan horses, viruses, and worms are programs that contain some code that can
+launch a security attack when activated. Table 15.4 summarizes their charac-
+teristics. A Trojan horse or a virus enters a system when an unsuspecting user
+downloads programs over the Internet or from a disk. On the contrary, a worm
+existing in one computer system spreads to other computer systems by itself.
+A Trojan horse is a program that has a hidden component that is designed
+to cause havoc in a computer system. For example, it can erase a hard disk in the
+computer, which is a violation of integrity; collect information for masquerading;
+or force a system to crash or slow down, which amounts to denial of service. A
+typical example of a Trojan horse is a spoof login program, which provides a fake
+login prompt to trick a user into revealing his password, which can be used later
+for masquerading. Since a Trojan horse is loaded explicitly by an unsuspecting
+user, it is not difficult to track its authorship or origin.
+Table 15.4    Security Threats through Trojan Horses,
+Viruses, and Worms
+Threat                 Description
+Trojan horse           A program that performs a legitimate function that is known
+                       to an OS or its users, and also has a hidden component that
+                       can be used later for nefarious purposes like attacks on
+                       message security or masquerading.
+Virus                  A piece of code that can attach itself to other programs in the
+                       computer system and spread to other computer systems when
+                       programs are copied or transferred.
+Worm                   A program that spreads to other computer systems by
+                       exploiting security holes in an OS like weaknesses in facilities
+                       for creation of remote processes.
+
+
+
+612  Part 4  File Systems and I/O Management
+             A virus is a piece of code that infects other programs and spreads to other
+             systems when the infected programs are copied or transferred. A virus called an
+             executable virus or file virus causes infection as follows: The virus inspects the
+             disk, selects a program for infection, and adds its own code, which we will call the
+             viral code, to the program's code. It also modifies the program's code such that
+             the viral code is activated when the program is executed. A simple way to achieve
+             it is to modify the first instruction in the program's code, i.e., the instruction
+             whose address is the execution start address of the program (see Section 11.3), to
+             transfer control to the viral code. When the viral code gets activated, it inspects
+             the disk looking for other programs to infect. After infecting these programs,
+             it passes control to the genuine code of the program. Since the infection step
+             does not consume much CPU time and the infected program's functioning is not
+             affected, a user has no way of knowing whether a program has been infected. The
+             way a virus attaches itself to another program makes it far more difficult to track
+             than a Trojan horse.
+             A virus typically sets up a back door that can be exploited for a destructive
+             purpose at a later date. For example, it may set up a daemon that remains dormant
+             until it is activated by a trigger, which could be a specific date, time, or message,
+             and performs some destructive acts when activated. Different categories of viruses
+             infect and replicate differently. Apart from the file virus described above, a boot-
+             sector virus plants itself in the boot sector of a hard or floppy disk. Such a virus
+             gets an opportunity to execute when the system is booted, and gets an opportunity
+             to replicate when a new bootable disk is made.
+             Executable and boot-sector viruses thrived when programs were loaded
+             through floppies. Use of CDs that cannot be modified has curtailed their men-
+             ace. However, newer viruses have switched to more sophisticated techniques to
+             breach a computer's defenses. An e-mail virus enters a computer system through
+             an e-mail and sends spurious mails to users whose e-mail ids can be found in
+             an address book. The Melissa virus of 1999 used a viral code that was a Word
+             document posted on an Internet newsgroup. The virus was triggered when a user
+             opened a downloaded copy of the Word document, and it sent the document
+             itself to 50 persons whose e-mail id's were found in the user's address book.
+             The back door in this case was a tiny code fragment that was associated with
+             the Word document using the language called Visual Basic Application (VBA).
+             It was triggered by the autoexecute feature of Microsoft Word, which automati-
+             cally executes the program associated with a Word document when the document
+             is opened. The I LOVE YOU virus of year 2000 was an e-mail virus that attached
+             viral code as an attachment in an e-mail. This code executed when some user
+             double-clicked on the attachment. It sent e-mails containing its own copies to
+             several others and then corrupted files on the disk of the host where it executed.
+             Both Melissa and I LOVE YOU viruses were so powerful that they forced large
+             corporations to completely shut off their e-mail servers until the viruses could be
+             contained.
+             Viruses use various techniques to escape detection by antivirus software.
+             These techniques include changing their form, compressing or encrypting their
+             code and data, hiding themselves in parts of the OS, etc.
+
+
+
+                                                               Chapter 15  Security and Protection  613
+   A worm is a program that replicates itself in other computer systems by
+exploiting holes in their security setup. It is more difficult to track than a virus
+because of its self-replicating nature. Worms are known to replicate at unimag-
+inably high rates, thus loading the network and consuming CPU time during
+replication. The Code Red worm of 2001 spread to a quarter of a million hosts
+in 9 hours, using a buffer overflow attack. The Morris worm of 1988 spread to
+thousands of hosts through three weaknesses in the Unix system:
+·  The Unix remote login facility rsh enabled a user to set up an arrangement
+   through which he could log into a remote host without having to supply a
+   password. The worm searched for files that stored names of remote hosts that
+   could be accessed through rsh and used these files to move to remote hosts.
+·  The buffer overflow technique, described later in Section 15.2.2, forces a dae-
+   mon on an unprotected server to accept and execute a piece of code. The
+   Morris worm used this attack on the finger daemon of a remote Unix host
+   to send its own code to the remote host and achieve its execution on that host.
+·  It used the debug facility in the sendmail program of Unix to mail a copy
+   of its code to another host and execute it there.
+   The security attacks launched through Trojan horses, viruses, or worms can
+be foiled through the following measures:
+·  Exercising caution while loading new programs into a computer
+·  Using antivirus programs
+·  Plugging security holes as they are discovered or reported
+   Loading programs from original disks on which they are supplied by a vendor
+can eliminate a primary source of Trojan horses or viruses. This approach is
+particularly effective with the compact disk (CD) technology. Since such disks
+cannot be modified, a genuine program cannot be replaced by a Trojan horse, or
+a vendor-supplied disk cannot be infected by a virus.
+   Antivirus programs analyze each program on a disk to see if it contains any
+features analogous to any of the known viruses. The fundamental feature it looks
+for is whether the execution start address of the program has been modified or
+whether the first few bytes of a program perform actions resembling replication,
+e.g., whether they attach code to any programs on a disk.
+   OS vendors post information about security vulnerabilities of their operating
+systems on their websites periodically and provide security patches that seal these
+loopholes. A system administrator should check such postings and apply security
+patches regularly. It would foil security attacks launched through worms.
+15.2.2 The Buffer Overflow Technique
+The buffer overflow technique can be employed to force a server program to
+execute an intruder-supplied code to breach the host computer system's security.
+It has been used to a devastating effect in mail servers and other Web servers.
+The basic idea in this technique is simple: Most systems contain a fundamental
+vulnerability--some programs do not validate the lengths of inputs they receive
+
+
+
+614  Part 4  File Systems and I/O Management
+             from users or other programs. Because of this vulnerability, a buffer area in which
+             such input is received may overflow and overwrite contents of adjoining areas of
+             memory. On hardware platforms that use stacks that grow downward in memory,
+             e.g., the Intel 80x86 architecture, such overflows provide an opportunity to execute
+             a piece of code that is disguised as data put in the buffer. This code could launch
+             a variety of security attacks.
+             Figure 15.2 illustrates how an intruder can launch a security attack through
+             the buffer overflow technique. A Web server is in operation. When one of its
+                                                       Top of
+                                                       stack      Other local data
+                                                  Start address   of sample
+                                                  of beta         Variable beta
+                                                  End address     (400 bytes)           412 bytes
+                                                  of beta         Parameters            copied into
+                                                                  (8 bytes)             beta occupy
+                                                                  Return address        this area
+                     Top of                                       (4 bytes)
+                     stack      Local data of                     Local data of
+                                calling function                  calling function
+                     Direction                         Direction
+                     of growth                         of growth
+                                Stack before function             Stack after function
+                                sample is called                  sample is called
+             How a buffer overflow can be used to launch a security attack
+             1.      The stack grows downward, i.e., toward smaller addresses in memory.
+                     It looks as shown on the left before the currently executing function
+                     calls function sample.
+             2.      The code of the calling function pushes a return address and two
+                     parameters of sample onto the stack. Each of these occupies four
+                     bytes.
+             3.      The code of sample allocates the variable beta and other variables
+                     on the stack. The stack now looks as shown on the right. Notice that
+                     the start address of beta is at the low end of the memory allocated to
+                     it. The end address of beta adjoins the last byte of the parameters.
+             4.      The function sample copies 412 bytes into the variable beta. The
+                     first 408 bytes contain code whose execution would cause a security
+                     violation. Bytes 409­412 contain the start address of this code. These
+                     four bytes overwrite the return address in the stack.
+             5.      The function sample executes a return statement. Control is trans-
+                     ferred to the address found in the stack entry that is expected to contain
+                     the return address. Effectively, the code in variable beta is invoked.
+                     It executes with the privileges of the calling function.
+             Figure  15.2  Launching a security attack through the buffer overflow technique.
+
+
+
+                                                  Chapter 15  Security and Protection  615
+functions calls a function sample with two parameters, the stack is used for
+two purposes--to store a return address that would be used to resume execu-
+tion of the calling function when sample completes its execution, and to pass
+the parameters to sample. We assume that the return address and each of the
+parameters occupy 4 bytes, and that the stack grows downward in memory, i.e.,
+toward smaller addresses in memory. During execution, sample allocates space
+for its local variables on the stack. Thus a variable beta, which has a size of
+400 bytes, adjoins the parameters on the stack. When invoked, sample accepts a
+message containing a request to the Web server and copies it into beta; however,
+it does not check to make sure that the message is not longer than 400 bytes. An
+intruder exploits this weakness by sending a message that is 412 bytes in length,
+such that the first 408 bytes contain some code and the last 4 bytes contain the
+start address of this code. When this message is copied into beta, its last 4 bytes
+would overwrite contents of the stack entry that holds the return address. When
+execution of sample completes, control would be passed to the address found in
+this stack entry. Thus, the intruder's code would be activated and would execute
+with the privileges of the Web server. This code could corrupt the Web server's
+code and files so that it does not respond to any requests, which would be a denial
+of service, or it could send out spurious mails.
+How does an intruder know which Web server would fall prey to the
+buffer overflow technique and how many bytes should be provided so as to
+overwrite the return address? He could find out both these details through
+experimentation.
+15.3  FORMAL ASPECTS OF SECURITY                                                       ·
+To formally prove that a system can withstand all forms of security attacks,
+we need a security model comprising security policies and mechanisms, a list of
+threats, a list of fundamental attacks, and a proof methodology. The list of attacks
+must be provably complete in the sense that it should be possible to produce any
+threat in the list of threats through a combination of the fundamental attacks.
+The proof methodology should be capable of ascertaining whether the security
+model can withstand certain forms of attack.
+Early work in security was performed along these lines. In the take-grant
+model of computer security (Landwehr [1981]), processes were given privileges
+for objects and for other processes. A privilege for an object entitled the holder
+of the privilege to access the object in a specific manner. A privilege for another
+process entitled the holder of the privilege to take an access privilege possessed
+by the other process (a take operation), or to transfer one of its own access
+privileges to the other process (a grant operation). The proof took the form of
+ascertaining whether a specific process could obtain a specific access privilege
+for a specific object through a series of take and grant operations. In the follow-
+ing example we discuss how a security flaw can be detected through the formal
+approach.
+
+
+
+616  Part 4  File Systems and I/O Management
+·
+     Example 15.1  Detection of a Security Flaw
+                   In an organization employing military-like security, all documents are classi-
+                   fied into three security levels--unclassified, confidential, and secret. Persons
+                   working in the organization are given security clearances called U (unclassi-
+                   fied), C (confidential), and S (secret) with the proviso that a person can access
+                   all documents at his level of security classification and at lower levels of clas-
+                   sification. Thus, a person with C classification can access confidential and
+                   unclassified documents, but is forbidden from accessing secret documents.
+                      The organization uses a Unix system and persons in the organization use
+                   Unix features to access files containing documents. This way, it is expected that
+                   a program executed by a user can access a document at a specific security level
+                   only if the user possesses the appropriate security clearances. To check whether
+                   document security is foolproof, all operations in the system are modeled and a
+                   check is made to see whether a person can access a document that is at a higher
+                   level of classification than his security clearance. It is found that a combination
+                   of indiscriminate assignment of the "execute" privilege for programs to users
+                   and use of the setuid feature of Unix can enable a user to access a forbidden
+                   document. It can happen because the setuid feature permits a user to execute
+                   a program with the privileges of the program's owner (see Section 15.9.2),
+                   so if a user can execute a program owned by an individual with a higher
+                   security clearance, he can "take" the security clearance of the program's
+                   owner.
+                      This security flaw can be eliminated by either forbidding use of the setuid
+                   feature or confining the "execute" privilege for a program only to users whose
+                   security clearance is not lower than that of the program's owner.
+                   ·
+                      The security flaw in Example 15.1 could also have been discovered through
+                   manual procedures; however, manual procedures become less reliable as systems
+                   grow more complex. Formal methods construct feasible sequences of operations
+                   and deduce or verify their properties. This way they can discover sequences of
+                   operations that have disastrous consequences, or assert that such sequences of
+                   operations do not exist.
+                      The formal approach also has some drawbacks. As the size of the sys-
+                   tem to be analyzed grows, the computing and storage requirements of formal
+                   methods exceed the capabilities of contemporary computer systems. The formal
+                   approach is also hard to apply because it requires a complete specification of
+                   a system and a comprehensive list of fundamental attacks; it is not possible to
+                   develop such a list for modern operating systems. It also requires a clear state-
+                   ment of security policies. This requirement is hard to meet because most security
+                   policies consist of rules that are informally stated so that everyone in an orga-
+                   nization can understand them. However, this is where the formal approach con-
+                   tributes substantially to the field of security--it emphasizes the need for precise
+                   specifications.
+
+
+
+                                                             Chapter 15  Security and Protection  617
+15.4  ENCRYPTION                                                                                  ·
+Encryption is application of an algorithmic transformation to data. When data
+is stored in its encrypted form, only a user or his process that knows how to
+recover the original form of data can use it. This feature helps in preserving
+confidentiality of data. Protection and security mechanisms use encryption to
+guard information concerning users and their resources; however, it could also
+be used to guard information belonging to users. Cryptography is the branch of
+science dealing with encryption techniques.
+Table 15.5 summarizes key terms and definitions used in cryptography. The
+original form of data is called the plaintext form and the transformed form is
+called the encrypted or ciphertext form. We use the following notation:
+                      Pd  Plaintext form of data d
+                      Cd  Ciphertext form of data d
+where Pd  d. Encryption is performed by applying an encryption algorithm E
+with a specific encryption key k to data. Data is recovered by applying a decryp-
+tion algorithm D with a key k . In the simplest form of encryption called symmetric
+encryption, decryption is performed by using the same key k. In advanced encryp-
+tion techniques called asymmetric encryption, a different key k is used to decrypt
+a ciphertext.
+Figure 15.3 illustrates symmetric encryption. We represent encryption and
+decryption of data by using algorithms E and D with key k as application of
+functions Ek and Dk, respectively. Thus,
+                          Cd = Ek(d)
+                          Pd = Dk(Cd )
+Obviously the functions Ek and Dk must satisfy the relation
+                          Dk(Ek(d)) = d, for all d
+Thus a process must be able to perform the transformation Dk in order to obtain
+the plaintext form of encrypted data.
+In practice, encryption is performed by standard algorithms E and D. Hence,
+effectiveness of encryption depends on whether an intruder can determine the
+encryption key through trial and error. Later in this section, we see how it is
+impractical for an intruder to discover the encryption key because of the large
+number of trials involved; however, theoretically, it is not impossible to do so.
+This property makes encryption effective in a probabilistic sense, though not in
+an absolute sense. Confidentiality of encrypted data follows from this property.
+Confidentiality provided through encryption also helps to verify integrity of
+data. If the encrypted form of data is tampered with by an intruder, its decryp-
+tion by a process having the correct decryption algorithm and key would yield
+unintelligible data, which would reveal that it has been altered in an unauthorized
+manner. Because of this property of encrypted data, we use the term "decryp-
+tion is unsuccessful" for the situation where decryption by the correct key yields
+unintelligible data.
+
+
+
+618  Part 4  File  Systems and I/O Management
+                   Table 15.5     Cryptography Terms and Definitions
+                   Term           Description
+                   Encryption     Encryption is application of an algorithmic transformation Ek to
+                                  data, where E is an encryption algorithm and k is an encryption
+                                  key. It is used to protect confidentiality of data. The original data
+                                  is recovered by applying a transformation Dk , where D is a
+                                  decryption algorithm and k     is a decryption key. A scheme using
+                                  k=k          is called symmetric encryption, and one using k = k  is
+                                  called asymmetric encryption.
+                   Plaintext      Data to be encrypted.
+                   Ciphertext     Encrypted form of plaintext.
+                   Confusion      Shannon's principle of confusion requires that changes caused in
+                                  a ciphertext due to a change in a plaintext should not be easy to
+                                  find.
+                   Diffusion      Shannon's principle of diffusion requires that the effect of a small
+                                  substring in the plaintext should be spread widely in the
+                                  ciphertext.
+                   Attacks on     An attack is a series of attempts by an intruder to find a
+                   cryptographic  decryption function Dk. In a ciphertext only attack, the intruder
+                   systems        can examine only a set of ciphertexts to determine Dk. In a known
+                                  plaintext attack, the intruder has an opportunity to examine
+                                  the plaintext and ciphertext form of some data, whereas in a
+                                  chosen plaintext attack the intruder can choose a plaintext and
+                                  obtain its ciphertext form to perform the attack.
+                   One-way        A function, computation of whose inverse is expensive enough to
+                   function       be considered impractical. Its use as an encryption function
+                                  makes cryptographic attacks difficult.
+                   Block cipher   A block cipher technique substitutes fixed-size blocks of plaintext
+                                  by blocks of ciphertext. It introduces some confusion, but does
+                                  not introduce sufficient diffusion.
+                   Stream cipher  Both a plaintext and the encryption key are considered to be bit
+                                  streams. Bits in the plaintext are encrypted by using an equal
+                                  number of bits in the encryption key. A stream cipher does not
+                                  introduce confusion and introduces limited diffusion; however,
+                                  some of its variants can introduce a high level of diffusion.
+                   DES            The Data Encryption Standard of the National Bureau of
+                                  Standards, adopted in 1976, uses a block cipher technique and
+                                  provides cipher block chaining as an option. It contains 16
+                                  iterations, which perform complex transformations on the
+                                  plaintext or the intermediate ciphertext.
+                   AES            The Advanced Encryption Standard is the new standard adopted
+                                  by the National Institute of Standards and Technology (formerly
+                                  known as the National Bureau of Standards) in 2001. It performs
+                                  between 10 and 14 rounds of operations, each involving only
+                                  substitutions and permutations, on plaintext blocks of 128, 192,
+                                  or 256 bits.
+
+
+
+                                                                Chapter 15  Security and Protection  619
+                        Encryption                  Decryption
+                        key (k)                     key (k)
+             Plaintext  Encryption  Ciphertext      Decryption  Plaintext
+             (Pd)       algorithm                   algorithm   (Pd)
+                        (E)                   (Cd)  (D)
+Figure 15.3  Symmetric encryption of data d.
+15.4.1 Attacks on Cryptographic Systems
+An attack on a cryptographic system consists of a series of attempts to find the
+decryption function Dk. Since Dk(Ek(d)) = d, Dk is the inverse of Ek. Hence
+an attack implies finding the inverse of Ek. If we define the quality of encryption
+to mean its ability to withstand attacks, the aim of an encryption technique is to
+perform high-quality encryption at a low cost. The encryption quality is best if
+the function Ek is a one-way function, i.e., if computation of its inverse through
+an attack involves an impractical amount of effort and time.
+An intruder, who may be within an OS or outside it, can launch a vari-
+ety of attacks on a cryptographic system. The nature of an attack depends on
+the position that an intruder can occupy within the system. If an intruder can-
+not invoke the encryption function and can only examine data in the ciphertext
+form, he has to depend on guesswork. This is a trial-and-error approach in which
+the function Dk is guessed repeatedly until its application to a ciphertext pro-
+duces intelligible output. This attack is called an exhaustive attack because all
+possibilities for Dk may have to be tried out.
+An exhaustive attack involves a very large number of trials. For example, 255
+trials would be needed to break an encryption scheme employing a 56-bit key by
+using an exhaustive attack. The huge number was believed to make such a scheme
+computationally secure, and the quality of encryption was believed to improve
+with an increase in the number of bits in an encryption key. However, powerful
+mathematical techniques like differential analysis may be employed to find Dk
+much more easily than in an exhaustive attack. Intruders may also employ the
+attacks described below that involve fewer trials than an exhaustive attack. We
+see examples of these attacks when we discuss password security in Section 15.5.
+In the ciphertext only attack, an intruder has access only to a collection of
+ciphertexts. Consequently, to make the attack more efficient than an exhaus-
+tive attack, the intruder relies on clues extracted through analysis of strings in
+ciphertexts and information about features of plaintexts, such as whether they
+consist only of words in a dictionary. In the known plaintext attack, an intruder
+knows the plaintext corresponding to a ciphertext. This attack is feasible if an
+intruder can gain a position within the OS from which both a plaintext and
+the corresponding ciphertext can be observed. Collecting a sufficient number of
+plaintext­ciphertext pairs provides clues for determining Dk. In the chosen plain-
+text attack, an intruder is able to supply a plaintext and observe its encrypted
+form, i.e., choose a d and observe Ek(d). It allows the intruder to systematically
+
+
+
+620  Part 4  File Systems and I/O Management
+             build a collection of plaintext­ciphertext pairs to support guessing and refinement
+             of guesses during the attack.
+             15.4.2 Encryption Techniques
+             Encryption techniques differ in the way they try to defeat intruder attempts at
+             finding Dk. The fundamental approach is to mask the features of a plaintext--i.e.,
+             ensure that a ciphertext does not reveal features of the corresponding plaintext--
+             without incurring a very high cost of encryption.
+             Consider the simplest encryption technique, the classical substitution cipher,
+             which substitutes each letter in a plaintext by some other letter of the alphabet. It
+             does not mask features of a plaintext well enough; so frequency analysis provides
+             a simple method for finding Dk : Arrange letters of the alphabet in the order of
+             decreasing frequency of usage in a collection of ciphertexts. Take standard data
+             for frequency of letters in English texts, and organize the letters in the order of
+             decreasing frequency. Now, a good guess for Dk is a function that simply maps a
+             letter of the first list into the corresponding letter of the second list.
+             So how to mask features of a plaintext during encryption? Shannon (1949)
+             formulated two principles for design of high-quality encryption techniques. These
+             principles are called confusion and diffusion. The confusion principle recommends
+             that it should not be easy to find what changes would occur in the ciphertext due
+             to a change in a plaintext. The diffusion principle recommends that the effect
+             of a small substring in the plaintext should be spread throughout the ciphertext.
+             These principles ensure that features of a plaintext are masked effectively, because
+             individual parts of a plaintext and its ciphertext would not have a strong corre-
+             lation between them. In the following, we describe four encryption schemes and
+             discuss their confusion and diffusion properties.
+             Block Cipher  The block cipher is an extension of the classical substitution cipher.
+             It performs substitution of fixed-size blocks of a plaintext by ciphertext blocks
+             of equal size. For example, a block consisting of, say, n bits is encrypted with a
+             key k to obtain an n-bit block of the ciphertext (see Figure 15.4). These blocks
+             are assembled to obtain the ciphertext. The block cipher technique is simple to
+             implement. However, the confusion and diffusion introduced by it is confined to a
+             block in the ciphertext. Hence identical blocks in a plaintext yield identical blocks
+             in the ciphertext. This feature makes it vulnerable to an attack based on frequency
+             analysis and known plaintext or chosen plaintext attacks. Larger values of n can
+             be used to make such attacks less practical.
+                                              Encryption
+                                              key (k)
+                           ··                 Block             ··
+                                              cipher
+                           Plaintext                            Ciphertext
+             Figure  15.4  Block cipher.
+
+
+
+                                                                      Chapter 15  Security and Protection  621
+Stream Cipher  A stream cipher considers a plaintext as well as the encryption
+key to be streams of bits. Encryption is performed by using a transformation that
+involves a few bits of the plaintext and an equal number of bits of the encryption
+key. A popular choice of the transformation is a bit-by-bit transformation of a
+plaintext, typically by performing an operation like exclusive-OR on a bit of the
+plaintext and a bit of the encryption key.
+A stream cipher is faster than a block cipher. It does not provide confusion
+or diffusion when a bit-by-bit transformation is used. A variant of this cipher,
+called a vernam cipher, uses a random stream of bits as the key stream, whose size
+exactly matches the size of the plaintext. Hence identical substrings in a plaintext
+do not lead to identical substrings in the ciphertext. The one-time pad that is
+famous for its use during the Second World War was actually a vernam cipher
+wherein a key stream was used to encode only one plaintext. It made the cipher
+unbreakable.
+Variants of the stream cipher have been designed to introduce diffusion. Such
+a cipher operates as follows: An n-bit key stream is used to encrypt the first n bits
+of the plaintext. The next n bits of the key stream are the n bits of the ciphertext
+that were just produced, and so on until the complete plaintext is encrypted. Thus
+a substring in the plaintext influences encryption of the rest of the plaintext, which
+provides a high level of diffusion. This cipher is called a ciphertext autokey cipher
+(see Figure 15.5). If the key stream generator uses n bits of the plaintext that were
+just encrypted, instead of its ciphertext, the cipher is called a self-synchronizing
+cipher. The diffusion introduced by it is confined only to the next n bits of the
+ciphertext.
+RC4 is a widely used stream cipher that uses a key stream that is a pseudoran-
+dom stream of bits. It uses a pseudorandom stream generator that is initialized
+by using a key generated by the key scheduling algorithm. It is fast, as it requires
+only between 8 and 16 machine operations to generate 1 byte in the key stream.
+It is used in the Wired Equivalent Privacy (WEP) protocol for security in wireless
+networks and its successor the Wi-Fi Protected Access (WPA) protocol, and in
+the Secure Sockets Layer (SSL) protocol for the Internet. The key scheduling
+algorithm of RC4 was shown to possess weaknesses, which led to breaking of
+the WEP and WPA protocols. However, its use in the SSL protocol is considered
+secure because the SSL protocol itself generates the key used to initialize the
+pseudorandom stream generator.
+                                              Encryption
+                                              key(k)
+                                              Key stream
+                                              generator
+                          Plaintext           Stream      Ciphertext
+                                              cipher
+Figure  15.5  Ciphertext  autokey    cipher.
+
+
+
+622  Part 4  File Systems and I/O Management
+             Data Encryption Standard (DES)         DES was developed by IBM for the National
+             Bureau of Standards. It uses a 56-bit key to encrypt 64-bit data blocks. Thus,
+             it is a block cipher. However, to overcome the problem of poor diffusion, DES
+             provides a cipher block chaining (CBC) mode. In this mode, the first block of
+             plaintext is combined with an initial vector using an exclusive-OR operation
+             and then enciphered. The resulting ciphertext is then combined with the second
+             block of the plaintext using an exclusive-OR operation and then enciphered,
+             and so on.
+                   DES consists of three steps--the initial permutation step, the transforma-
+             tion step, and the final permutation step. The transformation step consists of 16
+             iterations. In each iteration the string input to the iteration is subjected to a com-
+             plex transformation that involves a permutation operation on the string, which
+             achieves diffusion, and a substitution operation through duplication and omis-
+             sion of some bits, which achieves confusion. Figure 15.6 illustrates operations
+             performed in each iteration. In the first iteration, the input string is the plaintext.
+             In all other iterations, the input string is the output of the previous iteration. The
+             input string is split into two halves of 32 bits each. The right half of the input
+             string becomes the left half of the result string, and a complex transformation
+             involving the left and right halves is performed to obtain the right half of the
+             result string.
+                   Transformation of the right half of the input string consists of the following
+             steps: The right half is first expanded to 48 bits by permuting its bits and dupli-
+             cating some of them. It is combined with key Ki using an exclusive-OR operation
+             (see  the function f  in  Figure 15.6), where key Ki       is derived     by permuting   the
+             encryption key k, using the iteration number i. The result of this operation is
+             split into eight groups of 6 bits each. Each 6-bit group is input to an S-box that
+             substitutes a 4-bit group for it. The results of substitution are concatenated to
+             obtain a 32-bit string that is permuted to obtain another 32-bit string. This string
+             is combined with the left half of the input string, using an exclusive-OR opera-
+             tion to obtain the right half of the result string. The S-box introduces confusion.
+             The permutation introduces diffusion, while the final exclusion-OR operation
+             introduces confusion.
+                   DES achieves both encryption and decryption by using the same sequence
+             of steps, except that the keys are used in the reverse order during decryption; i.e.,
+             iteration i uses key K17-i instead of key Ki. The 56-bit key length used in DES
+             would have required 255 trials in an exhaustive attack, which was considered a
+                                              Li-1  Ri-1  Input string
+                                                    f     Ki =  (k, i)
+                                                          Li-1 f(Ri-1, Ki)
+                                              Li    Ri    Result string
+             Figure 15.6  An iteration in DES ( indicates an exclusive-OR operation).
+
+
+
+                                                          Chapter 15        Security and Protection  623
+large enough number to defeat such attacks in the 1970s and 1980s. However, use
+of a small key length made DES vulnerable to attacks using modern technology.
+In 1998, a message encrypted through DES was broken in less than 3 days by a
+specially designed computer. In 1999, another message was broken in less than
+a day by using 100,000 PCs on the Internet. The triple DES algorithm was then
+endorsed as an interim standard until a new standard was adopted. It contained
+three iterations, where each iteration applied the DES algorithm, using a different
+key derived from the encryption key--the first and third iterations performed
+encryption using their keys, while the second iteration performed decryption
+using its key. Effectively it could use keys up to 168 bits in length, which was
+considered to make it secure against attacks for a few years. The new standard
+called the Advanced Encryption Standard (AES) was adopted in 2001.
+Advanced Encryption Standard (AES)       AES is a variant of Rijndael, which is a
+compact and fast encryption algorithm using only substitutions and permuta-
+tions. AES uses a block size of 128 bits and keys of 128, 192, or 256 bits, whereas
+Rijndael can use any key and block sizes in the range 128 to 256 bits that are mul-
+tiples of 32 bits. A plaintext block of 16 bytes is treated as a 4 byte × 4 byte
+array called a state. It is encrypted through many rounds of operations, where
+the number of rounds depends on the key length--10 rounds are performed for
+128-bit keys, 12 rounds for 192-bit keys, and 14 rounds for 256-bit keys. Each
+round consists of the following operations:
+1.  Byte  substitution:  Each  byte  of  the  state  is   subjected  to  a  nonlinear
+    transformation applied by an S-box.
+2.  Shifting of rows: Rows in the state are shifted cyclically by 0, 1, 2, and 3 bytes,
+    respectively.
+3.  Mixing of columns: The 4 bytes in a column are replaced such that each result
+    byte is a function of all the 4 bytes in the column.
+4.  Key addition: A subkey, whose size is the same as the size of the state, is
+    derived from the encryption key by using a key schedule. The subkey and
+    the state are viewed as bit strings and combined by using the exclusive-OR
+    operation. If this is the last round, the result of the exclusive-OR operation
+    is a block of ciphertext; otherwise, it is used as the state for the next round
+    of encryption.
+To enable both encryption and decryption to be performed by the same sequence
+of steps, a key addition is performed before starting the first round, and the step
+of mixing of columns is skipped in the last round.
+15.5  AUTHENTICATION AND PASSWORD SECURITY                                                           ·
+Authentication is typically performed through passwords, using the scheme
+shown in Figure 15.1. For every registered user, the system stores a pair of the
+form (login id, <validating_info>) in a passwords table, where <validating_info>
+
+
+
+624  Part 4  File Systems and I/O Management
+             = Ek(password). To authenticate a user, the system encrypts his password using
+             Ek  and  compares   the          result  with  his  validating  information  stored  in  the
+             passwords table. The user is considered to be authentic if the two match.
+                 If an intruder has access to the passwords table, he can launch one of
+             the attacks described earlier in Section 15.4.1 to determine Ek. Alternatively,
+             the intruder may launch an attack to crack the password of an individual user.
+             In the scheme described above, if two users use identical passwords, the encrypted
+             forms of their passwords would also be identical, which would facilitate an
+             intruder's attempts at cracking of a password if the passwords table is visible
+             to him. Hence the encryption function E takes two parameters. One parameter is
+             the encryption key k, and the other parameter is a string derived from the user's
+             login id. Now, identical passwords yield distinct encrypted strings.
+                 Intruders may use password cracking programs to discover passwords of
+             individual users. Their task is simplified by users' tendency to use passwords
+             that are not difficult to guess, such as dictionary words and vehicle numbers,
+             or use simple keyboard sequences. For infrequently used accounts, users often
+             choose simple passwords that are easy to remember, the common refrain being
+             that they do not have many important files in that account. However, a pass-
+             word is the proverbial weakest link in the security chain. Any password that is
+             cracked provides an intruder with opportunities for launching further security
+             attacks. Consequently, a large number of security problems relate to use of poor
+             passwords.
+                 Operating systems use a set of techniques to defeat attacks on passwords.
+             Table 15.6 summarizes these techniques. Password aging limits the exposure of
+             passwords to intruders, which is expected to make passwords more secure. System-
+             chosen passwords ensure use of strong passwords, which cannot be cracked by
+             Table 15.6      OS  Techniques for Defeating Attacks on Passwords
+             Technique           Description
+             Password aging      Encourage or force users to change their passwords
+                                 frequently, at least once every 6 months. It limits the exposure
+                                 of a password to intruder attacks.
+             System-chosen       A system administrator uses a methodology to generate and
+             passwords           assign strong passwords to users. Users are not allowed to
+                                 change these passwords. An intruder would have to use an
+                                 exhaustive attack to break such passwords.
+             Encryption of       The encrypted form of passwords is stored in a system file;
+             passwords           however, the ciphertext form of passwords is visible to all
+                                 users in the system. An intruder can use one of the attacks
+                                 described in Section 15.4.1 to find Ek, or launch an
+                                 exhaustive attack to crack an individual user's password.
+             Encrypt and hide    The encrypted form of passwords is not visible to any person
+             password            within or outside the system. Hence an intruder cannot use
+             information         any of the attacks described in Section 15.4.1.
+
+
+
+                                                                  Chapter 15  Security and Protection  625
+simple techniques like looking for parts of names or dictionary words in the
+passwords. Their use would force an intruder to use an exhaustive attack to crack
+a password, which is impractical.
+When the encrypted passwords file is visible within and outside the system,
+a registered user can use a chosen plaintext attack to discover Ek by changing his
+own password repeatedly and viewing its encrypted form. However, an intruder
+would have to use a ciphertext-only attack to find Ek since he does not know
+any of the passwords. Hiding of the encrypted password file denies an intruder
+within or outside the system an opportunity to use any of the attacks described
+in Section 15.4.1, so he would have to rely on cracking of individual passwords,
+which has little chance of success if strong passwords are used.
+The Unix operating system performs DES encryption of passwords. Linux
+employs a message digest, which is a 128-bit or 160-bit hash value obtained by
+applying a one-way hash function to a password. This technique has variants
+called MD2, MD4, and MD5. Linux uses MD5. Both Unix and Linux provide
+a shadow passwords file option. When this option is chosen, the ciphertext form
+of passwords is stored in a shadow file that is accessible only to the root.
+15.6  PROTECTION STRUCTURES                                                                            ·
+A protection structure is the classical name for the authorization database dis-
+cussed in Section 15.1 and illustrated in Figure 15.1. It contains information
+indicating which users can access which files in what manner. We begin by dis-
+cussing the nature of information contained in a protection structure, and how
+the information is used to implement protection. Later in this section, we discuss
+the key issues in organization of the protection structure.
+Recall from Section 15.1 that an access privilege for a file is a right to make
+a specific form of access to the file, e.g., a read access or a write access. A user
+may hold one or more access privileges for a file, e.g., he may be permitted to
+only read a file, or read and write a file but not execute it. An access descriptor is
+a representation of a collection of access privileges for a file. The access control
+information for a file is a collection of access descriptors; it represents access
+privileges for the file held by all users in the system.
+We use the notations r, w, and x to represent access privileges to read, write,
+and execute the data or program in a file. An access descriptor can be repre-
+sented as a set of access privileges, e.g., the set {r, w} indicates privileges to both
+read and write a file. We will use a set representation in this chapter for simplicity;
+however, a set representation is expensive in terms of both memory requirements
+and access efficiency, so operating systems actually use a bit-encoding scheme for
+access descriptors. In this scheme, an access descriptor is a string of bits, where
+each bit indicates the presence or absence of a specific access privilege. For exam-
+ple, in an OS using only three access privileges r, w, and x, the access descriptor
+110 could be used to indicate that the read and write privileges are present but
+the execute privilege is absent.
+
+
+
+626  Part 4  File Systems and I/O Management
+                 As discussed in Section 15.1, the access control information for a file alpha
+             is created and used as follows:
+             1.  When a user A creates file alpha, he specifies the access control information
+                 for it. The file system stores it in the protection structure.
+             2.  When a user X logs in, he is authenticated. The authentication service gen-
+                 erates an authentication token for him, which is typically a user id. When
+                 a process initiated by user X wishes to open or access file alpha, his
+                 authentication token is passed to the file system.
+             3.  The file system uses the authentication token to find the access privileges
+                 of user X for file alpha in the protection structure, and checks whether
+                 the kind of access desired by the process is consistent with the access
+                 privileges.
+                 Organization     of  the     protection  structure  influences  two  key  aspects         of
+             protection--how much discrimination the owner of a file can exercise in Step 1
+             while specifying which other users can access the file, and how efficiently the
+             protection check of Step 3 can be implemented. We discuss these issues in the
+             following sections.
+             15.6.1 Granularity of Protection
+             Granularity of protection signifies the degree of discrimination a file owner can
+             exercise concerning protection of files. We define three levels of granularity in
+             Table 15.7.
+                 Coarse-grained protection implies that users are clubbed into groups and
+             access privileges are specified for a group of users, whereas medium-grained
+             protection implies that the owner of a file can specify access privileges individu-
+             ally for each user in the system. Fine-grained protection permits access privileges
+             to be specified for a process or for different phases in operation of a process.
+             This way, different processes created by the same user may possess different
+             access privileges for a file, or the same process may possess different access priv-
+             ileges for the file at different times. It helps in ensuring privacy of information
+             (see Section 15.1.1).
+             Table 15.7       Granularity of Protection
+             Granularity              Description
+             Coarse-grained           Access privileges for a file can be specified only for groups of
+             protection               users. Each user in a group has identical access privileges for
+                                      the file.
+             Medium-grained           Access privileges for a file can be specified individually for
+             protection               each user in the system.
+             Fine-grained             Access privileges for a file can be specified for a process, or for
+             protection               a phase in operation of a process.
+
+
+
+                                                               Chapter 15   Security and Protection  627
+                      Files   alpha        beta   gamma
+             Users    Jay     {r}          {r,w}
+                      Anita   {r,w,x}             {r}    Access privileges
+                      Sheila                      {r}          of Anita
+                      Access control information
+                              for alpha
+Figure 15.7  Access control matrix (ACM).
+Users desire medium- or fine-grained protection. However, such protection
+leads to a large size of the protection structure. This is why operating systems
+resort to coarse-grained protection.
+15.6.2 Access Control Matrix
+An access control matrix (ACM) is a protection structure that provides efficient
+access to both access privileges of users for various files, and access control infor-
+mation for files. Each element of the ACM contains access privileges of one user
+for one file. Each user has a row in the ACM, while each file has a column in it.
+This way, a row in the ACM describes one user's access privileges for all files in
+the system, and each column describes the access control information for a file.
+When a user ui wishes to access file fk, the element ACM(ui, fk) can be accessed
+efficiently to validate the kind of access being made by ui. Figure 15.7 shows an
+ACM. User Jay has {read, write} access privileges for beta but only a {read}
+privilege for alpha.
+The ACM provides medium-grained protection. However, it is large in size
+because an OS has a large number of users and contains a large number of files.
+Accordingly, a large area of memory has to be committed to hold the ACM,
+or parts of it, in memory during system operation. Operating systems use two
+approaches to reduce the size of access control information. In the first approach,
+the number of rows is reduced by assigning access privileges to groups of users
+rather than to individual users. This approach retains the basic advantage of the
+ACM, namely efficient access to both access privileges of users and access control
+information of files. However, it leads to coarse-grained protection because all
+users in a group have identical access privileges for a file.
+The second approach to reducing size of the protection structure exploits
+the fact that a typical user possesses access privileges for only a few files. Thus,
+most elements in an ACM contain null entries, so space can be conserved by
+organizing the protection information in the form of lists containing only nonnull
+access privileges. This approach does not affect the granularity of protection;
+however, it compromises access efficiency of the protection structure. We present
+two list-organized protection structures in the following sections.
+15.6.3 Access Control Lists (ACLs)
+The access control list (ACL) of a file is a representation of its access con-
+trol information; it contains the non-null entries that the file's column would
+
+
+
+628  Part 4  File Systems and I/O Management
+                                              File          Access control list
+                                              name          (ACL)
+                                              alpha  {(Jay, {r}), (Anita,{r, w, x})}
+                                              beta          {(Jay, {r, w})}
+                                              gamma  {(Anita, {r}), (Sheila, {r})}
+             Figure  15.8  Access control lists (ACLs).
+                                                     (alpha, {r, w, x})
+                                                         (gamma, {r})
+             Figure  15.9  Capability list for user Anita.
+             have contained in the ACM. It is stored as a list of pairs of the form (user_id,
+             access_privileges). Figure 15.8 shows access control lists for the files alpha,
+             beta, and gamma of Figure 15.7. The ACL for alpha is {(Jay, {read}), (Anita,
+             {read, write, execute})}, which indicates that user Jay can only read file alpha
+             while Anita can read, write, or execute the file. User Sheila is not permitted
+             any kind of access to alpha, since alpha's ACL does not contain an entry for
+             Sheila.
+             Even though use of an ACL eliminates the need to store null access privileges,
+             presence of a large number of users in a system leads to large ACL sizes, and
+             thereby to large disk and memory overhead in the file system. The time overhead
+             is also high because the ACL has to be searched for validating a file access. Both
+             memory and CPU time can be conserved at the cost of using coarse-grained
+             protection by specifying protection information for groups of users rather than
+             for individual users. Such an ACL could be small enough to be stored in the
+             directory entry of a file. For example, if users Jay and Anita belong to the same
+             group of users, the ACL of file alpha would contain a single pair. It would now
+             be easier to determine whether Jay can access alpha; however, both Jay and
+             Anita would have identical access privileges.
+             15.6.4 Capability Lists (C-lists)
+             A capability list (C-list) represents access privileges of a user for various files in
+             the system; it contains the non-null entries that the user's row in the ACM would
+             have contained. Each entry in the C-list is a capability, which represents access
+             privileges for one file; it is a pair of the form (file_id, access_privileges). Figure 15.9
+             shows a C-list for user Anita of Figure 15.7. Anita can read, write, or execute
+             file alpha and can read file gamma. Anita has no access privileges for file beta,
+             since no entry for beta exists in the C-list. C-lists are usually small in size; this
+             feature limits the space and time overhead in using them for protection of files.
+             We discuss how capabilities are used in a computer in Section 15.7.
+
+
+
+                                       Chapter 15                        Security and     Protection        629
+15.6.5 Protection Domain
+The access control matrix, access control list, or capability list is used to confer
+access privileges on users. This arrangement serves the secrecy goal of security and
+protection because only authorized users can access a file. However, the privacy
+goal of security and protection requires that information should be used only for
+intended purposes (see Section 15.1.1), and this requirement could be violated
+as follows: A user is granted an access privilege for a file because some process
+initiated by the user requires it. However, every other process initiated by the user
+also has the same access privilege for the file; some of these processes may access
+the file in an unintended manner, thus violating the privacy requirement. The
+next example illustrates how privacy of information may be jeopardized.
+                                                                                                            ·
+Privacy Violation                                                                         Example     15.2
+A user ui has an execute privilege for a program invest owned by another
+user uj. When ui executes invest, invest operates as a process initiated
+by user ui. It can access any file for which user ui holds an access privilege,
+including files that have nothing to do with investments. If uj so wishes, he can
+code invest to obtain a listing of ui's current directory and either copy or
+modify some of the files found in it.
+                                                                                       ·
+Violation of privacy raises a major reliability concern, as the correctness of
+data would depend not only on correct manipulation by processes that are sup-
+posed to access it, but also on harmlessness of the accesses made by processes that
+are not supposed to access it. The concept of a protection domain is used to prevent
+privacy violations. We can think of a protection domain as a conceptual "execu-
+tion environment": Access privileges are granted to a protection domain rather
+than to a user or his process. A process operates "within" a protection domain
+and can access those files for which the protection domain has access privileges.
+This arrangement facilitates implementation of the need-to-know principle with
+a fine granularity--a process should be allowed to operate within a protection
+domain only if it needs to access the files for which the protection domain has
+access privileges. The following example illustrates how this approach ensures
+privacy of information.
+                                                                                                            ·
+Protection Domains                                                                        Example     15.3
+Figure 15.10 shows three protection domains. Domain D1 has read and write
+privileges for the files personal and finance, while D2 possesses only a
+read privilege for finance. Domain D3 has read and write privileges for
+the files memos and notes and a read privilege for the file project. Thus
+domains D1 and D2 overlap while domain D3 is disjoint with both of them.
+
+
+
+630  Part 4  File  Systems and I/O Management
+                                  Files
+                                               personal      finance  memos   notes   project
+                         Domains  D1                 {r, w}  {r, w}
+                                  D2                         {r}
+                                  D3                                  {r, w}  {r, w}  {r}
+                   Figure 15.10 Protection domains.
+                   User ui initiates three processes named self, invest, and job_related
+                   in domains D1, D2, and D3, respectively. Thus invest can access only file
+                   finance, and can only read it.
+                      If the OS did not use protection domains, user ui would have needed read
+                   and write privileges for the files personal, finance, memos, and notes
+                   and a read privilege for the file project. When user ui executed the program
+                   invest of Example 15.2, which is owned by user uj, invest would have been
+                   able to modify files personal, finance, memos, and notes of user ui.
+                   ·
+                      Privacy can be enhanced by permitting a process to access some resources
+                   only during specific phases in its operation. It is facilitated by letting a process
+                   change its protection domain during operation, subject to some conditions. Using
+                   this domain change facility, user ui of Example 15.3 would have been able to use
+                   a single process to perform some personal computing, make some investment
+                   decisions using program invest owned by user uj, and write some memos and
+                   notes using a standard package. The process would be initiated in domain D1.
+                   After performing personal computing in this domain, the process would change
+                   its domain to D2 and call program invest, so that invest could only view
+                   ui's financial details but not modify either those details or any of ui's personal
+                   information. The process would later change to domain D3 for writing memos and
+                   notes, using the standard package. We describe features for change of protection
+                   domain in the Unix and Multics operating systems in Section 15.9.
+                   15.7  CAPABILITIES                                                                    ·
+                   Dennis and Van Horn (1966) proposed the concept of a capability for use in
+                   sharing and protection. A capability is a token representing some access privileges
+                   for an object, where an object is any hardware or software entity in the system,
+                   e.g., a laser printer, a CPU, a file, a program, or a data structure of a program.
+                   A capability is possessed by a process. Its possession gives the process a right to
+                   access the object in a manner that is consistent with the access privileges in the
+                   capability.
+                      Figure 15.11 shows the format of a capability. It consists of two fields--object
+                   id and access privileges. Each object has an unique object id in the system. The
+
+
+
+                                                                           Chapter 15  Security and Protection  631
+                                        Object  Access
+                                            id  privileges
+Figure 15.11 Format of a capability.
+                                P1
+                                                Object            Object
+                        Object  Access          id                address
+                        id      privileges
+        dcap   (alpha)                          alpha
+                        alpha        r
+                            C_list1             Object table               alpha
+                                                            (OT)
+Figure  15.12  Capability-based addressing.
+access privileges field typically contains a bit-encoded access descriptor. A pro-
+cess may possess many capabilities. These are stored in the capability list (C-list)
+discussed earlier in Section 15.6.4.
+When some process Pi creates an object Oi, the OS forms a capability for Oi
+that contains the entire set of access privileges defined in the system, and passes
+this capability to Pi. Using this capability, Pi can request the OS to create subset
+capabilities for Oi that contain fewer access privileges. It can also make copies
+of the capability for Oi that it received from the OS. Thus, many capabilities
+for Oi may exist in the system. Process Pi can share the object Oi with other
+processes by passing capabilities for Oi to other processes. Thus, each process
+possesses capabilities for the objects it owns, and some capabilities passed to it by
+other processes. All these capabilities are obtained through legal means--none
+can be stolen or fraudulently created by a process. This is why a capability is often
+described as an unforgeable token that confers access privileges onto its holder.
+We use the notation Capk(obji) to refer to a capability for obji. The subscript
+of Cap is used simply to distinguish between different capabilities for an object.
+It does not have any other significance. For simplicity, we omit the subscript in
+contexts where a single capability of an object is involved.
+15.7.1 Capability-Based Computer Systems
+A capability-based computer system implements capability-based addressing and
+protection for all objects in the system, ranging from long-life objects like files
+to short-life objects like data structures and copies of programs in memory.
+Many capability-based systems were built for research; the Intel iapx-432 was
+a capability-based commercial system.
+Figure 15.12 is a schematic diagram of capability-based addressing of objects.
+The system does not explicitly associate "memory" with processes; it associates
+C-lists with processes. Each object has an unique id. The object table (OT) is a
+
+
+
+632  Part 4  File  Systems and I/O Management
+                   systemwide table that contains location information for all objects in the system.
+                   The object address field of an OT entry indicates the address of the object in the
+                   computer's primary or secondary memory. Access to an object is implemented
+                   as follows: A process P1 performs an operation <opi> on an object by using an
+                   instruction of the form
+                                                   <opi >  dCap(obji )                    (15.1)
+                   where dCap(obji) is the displacement of Cap(obji) in P1's C-list. The CPU locates
+                   the capability in P1's C-list using the displacement, and verifies that the operation
+                   <opi> is consistent with access privileges in the capability. The object id in the
+                   capability, that is, alpha, is now used to locate alpha's entry in the OT and
+                   the object address found there is used to implement <opi>. Capability-based
+                   addressing can be made more efficient by using buffers analogous to address
+                   translation buffers (see Section 12.2.2) and special cache memories for address
+                   translation.
+                   The capabilities in a C-list may be used to access objects existing anywhere
+                   in the system, i.e., in memory or on disk; the location of an object is immaterial
+                   to a process. This feature permits the OS to move objects around in memory for
+                   better memory management, or move them between memory and disk for cost-
+                   effective access performance, without affecting the manner in which a program
+                   accesses the objects. Thus, long-life objects like files and short-life objects like
+                   data structures can be accessed in a uniform manner.
+                   Operations on Objects and Capabilities  A process may be given some capabilities
+                   by the OS by default when it is created. It may also inherit some capabilities from
+                   its parent process. When the process performs the operation "create a new object,"
+                   the CPU creates a new object and creates a new entry in the OT for it. It puts the
+                   object id and address of the newly created object in the entry. It now creates a
+                   capability containing the entire set of access privileges for the object and puts it
+                   in the C-list of Pi. It also puts dCap(obji) in a register of the CPU. Process Pi saves
+                   the contents of this register for use while accessing obji in future.
+                   All operations performed by a process are subject to access privileges con-
+                   tained in its C-list. The operation of creating an object may itself be subject to
+                   an access privilege; if so, the OS would confer this access privilege through one
+                   of the default capabilities it gives to each process. Table 15.8 lists the operations
+                   a process can perform on objects and capabilities. Thus, a process can create,
+                   modify, destroy, copy, or execute an object if it possesses a capability with the
+                   appropriate access privileges.
+                   Operations on a capability are also subject to access privileges in it. For
+                   example, a process may be able to create a subset capability of Cap(obji) only
+                   if Cap(obji) contains the access privilege "create subset capability." This feature
+                   controls the operations that processes can perform on capabilities. Sharing of
+                   objects occurs when a process passes a capability for an object to another process.
+                   The process receiving the capability enters it in its C-list. Sharing is implicit in
+                   the fact that both C-lists contain a capability for the object. Protection is implicit
+                   in the fact that these capabilities may confer different access privileges on the
+                   processes.
+
+
+
+                                                               Chapter 15  Security   and  Protection  633
+Table 15.8     Permissible   Operations on Objects and Capabilities
+Operations on  objects
+                             ·  Create an object
+                             ·  Read or modify the object
+                             ·  Destroy the object
+                             ·  Copy the object
+                             ·  Execute the object
+Operations on  capabilities
+                             ·  Make a copy of the capability
+                             ·  Create a "subset" capability
+                             ·  Use the capability as a parameter in a function/
+                                procedure call
+                             ·  Pass the capability for use by another process
+                             ·  Delete the capability
+Protection of Capabilities   Protection using capabilities is based on the funda-
+mental assumption that capabilities cannot be forged or tampered with. This
+assumption would be invalid if a process could access its C-list and modify the
+capabilities existing in it. For example, process P1 of Figure 15.12 could alter the
+access privileges field of the capability for alpha to give itself a "write" access
+privilege, and then use the modified capability to modify object alpha. Such tam-
+pering of capabilities is prevented by ensuring that arbitrary operations cannot
+be performed on capabilities. It is implemented using two approaches--tagged
+architectures and capability segments.
+In a computer with a tagged architecture, the run-time representation of
+an entity consists of two fields--a tag field and a value field. The tag field
+describes the type of the entity. The CPU is designed to perform only those
+operations on an entity that are consistent with its tag. This way, only the
+six operations on capabilities that are mentioned in Table 15.8 can be performed
+on a capability, which ensures that a capability cannot be tampered with. In
+a computer using capability segments, data objects and their capabilities are
+stored in different segments, and instructions in the CPU are designed to access
+their operands from an appropriate segment. Only the six operations on capa-
+bilities that are mentioned in Table 15.8 would take their operands from the
+capability segment. This way, arbitrary operations cannot be performed on a
+capability.
+15.7.2 Software Capabilities
+The OS for a non-capability-based computer can implement capabilities in the
+software. The arrangement of objects and capabilities can be analogous to the
+arrangement shown in Figure 15.12. However, manipulation and protection of
+objects cannot be performed by the CPU of the system; it is now performed by
+a component of the kernel called an object manager (OM). A program indicates
+its object manipulation requirements to the object manager by making a call
+
+
+
+634  Part 4  File  Systems and I/O Management
+                                                  Object      Access
+                                                  id          privileges  Number
+                   Figure  15.13  An Amoeba-like capability.
+                   OM (<opi>, Cap(obji)). This call has the same effect as instruction (15.1). The
+                   object manager implements <opi> only if Cap(obji) contains the necessary access
+                   privileges for performing it.
+                       Two important issues in software capabilities are: A process may be able to
+                   bypass the capability-based protection arrangement while accessing objects, and
+                   it may be able to tamper with or fabricate capabilities. How can we prevent a pro-
+                   cess from manipulating objects without going through the object manager? One
+                   way to achieve it is to hide objects from the view of user processes by encrypting
+                   the object table. Now processes will not know the locations of objects. Hence
+                   they will have to depend on the object manager to perform object manipulation.
+                   Tampering with capabilities can also be prevented by using encryption. As an
+                   example, we describe a simplified version of the capability protection scheme
+                   used in the distributed operating system Amoeba.
+                   Capabilities in Amoeba      An object obji, is assigned an encryption key keyi when
+                   it is created. The encryption key is stored in the object table entry of obji. The
+                   Amoeba capability has the format shown in Figure 15.13. The number field con-
+                   tains information that is used to protect the capability. A capability for obji is
+                   created using the following procedure:
+                   1.  The object id and access privileges fields of the capability are set appropriately.
+                   2.  The encryption key keyi is obtained from the object table entry of obji.
+                       Contents of the access privileges field are now concatenated with keyi and
+                       the resulting string is encrypted using keyi. We denote this operation as
+                       Ekeyi (access privileges . keyi), where "." denotes concatenation. The result
+                       of the encryption step is stored in the number field of the capability.
+                       To manipulate obji, a process must submit a capability for obji to the object
+                   manager. The object manager verifies the validity of this capability as follows:
+                   1. The encryption key keyi is obtained from the object table entry of obji.
+                   2. The string access privileges is obtained from the capability and Ekeyi (access
+                       privileges . keyi) is compared with the number field in the capability.
+                       The comparison in Step 2 would fail if the object id or access privileges field
+                   of a capability has been tampered with, so the object manager aborts the process
+                   if the comparison fails.
+                   Comparison with Capability-Based Systems               The major strength of software
+                   capabilities--their independence from the underlying hardware--is also their
+
+
+
+                                                              Chapter 15     Security and Protection  635
+major weakness. Operations such as creation of subset capabilities, which are
+performed by the hardware of a capability-based system, need to be performed
+in the software. Each of these involves a system call to invoke the object manager.
+In addition, prevention of tampering requires validation of a capability before
+use. These requirements lead to substantial time overhead.
+15.7.3 Problem Areas in the Use of Capabilities
+Use of capabilities has three practical problems:
+·  Need for garbage collection: When can an object be destroyed?
+·  Confinement      of  capabilities:  How  to  ensure  that  processes  do  not  pass
+   capabilities to other processes indiscriminately?
+·  Revocation of capabilities: How to cancel a capability or withdraw the access
+   privileges conferred by it?
+Garbage Collection      The owner of an object may prepare subset capabilities for an
+object and pass them to other processes so that they can access the object. Before
+destroying such an object, the owner must know that no process is currently using
+the object. This information can be gained only through synchronization of the
+owner with all users of an object. This approach is impractical when objects are
+created and used at a high rate or when objects with long lifetimes are shared. Two
+problems can arise if objects are destroyed without collecting such information.
+Dangling pointers can exist--that is, an object may be destroyed while some
+capabilities still exist for it--or an object may exist long after capabilities for it
+have been destroyed. Preventing both these situations requires use of expensive
+garbage collection techniques.
+Confinement of Capabilities     Confinement implies restricting the use of a capa-
+bility to a given set of processes. Lack of confinement implies proliferation of
+capabilities throughout the system due to indiscriminate passing of capabilities.
+It complicates garbage collection and prolongs the life of an object. It can also
+undermine protection by violating the need-to-know principle. Confinement can
+be achieved by making the passing of a capability itself an access right: If process
+Pi turns off the "pass" access right in a capability while passing it to Pj, Pj will
+not be able to pass the capability to any other process.
+Revocation of Capabilities   Revocation of all capabilities for an object is the most
+difficult problem in a capability-based system, since there is no way to know which
+processes hold capabilities for the object and there is no method of nullifying a
+capability. However, revocation is possible in the case of software capabilities
+because they are protected through encryption. In Amoeba, all existing capabil-
+ities of an object would be invalidated when the encryption key assigned to the
+object is changed. To selectively revoke some capabilities of an object, the owner
+can invalidate all capabilities of the object by changing the encryption key and
+then issue fresh capabilities to only some processes. However, it is an expensive and
+
+
+
+636  Part 4  File Systems and I/O Management
+             intrusive operation--every process holding a capability for the object is affected
+             when any capability of the object is to be revoked.
+             15.8  CLASSIFICATIONS OF COMPUTER SECURITY                                             ·
+             A  security   policy  specifies  the  roles   of  entities--whether  individuals       or
+             programs--in ensuring that resources of a computer system are used in a legiti-
+             mate manner. In the terminology of Figure 15.1, a security policy would specify
+             roles of system administrators and programs used by them to maintain the
+             authentication and authorization databases and the roles of OS programs that
+             constitute the authentication and authorization services.
+                Ideally, it should be possible to prove that the security policies cannot be
+             undermined. However, such proofs are difficult for the reasons mentioned in
+             Section 15.3, so system developers must use other means to inspire confidence in
+             the security capabilities of systems. These means typically take the form of some
+             evidence that the system implements access control to ensure that resources are
+             used in a legitimate manner, and an auditing capability, which keeps information
+             on how a security-related event has been handled by the relevant entity.
+                The U.S. Department of Defense evolved Trusted Computer System Eval-
+             uation Criteria (TCSEC) to determine how well a computer system conforms
+             with the security and protection requirements. These criteria classify computer
+             systems into four divisions and several levels within each division (see Table 15.9).
+             The classification envisages that a computer system can be partitioned into two
+             parts: The trusted computing base (TCB) is that part of its hardware, software,
+             Table 15.9     Trusted Computer System Evaluation Criteria
+             Division              Description and levels
+             Verified protection   A system must support formal methods for verification of
+             (division A)          security.
+             Mandatory             A system must associate sensitivity labels with data and
+             protection            programs and implement mandatory access control rules
+             (division B)          through a reference monitor (RM).
+                                   · B1: Labeled security protection
+                                   · B2: Structured protection
+                                   · B3: Security domains
+             Discretionary         A system must implement need-to-know protection and
+             protection            provide audit capabilities for accountability of subjects and
+             (division C)          their actions.
+                                   · C1: Discretionary security protection
+                                   · C2: Controlled access protection
+             Minimal               A system that fails the requirements for a higher division.
+             protection
+             (division D)
+
+
+
+                                                         Chapter 15  Security and Protection  637
+and firmware that implements security-related functionalities in the system; the
+remainder of the system does not implement any security-related functions. The
+classification of a computer system depends on whether its TCB meets the require-
+ments of a specific division in the classification and all lower divisions. Division
+D is the lowest security classification; it is awarded to systems that cannot meet
+the requirements of any of the other divisions.
+The TCB of a division C computing system possesses three key capabili-
+ties. First, it permits a user to specify which other users can access the data
+or programs owned by him; it performs authentication of users to provide this
+capability. Second, it facilitates auditing of security-related events in the system
+by keeping a record of events such as authentication attempts, file open/close,
+actions of system administrators, etc. Third, it provides object reuse protection to
+ensure that a user's data cannot be accidentally accessed by another user. It is
+implemented by clearing the memory allocated to a data object before returning
+it to the TCB's pool of free objects or free memory. Levels C1 and C2 of division
+C correspond to the different protection granularities. A system satisfies level C2
+of the classification if a user can identify each individual user who can access
+the files owned by him; otherwise, the system satisfies level C1. Thus, a system
+implementing coarse-grained protection would earn a level C1 classification (see
+Section 15.6.1).
+To earn a division B classification, a computer system must assign sensitivity
+labels to all data and programs that reflect their security and protection levels,
+and must use these labels to validate every access of a data or program, which is
+called mandatory access control. It must also control the propagation of access
+rights. The system developer must furnish a security policy model on which the
+TCB is based. This model must employ a reference monitor (RM) to validate each
+reference to a data or program by a user or his process. The reference monitor
+should be tamper-proof and should be small so that its completeness can be
+analyzed and tested.
+Division B consists of three levels, which differ in the extent of mandatory
+protection, resistance to penetration, support for trusted facility management,
+and structuring of the TCB into protection-critical and non-protection-critical
+elements. In level B1, mandatory access control must exist, and the system admin-
+istrator should be able to audit the actions of select users or actions related to
+select programs or data objects. In level B2, mandatory access control should be
+extended to all users and all data and program objects. The system should be
+resistant to penetration, and should provide support for system administrator
+and operator functions. The system should also provide a trusted path between a
+user and the TCB. This path is typically used when a user wishes to log in. Its use
+eliminates masquerading attacks by a Trojan horse program (see Section 15.2). In
+level B3, the system should be highly resistant to penetration and must support a
+system administrator in collecting information on imminent security attacks and
+terminating events that could be parts of such attacks.
+To qualify for the division A rating, a system has to have the capabili-
+ties of level B3, and its developer has to furnish a formal proof of its security
+policy.
+
+
+
+638  Part 4  File Systems and I/O Management
+             15.9    CASE STUDIES IN SECURITY AND PROTECTION                                      ·
+             15.9.1 MULTICS
+             MULTICS        provides  64      protection  domains    that  are  organized    as  concen-
+             tric rings. The rings are numbered from the innermost to the outermost (see
+             Figure 15.14). The access privileges of a domain include access privileges of all
+             higher-numbered domains. In addition, the domain may have a few other access
+             privileges of its own. Each procedure of a program is assigned to a protection
+             domain and can be executed only by a process that is in the same protection
+             domain.
+             The code component of a process may consist of procedures in different
+             protection domains. An interrupt is raised when a process executing in protection
+             domain Di invokes a procedure that is assigned to a protection domain Dj, where
+             Dj = Di. To execute the procedure, the protection domain of the process should
+             be changed to Dj. The kernel checks whether this is permissible according to the
+             rule for change of protection domain. A simplified view of this rule is as follows:
+             Change of protection domain is permitted if a process running in some domain
+             Di invokes a procedure that exists in a higher-numbered domain. However, to
+             enter a lower-numbered domain a process must invoke a specially designated
+             procedure called a gate. An attempt to invoke any other procedure in a lower-
+             numbered layer fails and the process is aborted. If a procedure call satisfies this
+             rule, the protection domain of the process is temporarily changed to the domain
+             in which the invoked procedure exists. The invoked procedure executes in this
+             protection domain and accesses resources according to the access privileges of
+             the domain. At return, the protection domain of the process is reset to its earlier
+             value, i.e., to Di.
+             The      MULTICS         protection     structure  is   complex    and  incurs  substantial
+             execution overhead due to checks made at a procedure call. Because of the
+             requirement that access privileges of a protection domain should include access
+             privileges of all higher-numbered domains, it is not possible to use domains
+             whose access privileges are disjoint. For example, domains D1, D2, and D3 of
+             Figure 15.10 cannot be implemented in MULTICS since domain D3 is disjoint
+             with domains D1 and D2. This feature restricts users' freedom in specifying
+             protection requirements.
+                                              Gates                  Ring 63
+                                                          Ring  ...
+                                                          0
+             Figure  15.14  MULTICS protection rings.
+
+
+
+                                                             Chapter 15  Security and Protection  639
+15.9.2 Unix
+As mentioned in Section 15.5, Unix employs encryption for password security.
+Under an option, it uses a shadow passwords file that is accessible only to the
+root, which forces an intruder to use an exhaustive attack to crack passwords.
+Each Unix user has an unique id in the system. The system administrator creates
+nonoverlapping groups of users and assigns a unique group id to each group. The
+credential of a user is composed of his user id and group id. It is stored in the
+passwords table and becomes the authentication token of the user after the user
+is authenticated.
+Unix defines three user classes--file owner, user group, and other users--and
+provides only three access rights, r, w, and x, representing read, write, and execute,
+respectively. A 3-bit bit-encoded access descriptor is used for each user class and
+the access control list (ACL) contains access descriptors for three user classes in
+the sequence: file owner, user group, and other users. This way, the ACL requires
+only 9 bits; it is stored in the inode of a file (see Section 13.14.1). The identity of
+the file owner is stored in another field of the file's inode. Figure 15.15 shows the
+Unix ACLs as reported in a directory listing. The file sigma can be read by any
+user in the system, but can be written only by its owner. delta is a read-only file
+for all user classes, while phi has the read, write, and execute privileges only for
+its owner.
+The access privileges of a Unix process are determined by its uid. When the
+kernel creates a process, it sets the uid of the process to the id of the user who
+created it. Thus the process operates in a protection domain determined by the
+id of the user who created it. Unix changes the protection domain of a process
+under two conditions--when the process makes a system call, and when the setuid
+or setgid feature is used. A process has two distinct running states--user running
+and kernel running (see Section 5.4.1). While in the user-running state, a process
+has access to the memory space and other resources allocated to it, and to files
+in the file system according to its uid. The process makes a transition to the
+kernel-running state through a system call. In this state, it can access kernel data
+structures and also contents of the entire memory. It returns to the user-running
+state when it returns from the system call. Thus, a change of protection domain
+occurs implicitly when a process makes a system call and when it returns from a
+system call.
+The setuid feature can be used in two ways. A process can make a system call
+setuid <id> to change its uid to <id>, and another setuid system call with its
+own id to revert to its original uid. Alternatively, uid can be changed implicitly
+when a process performs an exec in order to execute a program. The latter usage
+                   rw-r--r--                          sigma
+                   r--r--r--                          delta
+                   rwx------                          phi
+                   file                  user  other
+                   owner group                 users
+Figure 15.15  Unix access control list.
+
+
+
+640  Part 4  File Systems and I/O Management
+             is realized as follows: Let a program P be stored in a file named P. If the owner
+             of P requests the kernel that P be executed under the setuid feature, the kernel
+             sets the setuid bit in the inode of file P. When P is exec'ed by some process that
+             has an execute permission for it, the kernel notices that the setuid bit of file P
+             is set, and temporarily changes the uid of the process executing P to the uid
+             of P's owner. This action effectively puts the process into a protection domain
+             whose access privileges are identical with the access privileges of P's owner. This
+             feature can be used to avoid the privacy violation discussed in Example 15.2 as
+             follows: User uj sets the setuid bit of the program invest. User ui provides
+             uj with a read access to the file finance before invoking invest. Now, the
+             program invest executes with the uid of uj. Thus, invest can access user
+             ui's file finance, but it cannot access any other files owned by ui. The setgid
+             feature analogously provides a method of temporarily changing the group id of
+             a process.
+             15.9.3 Linux
+             Linux authenticates a user at login time by adding a "salt" value to his pass-
+             word and encrypting the result through MD5. Under an option, it employs a
+             shadow passwords file that is accessible only to the root. Additionally, Linux pro-
+             vides pluggable authentication modules (PAMs), through which an application can
+             authenticate a user at any time through a dynamically loadable library of authenti-
+             cation modules. This arrangement provides flexibility because the authentication
+             scheme used in an application can be changed without having to recompile the
+             application. An application developer can use PAMs to enhance application secu-
+             rity in several ways--to employ a password encryption scheme of his own choice,
+             to set resource limits to users so that they cannot consume an excessive amount
+             of a resource to launch a denial-of-service attack, and to allow specific users to
+             log in only at specific times from specific locations.
+             The system administrator maintains a PAM configuration file for each appli-
+             cation that is authorized to employ PAM. Each PAM configuration file specifies
+             how authentication is to be performed and what actions, such as mounting
+             of home directories or logging of the authentication event, are to be taken
+             after a user is authenticated. The configuration file also names the mechanism
+             that is to be employed when a user wishes to change his password. PAM per-
+             mits several authentication modules to be "stacked"; these modules are invoked
+             one after another. An application can use this facility to authenticate a user
+             through several means such as passwords and biometric identification, to enhance
+             security.
+             Linux provides file access protection based on user id and group id of a
+             process. When a server such as the NFS accesses a file on behalf of a user, file
+             protection should be performed using the user id and group id of the user rather
+             than those of the server. To facilitate this, Linux provides the system calls fsuid
+             and fsgid through which a server can temporarily assume the identity of its
+             client.
+
+
+
+                                                              Chapter 15  Security and Protection  641
+As described in Section 4.8.2, the Linux kernel supports loadable kernel
+modules. This feature has been employed to provide enhanced access controls
+through loadable kernel modules called the Linux security modules (LSM). Use
+of LSMs permits many different security models to be supported. The basic
+schematic of LSM is simple: The kernel invokes an access validation function
+before accessing an object. An LSM provides this function, which may permit or
+deny the access to go through. The Security Enhanced Linux (SELinux) of the
+U.S. National Security Agency has built additional access control mechanisms
+through LSM, which provide mandatory access control.
+The Linux kernel provides the exec-shield patch, which enables protection
+against exploitation of buffer overflows and data structure overwriting to launch
+security attacks.
+15.9.4 Security and Protection in Windows
+The Windows security model has several elements of C2- and B2-class systems
+according to the TCSEC criteria (see Section 14.5.2). It provides discretionary
+access control, object reuse protection, auditing of security-related events, a secu-
+rity reference monitor (SRM) that enforces access control, and a trusted path
+for authentication that would defeat masquerading attacks launched through
+a Trojan horse. Among other notable features, it provides security for client­
+server computing through access tokens, which are analogous to capabilities (see
+Section 15.7).
+Windows security is based around the use of security identifiers (SIDs); a
+security identifier is assigned to a user, a host, or a domain, which is composed
+of several hosts. The important fields in an SID are a 48-bit identifier authority
+value, which identifies the host or domain that issued the SID, and a few 32-bit
+subauthority or relative identifier (RID) values that are used primarily to generate
+unique SIDs for entities created by the same host or domain.
+Each process and thread has an access token that identifies its security con-
+text. (Recall that we use the term process as being generic to both a process and a
+thread.) An access token is generated when a user logs on, and it is associated with
+the initial process created for the user. A process can create more access tokens
+through the LogonUser function. An access token contains a user account SID
+and a group account SID. These fields are used by the security reference monitor
+to decide whether the process holding the access token can perform certain oper-
+ations on an object. An access token also contains a privilege array indicating any
+special privileges held by the process, such as a privilege for creating backups of
+files, impersonating a client, and shutting down a host. It may also contain a few
+superprivileges for loading and unloading drivers, taking ownership of objects,
+and creating new access tokens.
+An object such as a file has a security descriptor, which contains the object
+owner's id, a discretionary access control list (DACL) and a system access control
+list (SACL). The DACL is used to specify which users can access the object
+in what manner, while the SACL is used to generate an audit log of operations
+performed on the object. Both DACL and SACL are lists of access control entries
+
+
+
+642  Part 4  File Systems and I/O Management
+             (ACEs); however, an ACE plays different roles in these lists. An ACE in a DACL
+             either indicates that the specified user is allowed to access the object, or indicates
+             that the user is forbidden access to the object. This arrangement permits medium-
+             grained protection and yet helps to make the DACL compact; however, the entire
+             DACL has to be processed to determine whether a specific user is allowed to access
+             the object in a specific manner. An object that can contain other objects, such
+             as a directory, is called a container object; we will call the objects contained in it
+             its "child objects". An ACE in the DACL of a container object contains flags to
+             indicate how the ACE is to apply to a child object--identically, not at all, or in
+             some other manner. An important option is that the ACE may be inherited by a
+             child object that is itself a container object, but it may not be further inherited by
+             objects that may be created within the child object. This feature helps to limit the
+             propagation of access control privileges. An ACE in the SACL indicates which
+             operation on the object by which users or groups of users should be audited. An
+             entry is made in the audit log when any of these operations is performed.
+                The impersonation feature in the Windows security model provides security in
+             client­server computing. When a server performs some operations on objects on
+             behalf of a client, these operations should be subject to the access privileges of the
+             client rather than those of the server; otherwise, the client may be able to realize
+             operations on these objects that exceed its own access privileges. Analogously, the
+             security audit log that is generated when the server accesses an object on behalf
+             of a client should contain the identity of the client rather than that of the server.
+             Both these requirements are satisfied by letting the server temporarily assume the
+             identity of the client through impersonation.
+                Impersonation is implemented as follows: When a client invokes a server, it
+             indicates the kind of impersonation it wishes the server to perform--the server
+             cannot perform impersonation without the client's consent. If impersonation is
+             enabled, an impersonation token is created from the client's token and given to
+             the server. The server presents the impersonation token, rather than its own
+             access token, while performing operations on objects. Effectively, the access token
+             and the impersonation token act like the capabilities discussed in Section 15.7.
+             Further, to ensure security, the server may create a restricted token from an imper-
+             sonation token. Such a token would contain a subset of the privileges contained in
+             the impersonation token--it is like a subset capability discussed in Section 15.7.
+                The following new security features were added in Windows Vista to make
+             it a more secure OS:
+             ·  Defeating buffer overflow attacks in Intel 80x86 architectures: Recall from
+                Section 15.2.2 that the stack grows downward in memory in processors with
+                these architectures. Vista places the return pointers and parameters of a func-
+                tion call higher in the stack than local data to prevent their corruption by an
+                overflow. Attempts at executing code smuggled in as data are defeated using
+                the no-execute (NX) feature of processors by flagging parts of memory used
+                to hold data as no-execute zones.
+             ·  Detecting heap corruption: An intruder can launch a buffer overflow attack
+                in the heap as well. To prevent it, metadata such as pointers in the heap are
+
+
+
+                                                               Chapter 15  Security and Protection         643
+   encoded by performing an exclusive-OR with a random number. Corruption
+   of the heap, through overflow or otherwise, would change some of the meta-
+   data, hence its decryption would fail. The kernel aborts a process when this
+   happens.
+·  Preventing access to system code: Parts of system code are loaded randomly in
+   any one of 256 possible locations in memory, to make it difficult for an intruder
+   to access them. Function pointers that exist in memory for long durations
+   are obfuscated by performing an exclusive-OR with random numbers.
+·  Preventing misuse of privileges: System services do not run in the system
+   account as they used to in earlier versions of Windows. They run in less priv-
+   ileged accounts. Processes initiated by system administrators also run in less
+   privileged modes and the kernel prompts the administrator to authenticate
+   himself when his process is about to execute a function that requires adminis-
+   trator privileges. If authentication is successful, other windows on the screen
+   are blanked out to prevent spoofing of the user interface and mouse.
+·  Network access protection: Unless a computer conforms to the norms set by
+   the administrator, it is either blocked from accessing the network or provided
+   only limited access to it.
+15.10  SUMMARY                                                                                                  ·
+A fundamental goal of an OS is to ensure non-           to disrupt legitimate use of resources by users.
+interference in the computations and resources          These means include a Trojan horse, virus, or worm
+of users. However, users need to share some of          or use of a buffer overflow. Threats imposed by
+their resources, such as programs and data stored       intruders are thwarted by exercising caution while
+in files, with collaborators. Hence an important        loading unknown programs into a computer and
+aspect of implementing noninterference is know-         by removing security flaws.
+ing what accesses to a resource are legitimate and      The authentication service of an OS keeps
+what accesses constitute interference. Threats of       names of registered users, and information used
+interference can arise outside a system or within it.   to identify them, in a database. It uses encryption,
+Measures employed to counter such threats consti-       which is an algorithmic transformation of data, to
+tute security and protection, respectively. Authenti-   prevent intruders from accessing and misusing the
+cation is the key technique of security; it determines  authentication database. Block cipher and stream
+whether a person is a registered user of a com-         cipher are widely used encryption techniques; the
+puter system. Authorization is the key technique        encryption standards digital encryption standard
+of protection. It determines whether a user is per-     (DES)  and  advanced  encryption       standard    (AES)
+mitted to access a resource. In this chapter we         have been widely deployed.
+studied implementation of the authentication and        The    authorization          service  of  an  OS  has  a
+authorization techniques.                               protection structure, which contains two kinds of
+   A person or program posing a threat of inter-        information. An access privilege represents a user's
+ference is called an intruder. Intruders may employ     right to access a specific file in a specific man-
+various means that exploit security flaws in a com-     ner. The protection information of a file indicates
+puter system, either to masquerade as a user or         which users can access the file in what manner.
+
+
+
+644          Part 4  File Systems and I/O Management
+Organization of the protection structure controls                    A computer system is assigned a security clas-
+the amount of discrimination a user can exer-                    sification based on how well it conforms to the
+cise while specifying which users can access his                 security and protection requirements. Its ability
+files in what manner; it is called granularity of                to  provide  fine-grained         protection  and  support
+protection.  Access  control      lists,  capability  lists,     the system administrator in implementing secu-
+and protection domains are alternative protection                rity policies are key determinants of its security
+structures.                                                      classification.
+TEST  YOUR CONCEPTS                                                                                                            ·
+15.1  Classify each of the following statements as true                    j. Password aging limits exposure of a password
+      or false:                                                            to attacks by an intruder.
+      a. The authentication mechanism is used to dis-                      k. Two    capabilities  of  an  object  may  confer
+      tinguish between users and nonusers of a                             identical access privileges on their holders.
+      computer system.                                                     l. Encryption is used to protect software capa-
+      b. An authentication token contains the list of                      bilities.
+      access privileges held by a user.                              15.2  Which of the following is a protection violation?
+      c. The authorization database is used by secu-                       a. User X who possesses a write privilege for
+      rity mechanisms.                                                     file alpha of user Y writes invalid data into
+      d. Encryption        of   information   ensures       its            alpha.
+      integrity.                                                           b. A nonuser manages to read the data stored in
+      e. Masquerading is a security attack.                                a file beta in a computer system.
+      f. A virus launches a security attack only if                        c. User X manages to read a file alpha of user
+      explicitly downloaded by a user.                                     Y even though he does not possess a read
+      g. The buffer overflow technique can be used to                      privilege for it.
+      launch a security attack.                                            d. None of (a)­(c).
+      h. When encrypted by a stream cipher, identi-                  15.3  Pair the related items in each column:
+      cal substrings in a plaintext always lead to                         i. Unix-style access            i. Fine-grained
+      identical substrings in its ciphertext.                              control list                    protection
+      i. To  authenticate      a  user    at  login  time,  an             ii. Access control matrix       ii. Coarse-grained
+      OS         decrypts  the    encrypted   form    of    the            (ACM)                           protection
+      user's password stored in the authentication                         iii. Protection domains         iii. Medium-grained
+      database and compares the result with the                                                            protection
+      password presented by the user.
+EXERCISES                                                                                                                      ·
+15.1  Explain the procedure to be followed for making                15.4  Formulate a security rule that will eliminate the
+      changes in the authentication and authorization                      security flaw of Example 15.1.
+      databases of Figure 15.1.                                      15.5  Describe   the  conditions  under   which    a   cho-
+15.2  List the security attacks that cannot be pre-                        sen plaintext attack can be launched against
+      vented by encryption.                                                passwords.
+15.3  Discuss whether encryption can ensure secrecy,                 15.6  Comment on the impact of granularity of pro-
+      privacy, and integrity of data.                                      tection on sizes of various protection structures.
+
+
+
+                                                                          Chapter 15  Security and Protection            645
+          Suggest methods of reducing the size of the          15.11      An OS creates servers to offer various services to
+          access control list (ACL) when medium-grained                   users. While handling a service request made by
+          protection is to be implemented.                                a user, a server may need to access resources on
+15.7      A file is encrypted by using an encryption func-                behalf of the user. Such resource accesses must
+          tion E and a key k. No other protection checks                  be subject to access privileges of the user, rather
+          are made by the file system. If the user wishes                 than access privileges of the server.
+          to share the file with another user, he makes E                 a. The following scheme is proposed for this
+          and k available to the other user. Compare the                  purpose: When a user invokes a service, he
+          above scheme for protecting files with a protec-                sends his own authentication token to the
+          tion scheme using an access control list, on the                server. When the server requests access to
+          basis of (a) ease of granting access privileges to              a resource, it presents the user's authentica-
+          users or withdrawing them, and (b) granting                     tion token, rather than its own authentica-
+          different kinds of access privileges to the same                tion token, to the authorization service. This
+          file.                                                           way, its use of resources would be subject to
+15.8      Some old operating systems used to associate                    the user's access privileges. How to ensure
+          passwords with files and permit any program                     that an intruder cannot exploit this arrange-
+          that presented a valid password for a file to                   ment to masquerade as a user? (Hint: Ensure
+          access it. Compare this protection scheme with a                that a user's authentication token cannot be
+          capability-based protection scheme on the same                  forged.)
+          criteria as in Exercise 15.7.                                   b. Design a scheme using capabilities.
+15.9      Capability review is the process by which an OS      15.12      Explain how buffers analogous to address trans-
+          finds all processes that possess a capability for a             lation  buffers   used  in  virtual  memories  (see
+          specific object obji. Describe how a review oper-               Section 12.2.2.2) or a cache memory can be used
+          ation can be performed in a system that uses                    in the schematic of Figure 15.12 to speed up
+          hardware or software capabilities.                              object accesses.
+15.10     An OS performs validation of software capabili-      15.13      Different nodes of a distributed system may con-
+          ties as follows: When a new capability is created,              currently create new objects. Describe a scheme
+          the object manager stores a copy of the capa-                   that can ensure uniqueness of object ids in a
+          bility for its own use. When a process wishes to                distributed OS.
+          perform an operation on an object, the capa-         15.14      Study relevant Unix literature and describe the
+          bility presented by it is compared with stored                  provisions in Unix for (a) finding the id of the
+          capabilities. The operation is permitted only if a              user who owns a file, and (b) deciding whether a
+          matching capability exists with the object man-                 user belongs to the same user group as the owner
+          ager. Is this scheme foolproof ? Does it permit                 of a file.
+          selective revocation of access privileges?
+BIBLIOGRAPHY                                                                                                                   ·
+Ludwig (1998) describes different kinds of viruses, while      Shannon (1949) is the classical work in computer
+Ludwig (2002) discusses e-mail viruses. Spafford (1989)        security. It discusses the diffusion and confusion prop-
+discusses the Morris Internet worm that caused havoc in        erties of cyphers. Denning and Denning (1979) and
+1988, and Berghel (2001) describes the Code Red worm           Lempel (1979) contain good overviews of data security
+of 2001.                                                       and cryptology, respectively. Schneier (1996) and Fergu-
+Landwehr (1981) discusses formal models for com-               son and Schneier (2003) are texts on cryptography, while
+puter security. Voydock and Kent (1983) discuss security       Pfleeger and Pfleeger (2003) is a text on computer secu-
+issues in distributed systems and practical techniques         rity. Stallings (2003) discusses cryptography and network
+used to tackle them.                                           security.
+
+
+
+646          Part 4  File Systems and I/O Management
+     Naor and Yung (1989) discusses one-way hash func-             RC4," Proceedings of 8th Annual Workshop on
+tions. Rivest (1991) describes the MD4 message digest              Selected Areas in Cryptography.
+function. The goal of MD4 is to make it computation-          8.   Lampson, B. W. (1971): "Protection," Operating
+ally infeasible to produce two messages with an identical          Systems Review, 8 (1), 18­24.
+message digest, or to produce a message with a given          9.   Landwehr, C. E. (1981): "Formal models for
+message digest. MD4 is extremely fast and resists crypt-           computer security," Computing Surveys, 13 (3),
+analysis  attacks  successfully.  Rivest  (1992)  describes        247­278.
+MD5, which is more conservative and a little slower than      10.  Lempel, A. (1979): "Cryptology in transition,"
+MD4. Preneel (1998) describes cryptographic primitives             Computing Surveys, 11 (4), 286­303.
+for information authentication.                               11.  Levy, H. M. (1984): Capability-Based Computer
+     Access  matrix-based   protection    and     protection       Systems, Digital Press, Burlington, Mass.
+domains are discussed in Lampson (1971) and Popek             12.  Ludwig, M. A. (1998): The Giant Black Book of
+(1974). Organick (1972) discusses the MULTICS pro-                 Computer Viruses, 2nd ed., American Eagle,
+tection rings. The setuid feature of Unix is described in          Show Low, Ariz.
+most books on Unix.                                           13.  Ludwig, M. A. (2002): The Little Black Book of
+     Dennis and Van Horn (1966) is a widely refer-                 Email Viruses, American Eagle, Show Low,
+enced paper on the concept of capabilities. Levy (1984)            Ariz.
+describes a number of capability-based systems. Mul-          14.  Menezes, A., P. van Oorschot, and S. Vanstone
+lender and Tanenbaum (1986) and Tanenbaum (2001)                   (1996): Handbook of Applied Cryptography, CRC
+describe the software capabilities of Amoeba. Ander-               Press, Boca Raton, Fla.
+son et al. (1986) discusses software capabilities with a      15.  Mullender, S. P., and A. Tanenbaum (1986): "The
+provision for containment.                                         design of a capability-based distributed operating
+     The Trusted Computer System Evaluation Criteria               system," Computer Journal, 29 (4).
+(TCSEC) of the U.S. Department of Defense offers a            16.  Nachenberg, C. (1997): "Computer
+classification of security features of computer systems.           virus­antivirus coevolution," Communications of
+It is described in DoD (1985).                                     the ACM, 40, 46­51.
+     Spafford et al. (2003) discusses security in Solaris,    17.  Naor, M., and M. Yung (1989): "Universal
+Mac OS, Linux, and FreeBSD operating systems. Wright               one­way hash functions and their cryptographic
+et al. (2002) discusses the Linux security modules. Russi-         applications," Proceedings of the 21st Annual
+novich and Solomon (2005) discusses security features              ACM Symposium on Theory of Computing,
+in Windows.                                                        33­43.
+                                                              18.  Oppliger, R. (1997): "Internet security: firewalls
+1.   Anderson, M., R. D. Pose, and C. S. Wallace                   and beyond," Communications of the ACM,
+     (1986): "A password-capability system,"                       40 (5), 92­102.
+     The Computer Journal, 29 (1), 1­8.                       19.  Organick, E. I. (1972): The MULTICS System,
+2.   Berghel, H. (2001): "The Code Red worm,"                      MIT Press, Cambridge, Mass.
+     Communications of the ACM, 44 (12), 15­19.               20.  Pfleeger, C. P., and S. Pfleeger (2003): Security in
+3.   Denning, D. E., and P. J. Denning (1979):                     computing, Prentice Hall, Englewood Cliffs, N.J.
+     "Data security," Computing Surveys, 11 (4).              21.  Popek, G. J. (1974): " Protection structures,"
+4.   Dennis, J. B., and E. C. Van Horn (1966):                     Computer, 7 (6), 22­33.
+     "Programming semantics for multiprogrammed               22.  Preneel, B. (1998): Cryptographic primitives for
+     computations," Communications of the ACM,                     Information Authentication--State of the art in
+     9 (3).                                                        applied cryptography, LNCS 1528, Springer
+5.   DoD (1985): Trusted Computer System                           Verlag, 1998.
+     Evaluation Criteria, U.S. Department of Defense.         23.  Rivest, R. (1991): "The MD4 message digest
+6.   Ferguson, N., and B. Schneier (2003): Practical               algorithm," Proceedings of Advances in
+     Cryptography, John Wiley, New York.                           Cryptology--Crypto'90, Lecture Notes in
+7.   Fluhrer, S., I. Mantin, and A. Shamir (2001):                 Computer Science, volume 537, Spinger-Verlag,
+     "Weaknesses in the key scheduling algorithm of                303­311.
+
+
+
+                                                                Chapter 15    Security and Protection             647
+24.  Rivest, R. (1992): "The MD5 Message digest            31.  Stiegler, H. G. (1979): "A structure for access
+     algorithm," Request for Comments, RFC 1321.                control lists," Software--Practice and Experience,
+25.  Russinovich, M. E., and D. A. Solomon (2005):              9 (10), 813­819.
+     Microsoft Windows Internals, 4th ed., Microsoft       32.  Tanenbaum, A. S. (2001): Modern Operating
+     Press, Redmond, Wash.                                      Systems, 2nd ed., Prentice Hall, Englewood
+26.  Schneier, B. (1996): Applied cryptography, 2nd             Cliffs, N.J.
+     ed., John Wiley, New York.                            33.  Voydock, V. L., and S. T. Kent (1983): "Security
+27.  Shannon, C. E. (1949): "Communication Theory               mechanisms in high level network protocols,"
+     of Secrecy Systems," Bell System Technical                 Computing Surveys, 15 (2), 135­171.
+     Journal, October 1949.                                34.  Wofsey, M. M. (1983): Advances in Computer
+28.  Spafford, E. H. (1989): "The Internet worm: crisis         Security Management, John Wiley, New York.
+     and aftermath," Communications of the ACM, 32         35.  Wright, C., C. Cowan, S. Smalley, J. Morris, and
+     (6), 678­687.                                              G. Kroah-Hartman (2002): "Linux Security
+29.  Spafford, G., S. Garfinkel, and A. Schwartz                modules: General security support for the Linux
+     (2003): Practical UNIX and Internet Security, 3rd          kernel," Eleventh USENIX Security
+     ed., O'Reilly, Sebastopol, Calif.                          Symposium.
+30.  Stallings, W. (2003): Cryptography and Network
+     Security: Principles and Practice, 3rd ed., Prentice
+     Hall, N.J.
+
+
+
+
+
+
+                                                              part                        5
+Distributed Operating
+                       Systems
+A distributed  system  consists  of  several   nodes,  where  each  node  is           a
+computer system with its own clock and memory, that can communicate
+among themselves through a network. A distributed operating system
+exploits these features as follows: It facilitates a user to structure his applica-
+tion as a distributed computation, which consists of several processes located in
+different nodes of the distributed system. To service all processes in the system
+efficiently, it balances computational loads in various computers by transferring
+processes between nodes, if necessary. This way, processes of an application can
+compete for CPUs in different nodes, which provides both computation speedup
+within an application and better performance of the system. Also, the OS uses
+the redundancy of resources and network links in the system to provide high
+reliability.
+To realize these benefits of computation speedup, performance, and relia-
+bility, the OS has to perform control functions like scheduling and deadlock
+handling on a systemwide basis. Because of the distributed nature of the system,
+a distributed OS cannot use the notions of time and state to perform control
+functions the way a conventional OS uses them, so it performs its control func-
+tions in a distributed manner, i.e., through processes in several computers that
+work in close coordination to make decisions.
+A fault in a distributed system does not halt the complete system. It may affect
+only some computations, or only some parts of a computation, so the distributed
+OS uses special reliability techniques to minimize the impact of a fault. Presence
+of the network has several implications for the distributed OS. Communication
+over the network is slow, so it can seriously erode system performance if processes
+access their files over the network. To prevent this, distributed file systems employ
+techniques that reduce network traffic during file processing. The networking
+component also makes the OS susceptible to security attacks, so it employs special
+techniques to provide security.
+                                                                                             649
+
+
+
+650  Part 5  Distributed  Operating  Systems
+                                                  Road Map for Part 5
+                                                               Distributed
+                                                                  Operating
+                                                                  Systems
+                                                  Theoretical Issues         Distributed
+                                                  in Distributed       System Security
+                                                  Systems
+                                     Distributed  Recovery and
+                                     Control      Fault Tolerance
+                                     Algorithms
+                                                  Distributed
+                                                  File Systems
+             Schematic diagram showing the order in which chapters of this part should be covered
+             in a course.
+             Chapter 16: Distributed Operating Systems
+             A distributed system consists of hardware components such as computer systems
+             and the network, and software components such as network protocols, distributed
+             computations, and the operating system. This chapter discusses important features
+             of these components and the manner in which these features influence the compu-
+             tation speedup, reliability, and performance that can be achieved in a distributed
+             system.
+             Chapter 17: Theoretical Issues in Distributed Systems
+             Time and state are two key notions used in a conventional OS. However, these
+             notions cannot be used in the same manner in a distributed system because it
+             contains several computer systems, each with its own clock and memory, that
+             communicate through messages that incur unpredictable communication delays.
+             This chapter discusses practical alternatives to the traditional notions of time
+             and state. These alternative notions are used in the design of distributed control
+             algorithms and recovery schemes used in a distributed OS.
+             Chapter 18: Distributed Control Algorithms
+             A distributed OS uses a distributed control algorithm to implement a control
+             function. The algorithm involves actions in several nodes of the distributed
+
+
+
+                                                                                       Chapter 15  651
+system. This chapter describes the notions of correctness of a distributed control
+algorithm, and presents algorithms for performing five control functions in a
+distributed OS--mutual exclusion, deadlock handling, leader election, scheduling,
+and termination detection.
+Chapter 19: Recovery and Fault Tolerance
+A fault may disrupt operation in a system by damaging the states of some data
+and processes. The focus of recovery is to restore some data or process(es) to a
+consistent state such that normal operation can be restored. Fault tolerance pro-
+vides uninterrupted operation of a system despite faults. This chapter discusses
+recovery and fault tolerance techniques used in a distributed operating system.
+Resiliency, which is a technique for minimizing the impact of a fault, is also
+discussed.
+Chapter 20: Distributed File Systems
+A distributed file system stores files in several nodes of a distributed system, so a
+process and a file used by it might be in different nodes of a system. Performance
+and reliability of a distributed file system are determined by the manner in which
+it organizes access to a required file. This chapter discusses different methods of
+organizing access to files and directories located in various nodes of a system, and
+techniques such as file caching and stateless file servers that are used to ensure
+good performance and reliability, respectively.
+Chapter 21: Distributed System Security
+Presence of the network makes a distributed system susceptible to security attacks
+such as tampering of messages and masquerading, which can be launched through
+interprocess messages. This chapter discusses authentication and message security
+measures used in distributed operating systems to thwart such attacks. Methods
+of verifying authenticity of data are also discussed.
+
+
+

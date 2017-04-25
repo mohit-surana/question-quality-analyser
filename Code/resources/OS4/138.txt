@@ -1,0 +1,703 @@
+Implementing Processes
+In the operating system's view, a process is a unit of computational work. Hence
+the kernel's primary task is to control operation of processes to provide effective
+utilization of the computer system. Accordingly, the kernel allocates resources
+to a process, protects the process and its resources from interference by other
+processes, and ensures that the process gets to use the CPU until it completes its
+operation.
+
+
+
+118  Part 2  Process Management
+                                                          Event
+                                                       Context save
+                                                      Event handling
+                                                       Scheduling
+                                                       Dispatching
+                                                      Exit from kernel
+             Figure 5.3  Fundamental   functions  of  the kernel for controlling  processes.
+                 The kernel is activated when an event, which is a situation that requires
+             the kernel's attention, leads to either a hardware interrupt or a system call
+             (see Section 2.3). The kernel now performs four fundamental functions to control
+             operation of processes (see Figure 5.3):
+             1.  Context save: Saving CPU state and information concerning resources of
+                 the process whose operation is interrupted.
+             2.  Event handling: Analyzing the condition that led to an interrupt, or the
+                 request by a process that led to a system call, and taking appropriate actions.
+             3.  Scheduling: Selecting the process to be executed next on the CPU.
+             4.  Dispatching:     Setting  up     access  to     resources        of  the  scheduled  process
+                 and     loading  its  saved      CPU  state     in  the  CPU         to  begin  or  resume  its
+                 operation.
+                 The kernel performs the context save function to save information concern-
+             ing the interrupted process. It is followed by execution of an appropriate event
+             handling routine, which may inhibit further operation of the interrupted pro-
+             cess, e.g., if this process has made a system call to start an I/O operation, or
+             may enable operation of some other process, e.g., if the interrupt was caused
+             by completion of its I/O operation. The kernel now performs the scheduling
+             function to select a process and the dispatching function to begin or resume its
+             operation.
+                 As discussed earlier in Sections 3.5.1 and 3.6, to perform scheduling an
+             operating system must know which processes require the CPU at any moment.
+             Hence the key to controlling operation of processes is to monitor all processes
+             and know what each process is doing at any moment of time--whether execut-
+             ing on the CPU, waiting for the CPU to be allocated to it, waiting for an I/O
+             operation to complete, or waiting to be swapped into memory. The operating
+             system monitors the process state to keep track of what a process is doing at any
+             moment.
+
+
+
+                                                                 Chapter 5    Processes  and  Threads  119
+Here in Section 5.2, we will see what is meant by a process state, and we
+will look at the different states of a process; and the arrangements by which the
+operating system maintains information about the state of a process. We do not
+discuss scheduling in this chapter. It is discussed later in Chapter 7.
+5.2.1 Process States and State Transitions
+An operating system uses the notion of a process state to keep track of what a
+process is doing at any moment.
+Definition 5.2 Process state     The indicator that describes the nature of the
+current activity of a process.
+The kernel uses process states to simplify its own functioning, so the num-
+ber of process states and their names may vary across OSs. However, most OSs
+use the four fundamental states described in Table 5.3. The kernel considers
+a process to be in the blocked state if it has made a resource request and the
+request is yet to be granted, or if it is waiting for some event to occur. A CPU
+should not be allocated to such a process until its wait is complete. The ker-
+nel would change the state of the process to ready when the request is granted
+or the event for which it is waiting occurs. Such a process can be considered
+for scheduling. The kernel would change the state of the process to running
+when it is dispatched. The state would be changed to terminated when exe-
+cution of the process completes or when it is aborted by the kernel for some
+reason.
+A conventional computer system contains only one CPU, and so at most
+one process can be in the running state. There can be any number of processes
+in the blocked, ready, and terminated states. An OS may define more process
+states to simplify its own functioning or to support additional functionalities like
+swapping. We discuss this aspect in Section 5.2.1.1.
+Table 5.3   Fundamental Process States
+State       Description
+Running     A CPU is currently executing instructions in the process code.
+Blocked     The process has to wait until a resource request made by it is granted,
+            or it wishes to wait until a specific event occurs.
+Ready       The process wishes to use the CPU to continue its operation;
+            however, it has not been dispatched.
+Terminated  The operation of the process, i.e., the execution of the program
+            represented by it, has completed normally, or the OS has aborted it.
+
+
+
+120  Part 2  Process Management
+                  Process State Transitions     A state transition for a process Pi is a change in its
+                  state. A state transition is caused by the occurrence of some event such as the
+                  start or end of an I/O operation. When the event occurs, the kernel determines
+                  its influence on activities in processes, and accordingly changes the state of an
+                  affected process.
+                     When a process Pi in the running state makes an I/O request, its state has to
+                  be changed to blocked until its I/O operation completes. At the end of the I/O
+                  operation, Pi's state is changed from blocked to ready because it now wishes to use
+                  the CPU. Similar state changes are made when a process makes some request that
+                  cannot immediately be satisfied by the OS. The process state is changed to blocked
+                  when the request is made, i.e., when the request event occurs, and it is changed
+                  to ready when the request is satisfied. The state of a ready process is changed to
+                  running when it is dispatched, and the state of a running process is changed to
+                  ready when it is preempted either because a higher-priority process became ready
+                  or because its time slice elapsed (see Sections 3.5.1 and 3.6). Table 5.4 summarizes
+                  causes of state transitions.
+                     Figure 5.4 diagrams the fundamental state transitions for a process. A new
+                  process is put in the ready state after resources required by it have been allocated.
+                  It may enter the running, blocked, and ready states a number of times as a result
+                  of events described in Table 5.4. Eventually it enters the terminated state.
+·
+     Example 5.2  Process State Transitions
+                  Consider the time-sharing system of Example 3.2, which uses a time slice of
+                  10 ms. It contains two processes P1 and P2. P1 has a CPU burst of 15 ms
+                  followed by an I/O operation that lasts for 100 ms, while P2 has a CPU burst
+                  of 30 ms followed by an I/O operation that lasts for 60 ms. Execution of P1 and
+                  P2 was described in Figure 3.7. Table 5.5 illustrates the state transitions during
+                  operation of the system. Actual execution of programs proceeds as follows:
+                  System operation starts with both processes in the ready state at time 0. The
+                  scheduler selects process P1 for execution and changes its state to running. At
+                  10 ms, P1 is preempted and P2 is dispatched. Hence P1's state is changed to
+                  ready and P2's state is changed to running. At 20 ms, P2 is preempted and P1 is
+                  dispatched. P1 enters the blocked state at 25 ms because of an I/O operation.
+                  P2 is dispatched because it is in the ready state. At 35 ms, P2 is preempted
+                  because its time slice elapses; however, it is dispatched again since no other
+                  process is in the ready state. P2 initiates an I/O operation at 45 ms. Now both
+                  processes are in the blocked state.
+                  ·
+                  5.2.1.1 Suspended Processes
+                  A kernel needs additional states to describe the nature of the activity of a process
+                  that is not in one of the four fundamental states described earlier. Consider a
+
+
+
+                                                           Chapter 5        Processes  and  Threads  121
+Table 5.4  Causes   of Fundamental State Transitions for a Process
+State transition    Description
+ready  running      The process is dispatched. The CPU begins or resumes
+                    execution of its instructions.
+blocked  ready      A request made by the process is granted or an event for
+                    which it was waiting occurs.
+running  ready      The process is preempted because the kernel decides to
+                    schedule some other process. This transition occurs either
+                    because a higher-priority process becomes ready, or
+                    because the time slice of the process elapses.
+running  blocked    The process in operation makes a system call to indicate
+                    that it wishes to wait until some resource request made by
+                    it is granted, or until a specific event occurs in the system.
+                    Five major causes of blocking are:
+                    ·  Process requests an I/O operation
+                    ·  Process requests a resource
+                    ·  Process wishes to wait for a specified interval of time
+                    ·  Process waits for a message from another process
+                    ·  Process waits for some action by another process.
+running terminated  Execution of the program is completed. Five primary
+                    reasons for process termination are:
+                    ·  Self-termination: The process in operation either
+                       completes its task or realizes that it cannot operate
+                       meaningfully and makes a "terminate me" system call.
+                       Examples of the latter condition are incorrect or
+                       inconsistent data, or inability to access data in a
+                       desired manner, e.g., incorrect file access privileges.
+                    ·  Termination by a parent: A process makes a
+                       "terminate Pi" system call to terminate a child process
+                       Pi, when it finds that execution of the child process is
+                       no longer necessary or meaningful.
+                    ·  Exceeding resource utilization: An OS may limit the
+                       resources that a process may consume. A process
+                       exceeding a resource limit would be aborted by the
+                       kernel.
+                    ·  Abnormal conditions during operation: The kernel
+                       aborts a process if an abnormal condition arises due
+                       to the instruction being executed, e.g., execution of an
+                       invalid instruction, execution of a privileged
+                       instruction, arithmetic conditions like overflow, or
+                       memory protection violation.
+                    ·  Incorrect interaction with other processes: The kernel
+                       may abort a process if it gets involved in a deadlock.
+
+
+
+122  Part 2  Process Management
+                                                       Running            Completion      Termi-
+                                                                                            nated
+                                        Dispatching                       Resource or
+                                                                          wait request
+                                                       Preemption
+                                 New            Ready                     Blocked
+                         process                       Resource granted
+                                                       or wait completed
+             Figure 5.4  Fundamental state transitions for a process.
+             Table  5.5          Process State         Transitions in a Time-Sharing System
+                                                                                            New states
+             Time                Event                 Remarks                     P1              P2
+             0                                         P1 is scheduled             running         ready
+             10                  P1 is preempted       P2 is scheduled             ready           running
+             20                  P2 is preempted       P1 is scheduled             running         ready
+             25                  P1 starts I/O         P2 is scheduled             blocked         running
+             35                  P2 is preempted       --                          blocked         ready
+                                                       P2 is scheduled             blocked         running
+             45                  P2 starts I/O         --                          blocked         blocked
+             process that was in the ready or the blocked state when it got swapped out of
+             memory. The process needs to be swapped back into memory before it can resume
+             its activity. Hence it is no longer in the ready or blocked state; the kernel must
+             define a new state for it. We call such a process a suspended process. If a user
+             indicates that his process should not be considered for scheduling for a specific
+             period of time, it, too, would become a suspended process. When a suspended
+             process is to resume its old activity, it should go back to the state it was in when
+             it was suspended. To facilitate this state transition, the kernel may define many
+             suspend states and put a suspended process into the appropriate suspend state.
+                 We restrict the discussion of suspended processes to swapped processes and
+             use two suspend states called ready swapped and blocked swapped. Accordingly,
+             Figure 5.5 shows process states and state transitions. The transition ready 
+             ready swapped or blocked  blocked swapped is caused by a swap-out action.
+             The reverse state transition takes place when the process is swapped back into
+             memory. The blocked swapped  ready swapped transition takes place if the
+             request for which the process was waiting is granted even while the process is in a
+             suspended state, for example, if a resource for which it was blocked is granted to it.
+             However, the process continues to be swapped out. When it is swapped back into
+             memory, its state changes to ready and it competes with other ready processes for
+
+
+
+                                                                            Chapter 5  Processes  and  Threads  123
+                                        Running           Completion         Termi-
+                                                                             nated
+                      Dispatching                         Resource or
+                                                          wait request
+                                        Preemption
+             New                       Resource granted
+             process            Ready  or wait completed  Blocked
+                      Swap-out         Swap-in  Swap-out           Swap-in
+                                Ready  Resource granted   Blocked
+                      swapped          or wait completed  swapped
+Figure  5.5  Process states and state transitions using two swapped states.
+the CPU. A new process is put either in the ready state or in the ready swapped
+state depending on availability of memory.
+5.2.2 Process Context and the Process Control Block
+The kernel allocates resources to a process and schedules it for use of the CPU.
+Accordingly, the kernel's view of a process consists of two parts:
+·   Code, data, and stack of the process, and information concerning memory
+    and other resources, such as files, allocated to it.
+·   Information concerning execution of a program, such as the process state, the
+    CPU state including the stack pointer, and some other items of information
+    described later in this section.
+These two parts of the kernel's view are contained in the process context and
+the process control block (PCB), respectively (see Figure 5.6). This arrange-
+ment enables different OS modules to access relevant process-related information
+conveniently and efficiently.
+Process Context       The process context consists of the following:
+1.  Address space of the process: The code, data, and stack components of the
+    process (see Definition 5.1).
+2.  Memory allocation information: Information concerning memory areas allo-
+    cated to a process. This information is used by the memory management unit
+    (MMU) during operation of the process (see Section 2.2.2).
+3.  Status of file processing activities: Information about files being used, such
+    as current positions in the files.
+
+
+
+124  Part 2  Process Management
+                                 Memory  Resource        File
+                                  info   info            pointers
+                                                                          Processid
+                                                                          Process state
+                                                                          GPR contents
+                                  Code   Data            Stack            PC value
+                                        Process context            Process control block
+                                                                   (PCB)
+             Figure 5.6  Kernel's view of a process.
+             4.  Process interaction information: Information necessary to control interac-
+                 tion of the process with other processes, e.g., ids of parent and child processes,
+                 and interprocess messages sent to it that have not yet been delivered to it.
+             5.  Resource information: Information concerning resources allocated to the
+                 process.
+             6.  Miscellaneous information: Miscellaneous information needed for operation
+                 of a process.
+                 The OS creates a process context by allocating memory to the process, loading
+             the process code in the allocated memory and setting up its data space. Informa-
+             tion concerning resources allocated to the process and its interaction with other
+             processes is maintained in the process context throughout the life of the pro-
+             cess. This information changes as a result of actions like file open and close and
+             creation and destruction of data by the process during its operation.
+             Process     Control  Block  (PCB)           The process control block (PCB) of a process
+             contains three kinds of information concerning the process--identification infor-
+             mation such as the process id, id of its parent process, and id of the user who
+             created it; process state information such as its state, and the contents of the
+             PSW and the general-purpose registers (GPRs); and information that is useful
+             in controlling its operation, such as its priority, and its interaction with other
+             processes. It also contains a pointer field that is used by the kernel to form PCB
+             lists for scheduling, e.g., a list of ready processes. Table 5.6 describes the fields of
+             the PCB data structure.
+                 The priority and state information is used by the scheduler. It passes the id
+             of the selected process to the dispatcher. For a process that is not in the running
+             state, the PSW and GPRs fields together contain the CPU state of the process
+             when it last got blocked or was preempted (see Section 2.2.1). Operation of the
+             process can be resumed by simply loading this information from its PCB into the
+             CPU. This action would be performed when this process is to be dispatched.
+                 When a process becomes blocked, it is important to remember the reason.
+             It is done by noting the cause of blocking, such as a resource request or an
+
+
+
+                                                                       Chapter 5  Processes  and  Threads  125
+Table 5.6      Fields  of the Process Control Block (PCB)
+PCB field              Contents
+Process id             The unique id assigned to the process at its creation.
+Parent, child ids      These ids are used for process synchronization, typically for
+                       a process to check if a child process has terminated.
+Priority               The priority is typically a numeric value. A process is
+                       assigned a priority at its creation. The kernel may change
+                       the priority dynamically depending on the nature of the
+                       process (whether CPU-bound or I/O-bound), its age, and
+                       the resources consumed by it (typically CPU time).
+Process state          The current state of the process.
+PSW                    This is a snapshot, i.e., an image, of the PSW when the
+                       process last got blocked or was preempted. Loading this
+                       snapshot back into the PSW would resume operation of the
+                       process. (See Fig. 2.2 for fields of the PSW.)
+GPRs                   Contents of the general-purpose registers when the process
+                       last got blocked or was preempted.
+Event information      For a process in the blocked state, this field contains
+                       information concerning the event for which the process is
+                       waiting.
+Signal information     Information concerning locations of signal handlers (see
+                       Section 5.2.6).
+PCB pointer            This field is used to form a list of PCBs for scheduling
+                       purposes.
+I/O operation, in the event information field of the PCB. Consider a process Pi
+that is blocked on an I/O operation on device d. The event information field in
+Pi's PCB indicates that it awaits end of an I/O operation on device d. When the
+I/O operation on device d completes, the kernel uses this information to make
+the transition blocked  ready for process Pi.
+5.2.3 Context Save, Scheduling, and Dispatching
+The context save function performs housekeeping whenever an event occurs. It
+saves the CPU state of the interrupted process in its PCB, and saves information
+concerning its context (see Section 5.2.2). Recall that the interrupted process
+would have been in the running state before the event occurred. The context
+save function changes its state to ready. The event handler may later change the
+interrupted process's state to blocked, e.g., if the current event was a request for
+I/O initiation by the interrupted process itself.
+The scheduling function uses the process state information from PCBs to
+select a ready process for execution and passes its id to the dispatching function.
+The dispatching function sets up the context of the selected process, changes its
+state to running, and loads the saved CPU state from its PCB into the CPU.
+
+
+
+126  Part 2  Process Management
+                  To prevent loss of protection, it flushes the address translation buffers used by
+                  the memory management unit (MMU). Example 5.3 illustrates the context save,
+                  scheduling, and dispatching functions in an OS using priority-based scheduling.
+·
+     Example 5.3  Context Save, Scheduling, and Dispatching
+                  An OS contains two processes P1 and P2, with P2 having a higher priority
+                  than P1. Let P2 be blocked on an I/O operation and let P1 be running. The
+                  following actions take place when the I/O completion event occurs for the I/O
+                  operation of P2:
+                     1.  The context save function is performed for P1 and its state is changed
+                         to ready.
+                     2.  Using the event information field of PCBs, the event handler finds that
+                         the I/O operation was initiated by P2, so it changes the state of P2 from
+                         blocked to ready.
+                     3.  Scheduling is performed. P2 is selected because it is the highest-priority
+                         ready process.
+                     4.  P2's state is changed to running and it is dispatched.
+                  ·
+                  Process Switching      Functions 1, 3, and 4 of Example 5.3 collectively perform
+                  switching between processes P1 and P2. Switching between processes also occurs
+                  when a running process becomes blocked as a result of a request or gets preempted
+                  at the end of a time slice. An event does not lead to switching between processes if
+                  occurrence of the event either (1) causes a state transition only in a process whose
+                  priority is lower than that of the process whose operation is interrupted by the
+                  event or (2) does not cause any state transition, e.g., if the event is caused by a
+                  request that is immediately satisfied. In the former case, the scheduling function
+                  selects the interrupted process itself for dispatching. In the latter case, scheduling
+                  need not be performed at all; the dispatching function could simply change the
+                  state of the interrupted process back to running and dispatch it.
+                     Switching between processes involves more than saving the CPU state of
+                  one process and loading the CPU state of another process. The process context
+                  needs to be switched as well. We use the term state information of a process to
+                  refer to all the information that needs to be saved and restored during process
+                  switching. Process switching overhead depends on the size of the state information
+                  of a process. Some computer systems provide special instructions to reduce the
+                  process switching overhead, e.g., instructions that save or load the PSW and all
+                  general-purpose registers, or flush the address translation buffers used by the
+                  memory management unit (MMU).
+                     Process switching has some indirect overhead as well. The newly sched-
+                  uled process may not have any part of its address space in the cache, and so
+                  it may perform poorly until it builds sufficient information in the cache (see
+                  Section 2.2.3). Virtual memory operation is also poorer initially because address
+
+
+
+                                                                   Chapter 5     Processes  and  Threads  127
+translation buffers in the MMU do not contain any information relevant to the
+newly scheduled process.
+5.2.4 Event Handling
+The following events occur during the operation of an OS:
+1.   Process creation event: A new process is created.
+2.   Process termination event: A process completes its operation.
+3.   Timer event: The timer interrupt occurs.
+4.   Resource request event: Process makes a resource request.
+5.   Resource release event: A process releases a resource.
+6.   I/O initiation request event: Process wishes to initiate an I/O operation.
+7.   I/O completion event: An I/O operation completes.
+8.   Message send event: A message is sent by one process to another.
+9.   Message receive event: A message is received by a process.
+10.  Signal send event: A signal is sent by one process to another.
+11.  Signal receive event: A signal is received by a process.
+12.  A  program   interrupt:  The  current  instruction        in  the  running  process
+     malfunctions.
+13.  A  hardware    malfunction  event:  A     unit  in  the       computer's  hardware
+     malfunctions.
+     The timer, I/O completion, and hardware malfunction events are caused by
+situations that are external to the running process. All other events are caused
+by actions in the running process. We group events 1­9 into two broad classes for
+discussing actions of event handlers, and discuss events 10 and 11 in Section 5.2.6.
+The kernel performs a standard action like aborting the running process when
+events 12 or 13 occur.
+Events Pertaining to Process Creation, Termination, and Preemption               When a
+user issues a command to execute a program, the command interpreter of the user
+interface makes a create_ process system call with the name of the program as a
+parameter. When a process wishes to create a child process to execute a program,
+it itself makes a create_ process system call with the name of the program as a
+parameter.
+     The event handling routine for the create_ process system call creates a PCB
+for the new process, assigns a unique process id and a priority to it, and puts this
+information and id of the parent process into relevant fields of the PCB. It now
+determines the amount of memory required to accommodate the address space
+of the process, i.e., the code and data of the program to be executed and its stack,
+and arranges to allocate this much memory to the process (memory allocation
+techniques are discussed later in Chapters 11 and 12). In most operating systems,
+some standard resources are associated with each process, e.g., a keyboard, and
+standard input and output files; the kernel allocates these standard resources to
+the process at this time. It now enters information about allocated memory and
+resources into the context of the new process. After completing these chores,
+
+
+
+128  Part 2  Process Management
+             it sets the state of the process to ready in its PCB and enters this process in an
+             appropriate PCB list.
+             When a process makes a system call to terminate itself or terminate a child
+             process, the kernel delays termination until the I/O operations that were initiated
+             by the process are completed. It now releases the memory and resources allocated
+             to it. This function is performed by using the information in appropriate fields of
+             the process context. The kernel now changes the state of the process to terminated.
+             The parent of the process may wish to check its status sometime in future, so the
+             PCB of the terminated process is not destroyed now; it will be done sometime after
+             the parent process has checked its status or has itself terminated. If the parent
+             of the process is already waiting for its termination, the kernel must activate
+             the parent process. To perform this action, the kernel takes the id of the parent
+             process from the PCB of the terminated process, and checks the event information
+             field of the parent process's PCB to find whether the parent process is waiting for
+             termination of the child process (see Section 5.2.2).
+             The process in the running state should be preempted if its time slice elapses.
+             The context save function would have already changed the state of the running
+             process to ready before invoking the event handler for timer interrupts, so the
+             event handler simply moves the PCB of the process to an appropriate scheduling
+             list. Preemption should also occur when a higher-priority process becomes ready,
+             but that is realized implicitly when the higher-priority process is scheduled so an
+             event handler need not perform any explicit action for it.
+             Events Pertaining to Resource Utilization  When a process requests a resource
+             through a system call, the kernel may be able to allocate the resource immediately,
+             in which case event handling does not cause any process state transitions, so the
+             kernel can skip scheduling and directly invoke the dispatching function to resume
+             operation of the interrupted process. If the resource cannot be allocated, the event
+             handler changes the state of the interrupted process to blocked and notes the id
+             of the required resource in the event information field of the PCB. When a process
+             releases a resource through a system call, the event handler need not change the
+             state of the process that made the system call. However, it should check whether
+             any other processes were blocked because they needed the resource, and, if so, it
+             should allocate the resource to one of the blocked processes and change its state
+             to ready. This action requires a special arrangement that we will discuss shortly.
+             A system call to request initiation of an I/O operation and an interrupt
+             signaling end of the I/O operation lead to analogous event handling actions.
+             The state of the process is changed to blocked when the I/O operation is initiated
+             and the cause of blocking is noted in the event information field of its PCB; its state
+             is changed back to ready when the I/O operation completes. A request to receive a
+             message from another process and a request to send a message to another process
+             also lead to analogous actions.
+             Event Control Block (ECB)        When an event occurs, the kernel must find the
+             process whose state is affected by it. For example, when an I/O completion
+             interrupt occurs, the kernel must identify the process awaiting its completion.
+             It can achieve this by searching the event information field of the PCBs of all
+
+
+
+                                                                   Chapter 5  Processes   and Threads       129
+                                         Event description
+                                         Process id
+                                         ECB pointer
+Figure  5.7  Event control block (ECB).
+processes. This search is expensive, so operating systems use various schemes to
+speed it up. We discuss a scheme that uses event control blocks (ECBs).
+As shown in Figure 5.7, an ECB contains three fields. The event description
+field describes an event, and the process id field contains the id of the process
+awaiting the event. When a process Pi gets blocked for occurrence of an event
+ei, the kernel forms an ECB and puts relevant information concerning ei and Pi
+into it. The kernel can maintain a separate ECB list for each class of events like
+interprocess messages or I/O operations, so the ECB pointer field is used to enter
+the newly created ECB into an appropriate list of ECBs.
+When an event occurs, the kernel scans the appropriate list of ECBs to find an
+ECB with a matching event description. The process id field of the ECB indicates
+which process is waiting for the event to occur. The state of this process is changed
+to reflect the occurrence of the event. The following example illustrates use of
+ECBs for handling an I/O completion event; their use in handling interprocess
+messages is described in Section 9.2.2. The event information field of the PCB now
+appears redundant; however, we retain it because the kernel may need to know
+which event a process is blocked on, for example, while aborting the process.
+                                                                                                            ·
+Use of ECB for Handling I/O Completion                                                    Example      5.4
+The actions of the kernel when process Pi requests an I/O operation on some
+device d, and when the I/O operation completes, are as follows:
+1.      The kernel creates an ECB, and initializes it as follows:
+        a. Event description := end of I/O on device d.
+        b. Process awaiting the event := Pi.
+2.      The newly created ECB (let us call it ECB j) is added to a list of ECBs.
+3.      The state of Pi is changed to blocked and the address of ECB j is put into
+        the "Event information" field of Pi's PCB (see Figure 5.8).
+4.      When the interrupt `End of I/O on device d' occurs, ECB j is located by
+        searching for an ECB with a matching event description field.
+5.      The id of the affected process, i.e., Pi, is extracted from ECB j. The PCB of
+        Pi is located and its state is changed to ready.
+                                                                                       ·
+Summary of Event Handling  Figure 5.9 illustrates event handling actions of the
+kernel described earlier. The block action always changes the state of the pro-
+cess that made a system call from ready to blocked. The unblock action finds a
+process whose request can be fulfilled now and changes its state from blocked
+
+
+
+130  Part 2  Process Management
+                                     PCB
+                                          Pi                                    ECBj
+                                                                      End of I/O on d
+                                     blocked                                    Pi
+                                   Event information
+             Figure 5.8   PCB-ECB interrelationship.
+                     Resource or
+                          message
+                          request
+                          I/O                         Block
+                          request
+                          Create or
+                          terminate
+                          process
+                          Timer                                       Schedule         Dispatch
+                          interrupt
+                          I/O
+                     completion
+                          Send                        Unblock
+                          message
+                          Resource
+                          release
+             Figure  5.9  Event handling  actions     of the kernel.
+             to ready. A system call for requesting a resource leads to a block action if the
+             resource cannot be allocated to the requesting process. This action is followed
+             by scheduling and dispatching because another process has to be selected for use
+             of the CPU. The block action is not performed if the resource can be allocated
+             straightaway. In this case, the interrupted process is simply dispatched again.
+             When a process releases a resource, an unblock action is performed if some other
+             process is waiting for the released resource, followed by scheduling and dispatch-
+             ing because the unblocked process may have a higher priority than the process
+             that released the resource. Again, scheduling is skipped if no process is unblocked
+             because of the event.
+
+
+
+                                                             Chapter 5              Processes and Threads  131
+5.2.5 Sharing, Communication, and Synchronization
+         Between Processes
+Processes of an application need to interact with one another because they work
+toward a common goal. Table 5.7 describes four kinds of process interaction. We
+summarize their important features in the following.
+Data Sharing     A shared variable may get inconsistent values if many processes
+update it concurrently. For example, if two processes concurrently execute the
+statement a:=    a+1, where a is a shared variable, the result may depend on the
+way the kernel interleaves their execution--the value of a may be incremented
+by only 1! (We discuss this problem later in Section 6.2.) To avoid this problem,
+only one process should access shared data at any time, so a data access in one
+process may have to be delayed if another process is accessing the data. This is
+called mutual exclusion. Thus, data sharing by concurrent processes incurs the
+overhead of mutual exclusion.
+Message Passing        A process may send some information to another process in
+the form of a message. The other process can copy the information into its own
+data structures and use it. Both the sender and the receiver process must anticipate
+the information exchange, i.e., a process must know when it is expected to send or
+receive a message, so the information exchange becomes a part of the convention
+or protocol between processes.
+Synchronization      The logic of a program may require that an action ai should
+be  performed    only  after  some    action  aj  has  been  performed.          Synchroniza-
+tion between processes is required if these actions are performed in different
+processes--the process that wishes to perform action ai is made to wait until
+another process performs action aj.
+Signals  A signal is used to convey an exceptional situation to a process so
+that it may handle the situation through appropriate actions. The code that a
+process wishes to execute on receiving a signal is called a signal handler. The
+signal mechanism is modeled along the lines of interrupts. Thus, when a signal
+Table 5.7      Four    Kinds of Process Interaction
+Kind of interaction    Description
+Data sharing           Shared data may become inconsistent if several processes modify
+                       the data at the same time. Hence processes must interact to
+                       decide when it is safe for a process to modify or use shared data.
+Message passing        Processes exchange information by sending messages to one
+                       another.
+Synchronization        To fulfill a common goal, processes must coordinate their
+                       activities and perform their actions in a desired order.
+Signals                A signal is used to convey occurrence of an exceptional situation
+                       to a process.
+
+
+
+132  Part 2  Process Management
+                  is sent to a process, the kernel interrupts operation of the process and executes a
+                  signal handler, if one has been specified by the process; otherwise, it may perform
+                  a default action. Operating systems differ in the way they resume a process after
+                  executing a signal handler.
+                     Example     5.5  illustrates  sharing,  communication,  and  synchronization
+                  between processes in the real-time application of Example 5.1. Implementation
+                  of signals is described in Section 5.2.6.
+·
+     Example 5.5  Process Interaction in a Real-time Data Logging Application
+                  In the real-time data logging application of Example 5.1, buffer_area is shared
+                  by processes copy_sample and record_sample. If a variable no_of_samples
+                  _in_buffer is used to indicate how many samples are currently in the buffer,
+                  both these processes would need to update no_of_samples_in_buffer, so its
+                  consistency should be protected by delaying a process that wishes to update
+                  it if another process is accessing it. These processes also need to synchronize
+                  their activities such that a new sample is moved into an entry in buffer_area
+                  only after the previous sample contained in the entry is written into the file,
+                  and contents of a buffer entry are written into the file only after a new sample
+                  is moved into it.
+                     These processes also need to know the size of the buffer, i.e., how many
+                  samples it can hold. Like no_of_samples_in_buffer, a variable size could be
+                  used as shared data. However, use as shared data would incur the overhead of
+                  mutual exclusion, which is not justified because the buffer size is not updated
+                  regularly; it changes only in exceptional situations. Hence these processes could
+                  be coded to use the size of the buffer as a local data item buf_size. Its value
+                  would be sent to them by the process data_logger through messages. Process
+                  data_logger would also need to send signals to these processes if the size of the
+                  buffer has to be changed.
+                  ·
+                  5.2.6 Signals
+                  A signal is used to notify an exceptional situation to a process and enable it
+                  to attend to it immediately. A list of exceptional situations and associated signal
+                  names or signal numbers are defined in an OS, e.g., CPU conditions like overflows,
+                  and conditions related to child processes, resource utilization, or emergency com-
+                  munications from a user to a process. The kernel sends a signal to a process when
+                  the corresponding exceptional situation occurs. Some kinds of signals may also be
+                  sent by processes. A signal sent to a process because of a condition in its own activ-
+                  ity, such as an overflow condition in the CPU, is said to be a synchronous signal,
+                  whereas that sent because of some other condition is said to be an asynchronous
+                  signal.
+                     To utilize signals, a process makes a register_handler system call specifying a
+                  routine that should be executed when a specific signal is sent to it; this routine is
+
+
+
+                                                                 Chapter 5    Processes     and Threads       133
+called a signal handler. If a process does not specify a signal handler for a signal,
+the kernel executes a default handler that performs some standard actions like
+dumping the address space of the process and aborting it.
+A  process        Pi  wishing  to  send  a  signal  to  another  process  Pj  invokes  the
+library function signal with two parameters: id of the destination process, i.e.,
+Pj, and the signal number. This function uses the software interrupt instruction
+<SI_instrn> <interrupt_code> to make a system call named signal. The event
+handling routine for the signal call extracts the parameters to find the signal
+number. It now makes a provision to pass the signal to Pj and returns. It does not
+make any change in the state of the sender process, i.e., Pi.
+Signal handling in a process is implemented along the same lines as inter-
+rupt handling in an OS. In Section 2.2 we described how the interrupt hardware
+employs one interrupt vector for each class of interrupts, which contains the
+address of a routine that handles interrupts of that class. A similar arrangement
+can be used in each process. The signal vectors area would contain a signal vector
+for each kind of signal, which would contain the address of a signal handler. When
+a signal is sent to a process, the kernel accesses its signal vectors area to check
+whether it has specified a signal handler for that signal. If so, it would arrange to
+pass control to the handler; otherwise, it would execute its own default handler
+for that signal.
+Signal handling becomes complicated if the process to which a signal is sent
+is in the blocked state. The kernel would have to change its state temporarily to
+ready so that it could execute a signal handler, after which it would have to change
+the state back to blocked. Some operating systems prefer a simpler approach that
+merely notes the arrival of a signal if the destination process is in the blocked
+state, and arranges to execute the signal handler when the process becomes ready
+and gets scheduled.
+Example 5.6 illustrates how a signal is handled by a process.
+                                                                                                              ·
+Signal Handling                                                                             Example      5.6
+Figure 5.10 illustrates the arrangement used for handling signals. The code
+of process Pi contains a function named sh1, whose last instruction is a
+"return from function" instruction, which pops an address off the stack and
+passes control to the instruction with this address. Process Pi makes a library
+call register_handler(sig1,sh1) to register sh1 as the signal han-
+dler for signal sig1. The library routine register_handler makes the
+system call register_handler. While handling this call, the kernel accesses the
+PCB of Pi, obtains the start address of the signal vectors area, and enters
+the address sh1 in the signal vector of signal sig1. Control now returns
+to Pi. The solid arrows in Figure 5.10(a) indicate addresses in the kernel's
+data structures, while the dashed arrows indicate how the CPU is switched
+to the kernel when the system call is made and how it is switched back
+to Pi.

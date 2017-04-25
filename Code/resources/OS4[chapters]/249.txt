@@ -1,0 +1,2150 @@
+Scheduling
+
+
+     7  Chapter
+        Scheduling
+        A scheduling policy decides which process should be given the CPU at the
+             present moment. This decision influences both system performance and
+             user service. In Chapter 3, we saw how priority-based scheduling pro-
+        vides good system performance, and how round-robin scheduling with time-slicing
+        provides good response times to processes. The scheduling policy in a modern
+        operating system must provide the best combination of user service and system
+        performance to suit its computing environment.
+             A scheduling policy employs three fundamental techniques to achieve the
+        desired combination of user service and system performance. Assignment of prior-
+        ities to processes can provide good system performance, as in a multiprogramming
+        system; or provide favored treatment to important functions, as in a real-time sys-
+        tem. Variation of time slice permits the scheduler to adapt the time slice to the
+        nature of a process so that it can provide an appropriate response time to the
+        process, and also control its own overhead. Reordering of processes can improve
+        both system performance, measured as throughput, and user service, measured
+        as turnaround times or response times of processes. We discuss the use of these
+        techniques and a set of scheduling heuristics in modern operating systems.
+             Performance analysis of a scheduling policy is a study of its performance. It
+        can be used for comparing performance of two scheduling policies or for deter-
+        mining values of key system parameters like the size of a process queue. We discuss
+        different approaches to performance analysis of scheduling policies.
+        7.1  SCHEDULING TERMINOLOGY AND CONCEPTS                                              ·
+        Scheduling, very generally, is the activity of selecting the next request to be ser-
+        viced by a server. Figure 7.1 is a schematic diagram of scheduling. The scheduler
+        actively considers a list of pending requests for servicing and selects one of them.
+        The server services the request selected by the scheduler. This request leaves the
+        server either when it completes or when the scheduler preempts it and puts it
+        back into the list of pending requests. In either situation, the scheduler selects
+        the request that should be serviced next. From time to time, the scheduler admits
+        one of the arrived requests for active consideration and enters it into the list
+        of pending requests. Actions of the scheduler are shown by the dashed arrows
+228
+
+
+
+                                                                            Chapter       7  Scheduling    229
+                                                      Request is preempted
+                      Scheduler
+             Request            Request is            Request is
+             arrives            admitted              scheduled             Server
+                                                                                             Request
+                                                                                             is completed
+                      Arrived               Pending
+                      requests              requests
+Figure  7.1  A schematic of scheduling.
+in Figure 7.1. Events related to a request are its arrival, admission, scheduling,
+preemption, and completion.
+In an operating system, a request is the execution of a job or a process, and
+the server is the CPU. A job or a process is said to arrive when it is submitted by a
+user, and to be admitted when the scheduler starts considering it for scheduling.
+An admitted job or process either waits in the list of pending requests, uses the
+CPU, or performs I/O operations. Eventually, it completes and leaves the system.
+The scheduler's action of admitting a request is important only in an operating
+system with limited resources; for simplicity, in most of our discussions we assume
+that a request is admitted automatically on arrival.
+In Chapter 3 we discussed how use of priorities in the scheduler provides
+good system performance while use of round-robin scheduling provides good user
+service in the form of fast response. Modern operating systems use more complex
+scheduling policies to achieve a suitable combination of system performance and
+user service.
+Table 7.1 lists the key terms and concepts related to scheduling. The service
+time of a job or a process is the total of CPU time and I/O time required by it
+to complete its execution, and the deadline, which is specified only in real-time
+systems (see Section 3.7), is the time by which its servicing should be completed.
+Both service time and deadline are an inherent property of a job or a process.
+The completion time of a job or a process depends on its arrival and service times,
+and on the kind of service it receives from the OS.
+We group scheduling concepts into user-centric concepts and system-centric
+concepts to characterize the OS's concern for either user service or system
+performance.
+User-Centric Scheduling Concepts            In an interactive environment, a user inter-
+acts with a process during its operation--the user makes a subrequest to a process
+and the process responds by performing actions or by computing results. Response
+time is the time since submission of a subrequest to the time its processing is com-
+pleted. It is an absolute measure of service provided to a subrequest. Turnaround
+time is an analogous absolute measure of service provided to a job or process.
+
+
+
+230  Part 2  Process Management
+             Table 7.1           Scheduling Terms and Concepts
+             Term or concept          Definition or description
+             Request related
+             Arrival time             Time when a user submits a job or process.
+             Admission time           Time when the system starts considering a job or
+                                      process for scheduling.
+             Completion time          Time when a job or process is completed.
+             Deadline                 Time by which a job or process must be completed to
+                                      meet the response requirement of a real-time
+                                      application.
+             Service time             The total of CPU time and I/O time required by a
+                                      job, process or subrequest to complete its operation.
+             Preemption               Forced deallocation of CPU from a job or process.
+             Priority                 A tie-breaking rule used to select a job or process
+                                      when many jobs or processes await service.
+             User service related: individual request
+             Deadline overrun         The amount of time by which the completion time of
+                                      a job or process exceeds its deadline. Deadline
+                                      overruns can be both positive or negative.
+             Fair share               A specified share of CPU time that should be devoted
+                                      to execution of a process or a group of processes.
+             Response ratio           The ratio
+                                      time since arrival + service time of a job or process
+                                                       service time of the job or process
+             Response time (rt)       Time between the submission of a subrequest for
+                                      processing to the time its result becomes available.
+                                      This concept is applicable to interactive processes.
+             Turnaround time (ta)     Time between the submission of a job or process and
+                                      its completion by the system. This concept is
+                                      meaningful for noninteractive jobs or processes only.
+             Weighted turnaround (w)  Ratio of the turnaround time of a job or process to its
+                                      own service time.
+             User service related: average service
+             Mean response time (rt)  Average of the response times of all subrequests
+                                      serviced by the system.
+             Mean turnaround          Average of the turnaround times of all jobs or
+             time (ta)                processes serviced by the system.
+             Performance related
+             Schedule length          The time taken to complete a specific set of jobs or
+                                      processes.
+             Throughput               The average number of jobs, processes, or
+                                      subrequests completed by a system in one unit
+                                      of time.
+
+
+
+                                                              Chapter 7                   Scheduling  231
+Turnaround time differs from the service time of a job or process because it also
+includes the time when the job or process is neither executing on the CPU nor
+performing I/O operations. We are familiar with these two measures from the
+discussions in Chapter 3.
+   Several other measures of user service are defined. The weighted turnaround
+relates the turnaround time of a process to its own service time. For example, a
+weighted turnaround of 5 indicates that the turnaround received by a request is
+5 times its own service time. Comparison of weighted turnarounds of different
+jobs or processes indicates the comparative service received by them. Fair share
+is the share of CPU time that should be alloted to a process or a group of pro-
+cesses. Response ratio of a job or process is the ratio (time since arrival + service
+time)/service time. It relates the delay in the servicing of a job or process to its own
+service time; it can be used in a scheduling policy to avoid starvation of processes
+(see Section 7.2.3). The deadline overrun is the difference between the completion
+time and deadline of a job or process in a real-time application. A negative value
+of deadline overrun indicates that the job or process was completed before its
+deadline, whereas a positive value indicates that the deadline was missed. The
+mean response time and mean turnaround time are measures of average service
+provided to subrequests and processes or jobs, respectively.
+System-Centric Scheduling Concepts  Throughput and schedule length are mea-
+sures of system performance. Throughput indicates the average number of requests
+or subrequests completed per unit of time (see Section 3.5). It provides a basis
+for comparing performance of two or more scheduling policies, or for comparing
+performance of the same scheduling policy over different periods of time. Sched-
+ule length indicates the total amount of time taken by a server to complete a set
+of requests.
+   Throughput and schedule length are related. Consider servicing of five
+requests r1, . . . , r5. Let mina and maxc be the earliest of the arrival times and
+the latest of the completion times, respectively. The schedule length for these five
+requests is (maxc - mina) and the throughput is 5/(maxc - mina). However, it is
+typically not possible to compute schedule length and throughput in this manner
+because an OS may also admit and service other requests in the interval from mina
+to maxc, to achieve good system performance. Nevertheless, schedule length is an
+important basis for comparing the performance of scheduling policies when the
+scheduling overhead is not negligible. Throughput is related to the mean response
+time and mean turnaround time in an obvious way.
+7.1.1 Fundamental Techniques of Scheduling
+Schedulers use three fundamental techniques in their design to provide good user
+service or high performance of the system:
+·  Priority-based scheduling: The process in operation should be the highest-
+   priority process requiring use of the CPU. It is ensured by scheduling the
+   highest-priority ready process at any time and preempting it when a pro-
+   cess with a higher priority becomes ready. Recall from Section 3.5.1 that a
+
+
+
+232  Part 2  Process Management
+                multiprogramming OS assigns a high priority to I/O-bound processes; this
+                assignment of priorities provides high throughput of the system.
+             ·  Reordering of requests: Reordering implies servicing of requests in some
+                order other than their arrival order. Reordering may be used by itself to
+                improve user service, e.g., servicing short requests before long ones reduces
+                the average turnaround time of requests. Reordering of requests is implicit in
+                preemption, which may be used to enhance user service, as in a time-sharing
+                system, or to enhance the system throughput, as in a multiprogramming
+                system.
+             ·  Variation of time slice: When time-slicing is used, from Eq. (3.2) of Section 3.6,
+                 = /( +  ) where  is the CPU efficiency,  is the time slice and  is the
+                OS overhead per scheduling decision. Better response times are obtained
+                when smaller values of the time slice are used; however, it lowers the CPU
+                efficiency because considerable process switching overhead is incurred. To
+                balance CPU efficiency and response times, an OS could use different values
+                of  for different requests--a small value for I/O-bound requests and a large
+                value for CPU-bound requests--or it could vary the value of  for a process
+                when its behavior changes from CPU-bound to I/O-bound, or from I/O-
+                bound to CPU-bound.
+                In Sections 7.2 and 7.3 we discuss how the techniques of priority-based
+             scheduling and reordering of requests are used in classical nonpreemptive and
+             preemptive scheduling policies. In Sections 7.4 and 7.5, we discuss how sched-
+             ulers in modern OSs combine these three fundamental techniques to provide a
+             combination of good performance and good user service.
+             7.1.2 The Role of Priority
+             Priority is a tie-breaking rule that is employed by a scheduler when many requests
+             await attention of the server. The priority of a request can be a function of several
+             parameters, each parameter reflecting either an inherent attribute of the request,
+             or an aspect concerning its service. It is called a dynamic priority if some of its
+             parameters change during the operation of the request; otherwise, it called a static
+             priority.
+                Some process reorderings could be obtained through priorities as well. For
+             example, short processes would be serviced before long processes if priority is
+             inversely proportional to the service time of a process, and processes that have
+             received less CPU time would be processed first if priority is inversely proportional
+             to the CPU time consumed by a process. However, complex priority functions may
+             be needed to obtain some kinds of process reorderings such as those obtained
+             through time-slicing; their use would increase the overhead of scheduling. In
+             such situations, schedulers employ algorithms that determine the order in which
+             requests should be serviced.
+                If two or more requests have the same priority, which of them should be
+             scheduled first? A popular scheme is to use round-robin scheduling among
+             such requests. This way, processes with the same priority share the CPU among
+
+
+
+                                                                  Chapter 7            Scheduling  233
+themselves when none of the higher-priority processes is ready, which provides
+better user service than if one of the requests is favored over other requests with
+the same priority.
+     Priority-based scheduling has the drawback that a low-priority request may
+never be serviced if high-priority requests keep arriving. This situation is called
+starvation. It could be avoided by increasing the priority of a request that does not
+get scheduled for a certain period to time. This way, the priority of a low-priority
+request would keep increasing as it waits to get scheduled until its priority exceeds
+the priority of all other pending requests. At this time, it would get scheduled.
+This technique is called aging of requests.
+7.2  NONPREEMPTIVE SCHEDULING POLICIES                                                             ·
+In nonpreemptive scheduling, a server always services a scheduled request to
+completion. Thus, scheduling is performed only when servicing of a previously
+scheduled request is completed and so preemption of a request as shown in
+Figure 7.1 never occurs. Nonpreemptive scheduling is attractive because of its
+simplicity--the scheduler does not have to distinguish between an unserviced
+request and a partially serviced one.
+     Since a request is never preempted, the scheduler's only function in improving
+user service or system performance is reordering of requests. We discuss three
+nonpreemptive scheduling policies in this section:
+·  First-come, first-served (FCFS) scheduling
+·  Shortest request next (SRN) scheduling
+·  Highest response ratio next (HRN) scheduling
+     We illustrate the operation and performance of various scheduling policies
+with the help of the five processes shown in Table 7.2. For simplicity we assume
+that these processes do not perform I/O operations.
+7.2.1 FCFS Scheduling
+Requests are scheduled in the order in which they arrive in the system. The list
+of pending requests is organized as a queue. The scheduler always schedules the
+first request in the list. An example of FCFS scheduling is a batch processing
+system in which jobs are ordered according to their arrival times (or arbitrarily,
+     Table 7.2                      Processes for Scheduling
+                    Process            P1    P2     P3  P4    P5
+                    Admission time     0     2      3   4     8
+                    Service time       3     3      5   2     3
+
+
+
+234  Part 2  Process Management
+                                     Completed process           Processes in system      Scheduled
+                              Time   id    ta        w           (in FCFS order)          process
+                                  0  ­     ­         ­           P1                       P1
+                                  3  P1    3       1.00          P2, P3                   P2
+                                  6  P2    4       1.33          P3, P4                   P3
+                                 11  P3    8       1.60          P4, P5                   P4
+                                 13  P4    9       4.50          P5                       P5
+                                 16  P5    8       2.67          ­                        ­
+                                                        ta = 6.40 seconds
+                                                         w = 2.22
+                              P1
+                              P2
+                              P3
+                              P4
+                              P5
+                                  0            5                     10               15     Time
+                  Figure 7.2  Scheduling using the FCFS policy.
+                  if they arrive at exactly the same time) and results of a job are released to the
+                  user immediately on completion of the job. The following example illustrates
+                  operation of an FCFS scheduler.
+·
+     Example 7.1  FCFS Scheduling
+                  Figure 7.2 illustrates the scheduling decisions made by the FCFS scheduling
+                  policy for the processes of Table 7.2. Process P1 is scheduled at time 0. The
+                  pending list contains P2 and P3 when P1 completes at 3 seconds, so P2 is
+                  scheduled. The Completed column shows the id of the completed process and
+                  its turnaround time (ta) and weighted turnaround (w). The mean values of ta
+                  and w (i.e., ta and w) are shown below the table. The timing chart of Figure 7.2
+                  shows how the processes operated.
+                  ·
+                     From Example 7.1, it is seen that considerable variation exists in the weighted
+                  turnarounds provided by FCFS scheduling. This variation would have been larger
+                  if processes subject to large turnaround times were short--e.g., the weighted
+                  turnaround of P4 would have been larger if its execution requirement had been
+                  1 second or 0.5 second.
+                  7.2.2 Shortest Request Next (SRN) Scheduling
+                  The SRN scheduler always schedules the request with the smallest service time.
+                  Thus, a request remains pending until all shorter requests have been serviced.
+
+
+
+                                                                             Chapter 7  Scheduling       235
+                         Completed process  Processes         Scheduled
+                   Time  id     ta  w       in system         process
+                   0     ­      ­   ­       {P1}              P1
+                   3     P1     3   1.00    {P2, P3}          P2
+                   6     P2     4   1.33    {P3, P4}          P4
+                   8     P4     4   2.00    {P3, P5}          P5
+                   11    P5     3   1.00    {P3}              P3
+                   16    P3     13  2.60    {}                ­
+                                    ta = 5.40 seconds
+                                    w = 1.59
+            P1
+            P2
+            P3
+            P4
+            P5
+                0            5              10                    15   Time
+Figure 7.3  Scheduling using the shortest request next (SRN)  policy.
+                                                                                                         ·
+Shortest Request Next (SRN) Scheduling                                                  Example     7.2
+Figure 7.3 illustrates the scheduling decisions made by the SRN scheduling
+policy for the processes of Table 7.2, and the operation of the processes. At
+time 0, P1 is the only process in the system, so it is scheduled. It completes at
+time 3 seconds. At this time, processes P2 and P3 exist in the system, and P2
+is shorter than P3. So P2 is scheduled, and so on.
+The mean turnaround time and the mean weighted turnaround are bet-
+ter than in FCFS scheduling because short requests tend to receive smaller
+turnaround times and weighted turnarounds than in FCFS scheduling. This
+feature degrades the service that long requests receive; however, their weighted
+turnarounds do not increase much because their service times are large. The
+throughput is higher than in FCFS scheduling in the first 10 seconds of the
+schedule because short processes are being serviced; however, it is identical at
+the end of the schedule because the same processes have been serviced.
+                                                                                   ·
+Use of the SRN policy faces several difficulties in practice. Service times of
+processes are not known to the operating system a priori, hence the OS may expect
+users to provide estimates of service times of processes. However, scheduling
+performance would be erratic if users do not possess sufficient experience in
+estimating service times, or they manipulate the system to obtain better service
+by giving low service time estimates for their processes. The SRN policy offers
+
+
+
+236  Part 2  Process Management
+                  poor service to long processes, because a steady stream of short processes arriving
+                  in the system can starve a long process.
+                  7.2.3 Highest Response Ratio Next (HRN) Scheduling
+                  The HRN policy computes the response ratios of all processes in the system
+                  according to Eq. (7.1) and selects the process with the highest response ratio.
+                       Response ratio = time since arrival + service time of the process           (7.1)
+                                     service time of the process
+                  The response ratio of a newly arrived process is 1. It keeps increasing at the
+                  rate (1/service time) as it waits to be serviced. The response ratio of a short
+                  process increases more rapidly than that of a long process, so shorter processes are
+                  favored for scheduling. However, the response ratio of a long process eventually
+                  becomes large enough for the process to get scheduled. This feature provides an
+                  effect similar to the technique of aging discussed earlier in Section 7.1.2, so long
+                  processes do not starve. The next example illustrates this property.
+·
+     Example 7.3  Highest Response Ratio Next (HRN) Scheduling
+                  Operation of the HRN scheduling policy for the five processes shown in
+                  Table 7.2 is summarized in Figure 7.4. By the time process P1 completes,
+                  processes P2 and P3 have arrived. P2 has a higher response ratio than P3, so
+                  it is scheduled next. When it completes, P3 has a higher response ratio than
+                  before; however, P4, which arrived after P3, has an even higher response ratio
+                  because it is a shorter process, so P4 is scheduled. When P4 completes, P3 has
+                  a higher response ratio than the shorter process P5 because it has spent a lot
+                  of time waiting, whereas P5 has just arrived. Hence P3 is scheduled now. This
+                  action results in a smaller weighted turnaround for P3 than in SRN scheduling
+                  (see Figure 7.3). Thus, after a long wait, a long process gets scheduled ahead
+                  of a shorter one.
+                  ·
+                  7.3  PREEMPTIVE SCHEDULING POLICIES                                                   ·
+                  In preemptive scheduling, the server can be switched to the processing of a new
+                  request before completing the current request. The preempted request is put
+                  back into the list of pending requests (see Figure 7.1). Its servicing is resumed
+                  when it is scheduled again. Thus, a request might have to be scheduled many
+                  times before it completed. This feature causes a larger scheduling overhead than
+                  when nonpreemptive scheduling is used. We discussed preemptive scheduling in
+                  multiprogramming and time-sharing operating systems earlier, in Chapter 3.
+
+
+
+                                                                                   Chapter 7    Scheduling  237
+            Completed process              Response ratios of processes
+   Time     id         ta      w        P1    P2     P3      P4          P5  Scheduled process
+   0        -          -       -        1.00                                 P1
+   3        P1         3       1.00           1.33   1.00                    P2
+   6        P2         4       1.33                  1.60    2.00            P4
+   8        P4         4       2.00                  2.00             1.00   P3
+   13       P3         10      2.00                                   2.67   P5
+   16       P5         8       2.67                                          ­
+                                           ta = 5.8 seconds
+                                           w = 1.80
+                P1
+                P2
+                P3
+                P4
+                P5
+                    0                   5            10                  15  Time
+Figure 7.4  Operation      of  highest  response ratio (HRN) policy.
+   We discuss three preemptive scheduling policies in this section:
+·  Round-robin scheduling with time-slicing (RR)
+·  Least completed next (LCN) scheduling
+·  Shortest time to go (STG) scheduling
+   The RR scheduling policy shares the CPU among admitted requests by ser-
+vicing them in turn. The other two policies take into account the CPU time
+required by a request or the CPU time consumed by it while making their
+scheduling decisions.
+7.3.1 Round-Robin Scheduling with Time-Slicing (RR)
+The RR policy aims at providing good response times to all requests. The time
+slice, which is designated as , is the largest amount of CPU time a request may
+use when scheduled. A request is preempted at the end of a time slice. To facilitate
+this, the kernel arranges to raise a timer interrupt when the time slice elapses.
+   The RR policy provides comparable service to all CPU-bound processes. This
+feature is reflected in approximately equal values of their weighted turnarounds.
+The actual value of the weighted turnaround of a process depends on the number
+of processes in the system. Weighted turnarounds provided to processes that per-
+form I/O operations would depend on the durations of their I/O operations.
+The RR policy does not fare well on measures of system performance like
+throughput because it does not give a favored treatment to short processes. The
+following example illustrates the performance of RR scheduling.
+
+
+
+238  Part 2        Process Management
+·
+     Example 7.4     Round-Robin (RR) Scheduling
+                        A round-robin scheduler maintains a queue of processes in the ready state and
+                     simply selects the first process in the queue. The running process is preempted
+                     when the time slice elapses and it is put at the end of the queue. It is assumed
+                     that a new process that was admitted into the system at the same instant a
+                     process was preempted will be entered into the queue before the preempted
+                     process.
+                            Figure 7.5 summarizes operation of the RR scheduler with  = 1 second
+                     for the five processes shown in Table 7.2. The scheduler makes scheduling
+                     decisions every second. The time when a decision is made is shown in the
+                     first row of the table in the top half of Figure 7.5. The next five rows show
+                     positions of the five processes in the ready queue. A blank entry indicates that
+                     the process is not in the system at the designated time. The last row shows the
+                     process selected by the scheduler; it is the process occupying the first position
+                     in the ready queue. Consider the situation at 2 seconds. The scheduling queue
+                     contains P2 followed by P1. Hence P2 is scheduled. Process P3 arrives at
+                     3 seconds, and is entered in the queue. P2 is also preempted at 3 seconds
+                     and it is entered in the queue. Hence the queue has process P1 followed by P3
+                     and P2, so P1 is scheduled.
+     Time of scheduling     0   1      2   3   4   5   6     7   8   9   10  11  12  13  14  15      c   ta    w
+     Position of        P1  1   1      2   1                                                         4   4   1.33
+     Processes in       P2             1   3   2   1   3     2   1                                   9   7   2.33
+     ready queue        P3                 2   1   3   2     1   4   3   2   1   2   1   2   1       16  13  2.60
+     (1 implies         P4                     3   2   1     3   2   1                               10  6   3.00
+     head of queue)     P5                                       3   2   1   2   1   2   1           15  7   2.33
+     Process scheduled      P1  P1     P2  P1  P3  P2  P4    P3  P2  P4  P5  P3  P5  P3  P5  P3
+                                    ta = 7.4 seconds, w = 2.32
+                                c: completion time of a process
+                                P1
+                                P2
+                                P3
+                                P4
+                                P5
+                                    0                     5                  10                  15      Time
+                     Figure    7.5  Scheduling using the round-robin policy with time-slicing (RR).
+
+
+
+                                                                    Chapter 7         Scheduling       239
+The turnaround times and weighted turnarounds of the processes are as
+shown in the right part of the table. The c column shows completion times.
+The turnaround times and weighted turnarounds are inferior to those given
+by the nonpreemptive policies discussed in Section 7.2 because the CPU time
+is shared among many processes because of time-slicing. It can be seen that
+processes P2, P3, and P4, which arrive at around the same time, receive approxi-
+mately equal weighted turnarounds. P4 receives the worst weighted turnaround
+because through most of its life it is one of three processes present in the sys-
+tem. P1 receives the best weighted turnaround because no other process exists
+in the system during the early part of its execution. Thus weighted turnarounds
+depend on the load in the system.
+                                                                                   ·
+As discussed in Chapter 3, if a system contains n processes, each subrequest by
+a process consumes exactly  seconds, and the overhead per scheduling decision
+is  , the response time (rt) for a subrequest is n × ( + ). However, the relation
+between  and rt is more complex than this. First, some processes will be blocked
+for I/O or waiting for user actions, so the response time will be governed by the
+number of active processes rather than by n. Second, if a request needs more CPU
+time than  seconds, it will have to be scheduled more than once before it can
+produce a response. Hence at small values of , rt for a request may be higher for
+smaller values of . The following example illustrates this aspect.
+                                                                                                       ·
+Variation of Response Time in RR Scheduling                                           Example     7.5
+An OS contains 10 identical processes that were initiated at the same time.
+Each process receives 15 identical subrequests, and each subrequest consumes
+20 ms of CPU time. A subrequest is followed by an I/O operation that consumes
+10 ms. The system consumes 2 ms in CPU scheduling. For   20 ms, the first
+subrequest by the first process receives a response time of 22 ms and the first
+subrequest by the last process receives a response time of 220 ms. Hence the
+average response time is 121 ms. A subsequent subrequest by any process
+receives a response time of 10 × (2 + 20) - 10 ms = 210 ms because the process
+spends 10 ms in an I/O wait before receiving the next subrequest. For  = 10 ms,
+a subrequest would be preempted after 10 ms. When scheduled again, it would
+execute for 10 ms and produce results. Hence the response time for the first
+process is 10 × (2 + 10) + (2 + 10) = 132 ms, and that for the last process is
+10 × (2 + 10) + 10 × (2 + 10) = 240 ms. A subsequent subrequest receives
+a response time of 10 × (2 + 10) + 10 × (2 + 10) - 10 = 230 ms. Figure 7.6
+summarizes performance of the system for different values of . As expected,
+the schedule length and the overhead are higher for smaller values of . The
+graph in Figure 7.6 illustrates the variation of average response time to second
+and subsequent subrequests for different values of . Note that the response
+time is larger when  is 5 ms than when it is 10 ms.
+                                                                                   ·
+
+
+
+240  Part 2  Process Management
+                          Time slice                                    5 ms           10 ms  15 ms     20 ms
+                          Average rt for first subrequest (ms)              248.5      186    208.5     121
+                          Average rt for subsequent subrequest (ms)         270        230    230       210
+                          Number of scheduling decisions                    600        300    300       150
+                          Schedule length (ms)                          4200           3600   3600      3300
+                          Overhead (percent)                                   29      17     17        9
+                                        300
+                              Response
+                              time
+                              (msecs)   200
+                                        100
+                                                    5  10       15  20  25             Time slice (ms)
+                  Figure 7.6  Performance of    RR  scheduling for  different  values  of .
+                  7.3.2 Least Completed Next (LCN) Scheduling
+                  The LCN policy schedules the process that has so far consumed the least amount
+                  of CPU time. Thus, the nature of a process, whether CPU-bound or I/O-bound,
+                  and its CPU time requirement do not influence its progress in the system.
+                  Under the LCN policy, all processes will make approximately equal progress
+                  in terms of the CPU time consumed by them, so this policy guarantees that
+                  short processes will finish ahead of long processes. Ultimately, however, this pol-
+                  icy has the familiar drawback of starving long processes of CPU attention. It
+                  also neglects existing processes if new processes keep arriving in the system.
+                  So even not-so-long processes tend to suffer starvation or large turnaround
+                  times.
+·
+     Example 7.6  Least Completed Next (LCN) Scheduling
+                  Implementation of the LCN scheduling policy for the five processes shown
+                  in Table 7.2 is summarized in Figure 7.7. The middle rows in the table in the
+                  upper half of the figure show the amount of CPU time already consumed
+                  by a process. The scheduler analyzes this information and selects the process
+                  that has consumed the least amount of CPU time. In case of a tie, it selects
+                  the process that has not been serviced for the longest period of time. The
+                  turnaround times and weighted turnarounds of the processes are shown in the
+                  right half of the table.
+
+
+
+                                                                                   Chapter 7     Scheduling  241
+Time of scheduling      0   1   2   3   4   5   6   7   8    9   10   11  12  13   14  15     c  ta  w
+             P1         0   1   2   2   2   2   2   2   2    2   2                         11    11  3.67
+CPU time     P2                 0   1   1   1   2   2   2    2   2    2                    12    10  3.33
+consumed by  P3                     0   1   1   1   2   2    2   2    2   2   3    4   5   16    13  2.60
+processes    P4                         0   1   1   1                                         8  4   2.00
+             P5                                         0    1   2    2   2   2            14    6   2.00
+Process scheduled       P1  P1  P2  P3  P4  P2  P3  P4  P5   P5  P1   P2  P3  P5   P3  P3
+                                ta = 8.8 seconds, w = 2.72
+                            c: completion time of a process
+P1
+P2
+P3
+P4
+P5
+        0                   5                   10                    15     Time
+Figure  7.7  Scheduling using the least completed next (LCN) policy.
+It can be seen that servicing of P1, P2, and P3 is delayed because new pro-
+cesses arrive and obtain CPU service before these processes can make further
+progress. The LCN policy provides poorer turnaround times and weighted
+turnarounds than those provided by the RR policy (See Example 7.4) and the
+STG policy (to be discussed next) because it favors newly arriving processes
+over existing processes in the system until the new processes catch up in terms
+of CPU utilization; e.g., it favors P5 over P1, P2, and P3.
+                                                                                           ·
+7.3.3 Shortest Time to Go (STG) Scheduling
+The shortest time to go policy schedules a process whose remaining CPU time
+requirements are the smallest in the system. It is a preemptive version of the
+shortest request next (SRN) policy of Section 7.2, so it favors short processes
+over long ones and provides good throughput. Additionally, the STG policy
+also favors a process that is nearing completion over short processes entering
+the system. This feature helps to improve the turnaround times and weighted
+turnarounds of processes. Since it is analogous to the SRN policy, long processes
+might face starvation.
+
+
+
+242  Part 2  Process Management
+     Time of scheduling        0   1   2   3   4   5   6    7   8   9   10  11  12     13  14  15  c     ta  w
+     Remaining         P1      3   2   1                                                           3     3   1.00
+     CPU time          P2              3   3   2   2   2    1                                      8     6   2.00
+     requirement       P3                  5   5   5   5    5   5   5   5   5   4      3   2   1   16    13  2.60
+     of a process      P4                      2   1                                               6     2   1.00
+                       P5                                       3   2   1                          11    3   1.00
+     Process scheduled         P1  P1  P1  P2  P4  P4  P2   P2  P5  P5  P5  P3  P3     P3  P3  P3
+                                       ta = 5.4 seconds, w  = 1.52
+                                   c:  completion time of   a process
+                           P1
+                          P2
+                           P3
+                          P4
+                           P5
+                               0                   5                    10                     15  Time
+                  Figure  7.8  Scheduling using the shortest time to go (STG) policy.
+·
+     Example 7.7  Shortest Time to Go (STG) Scheduling
+                  Figure 7.8 summarizes performance of the STG scheduling policy for the five
+                  processes shown in Table 7.2. The scheduling information used by the policy
+                  is the CPU time needed by each process for completion. In case of a tie, the
+                  scheduler selects whatever process has not been serviced for the longest period
+                  of time. Execution of P3 is delayed because P2, P4, and P5 require lesser CPU
+                  time than it.
+                  ·
+                  7.4     SCHEDULING IN PRACTICE                                                                   ·
+                  To provide a suitable combination of system performance and user service,
+                  an operating system has to adapt its operation to the nature and number of
+                  user requests and availability of resources. A single scheduler using a classical
+                  scheduling policy cannot address all these issues effectively. Hence, a modern
+                  OS employs several schedulers--up to three schedulers, as we shall see later--
+                  and some of the schedulers may use a combination of different scheduling
+                  policies.
+
+
+
+                                                                                  Chapter 7         Scheduling  243
+7.4.1 Long-, Medium-, and Short-Term Schedulers
+These schedulers perform the following functions:
+·  Long-term scheduler: Decides when to admit an arrived process for schedul-
+   ing,  depending   on  its  nature         (whether   CPU-bound     or  I/O-bound)           and
+   on availability of resources like kernel data structures and disk space for
+   swapping.
+·  Medium-term scheduler: Decides when to swap-out a process from memory
+   and when to load it back, so that a sufficient number of ready processes would
+   exist in memory.
+·  Short-term scheduler: Decides which ready process to service next on the CPU
+   and for how long.
+   Thus, the short-term scheduler is the one that actually selects a process for
+operation. Hence it is also called the process scheduler, or simply the scheduler.
+Figure 7.9 shows an overview of scheduling and related actions. As discussed in
+Sections 2.3 and 5.2.2, the operation of the kernel is interrupt-driven. Every event
+that requires the kernel's attention causes an interrupt. The interrupt processing
+                                             Interrupts
+                                             Interrupt
+                                             processing
+                                             routine
+        PCB lists     Start       Memory                Suspend/      Create/     Event
+   ECB lists          I/O     ··  handler    ····        resume   ··  terminate   handlers
+                                                         process      process
+                                             Long-term
+                                             scheduler
+                                             Medium-term              Schedulers
+                                             scheduler
+                                             Short-term
+                                             scheduler
+                                                                                 Control flow
+                                                                                 Data flow
+                                             Dispatcher
+Figure  7.9  Event handling and scheduling.
+
+
+
+244  Part 2  Process Management
+             routine performs a context save function and invokes an event handler. The event
+             handler analyzes the event and changes the state of the process, if any, affected
+             by it. It then invokes the long-term, medium-term, or short-term scheduler as
+             appropriate. For example, the event handler that creates a new process invokes the
+             long-term scheduler, event handlers for suspension and resumption of processes
+             (see Section 5.2.1.1) invoke the medium-term scheduler, and the memory handler
+             may invoke the medium-term scheduler if it runs out of memory. Most other
+             event handlers directly invoke the short-term scheduler.
+             Long-Term   Scheduling    The long-term scheduler may defer admission of a
+             request for two reasons: it may not be able to allocate sufficient resources like
+             kernel data structures or I/O devices to a request when it arrives, or it may find
+             that admission of a request would affect system performance in some way; e.g., if
+             the system currently contained a large number of CPU-bound requests, the sched-
+             uler might defer admission of a new CPU-bound request, but it might admit a
+             new I/O-bound request right away.
+             Long-term scheduling was used in the 1960s and 1970s for job scheduling
+             because computer systems had limited resources, so a long-term scheduler was
+             required to decide whether a process could be initiated at the present time. It
+             continues to be important in operating systems where resources are limited. It is
+             also used in systems where requests have deadlines, or a set of requests are repeated
+             with a known periodicity, to decide when a process should be initiated to meet
+             response requirements of applications. Long-term scheduling is not relevant in
+             other operating systems.
+             Medium-Term Scheduling    Medium-term scheduling maps the large number
+             of requests that have been admitted to the system into the smaller number
+             of requests that can fit into the memory of the system at any time. Thus its
+             focus is on making a sufficient number of ready processes available to the
+             short-term scheduler by suspending or reactivating processes. The medium-
+             term scheduler decides when to swap out a process from memory and when
+             to swap it back into memory, changes the state of the process appropriately,
+             and enters its process control block (PCB) in the appropriate list of PCBs. The
+             actual swapping-in and swapping-out operations are performed by the memory
+             manager.
+             The kernel can suspend a process when a user requests suspension, when
+             the kernel runs out of free memory, or when it finds that the CPU is not
+             likely to be allocated to the process in the near future. In time-sharing sys-
+             tems, processes in blocked or ready states are candidates for suspension (see
+             Figure 5.5). The decision to reactivate a process is more involved: The medium-
+             term scheduler considers the position occupied by a process in the scheduling
+             list, estimates when it is likely to be scheduled next, and swaps it in ahead of
+             this time.
+             Short-Term Scheduling     Short-term scheduling is concerned with effective use
+             of the CPU. It selects one process from a list of ready processes and hands it
+             to the dispatching mechanism. It may also decide how long the process should
+
+
+
+                                                                                     Chapter 7  Scheduling       245
+                                   Lists of processes
+                                                               Arrived
+                                                               processes
+              Long-
+              term
+              Scheduler
+                                                               Ready swapped,
+                                                               blocked swapped
+                                                               processes
+                                   Swap-out  Swap-in
+              Medium-
+              term                                             Blocked
+              Scheduler                                        processes
+                                                               Ready
+                                                               processes
+              Short-
+              term
+              Scheduler
+                                   CPU
+Figure 7.10  Long-, medium-,  and  short-term scheduling in a  time-sharing system.
+be allowed to use the CPU and instruct the kernel to produce a timer interrupt
+accordingly.
+Example 7.8 illustrates long-, medium-, and short-term scheduling in a time-
+sharing OS.
+                                                                                                                 ·
+Long-, Medium-, and Short-Term Scheduling in Time-Sharing                                       Example     7.8
+Figure 7.10 illustrates scheduling in a time-sharing operating system. The long-
+term scheduler admits a process when kernel resources like control blocks,
+swap space on a disk, and other resources like I/O devices--whether real
+or virtual--can be allocated to it. The kernel copies the code of the pro-
+cess into the swap space, and adds the process to the list of swapped-out
+processes.
+The medium-term scheduler controls swapping of processes and decides
+when to move processes between the ready swapped and ready lists and between
+the blocked swapped and blocked lists (see Figure 5.5). Whenever the CPU
+is free, the short-term scheduler selects one process from the ready list for
+execution. The dispatching mechanism initiates or resumes operation of the
+selected process on the CPU. A process may shuttle between the medium-, and
+short-term schedulers many times as a result of swapping.
+                                                                                     ·
+
+
+
+246  Part 2  Process Management
+                                                            Process                    PCB
+                                                            scheduler                  lists
+                            Scheduling         Process      Context      Priority
+                            mechanisms         dispatching         save  computation,
+                                                                         reordering
+                                 Control flow               Hardware
+                                 Data flow
+             Figure   7.11  A schematic of the process scheduler.
+             7.4.2 Scheduling Data Structures and Mechanisms
+             Figure 7.11 is a schematic diagram of the process scheduler. It uses several lists of
+             PCBs whose organization and use depends on the scheduling policy. The process
+             scheduler selects one process and passes its id to the process dispatching mecha-
+             nism. The process dispatching mechanism loads contents of two PCB fields--the
+             program status word (PSW) and general-purpose registers (GPRs) fields--into
+             the CPU to resume operation of the selected process. Thus, the dispatching mech-
+             anism interfaces with the scheduler on one side and the hardware on the other side.
+             The context save mechanism is a part of the interrupt processing routine.
+             When an interrupt occurs, it is invoked to save the PSW and GPRs of the inter-
+             rupted process. The priority computation and reordering mechanism recomputes
+             the priority of requests and reorders the PCB lists to reflect the new priorities.
+             This mechanism is either invoked explicitly by the scheduler when appropri-
+             ate or invoked periodically. Its exact actions depend on the scheduling policy
+             in use.
+             One question faced by all schedulers is: What should the scheduler do if there
+             are no ready processes? It has no work for the CPU to perform; however, the CPU
+             must remain alert to handle any interrupts that might activate one of the blocked
+             processes. A kernel typically achieves it by executing an idle loop, which is an
+             endless loop containing no-op instructions. When an interrupt causes a blocked
+              ready transition for some process, scheduling would be performed again and
+             that process would get scheduled. However, execution of the idle loop wastes
+             power. In Section 7.4.9, we discuss alternative arrangements that conserve power
+             when there are no ready processes in the system.
+             7.4.3 Priority-Based Scheduling
+             Figure 7.12 shows an efficient arrangement of scheduling data for priority-based
+             scheduling. A separate list of ready processes is maintained for each priority value;
+
+
+
+                                                                                    Chapter 7  Scheduling  247
+                            P1   P4            P8           Highest-priority queue
+                            P7   P5                Lower-than-highest-
+                            ...                             priority queue
+                            P10  P3                         Lowest-priority queue
+Figure 7.12  Ready  queues  in priority-based  scheduling.
+this list is organized as a queue of PCBs, in which a PCB points to the PCB of
+the next process in the queue. The header of a queue contains two pointers. One
+points to the PCB of the first process in the queue, and the other points to the
+header of the queue for the next lower priority. The scheduler scans the headers in
+the order of decreasing priority and selects the first process in the first nonempty
+queue it can find. This way, the scheduling overhead depends on the number of
+distinct priorities, rather than on the number of ready processes.
+Priority-based scheduling can lead to starvation of low-priority processes. As
+discussed in Section 7.1.2, the technique of aging of processes, which increases the
+priority of a ready process if it does not get scheduled within a certain period of
+time, can be used to overcome starvation. In this scheme, process priorities would
+be dynamic, so the PCB of a process would be moved between the different ready
+queues shown in Figure 7.12.
+Starvation in priority-based scheduling can also lead to an undesirable sit-
+uation called priority inversion. Consider a high-priority process that needs a
+resource that is currently allocated to a low-priority process. If the low-priority
+process faces starvation, it cannot use and release the resource. Consequently,
+the high-priority process remains blocked indefinitely. This situation is addressed
+through the priority inheritance protocol, which temporarily raises the priority of
+the low-priority process holding the resource to the priority value of the high-
+priority process that needs the resource. The process holding the resource can now
+obtain the CPU, use the resource, and release it. The kernel changes its priority
+back to the earlier value when it releases the resource.
+7.4.4 Round-Robin Scheduling with Time-Slicing
+Round-robin scheduling can be implemented through a single list of PCBs of
+ready processes. This list is organized as a queue. The scheduler always removes
+the first PCB from the queue and schedules the process described by it. If the time
+slice elapses, the PCB of the process is put at the end of the queue. If a process
+starts an I/O operation, its PCB is added at the end of the queue when its I/O
+operation completes. Thus the PCB of a ready process moves toward the head of
+the queue until the process is scheduled.
+
+
+
+248  Part 2  Process Management
+                  7.4.5 Multilevel Scheduling
+                  The multilevel scheduling policy combines priority-based scheduling and round-
+                  robin scheduling to provide a good combination of system performance and
+                  response times. A multilevel scheduler maintains a number of ready queues. A
+                  priority and a time slice are associated with each ready queue, and round-robin
+                  scheduling with time-slicing is performed within it. The queue at a high priority
+                  level has a small time slice associated with it, which ensures good response times
+                  for processes in this queue, while the queue at a low priority level has a large
+                  time slice, which ensures low process switching overhead. A process at the head
+                  of a queue is scheduled only if the queues for all higher priority levels are empty.
+                  Scheduling is preemptive, so a process is preempted when a new process is added to
+                  a queue at a higher priority level. As in round-robin scheduling with time-slicing,
+                  when a process makes an I/O request, or is swapped out, its PCB is removed from
+                  the ready queue. When the I/O operation completes, or the process is swapped
+                  in, its PCB is added at the end of that ready queue where it existed earlier.
+                     To benefit from the features of multilevel scheduling, the kernel puts highly
+                  interactive processes in the queue at the highest priority level. The small time
+                  slice associated with this queue is adequate for these processes, so they receive
+                  good response times [see Eq. (3.1)]. Moderately interactive processes are put in
+                  a ready queue at a medium priority level where they receive larger time slices.
+                  Noninteractive processes are put in a ready queue at one of the low priority
+                  levels. These processes receive a large time slice, which reduces the scheduling
+                  overhead.
+·
+     Example 7.9  Multilevel Scheduling
+                  Figure 7.12 illustrates ready queues in a multilevel scheduler. Processes P7 and
+                  P5 have a larger time slice than processes P1, P4, and P8. However, they get
+                  a chance to execute only when P1, P4, and P8 are blocked. Processes P10 and
+                  P3 can execute only when all other processes in the system are blocked. Thus,
+                  these two processes would face starvation if this situation is rare.
+                  ·
+                     The multilevel scheduling policy uses static priorities. Hence it inherits the
+                  fundamental shortcoming of priority-based scheduling employed in multipro-
+                  gramming systems: A process is classified a priori into a CPU-bound process or
+                  an I/O-bound process for assignment of priority. If wrongly classified, an I/O-
+                  bound process may receive a low priority, which would affect both user service
+                  and system performance, or a CPU-bound process may receive a high priority,
+                  which would affect system performance. As a result of static priorities, the mul-
+                  tilevel scheduling policy also cannot handle a change in the computational or
+                  I/O behavior of a process, cannot prevent starvation of processes in low priority
+                  levels (see Example 7.9), and cannot employ the priority inheritance protocol to
+                  overcome priority inversion (see Section 7.4.3). All these problems are addressed
+                  by the multilevel adaptive scheduling policy.
+
+
+
+                                                                         Chapter 7          Scheduling  249
+Multilevel Adaptive Scheduling  In multilevel adaptive scheduling, which is also
+called multilevel feedback scheduling, the scheduler varies the priority of a process
+such that the process receives a time slice that is consistent with its requirement
+for CPU time. The scheduler determines the "correct" priority level for a process
+by observing its recent CPU and I/O usage and moves the process to this level.
+This way, a process that is I/O-bound during one phase in its operation and CPU-
+bound during another phase will receive an appropriate priority and time slice at
+all times. This feature eliminates the problems of multilevel scheduling described
+earlier.
+CTSS, a time-sharing OS for the IBM 7094 in the 1960s, is a well-known
+example of multilevel adaptive scheduling. The system used an eight-level priority
+structure, with the levels numbered 0 through 7, 0 being the highest-priority level
+and 7 being the lowest-priority level. Level number n had a time slice of 0.5 × 2n
+CPU seconds associated with it. At initiation, each user process was placed at level
+2 or 3 depending on its memory requirement. It was promoted or demoted in the
+priority structure according to the following rules: If a process completely used up
+the time slice at its current priority level (i.e., it did not initiate an I/O operation),
+it was demoted to the next higher numbered level, whereas if a process spent more
+than a minute in ready state in its current priority level without obtaining any CPU
+service, it was promoted to the next lower numbered level. Further, any process
+performing I/O on the user terminal was promoted to level 2. Subsequently, it
+would be moved to the "correct" priority level through possible demotions.
+7.4.6 Fair Share Scheduling
+A common criticism of all scheduling policies discussed so far is that they try to
+provide equitable service to processes, rather than to users or their applications. If
+applications create different numbers of processes, an application employing more
+processes is likely to receive more CPU attention than an application employing
+fewer processes.
+The notion of a fair share addresses this issue. A fair share is the fraction of
+CPU time that should be devoted to a group of processes that belong to the same
+user or the same application; it ensures an equitable use of the CPU by users
+or applications. The actual share of CPU time received by a group of processes
+may differ from the fair share of the group if all processes in some of the groups
+are inactive. For example, consider five groups of processes, G1­G5, each having
+a 20 percent share of CPU time. If all processes in G1 are blocked, processes of
+each of the other groups should be given 25 percent of the available CPU time
+so that CPU time is not wasted. What should the scheduler do when processes
+of G1 become active after some time? Should it give them only 20 percent of
+CPU time after they wake up, because that is their fair share of CPU time, or
+should it give them all the available CPU time until their actual CPU consumption
+since inception becomes 20 percent? Lottery scheduling, which we describe in the
+following, and the scheduling policies used in the Unix and Solaris operating
+systems (see Section 7.6) differ in the way they handle this situation.
+
+
+
+250  Part 2  Process Management
+             Lottery scheduling is a novel technique proposed for sharing a resource in
+             a probabilistically fair manner. Lottery "tickets" are distributed to all processes
+             sharing a resource in such a manner that a process gets as many tickets as its fair
+             share of the resource. For example, a process would be given five tickets out of a
+             total of 100 tickets if its fair share of the resource is 5 percent. When the resource
+             is to be allocated, a lottery is conducted among the tickets held by processes that
+             actively seek the resource. The process holding the winning ticket is then allocated
+             the resource. The actual share of the resources allocated to the process depends
+             on contention for the resource. Lottery scheduling can be used for fair share CPU
+             scheduling as follows: Tickets can be issued to applications (or users) on the basis
+             of their fair share of CPU time. An application can share its tickets among its
+             processes in any manner it desires. To allocate a CPU time slice, the scheduler
+             holds a lottery in which only tickets of ready processes participate. When the
+             time slice is a few milliseconds, this scheduling method provides fairness even
+             over fractions of a second if all groups of processes are active.
+             7.4.7 Kernel Preemptibility
+             Kernel preemptibility plays a vital role in ensuring effectiveness of a scheduler. A
+             noninterruptible kernel can handle an event without getting further interrupted,
+             so event handlers have a mutually exclusive access to the kernel data structures
+             without having to use data access synchronization. However, if event handlers
+             have large running times, noninterruptibility also causes a large kernel latency, as
+             the kernel cannot respond readily to interrupts. This latency, which could be as
+             much as 100 ms in computers with slow CPUs, causes a significant degradation
+             of response times and a slowdown of the OS operation. When the scheduling
+             of a high-priority process is delayed because the kernel is handling an event
+             concerning a low-priority process, it even causes a situation analogous to pri-
+             ority inversion. Making the kernel preemptible would solve this problem. Now,
+             scheduling would be performed more often, so a high-priority process that is
+             activated by an interrupt would get to execute sooner.
+             7.4.8 Scheduling Heuristics
+             Schedulers in modern operating systems use many heuristics to reduce their
+             overhead, and to provide good user service. These heuristics employ two main
+             techniques:
+             · Use of a time quantum
+             · Variation of process priority
+             A time quantum is the limit on CPU time that a process may be allowed to
+             consume over a time interval. It is employed as follows: Each process is assigned
+             a priority and a time quantum. A process is scheduled according to its priority,
+             provided it has not exhausted its time quantum. As it operates, the amount of
+             CPU time used by it is deducted from its time quantum. After a process has
+             exhausted its time quantum, it would not be considered for scheduling unless
+
+
+
+                                  Chapter 7                                             Scheduling  251
+the kernel grants it another time quantum, which would happen only when all
+active processes have exhausted their quanta. This way, the time quantum of a
+process would control the share of CPU time used by it, so it can be employed to
+implement fair share scheduling.
+Process priority could be varied to achieve various goals. The priority of a
+process could be boosted while it is executing a system call, so that it would quickly
+complete execution of the call, release any kernel resources allocated to it, and
+exit the kernel. This technique would improve response to other processes that
+are waiting for the kernel resources held by the process executing the system call.
+Priority inheritance could be implemented by boosting the priority of a process
+holding a resource to that of the highest-priority process waiting for the resource.
+Process priority may also be varied to more accurately characterize the nature
+of a process. When the kernel initiates a new process, it has no means of knowing
+whether the process is I/O-bound or CPU-bound, so it assigns a default priority to
+the process. As the process operates, the kernel adjusts its priority in accordance
+with its behavior using a heuristic of the following kind: When the process is
+activated after some period of blocking, its priority may be boosted in accordance
+with the cause of blocking. For example, if it was blocked because of an I/O
+operation, its priority would be boosted to provide it a better response time. If it
+was blocked for a keyboard input, it would have waited for a long time for the user
+to respond, so its priority may be given a further boost. If a process used up its
+time slice completely, its priority may be reduced because it is more CPU-bound
+than was previously assumed.
+7.4.9 Power Management
+When no ready processes exist, the kernel puts the CPU into an idle loop (see
+Section 7.4.2). This solution wastes power in executing useless instructions. In
+power-starved systems such as embedded and mobile systems, it is essential to
+prevent this wastage of power.
+To address this requirement, computers provide special modes in the CPU.
+When put in one of these modes, the CPU does not execute instructions, which
+conserves power; however, it can accept interrupts, which enables it to resume
+normal operation when desired. We will use the term sleep mode of the CPU
+generically for such modes. Some computers provide several sleep modes. In the
+"light" sleep mode, the CPU simply stops executing instructions. In a "heavy"
+sleep mode, the CPU not only stops executing instructions, but also takes other
+steps that reduce its power consumption, e.g., slowing the clock and disconnecting
+the CPU from the system bus. Ideally, the kernel should put the CPU into the
+deepest sleep mode possible when the system does not have processes in the ready
+state. However, a CPU takes a longer time to "wake up" from a heavy sleep mode
+than it would from a light sleep mode, so the kernel has to make a trade-off here.
+It starts by putting the CPU in the light sleep mode. If no processes become ready
+for some more time, it puts the CPU into a heavier sleep mode, and so on. This
+way, it provides a trade-off between the need for power saving and responsiveness
+of the system.
+
+
+
+252  Part 2  Process Management
+                        Operating systems like Unix and Windows have generalized power manage-
+                   ment to include all devices. Typically, a device is put into a lower power consuming
+                   state if it has been dormant at its present power consuming state for some time.
+                   Users are also provided with utilities through which they can configure the power
+                   management scheme used by the OS.
+                   7.5  REAL-TIME SCHEDULING                                                             ·
+                   Real-time scheduling must handle two special scheduling constraints while try-
+                   ing to meet the deadlines of applications. First, the processes within a real-time
+                   application are interacting processes, so the deadline of an application should be
+                   translated into appropriate deadlines for the processes. Second, processes may be
+                   periodic, so different instances of a process may arrive at fixed intervals and all
+                   of them have to meet their deadlines. Example 7.10 illustrates these constraints;
+                   in this section, we discuss techniques used to handle them.
+·
+     Example 7.10  Dependences and Periods in a Real-Time Application
+                   Consider a restricted form of the real-time data logging application of Exam-
+                   ple 5.1, in which the buffer_area can accommodate a single data sample. Since
+                   samples arrive at the rate of 500 samples per second, the response requirement
+                   of the application is 1.99 ms. Hence, processes copy_sample and record_sample
+                   must operate one after another and complete their operation within 1.99 ms.
+                   If process record_sample requires 1.5 ms for its operation, process copy_sample
+                   has a deadline of 0.49 ms after arrival of a message. Since a new sample arrives
+                   every 2 ms, each of the processes has a period of 2 ms.
+                   ·
+                   7.5.1 Process Precedences and Feasible Schedules
+                   Processes of a real-time application interact among themselves to ensure that they
+                   perform their actions in a desired order (see Section 6.1). We make the simplifying
+                   assumption that such interaction takes place only at the start or end of a process.
+                   It causes dependences between processes, which must be taken into account while
+                   determining deadlines and while scheduling. We use a process precedence graph
+                   (PPG) to depict such dependences between processes.
+                        Process Pi is said to precede process Pj if execution of Pi must be completed
+                   before Pj can begin its execution. The notation Pi  Pj shall indicate that process
+                   Pi directly precedes process Pj. The precedence relation is transitive; i.e., Pi  Pj
+                   and Pj  Pk implies that Pi precedes Pk. The notation Pi * Pk is used to indicate
+                   that process Pi directly or indirectly precedes Pk. A process precedence graph is
+                   a directed graph G  (N, E) such that Pi  N represents a process, and an edge
+                   (Pi, Pj )  E implies Pi  Pj . Thus, a path Pi, . . . , Pk in PPG implies Pi * Pk. A
+                   process Pk is a descendant of Pi if Pi * Pk.
+
+
+
+                                                                                  Chapter 7      Scheduling  253
+In Section 3.7, we defined a hard real-time system as one that meets the
+response requirement of a real-time application in a guaranteed manner, even
+when fault tolerance actions are required. This condition implies that the time
+required by the OS to complete operation of all processes in the application does
+not exceed the response requirement of the application. On the other hand, a
+soft real-time system meets the response requirement of an application only in
+a probabilistic manner, and not necessarily at all times. The notion of a feasible
+schedule helps to differentiate between these situations.
+Definition 7.1 Feasible Schedule          A sequence of scheduling decisions that
+enables the processes of an application to operate in accordance with their
+precedences and meet the response requirement of the application.
+Real-time scheduling focuses on implementing a feasible schedule for an
+application, if one exists. Consider an application for updating airline depar-
+ture information on displays at 15-second intervals. It consists of the following
+independent processes, where process P5 handles an exceptional situation that
+seldom occurs.
+                         Process       P1  P2      P3  P4  P5
+                         Service time  3        3  2   4   5
+A feasible schedule does not exist for completing all five processes in 15 seconds,
+so a deadline overrun would occur. However, several schedules are possible when
+process P5 is not active. The scheduler in a soft real-time system can use any one
+of them.
+Table 7.3 summarizes three main approaches to real-time scheduling. We
+discuss   the  features  and  properties   of   these  scheduling  approaches           in  the
+following.
+Table 7.3       Approaches to Real-Time Scheduling
+Approach                      Description
+Static scheduling             A schedule is prepared before operation of the real-time
+                              application begins. Process interactions, periodicities,
+                              resource constraints, and deadlines are considered in
+                              preparing the schedule.
+Priority-based                The real-time application is analyzed to assign
+scheduling                    appropriate priorities to processes in it. Conventional
+                              priority-based scheduling is used during operation of
+                              the application.
+Dynamic scheduling            Scheduling is performed when a request to create a
+                              process is made. Process creation succeeds only if
+                              response requirement of the process can be satisfied in
+                              a guaranteed manner.
+
+
+
+254  Part 2  Process Management
+             Static Scheduling   As the name indicates, a schedule is prepared before the
+             system is put into operation. The schedule considers process precedences, peri-
+             odicities, resource constraints, and possibilities of overlapping I/O operations in
+             some processes with computations in other processes. This schedule is represented
+             in the form of a table whose rows indicate when operation of different processes
+             should begin. No scheduling decisions are made during operation of the system.
+             The real-time OS simply consults the table and starts operation of processes as
+             indicated in it. Static scheduling leads to negligible scheduling overhead during
+             system operation. However, it is inflexible and cannot handle issues like fault
+             tolerance.
+             The size of the scheduling table will depend on periods of processes. If all
+             processes have the same period, or if processes are nonperiodic, the scheduling
+             table will have only as many rows as the number of processes in the application.
+             This schedule is used repeatedly during operation of the system. If periodicities
+             of processes are different, the length of the schedule that needs to be represented
+             in the scheduling table will be the least common multiple of periodicities of all
+             processes in the application.
+             Priority-Based      Scheduling  A  system  analyst   uses  two  considerations  while
+             assigning priorities to processes: criticality of processes and periodicity of pro-
+             cesses. A process with a smaller period must complete its operation earlier than
+             a process with a larger period, so it must have a higher priority. This approach
+             has the benefits and drawbacks normally associated with the use of priorities. It
+             provides graceful degradation capabilities because critical functions would con-
+             tinue to be performed even when failures occur. However, it incurs scheduling
+             overhead during operation.
+             Dynamic     Scheduling  In      systems  using  the  dynamic    scheduling  approach,
+             scheduling is performed during the system's operation. Multimedia systems like
+             video on demand use a dynamic scheduling approach in which a scheduling deci-
+             sion is performed when a process arrives. A request to initiate a process contains
+             information such as the process's resource requirement, service time, and a dead-
+             line or a specification of service quality. On receiving such a request, the scheduler
+             checks whether it is possible to assign the resources needed by the process and
+             meet its deadline or provide it the desired quality of service. It creates the process
+             only if these checks succeed.
+             Another approach to dynamic scheduling is to optimistically admit processes
+             for execution. In this approach, there is no guarantee that the deadline or ser-
+             vice quality requirements can be met. Soft real-time systems often follow this
+             approach.
+             7.5.2 Deadline Scheduling
+             Two kinds of deadlines can be specified for a process: a starting deadline, i.e., the
+             latest instant of time by which operation of the process must begin, and a com-
+             pletion deadline, i.e., the time by which operation of the process must complete.
+             We consider only completion deadlines in the following.
+
+
+
+                                                                         Chapter 7           Scheduling        255
+                                     2   P1                 6  P5
+                     P2       3              5  P3
+                                 P4  4
+                                 P6  5
+Figure 7.13  The process precedence graph (PPG) for a real-time system.
+Deadline Estimation  A system analyst performs an in-depth analysis of a real-
+time application and its response requirements. Deadlines for individual processes
+are determined by considering process precedences and working backward from
+the response requirement of the application. Accordingly, Di, the completion
+deadline of a process Pi, is
+                     Di = Dapplication -        k  descendant(i) xk      (7.2)
+where Dapplication is the deadline of the application, xk is the service time of process
+Pk, and descendant(i) is the set of descendants of Pi in the PPG, i.e., the set of all
+processes that lie on some path between Pi and the exit node of the PPG. Thus,
+the deadline for a process Pi is such that if it is met, all processes that directly or
+indirectly depend on Pi can also finish by the overall deadline of the application.
+This method is illustrated in Example 7.11.
+                                                                                                               ·
+Determining Process Deadlines                                                                Example     7.11
+Figure 7.13 shows the PPG of a real-time application containing 6 processes.
+Each circle is a node of the graph and represents a process. The number in
+a circle indicates the service time of a process. An edge in the PPG shows a
+precedence constraint. Thus, process P2 can be initiated only after process P1
+completes, process P4 can be initiated only after processes P2 and P3 complete,
+etc. We assume that processes do not perform I/O operations and are serviced
+in a nonpreemptive manner. The total of the service times of the processes is
+25 seconds. If the application has to produce a response in 25 seconds, the
+deadlines of the processes would be as follows:
+                     Process         P1  P2     P3  P4  P5     P6
+                     Deadline        8   16     16  20  20     25
+                                                                                          ·
+A practical method of estimating deadlines will have to incorporate several
+other constraints as well. For example, processes may perform I/O. If an I/O
+
+
+
+256        Part 2  Process Management
+                       operation of one process can be overlapped with execution of some independent
+                       process, the deadline of its predecessors (and ancestors) in the PPG can be relaxed
+                       by the amount of I/O overlap. (Independent processes were formally defined in
+                       Section 6.1.) For example, processes P2 and P3 in Figure 7.13 are independent of
+                       one another. If the service time of P2 includes 1 second of I/O time, the deadline
+                       of P1 can be made 9 seconds instead of 8 seconds if the I/O operation of P2 can
+                       overlap with P3's processing. However, overlapped execution of processes must
+                       consider resource availability as well. Hence determination of deadlines is far
+                       more complex than described here.
+                       Earliest Deadline First (EDF) Scheduling          As its name suggests, this policy always
+                       selects the process with the earliest deadline. Consider a set of real-time processes
+                       that do not perform I/O operations. If seq is the sequence in which processes are
+                       serviced by a deadline scheduling policy and pos(Pi) is the position of process
+                       Pi in seq, a deadline overrun does not occur for process Pi only if the sum of its
+                       own service time and service times of all processes that precede it in seq does not
+                       exceed its own deadline, i.e.,
+                                                       k:pos(Pk )pos(Pi )  xk      Di                            (7.3)
+                       where xk is the service time of process Pk, and Di is the deadline of process Pi. If
+                       this condition is not satisfied, a deadline overrun will occur for process Pi.
+                              When a feasible schedule exists, it can be shown that Condition 7.3 holds
+                       for all processes; i.e., a deadline overrun will not occur for any process. Table 7.4
+                       illustrates operation of the EDF policy for the deadlines of Example 7.11. The
+                       notation  P4    :  20  in  the  column   processes  in     system   indicates  that  process  P4
+                       has the deadline 20. Processes P2, P3 and P5, P6 have identical deadlines, so three
+                       schedules other than the one shown in Table 7.4 are possible with EDF scheduling.
+                       None of them would incur deadline overruns.
+                              The primary advantages of EDF scheduling are its simplicity and nonpre-
+                       emptive nature, which reduces the scheduling overhead. EDF scheduling is a
+                       good policy for static scheduling because existence of a feasible schedule, which
+                       can be checked a priori, ensures that deadline overruns do not occur. It is also
+     Table  7.4       Operation of Earliest Deadline First (EDF) Scheduling
+                   Process    Deadline                                                                Process
+     Time          completed  overrun         Processes in system                                     scheduled
+     0             ­          0               P1 : 8, P2 : 16, P3 : 16, P4 : 20, P5 : 20, P6  :  25   P1
+     2             P1         0               P2 : 16, P3 : 16, P4 : 20, P5 : 20, P6 : 25             P2
+     5             P2         0               P3 : 16, P4 : 20, P5 : 20, P6 : 25                      P3
+     10            P3         0               P4 : 20, P5 : 20, P6 : 25                               P4
+     14            P4         0               P5 : 20, P6 : 25                                        P5
+     20            P5         0               P6 : 25                                                 P6
+     25            P2         0               ­                                                       ­
+
+
+
+                                                                               Chapter 7  Scheduling        257
+a good dynamic scheduling policy for use in soft real-time system; however, the
+number of processes that miss their deadlines is unpredictable. The next example
+illustrates this aspect of EDF scheduling.
+                                                                                                            ·
+Problems of EDF Scheduling                                                                Example     7.12
+Consider the PPG of Figure 7.13 with the edge (P5, P6) removed. It contains
+two independent applications, one contains the processes P1­P4 and P6, while
+the other contains P5 alone. If all processes are to complete by 19 seconds, a
+feasible schedule does not exist. Now deadlines of the processes determined
+by using Eq. (7.2) are as follows:
+                        Process   P1       P2  P3  P4     P5  P6
+                        Deadline  2        10  10  14     19  19
+EDF  scheduling         may      schedule  the     processes  either  in  the  sequence
+P1, P2, P3, P4, P5, P6, which is the same as in Table 7.4, or in the sequence
+P1, P2, P3, P4, P6, P5. Processes P5 and P6 miss their deadlines in the first
+sequence, whereas only process P5 misses its deadline in the second sequence.
+We cannot predict which sequence will be chosen by an implementation of
+EDF scheduling, so the number of processes that miss their deadlines is
+unpredictable.
+                                                                                       ·
+7.5.3 Rate Monotonic Scheduling
+When processes in an application are periodic, the existence of a feasible schedule
+can be determined in an interesting way. Consider three independent processes
+that do not perform I/O operations:
+                 Process                       P1      P2     P3
+                 Time period (ms)              10      15     30
+                 Service time (ms)              3         5       9
+Process P1 repeats every 10 ms and needs 3 ms of CPU time. So the fraction
+of the CPU's time that it uses is 3/10, i.e., 0.30. The fractions of CPU time used
+by P2 and P3 are analogously 5/15 and 9/30, i.e., 0.33 and 0.30. They add up to
+0.93, so if the CPU overhead of OS operation is negligible, it is feasible to service
+these three processes. In general, a set of periodic processes P1, . . . , Pn that do
+not perform I/O operations can be serviced by a hard real-time system that has a
+negligible overhead if                         xi
+                                      i=1...n  Ti  1                           (7.4)
+where Ti is the period of Pi and xi is its service time.
+
+
+
+258  Part 2  Process Management
+                     P1          3             3                3
+                     P2             5                    5
+                     P3                    2          2                5
+                           0               10               20               30  Time (ms)
+             Figure  7.14  Operation   of  real-time  processes using  rate  monotonic scheduling.
+             We still have to schedule these processes so that they can all operate without
+             missing their deadlines. The rate monotonic (RM) scheduling policy does it as
+             follows: It determines the rate at which a process has to repeat, i.e., the number of
+             repetitions per second, and assigns the rate itself as the priority of the process. It
+             now employs a priority-based scheduling technique to perform scheduling. This
+             way, a process with a smaller period has a higher priority, which would enable it
+             to complete its operation early.
+             In the above example, priorities of processes P1, P2, and P3 would be 1/0.010,
+             1/0.015, and 1/0.025, i.e., 100, 67, and 45, respectively. Figure 7.14 shows how
+             these processes would operate. Process P1 would be scheduled first. It would
+             execute once and become dormant after 3 ms, because x1 = 3 ms. Now P2
+             would be scheduled and would complete after 5 ms. P3 would be scheduled
+             now, but it would be preempted after 2 ms because P1 becomes ready for the
+             second time, and so on. As shown in Figure 7.14, process P3 would complete
+             at 28 ms. By this time, P1 has executed three times and P2 has executed two
+             times.
+             Rate monotonic scheduling is not guaranteed to find a feasible schedule
+             in all situations. For example, if process P3 had a time period of 27 ms, its
+             priority would be different; however, relative priorities of the processes would
+             be unchanged, so P3 would complete at 28 ms as before, thereby suffering a
+             deadline overrun of 1 ms. A feasible schedule would have been obtained if
+             P3 had been scheduled at 20 ms and P1 at 25 ms; however, it is not possi-
+             ble under RM scheduling because processes are scheduled in a priority-based
+             manner. Liu and Layland (1973) have shown that RM scheduling may not be
+             able to avoid deadline overruns if the total fraction of CPU time used by the
+             processes according to Eq. (7.4) exceeds m(21/m - 1), where m is the number
+             of processes. This expression has a lower bound of 0.69, which implies that
+             if an application has a large number of processes, RM scheduling may not be
+             able to achieve more than 69 percent CPU utilization if it is to meet deadlines
+             of processes.
+             Liu and Layland also report a deadline-driven scheduling algorithm that
+             dynamically assigns priorities to processes based on their current deadlines--a
+             process with an earlier deadline is assigned a higher priority than a process with a
+             later deadline. It can avoid deadline overruns even when the fraction of Eq. (7.4)
+             has the value 1; that is, it can achieve 100 percent CPU utilization. However,
+
+
+
+                                                                           Chapter 7     Scheduling  259
+its practical performance would be lower because of the overhead of dynamic
+priority assignment. Recall that EDF scheduling can avoid deadline overruns if a
+feasible schedule exists. Hence, it, too, can achieve 100 percent CPU utilization.
+If employed statically, it would suffer little overhead during operation.
+7.6  CASE STUDIES                                                                                    ·
+7.6.1 Scheduling in Unix
+Unix is a pure time-sharing operating system. It uses a multilevel adaptive
+scheduling policy in which process priorities are varied to ensure good system
+performance and also to provide good user service. Processes are allocated numer-
+ical priorities, where a larger numerical value implies a lower effective priority.
+In Unix 4.3 BSD, the priorities are in the range 0 to 127. Processes in the user
+mode have priorities between 50 and 127, while those in the kernel mode have
+priorities between 0 and 49. When a process is blocked in a system call, its prior-
+ity is changed to a value in the range 0­49, depending on the cause of blocking.
+When it becomes active again, it executes the remainder of the system call with
+this priority. This arrangement ensures that the process would be scheduled as
+soon as possible, complete the task it was performing in the kernel mode and
+release kernel resources. When it exits the kernel mode, its priority reverts to its
+previous value, which was in the range 50­127.
+     Unix uses the following formula to vary the priority of a process:
+     Process priority =    base priority for user processes
+                           + f (CPU time used recently) + nice value       (7.5)
+It is implemented as follows: The scheduler maintains the CPU time used by a
+process in its process table entry. This field is initialized to 0. The real-time clock
+raises an interrupt 60 times a second, and the clock handler increments the count
+in the CPU usage field of the running process. The scheduler recomputes process
+priorities every second in a loop. For each process, it divides the value in the CPU
+usage field by 2, stores it back, and also uses it as the value of f. Recall that a
+large numerical value implies a lower effective priority, so the second factor in
+Eq. (7.5) lowers the priority of a process. The division by 2 ensures that the effect
+of CPU time used by a process decays; i.e., it wears off over a period of time, to
+avoid the problem of starvation faced in the least completed next (LCN) policy
+(see Section 7.3.2).
+     A process can vary its own priority through the last factor in Eq. (7.5). The
+system call "nice(<priority value>);" sets the nice value of a user process. It takes
+a zero or positive value as its argument. Thus, a process can only decrease its
+effective priority to be nice to other processes. It would typically do this when it
+enters a CPU-bound phase.
+
+
+
+260  Part 2  Process Management
+     Table 7.5             Operation of a Unix-like   Scheduling  Policy
+     When Processes Perform I/O
+                       P1          P2          P3         P4         P5
+                                                                             Scheduled
+     Time          P       T   P       T   P       T  P       T   P       T  process
+     0.0           60      0                                                 P1
+     1.0                   60
+                   90      30                                                P1
+     2.0                   90          0
+                   105     45  60      0                                     P2
+     3.0                   45          60          0
+                   82      22  90      30  60      0                         P3
+     3.1           82      22  90      30  60      6                         P1
+     4.0                   76          30          6
+                   98      38  75      15  63      3                         P3
+     4.1           98      38  75      15  63      9                         P2
+     5.0                   38          69          9          0
+                   79      19  94      34  64      4  60      0              P4
+     6.0                   19          34          4          60
+                   69      9   77      17  62      2  90      30             P3
+·
+     Example 7.13      Process Scheduling in Unix
+                       Table 7.5 summarizes operation of the Unix scheduling policy for the processes
+                       in Table 7.2. It is assumed that process P3 is an I/O bound process that initiates
+                       an I/O operation lasting 0.5 seconds after using the CPU for 0.1 seconds, and
+                       none of the other processes perform I/O. The T field indicates the CPU time
+                       consumed by a process and the P field contains its priority. The scheduler
+                       updates the T field of a process 60 times a second and recomputes process
+                       priorities once every second. The time slice is 1 second, and the base priority
+                       of user processes is 60. The first line of Table 7.5 shows that at 0 second, only P1
+                       is present in the system. Its T field contains 0, hence its priority is 60. Two lines
+                       are shown for the time 1 second. The first line shows the T fields of processes
+                       at 1 second, while the second line shows the P and T fields after the priority
+                       computation actions at 1 second. At the end of the time slice, the contents of
+                       the T field of P1 are 60. The decaying action of dividing the CPU time by 2
+                       reduces it to 30, and so the priority of P1 becomes 90. At 2 seconds, the effective
+                       priority of P1 is smaller than that of P2 because their T fields contain 45 and
+                       0, respectively, and so P2 is scheduled. Similarly P3 is scheduled at 2 seconds.
+                           Since P3 uses the CPU for only 0.1 second before starting an I/O operation,
+                       it has a higher priority than P2 when scheduling is performed at 4 seconds;
+                       hence it is scheduled ahead of process P2. It is again scheduled at 6 seconds.
+                       This feature corrects the bias against I/O-bound processes exhibited by pure
+                       round-robin scheduling.
+                      ·
+
+
+
+                                                                  Chapter 7           Scheduling           261
+Table  7.6  Operation of Fair Share     Scheduling   in Unix
+            P1                 P2                P3           P4                      P5
+                                                                                                  Scheduled
+Time   P    C   G         P    C    G   P        C   G   P    C   G   P               C   G       process
+0      60   0          0                                                                          P1
+1      120  30  30                                                                                P1
+2      150  45  45        105  0    45                                                            P2
+3      134  22  52        142  30   52  60       0   0                                            P3
+4      97   11  26        101  15   26  120      30  30  86   0   26                              P4
+5      108  5   43        110  7    43  90       15  15  133  30  43                              P3
+6      83   2   21        84   3    21  134      37  37  96   15  21                              P1
+7                         101  1    40  96       18  18  107  7   40                              P3
+8                         80   0    20  138      39  39  83   3   20              80  0   20      P5
+9                         100  0    40  98       19  19  101  1   40  130             30  40      P3
+10                        80   0    20  138      39  39  80   0   20              95  15  20      P2
+11                        130  30   40  98       19  19  100  0   40  107             7   40      P3
+12                        95   15   20                   80   0   20              83  3   20      P4
+13                        107  7    40                                101             1   40      P5
+14                        113  3    50                                110             0   50      P5
+15                        116  1    55                                                            P2
+16
+Fair Share Scheduling     To ensure a fair share of CPU time to groups of processes,
+Unix schedulers add the term f (CPU time used by processes in the group) to
+Eq. (7.5). Thus, priorities of all processes in a group reduce when any of them
+consumes CPU time. This feature ensures that processes of a group would receive
+favored treatment if none of them has consumed much CPU time recently. The
+effect of the new factor also decays over time.
+                                                                                                             ·
+Fair Share Scheduling in Unix                                                            Example 7.14
+Table 7.6 depicts fair share scheduling of the processes of Table 7.2. Fields P,
+T, and G contain process priority, CPU time consumed by a process, and CPU
+time consumed by a group of processes, respectively. Two process groups exist.
+The first group contains processes P1, P2, P4, and P5, while the second group
+contains process P3 all by itself.
+       At 2 seconds, process P2 has just arrived. Its effective priority is low
+because process P1, which is in the same group, has executed for 2 seconds.
+However, P3 does not have a low priority when it arrives because the CPU
+time already consumed by its group is 0. As expected, process P3 receives a
+favored treatment compared to other processes. In fact, it receives every alter-
+nate time slice. Processes P2, P4, and P5 suffer because they belong to the same
+process group. These facts are reflected in the turnaround times and weighted
+
+
+
+262  Part 2  Process Management
+             turnarounds of the processes, which are as follows:
+                          Process              P1       P2        P3      P4    P5
+                          Completion time      7     16       12        13      15
+                          Turnaround time      7     14           9       9     7
+                          Weighted turnaround  2.33     4.67      1.80    4.50  2.33
+                                   Mean turnaround time (ta) = 9.2 seconds
+                                   Mean weighted turnaround (w¯ ) = 3.15
+             ·
+             7.6.2 Scheduling in Solaris
+             Solaris supports four classes of processes--time-sharing processes, interactive
+             processes, system processes, and real-time processes. A time slice is called a time
+             quantum in Solaris terminology. Time-sharing and interactive processes have pri-
+             orities between 0 and 59, where a larger number implies a higher priority. System
+             processes have priorities between 60 and 99; they are not time-sliced. Real-time
+             processes have priorities between 100 and 159 and are scheduled by a round-robin
+             policy within a priority level. Threads used for interrupt servicing have priorities
+             between 160 and 169.
+                Scheduling of time-sharing and interactive processes is governed by a dis-
+             patch table. For each priority level, the table specifies how the priority of a process
+             should change to suit its nature, whether CPU-bound or I/O-bound, and also to
+             prevent starvation. Use of the table, rather than a priority computation rule as in
+             Unix, provides fine-grained tuning possibilities to the system administrator. The
+             dispatch table entry for each priority level contains the following values:
+                ts_quantum       The time quantum for processes of this priority level
+                ts_tqexp         The new priority of a process that uses its entire time quantum
+                ts_slpret        The new priority of a process that blocks before using its
+                                 complete time quantum
+                ts_maxwait       The maximum amount of time for which a process can be
+                                 allowed to wait without getting scheduled
+                ts_lwait         The new priority of a process that does not get scheduled
+                                 within ts_maxwait time
+                A process that blocks before its time quantum elapses is assumed to be an
+             I/O-bound process; its priority is changed to ts_slpret, which is a higher
+             priority than its present priority. Analogously, a process that uses its entire time
+             quantum is assumed to be a CPU-bound process, so ts_tqexp is a lower priority.
+             ts_maxwait is used to avoid starvation, hence ts_lwait is a higher priority. In
+             addition to these changes in priority effected by the kernel, a process can change
+             its own priority through the nice system call with a number in the range -19 to
+             19 as a parameter.
+                Solaris 9 also supports a fair share scheduling class. A group of processes
+             is called a project and is assigned a few shares of CPU time. The fair share of
+
+
+
+                                                                  Chapter 7            Scheduling  263
+a project at any time depends on the shares of other projects that are active
+concurrently; it is the quotient of the shares of the project and the sum of the
+shares of all those projects that have at least one process active. In multiprocessor
+systems, shares are defined independently for each CPU. Solaris 10 added the
+notion of zones on top of projects. CPU shares are now assigned for both zones
+and projects to provide two-level scheduling.
+7.6.3 Scheduling in Linux
+Linux supports both real-time and non-real-time applications. Accordingly, it has
+two classes of processes. The real-time processes have static priorities between 0
+and 100, where 0 is the highest priority. Real-time processes can be scheduled in
+two ways: FIFO or round-robin within each priority level. The kernel associates
+a flag with each process to indicate how it should be scheduled.
+Non-real-time processes have lower priorities than all real-time processes;
+their priorities are dynamic and have numerical values between -20 and 19,
+where -20 is the highest priority. Effectively, the kernel has (100 + 40) priority
+levels. To start with, each non-real-time process has the priority 0. The priority
+can be varied by the process itself through the nice or setpriority system calls.
+However, special privileges are needed to increase the priority through the nice
+system call, so processes typically use this call to lower their priorities when they
+wish to be nice to other processes. In addition to such priority variation, the
+kernel varies the priority of a process to reflect its I/O-bound or CPU-bound
+nature. To implement this, the kernel maintains information about how much
+CPU time the process has used recently and for how long it was in the blocked
+state, and adds a bonus between 5 and -5 to the nice value of the process. Thus,
+a highly interactive process would have an effective priority of nice-5, while a
+CPU-bound process would have an effective priority of nice+5.
+Because of the multilevel priority structure, the Linux kernel organizes its
+scheduling data as shown in Figure 7.12 of Section 7.4.3. To limit the schedul-
+ing overhead, Linux uses a scheduler schematic analogous to Figure 5.9. Thus,
+scheduling is not performed after every event handling action. It is performed
+when the currently executing process has to block due to a system call, or when
+the need_resched flag has been set by an event handling action. This is done
+while handling expiry of the time slice, or while handling an event that acti-
+vates a process whose priority is higher than that of the currently executing
+process.
+Non-real-time processes are scheduled by using the notion of a time slice;
+however, the Linux notion of a time slice is actually a time quantum that a process
+can use over a period of time in accordance with its priority (see Section 7.4.8).
+A process that exhausts its time slice would receive a new time slice only after
+all processes have exhausted their time slices. Linux uses time slices in the range
+of 10 to 200 ms. To ensure that a higher-priority process would receive more
+CPU attention than a lower-priority process, Linux assigns a larger time slice to
+a higher-priority process. This assignment of time slices does not affect response
+
+
+
+264  Part 2  Process Management
+             times because a high-priority process would be interactive in nature, hence it
+             would perform an I/O operation before using much CPU time.
+             The Linux scheduler uses two lists of processes, an active list and an exhausted
+             list. Both lists are ordered by priorities of processes and use the data structure
+             described earlier. The scheduler schedules a process from the active list, which
+             uses time from its time slice. When its time slice is exhausted, it is put into the
+             exhausted list. Schedulers in Linux kernel 2.5 and earlier kernels executed a pri-
+             ority recomputation loop when the active list became empty. The loop computed
+             a new time slice for each process based on its dynamic priority. At the end of
+             the loop, all processes were transferred to the active list and normal scheduling
+             operation was resumed.
+             The Linux 2.6 kernel uses a new scheduler that incurs less overhead and scales
+             better with the number of processes and CPUs. The scheduler spreads the priority
+             recomputation overhead throughout the scheduler's operation, rather than lump
+             it in the recomputation loop. It achieves this by recomputing the priority of a
+             process when the process exhausts its time slice and gets moved to the exhausted
+             list. When the active list becomes empty, the scheduler merely interchanges the
+             active and exhausted lists.
+             The scalability of the scheduler is ensured in two ways. The scheduler has a
+             bit flag to indicate whether the list of processes for a priority level is empty. When
+             invoked, the scheduler tests the flags of the process lists in the order of reducing
+             priority, and selects the first process in the first nonempty process list it finds. This
+             procedure incurs a scheduling overhead that does not depend on the number of
+             ready processes; it depends only on the number of scheduling levels, hence it is
+             bound by a constant. This scheduling is called O(1), i.e., order 1, scheduling.
+             Schedulers in older Linux kernels used a synchronization lock on the active list
+             of processes to avoid race conditions when many CPUs were supported. The
+             Linux 2.6 kernel maintains active lists on a per-CPU basis, which eliminates the
+             synchronization lock and associated delays. This arrangement also ensures that
+             a process operates on the same CPU every time it is scheduled; it helps to ensure
+             better cache hit ratios.
+             7.6.4 Scheduling in Windows
+             Windows scheduling aims at providing good response times to real-time and inter-
+             active threads. Scheduling is priority-driven and preemptive. Scheduling within
+             a priority level is performed through a round-robin policy with time-slicing. A
+             time slice is called a quantum in Windows terminology. Priorities of non-real-
+             time threads are dynamically varied to favor interactive threads. This aspect is
+             analogous to multilevel adaptive scheduling (see Section 7.4.5).
+             Real-time threads are given higher priorities than other threads--they have
+             priorities in the range 16­31, while other threads have priorities in the range 1­15.
+             Priorities of non-real-time threads can vary during their lifetime, hence this class
+             of threads is also called the variable priority class. The effective priority of a thread
+             in this class at any moment is a combination of three factors--the base priority
+             of the process to which the thread belongs; the base priority of the thread, which
+
+
+
+                      Chapter 7                                                         Scheduling  265
+is in the range -2 to 2; and a dynamic component assigned by the kernel to favor
+interactive threads.
+The kernel varies a thread's dynamic component of priority as follows: If the
+thread uses up its complete time slice when scheduled, its priority is reduced by
+1. When a waiting, i.e., blocked, thread is activated, it is given a priority increase
+based on the nature of the event on which it was blocked. If it was blocked on
+input from the keyboard, its priority is boosted by 6. To deny an unfair advantage
+to an I/O-bound thread, the remaining time of its current quantum is reduced by
+one clock tick every time it makes an I/O request. To guard against starvation,
+the priority of a ready thread that has not received CPU time for more than
+4 seconds is raised to 15 and its quantum is increased to twice its normal value.
+When this quantum expires, its priority and quantum revert back to their old
+values.
+The scheduler uses a data structure resembling that shown in Figure 7.12,
+except for two refinements that provide efficiency. Since priority values lie in the
+range 0­31, with priority 0 reserved for a system thread, an array of 32 pointers is
+used to point at the queues of ready threads at different priority levels. A vector of
+32 bit flags is used to indicate whether a ready thread exists at each of the priority
+levels. This arrangement enables the scheduler to speedily locate the first thread
+in the highest-priority nonempty queue. When none of the system or user threads
+is in the ready state, the scheduler schedules a special idle thread on the CPU that
+continually executes an idle loop until a thread is scheduled on it. In the loop,
+it activates functions in the hardware abstraction layer (HAL) at appropriate
+times to perform power management. In a multiprocessor system, the scheduler
+operating on one CPU may schedule a thread on another CPU that is idle (see
+Section 10.6.3). To facilitate such scheduling, the idle loop also examines the
+scheduling data structures to check whether a thread has been scheduled on the
+CPU that is executing the idle loop, and switches the CPU to the scheduled thread
+if this is the case.
+To conserve power when the computer is idle, Windows provides a num-
+ber of system states wherein the computer operates in a mode that consumes
+low power. In the hibernate state, the states of running applications are stored
+on the disk and the system is turned off. When the system is activated, appli-
+cation states are restored from the disk before operation is resumed. Use of the
+disk to store application states leads to slow resumption; however, it provides
+reliability because operation of the computer is immune to loss or depletion of
+power while the computer is in hibernation. In the standby state, states of running
+applications are saved in memory, and the computer enters a low-power mode of
+operation. Resumption using the application states stored in memory is faster.
+However, the state information would be lost if power is lost or depleted while
+the system is in the standby state, so computer operation is not reliable. Hence
+Windows Vista introduced a new hybrid state called the sleep state wherein the
+application states are stored both in memory and on the disk. System operation is
+resumed as in the standby state if application states are available in memory; oth-
+erwise, it is resumed as in the hibernate state using the application states stored on
+the disk.
+
+
+
+266  Part 2  Process Management
+             7.7  PERFORMANCE ANALYSIS OF SCHEDULING POLICIES                                      ·
+             Performance analysis of a scheduling policy is a study of its performance, using
+             measures such as response time of a process, efficiency of use of the CPU, and
+             throughput of the system. Performance analysis can be used to compare perfor-
+             mance of alternative scheduling policies, and to determine "good" values of key
+             system parameters like the time slice, number of active users, and the size of the
+             list of ready processes.
+                  Performance of a scheduling policy is sensitive to the nature of requests
+             directed at it, and so performance analysis should be conducted in the environ-
+             ment in which the policy is to be put into effect. The set of requests directed at
+             a scheduling policy is called its workload. The first step in performance analysis
+             of a policy is to accurately characterize its typical workload. In the following, we
+             discuss some issues involved in this step.
+                  As mentioned in Section 7.2 in the context of the SRN policy, user estimates
+             of service times are not reliable either because users lack the experience to pro-
+             vide good estimates of service time or because knowledgeable users may provide
+             misleading estimates to obtain a favored treatment from the system. Some users
+             may even resort to changes in their requests to obtain better service; for instance,
+             a user who knows that the SRN policy is being used may split a long-running pro-
+             gram into several programs with short service times. All these factors distort the
+             workload. Hence the characterization of a typical workload should be developed
+             without involving the users.
+                  Three approaches could be used for performance analysis of scheduling
+             policies:
+             ·  Implementation of a scheduling policy in an OS
+             ·  Simulation
+             ·  Mathematical modeling
+                  Both simulation and mathematical modeling avoid the need for implementing
+             a scheduling policy in an OS, thereby avoiding the cost, complexity, and delays
+             involved in implementing the policy. However, to produce the same results as
+             an implementation, these approaches require a very detailed characterization
+             of requests in the workload, which is generally not feasible in practice. Hence,
+             performance aspects like the scheduling overhead or service to individual requests
+             are best studied through implementation, whereas simulation and mathematical
+             modeling are well suited for studying performance of a scheduling policy and for
+             determining "good" values of system parameters like the time slice, number of
+             users, or the size of the list of ready processes.
+             7.7.1 Performance Analysis through Implementation
+             The scheduling policy to be evaluated is implemented in a real operating sys-
+             tem that is used in the target operating environment. The OS receives real user
+
+
+
+                                                                                      Chapter 7  Scheduling  267
+                                              Data              Simulated
+                                              collection         Clock
+                                  Scheduling  module
+              Requests to         lists
+                                                      Scheduler            Completed
+              be serviced                                                  requests
+                                                      PCB
+                                                           I/O
+                                                      Simulator
+Figure  7.15  Simulation   of  a  scheduling policy.
+requests; services them using the scheduling policy; and collects data for statistical
+analysis of the policy's performance. This approach to performance analysis is
+disruptive, because a real OS has to be decommissioned, modified, and recommis-
+sioned for every scheduling policy that is to be analyzed. This disruption could
+be avoided by using virtual machine software, which permits a guest kernel to
+be modified without affecting operation of the host kernel; however, the over-
+head introduced by use of the virtual machine would cause inaccuracies in the
+performance measurement.
+7.7.2 Simulation
+Simulation is achieved by coding the scheduling policy and relevant OS functions
+as a program--the simulator program--and using a typical workload as its input.
+The workload is a recording of some real workload directed at the OS during a
+sample period. Analysis may be repeated with many workloads to eliminate the
+effect of variations across workloads.
+Figure 7.15 shows a schematic of a simulator. The simulator operates as
+follows: It maintains the data structures that are used by the simulated scheduling
+policy, in which it puts information concerning user requests as they arrive in the
+system, get admitted, and receive service. It also maintains a clock to keep track
+of the simulated time. From time to time, it mimics the scheduling action and
+selects a request for processing. It estimates the length of time for which the
+request would use the CPU before an event like the initiation of an I/O operation
+or completion of a request, occurs. It now advances the simulated clock by the
+amount of time for which the request would have used the CPU before the event
+occurred, and moves the request out of the scheduling queue. It then performs
+scheduling once again, and so on. It may contain other modules like an I/O
+simulator module which would predict when the I/O operation initiated by a
+request would complete. When the simulated clock shows this time, it adds the
+request to a scheduling queue. The data collection module collects useful data
+for performance analysis. The level of detail handled in a simulator governs the
+cost of simulation and the quality of its results.
+
+
+
+268  Part 2  Process Management
+             7.7.3 Mathematical Modeling
+             A mathematical model consists of two components--a model of the server
+             and a model of the workload being processed. The model provides a set of
+             mathematical expressions for important performance characteristics like service
+             times of requests and overhead. These expressions provide insights into the influ-
+             ence of various parameters on system performance. The workload model differs
+             from workloads used in simulations in that it is not a recording of actual work-
+             load in any specific time period. It is a statistical distribution that represents the
+             workload; that is, it is a function that generates fictitious requests that have the
+             same statistical properties as the actual workload during any period.
+             Queuing Theory      Widespread use of mathematical models to analyze perfor-
+             mance of various systems led to development of a separate branch of mathematics
+             known as queuing theory. Performance analysis using queuing theory is called
+             queuing analysis. The earliest well-known application of queuing analysis was by
+             Erlang (1909) in evaluating the performance of a telephone exchange with the
+             number of trunk lines as the controlling parameter.
+             The fundamental queuing theory model of a system is identical with the
+             simple scheduler model discussed at the start of this Chapter (see Figure 7.1).
+             This is known as the single-server model. Queuing analysis is used to develop
+             mathematical expressions for server efficiency, mean queue length, and mean
+             wait time.
+             A request arriving at time ai with service time xi is completed at time ci. The
+             elapsed time (ci - ai) depends on two factors--arrival times and service times
+             of requests that are either in execution or in the scheduling queue at some time
+             during the interval (ci - ai), and the scheduling policy used by the server. It is
+             reasonable to assume that arrival times and service times of requests entering
+             the system are not known in advance; i.e., these characteristics of requests are
+             nondeterministic in nature.
+             Although characteristics of individual requests are unknown, they are cus-
+             tomarily assumed to conform to certain statistical distributions. A computing
+             environment is thus characterized by two parameters--a statistical distribution
+             governing arrival times of requests, and a statistical distribution governing their
+             service times. We give a brief introduction to statistical distributions and their
+             use in mathematical modeling, using the following notation:
+                         Mean arrival rate (requests per second)
+                         Mean execution rate (requests per second)
+                         /
+              is called the utilization factor of the server. When  > 1, the work being
+             directed at the system exceeds its capacity. In this case, the number of requests
+             in the system increases indefinitely. Performance evaluation of such a system is
+             of little practical relevance since turnaround times can be arbitrarily large. When
+              < 1, the system capacity exceeds the total work directed at it. However, this is
+             true only as a long-term average; it may not hold in an arbitrary interval of time.
+
+
+
+                                                                                    Chapter 7    Scheduling  269
+Hence the server may be idle once in a while, and a few requests may exist in the
+queue at certain times.
+Most practical systems satisfy  < 1. Even when we consider a slow server, 
+does not exceed 1 because most practical systems are self-regulatory in nature--
+the number of users is finite and the arrival rate of requests slackens when the
+queue length is large because most users' requests are locked up in the queue!
+A system reaches a steady state when all transients in the system induced due
+to its abrupt initiation at time t = 0 die down. In the steady state, values of mean
+queue lengths, mean wait times, mean turnaround times, etc., reflect performance
+of the scheduling policy. For obtaining these values, we start by assuming certain
+distributions for arrival and servicing of requests in the system.
+Arrival Times  The time between arrival of two consecutive requests is called
+interarrival time. Since  is the arrival rate, the mean interarrival time is 1/. A
+statistical distribution that has this mean interarrival time and that fits empiri-
+cal data reasonably well can be used for workload characterization. Arrival of
+requests in the system can be regarded as random events totally independent of
+each other. Two assumptions leading to a Poisson distribution of arrivals are now
+made. First, the number of arrivals in an interval t to t + dt is assumed to depend
+only on the value of dt and not on past history of the system during the interval
+(0, t). Second, for small values of dt, probability of more than one arrival in the
+interval t to (t + dt) is assumed to be negligible. The first assumption is known as
+the memoryless property of the arrival times distribution. An exponential distri-
+bution function giving the probability of an arrival in the interval 0 to t for any t
+has the form:
+                                     F (t) = 1 - e-. t
+This distribution has the mean interarrival time 1/ since           t.  dF  (t)  =  1/.  It  is
+                                                           0
+found that the exponential distribution fits the interarrival times in empirical data
+reasonably well. (However, a hyperexponential distribution with the same mean
+of 1/ is found to be a better approximation for the experimental data (Coffman
+and Wood [1966]).
+Service Times  The function S(t) gives the probability that the service time of a
+request is less than or equal to t.
+                                     S(t) = 1 - e-. t
+As in the case of arrival times, we make two assumptions that lead to a Poisson
+distribution of service times. Hence the probability that a request that has already
+consumed t units of service time will terminate in the next dt seconds depends
+only on the value of dt and not on t. In preemptive scheduling, it applies every
+time a request is scheduled to run after an interruption.
+The memoryless property of service times implies that a scheduling algo-
+rithm cannot make any predictions based on past history of a request in the
+system. Thus, any preemptive scheduling policy that requires knowledge of future
+behavior of requests must depend on estimates of service times supplied by a pro-
+grammer. The scheduling performance will then critically depend on user inputs
+
+
+
+270  Part 2  Process Management
+             and may be manipulated by users. In a practical situation, a system must strive
+             to achieve the opposite effect--that is, system performance should be immune
+             to user specification (or misspecification) of the service time of a request. This
+             requirement points toward round-robin scheduling with time-slicing as a practical
+             scheduling policy.
+             Performance Analysis                   The relation between L, the mean queue length and W ,
+             the mean wait time for a request before its servicing begins is given by Little's
+             formula,
+                                                                         L =  ×W                                                             (7.6)
+             This relation follows from the fact that while a request waits in the queue,  × W
+             new requests join the queue.
+             When a new request arrives, it is added to the request queue. In nonpreemptive
+             scheduling, the new request would be considered only after the server completes
+             the request it is servicing. Let W0 be the expected time to complete the current
+                                                                                                                         =W01=-2e.-0. t.t2WdF,
+             request.    Natually,       W0    is independent of a                 scheduling policy.                                           (t),
+             and has     the value             for an exponential                  distribution F (t)                                           the
+                                         2
+             mean wait time for a request when a specific scheduling policy is used, is computed
+             from W0 and features of the scheduling policy. We outline how the mean wait
+             times for FCFS and SRN policies are derived. Derivations for HRN and round-
+             robin policies are more complex and can be found in Brinch Hansen (1973).
+             Table 7.7 summarizes the mean wait time for a request whose service time is t
+             when different scheduling policies are used.
+             W , the waiting time for some request r , is the amount of time r                                                    spends in
+             the queue before its service begins. Hence in FCFS scheduling
+                                                                   W = W0 +                    i xi
+             Table 7.7            Summary of Performance Analysis
+             Scheduling policy                 Mean wait time for a request with service time = t
+             FCFS                              W0
+                                               1-
+             SRN                               W0       ,  where      t  =      t     ·  y  ·  dS(y)
+                                               1-t                           o
+             HRN                               For small t:           W0  +        2     ×     t
+                                                                                1-             2
+                                               For      large  t:           W0
+                                                                   (1-   )(1-      +   2.W0    )
+                                                                                         t
+             Round-robin                            n          -   1  ,  where     P0    =             1
+                                                                   
+                                                (1-P0 )                                           n    n!      ×()j
+                                                                                                  j=0  (n-j)!
+                                               (P0 is the probability that no terminal awaits                                  a  response)
+             Note: W0 =     .     t2 dF  (t).  For  an  exponential      distribution F (t)    =     1 - e-. t,  it  is     .
+                         2     0                                                                                         2
+
+
+
+                                                                                                             Chapter 7  Scheduling        271
+where request i is ahead of request r               in the scheduling queue. Since the system
+is in the steady state, we can replace the              i  term       by   n  ×     1  ,  where  n  is  the  number
+                                  1                                                 
+of requests ahead of r     and       is the mean service time. Since n is the mean queue
+length, n =  × W from Little's formula. Hence
+                                W    =    W0        +      ×   W×          1
+                                                                           
+                                     =    W0        +      ×   W.
+Therefore, W  =    W0   .  Thus,  the  mean         wait   time   in    FCFS        scheduling      rises    sharply
+                   1-
+for high values of .
+In SRN scheduling, requests whose service times < xr , where xr is the service
+time of r , are serviced before request r . Hence the waiting time for request r                                  is
+                   W = W0 +               i xi, where xi < xr
+                              W0                                     r
+                           =  1 - r    ,  where r          =             · y · dS(y).
+                                                                  0
+Capacity Planning      Performance analysis can be used for capacity planning. For
+example, the formulae shown in Table 7.7 can be used to determine values of
+important parameters like the size of the list of ready processes used by the
+kernel.
+As an example, consider an OS in which the mean arrival rate of requests
+is 5 requests per second, and the mean response time for requests is 3 seconds.
+The mean queue length is computed by Little's formula [Eq. (7.6)] as 5 × 3 = 15.
+Note that queues will exceed this length from time to time. The following example
+provides a basis for deciding the capacity of the ready queue.
+                                                                                                                                          ·
+Capacity Planning Using Queuing Analysis                                                                                Example     7.15
+A kernel permits up to n entries in the queue of ready requests. If the queue is
+full when a new request arrives, the request is rejected and leaves the OS. pi,
+the probability that the ready queue contains i processes at any time, can be
+shown to be:
+                                          pi  =     i × (1 - )                                               (7.7)
+                                                        1 - n+1
+For      =  0.5 and n      =  3, p0  =        8  ,  p1  =  4   ,  p2    =     2  ,  and   p3  =     1   .  Hence  6.7
+                                          15               15              15                       15
+percent of requests are lost. A higher value of n should be used to reduce the
+number of lost requests.
+                                                                                                                  ·
+
+
+
+272          Part 2  Process Management
+7.8      SUMMARY                                                                                                            ·
+The scheduler of an OS decides which process                 long-term scheduler decides when a process should
+should be serviced next by the CPU and for how               be admitted for servicing, whereas the medium-
+long it should be serviced. Its decisions influence          term  scheduler   decides  when      a  process           should
+both user service and system performance. In this            be swapped out to a disk and when it should
+chapter, we discussed three techniques of process            be  reloaded  in  memory.       The  short-term           sched-
+schedulers: priority-based scheduling, reordering of         uler selects one of the processes that is present in
+requests, and variation of time slice; and studied           memory. The multilevel adaptive scheduling policy
+how schedulers use them to provide a desired com-            assigns different values of time slice to processes
+bination of user service and system performance.             with different priorities and varies a process's pri-
+We also studied real-time scheduling.                        ority in accordance with its recent behavior to
+     A nonpreemptive scheduling policy performs              provide a combination of good response time and
+scheduling   only    when      the  process  being  ser-     low scheduling overhead. The fair share schedul-
+viced by the CPU completes; the policy focuses               ing policy ensures that processes of an application
+merely on reordering of requests to improve mean             collectively do not exceed a specified share of the
+turnaround time of processes. The shortest request           CPU time.
+next (SRN) policy suffers from starvation, as some               Real-time scheduling focuses on meeting the
+processes may be delayed indefinitely. The highest           time constraints of applications. Deadline schedul-
+response ratio next (HRN) policy does not have this          ing considers deadlines of processes while perform-
+problem because the response ratio of a process              ing scheduling decisions. Rate monotonic schedul-
+keeps increasing as it waits for the CPU.                    ing assigns priorities to processes based on their
+     Preemptive scheduling policies preempt a pro-           periods and performs priority-based scheduling.
+cess when it is considered desirable to make a fresh             Modern operating systems face diverse work-
+scheduling decision. The round-robin (RR) policy             loads, so schedulers divide processes into different
+services all processes by turn, limiting the amount          classes such as real-time and non-real-time, and use
+of CPU time used by each process to the value of             an appropriate scheduling policy for each class.
+the time slice. The least completed next (LCN) pol-              Performance analysis is used to both study and
+icy selects the process that has received the least          tune performance of scheduling policies without
+amount of service, whereas the shortest time to go           implementing them in an OS. It uses a mathemat-
+(STG) policy selects the process that is closest to          ical characterization of the typical workload in a
+completing.                                                  system to determine system throughput or values
+     In  practice,   an  operating    system  uses    an     of key scheduler parameters such as the time slice
+arrangement         involving  three  schedulers.   The      and sizes of scheduling lists.
+TEST     YOUR CONCEPTS                                                                                                      ·
+7.1      Classify each of the following statements as true         (SRN)       scheduling    policy          and  the  system
+         or false:                                                 completes     execution    of     these        requests  in
+         a. If the scheduling overhead is negligible, the          the     sequence     r1, r2, . . . , rn,  then  weighted
+         schedule length is identical in batch process-            turnaround of ri > weighted turnaround of
+         ing and multiprogramming systems.                         rj if i > j.
+         b. If all requests arrive at the same time instant        c. The     round-robin    scheduling           policy  with
+         in a system using the shortest request next               time-slicing  provides     approximately               equal
+
+
+
+                                                                               Chapter 7         Scheduling            273
+         response ratios to requests that arrive at the               j. If processes do not perform I/O, the Unix
+         same time instant.                                           scheduling      policy     degenerates  to  the  RR
+     d.  If processes do not perform I/O, the round-                  scheduling policy.
+         robin  scheduling    policy       with   time-slicing   7.2  Processes A, B, and C arrive at times 0, 1, and
+         resembles the least completed next (LCN)                     2, respectively. The processes do not perform
+         scheduling policy.                                           I/O and require 5, 3, and 1 second of CPU
+     e.  When   both     CPU-bound         and    I/O-bound           time. The process-switching time is negligible. At
+         requests  are   present,     the  least  completed           what time does process B complete if the sched-
+         next (LCN) scheduling policy provides bet-                   uler uses the shortest time to go (STG) policy.
+         ter turnaround times for I/O-bound requests                  a. 8,    b. 4,      c. 5,    d. 9.
+         than provided by the round-robin scheduling             7.3  Which of the following scheduling policies will
+         policy with time-slicing.                                    provide the least turnaround time for an I/O-
+     f.  The    highest  response     ratio      next  (HRN)          bound   process?    (Both  I/O-bound    and  CPU-
+         scheduling policy avoids starvation.                         bound requests are present in the system.)
+     g.  If a feasible schedule exists for a real-time                a. RR,
+         application, use of the earliest deadline first              b. LCN,
+         (EDF) scheduling policy guarantees that no                   c. multilevel adaptive scheduling,
+         deadline overruns will occur.                                d. None of these.
+     h.  An I/O-bound process is executed twice, once
+         in a system using RR scheduling and again               7.4  Which of the following scheduling policies will
+         in a system using multilevel adaptive schedul-               provide the least turnaround time for a CPU-
+         ing. The number of times it is scheduled by the              bound   process?    (Both  I/O-bound    and  CPU-
+         RR scheduler and by the multilevel scheduler                 bound requests are present in the system.)
+         is identical.                                                a. RR,
+     i.  A CPU-bound process cannot starve when                       b. LCN,
+         multilevel adaptive scheduling is employed.                  c. multilevel adaptive scheduling.
+EXERCISES                                                                                                                 ·
+7.1  Give examples of conflicts between user-centric                  consumes 200 ms. Ten independent executions
+     and system-centric views of scheduling.                          of this program are started at the same time. The
+7.2  Study the performance of the nonpreemptive                       scheduling overhead of the kernel is 3 ms. Com-
+     and preemptive scheduling policies on processes                  pute the response time of the first process in the
+     described in Table 7.2 if their arrival times are 0,             first and subsequent iterations if
+     1, 3, 7, and 10 seconds, respectively. Draw timing               a. The time slice is 50 ms.
+     charts analogous to those in Sections 7.2 and 7.3                b. The time slice is 20 ms.
+     to show operation of these policies.                        7.5  The kernel of an OS implements the HRN pol-
+7.3  Show that SRN scheduling provides the min-                       icy preemptively as follows: Every t seconds,
+     imum     average    turnaround        time   for   a  set        response ratios of all processes are computed
+     of  requests       that  arrive  at   the    same     time       and the process with the highest response ratio
+     instant. Would it provide the minimum average                    is scheduled. Comment on this policy for large
+     turnaround time if requests arrive at different                  and small values of t. Also, compare it with the
+     times?                                                           following policies
+7.4  A program contains a single loop that executes                   a. Shortest time to go (STG) policy.
+     50 times. The loop includes a computation that                   b. Least completed next (LCN) policy.
+     lasts 50 ms followed by an I/O operation that                    c. Round-robin policy with time-slicing (RR).
+
+
+
+274        Part 2       Process Management
+7.6   A process consists of two parts that are function-               as  CPU-bound            or      I/O-bound     based   on      its
+      ally independent of one another. It is proposed                  recent behavior vis-a-vis the time slice--it was
+      to separate the two parts and create two pro-                    considered        to     be   a   CPU-bound          process   if
+      cesses to service them. Identify those scheduling                it  used     up     its  entire   time-slice     when     sched-
+      policies under which the user would receive bet-                 uled; otherwise, it was an I/O-bound process.
+      ter user service through use of the two processes                To    obtain     good        throughput,    HASP       required
+      instead of the original single process.                          that    a    fixed   percentage        of   processes  in      the
+7.7   For each of the scheduling policies discussed                    scheduling queue must be I/O-bound processes.
+      in Sections 7.2 and 7.3, a group of 20 requests                  Periodically, HASP adjusted the time slice to
+      is serviced with negligible overheads and the                    satisfy    this     requirement--the           time  slice  was
+      average      turnaround  time    is  determined.  The            reduced if more processes were considered I/O-
+      requests are now organized arbitrarily into two                  bound      than     desired,      and  it   was     increased  if
+      groups of 10 requests each. These groups of                      lesser     number        of   processes     were    I/O-bound.
+      requests     are  now  serviced  one  after    another           Explain      the     purpose      of   adjusting     the    time
+      through each of the scheduling policies used                     slice. Describe operation of HASP if most pro-
+      earlier and the average turnaround time is com-                  cesses in the system were (a) CPU-bound and
+      puted. Compare the two average turnaround                        (b) I/O-bound.
+      times  for   each  scheduling        policy  and  men-     7.11  Comment          on      the  similarities     and   differences
+      tion conditions under which the two could be                     between
+      different.                                                       a. LCN and Unix scheduling
+7.8   A multilevel adaptive scheduler uses five prior-                 b. HASP         and      multilevel    adaptive      scheduling
+      ity levels numbered from 1 to 5, level 1 being the                   (see Exercise 7.10).
+      highest priority level. The time slice for a prior-        7.12  Determine the starting deadlines for the pro-
+      ity level is 0.1 × n, where n is the level number.               cesses of Example 7.11.
+      It puts every process in level 1 initially. A pro-         7.13  An OS using a preemptive scheduling policy
+      cess requiring 5 seconds of CPU time is serviced                 assigns dynamically changing priorities. The pri-
+      through this scheduler. Compare the response                     ority    of  a   process      changes      at  different    rates
+      time of the process and the total scheduling over-               depending on its state as follows
+      head incurred if there are no other processes in
+      the system. If the process is serviced through a                       Rate of change of priority when a
+      round-robin scheduler using a time slice of 0.1                        process is running
+      CPU seconds, what would be the response time                           Rate of change of priority when a
+      of the process and the total scheduling overhead                       process is ready
+      incurred?                                                              Rate of change of priority when a
+7.9   A multilevel adaptive scheduling policy avoids                         process is performing I/O
+      starvation by promoting a process to a higher                    Note that the rate of change of priority can be
+      priority level if it has spent 3 seconds in its                  positive, negative, or zero. A process has prior-
+      present priority level without getting scheduled.                ity 0 when it is created. A process with a larger
+      Comment      on   the    advantages   and    disadvan-           numerical value of priority is considered to have
+      tages of the following methods of implementing                   a higher priority for scheduling.
+      promotion:                                                       Comment on properties of the scheduling poli-
+      a. Promote a process to the highest priority                     cies in each of the following cases:
+           level.                                                      a.  > 0,  = 0,  = 0.
+      b. Promote a process to the next higher priority                 b.  = 0,  > 0,  = 0.
+           level.                                                      c.  =  = 0,  > 0.
+7.10  The    Houston     Automatic         Spooling  system            d.  < 0,  = 0,  = 0.
+      (HASP) was a scheduling subsystem used in
+      the  IBM/360.      HASP  assigned     high     priority          Will    the  behavior         of  the  scheduling      policies
+      to   I/O-bound    processes    and   low     priority  to        change if the priority of a process is set to 0 every
+      CPU-bound processes. A process was classified                    time it is scheduled?
+
+
+
+                                                                                      Chapter 7       Scheduling            275
+7.14  A background process should operate in such a               of T3 for which the rate monotonic schedul-
+      manner that it does not significantly degrade the           ing policy will be able to meet deadlines of all
+      service provided to other processes. Which of the           processes?
+      following alternatives would you recommend for       7.18   A system uses the FCFS scheduling policy. Iden-
+      implementing it?                                            tical computational requests arrive in the system
+      a. Assign the lowest priority to a background               at the rate of 20 requests per second. It is desired
+      process.                                                    that the mean wait time in the system should
+      b. Provide   a  smaller  quantum   to  a  back-             not exceed 2.0 seconds. Compute the size of each
+      ground process than to other processes (see                 request in CPU seconds.
+      Section 7.4.8).                                      7.19   Identical requests, each requiring 0.05 CPU sec-
+7.15  Prepare a schedule for operation of the periodic            onds, arrive in an OS at the rate of 10 requests per
+      processes P1­P3 of Section 7.5.3, using EDF                 second. The kernel uses a fixed-size ready queue.
+      scheduling.                                                 A new request is entered in the ready queue if
+7.16  If the response requirement of the application              the queue is not already full, else the request is
+      of Figure 7.13 is 30 seconds and service times              discarded. What should be the size of the ready
+      of processes P2­P5 are as shown in Figure 7.13,             queue if less than 1 percent of requests should
+      what is the largest service time of P1 for which            be discarded?
+      a feasible schedule exists? Answer this question     7.20   The mean arrival rate of requests in a system
+      under two conditions:                                       using FCFS scheduling is 5 requests per second.
+      a. None of the processes perform any I/O oper-              The mean wait time for a request is 3 seconds.
+      ations.                                                     Find the mean execution rate.
+      b. Process P2 performs I/O for 3 seconds, 2 sec-     7.21   We define "small request" as a request whose
+      onds of which can be overlapped with the                    service       time  is  less  than  5  percent  of  1  .  Com-
+                                                                                                                      
+      processing of process P3.                                   pute the turnaround time for a small request in
+7.17  The service times of three processes P1, P2, and            a system using the HRN scheduling policy when
+      P3 are 5 ms, 3 ms, and 10 ms, respectively; T1 =                 =  5 and           =  8.
+      25 ms and T2 = 8 ms. What is the smallest value
+BIBLIOGRAPHY                                                                                                                ·
+Corbato et al. (1962) discusses use of multilevel feed-    Bovet  and     Cesati      (2005),    and  Love  (2005)       discuss
+back queues in the CTSS operating system. Coffman          scheduling  in  Linux;         Mauro  and     McDougall          (2006)
+and Denning (1973) reports studies related to multilevel   discusses scheduling in Solaris; while Russinovich and
+scheduling. A fair share scheduler is described in Kay     Solomon (2005) discusses scheduling in Windows.
+and Lauder (1988), and lottery scheduling is described         Trivedi (1982) is devoted to queuing theory. Heller-
+in Waldspurger and Weihl (1994). Real-time scheduling      man and Conroy (1975) describes use of queuing theory
+is discussed in Liu and Layland (1973), Zhao (1989),       in performance evaluation.
+Khanna et al. (1992), and Liu (2000). Power conserva-
+tion is a crucial new element in scheduling. Power can
+be conserved by running the CPU at lower speeds. Zhu       1.     Bach, M. J. (1986): The Design of the Unix
+et al. (2004) discusses speculative scheduling algorithms         Operating System, Prentice Hall, Englewood
+that save power by varying the CPU speed and reducing             Cliffs, N.J.
+the number of speed changes while ensuring that an         2.     Bovet, D. P., and M. Cesati (2005): Understanding
+application meets its time constraints.                           the Linux Kernel, 3rd ed., O'Reilly, Sebastopol.
+Bach (1986), McKusick et al. (1996), and Vahalia           3.     Brinch Hansen, P. (1972): Operating System
+(1996) discuss scheduling in Unix; O'Gorman (2003),               Principles, Prentice Hall, Englewood Cliffs, N.J.
+
+
+
+276          Part 2  Process Management
+4.   Coffman, E. G., and R. C. Wood (1996):               13.  Mauro, J., and R. McDougall (2006): Solaris
+     "Interarrival statistics for time sharing systems,"       Internals, 2nd ed., Prentice Hall, Englewood
+     Communications of the ACM, 9 (7),                         Cliffs, N.J.
+     500­503.                                             14.  McKusick, M. K., K. Bostic, M. J. Karels, and
+5.   Coffman, E. G., and P. J. Denning (1973):                 J. S. Quarterman (1996): The Design and
+     Operating Systems Theory, Prentice Hall,                  Implementation of the 4.4BSD Operating System,
+     Englewood Cliffs, N.J.                                    Addison-Wesley, Reading, Mass.
+6.   Corbato, F. J., M. Merwin-Daggett, and               15.  O'Gorman, J. (2003): Linux Process Manager:
+     R. C. Daley (1962): "An experimental                      The Internals of Scheduling, Interrupts and
+     time-sharing system," Proceedings of the                  Signals, John Wiley, New York.
+     AFIPS Fall Joint Computer Conference,                16.  Russinovich, M. E., and D. A. Solomon (2005):
+     335­344.                                                  Microsoft Windows Internals, 4th ed., Microsoft
+7.   Hellerman, H., and T. F. Conroy (1975):                   Press, Redmond, Wash.
+     Computer System Performance, McGraw-Hill             17.  Trivedi, K. S. (1982): Probability and Statistics
+     Kogakusha, Tokyo.                                         with Reliability--Queuing and Computer Science
+8.   Kay, J., and P. Lauder (1988): "A fair share              Applications, Prentice Hall, Englewood
+     scheduler," Communications of the ACM, 31 (1),            Cliffs, N.J.
+     44­55.                                               18.  Vahalia, U. (1996): Unix Internals: The New
+9.   Khanna, S., M. Sebree, and J. Zolnowsky (1992):           Frontiers, Prentice Hall, Englewood Cliffs, N.J.
+     "Real-time scheduling in SunOS 5.0," Proceedings     19.  Waldspurger, C. A., and W. E. Weihl (1994):
+     of the Winter 1992 USENIX Conference,                     "Lottery scheduling," Proceedings of the First
+     San Francisco, January 1992, 375­390.                     USENIX Symposium on Operating System Design
+10.  Love, R. (2005): Linux Kernel Development,                and Implementation (OSDI), 1­11.
+     2nd ed., Novell Press.                               20.  Zhao, W. (1989): Special issue on real-time
+11.  Liu, C. L., and J. W. Layland (1973): "Scheduling         operating systems, Operating System Review,
+     algorithms for multiprogramming in a hard                 23, 7.
+     real-time environment," Journal of the ACM,          21.  Zhu, D., D. Mosse, and R. Melhem (2004):
+     20, 1, 46­61.                                             "Power-aware scheduling for AND/OR graphs in
+12.  Liu, J. W. S. (2000): Real-Time Systems, Pearson          real-time systems," IEEE Transactions on Parallel
+     Education, New York.                                      and Distributed Systems, 15 (9), 849­864.
