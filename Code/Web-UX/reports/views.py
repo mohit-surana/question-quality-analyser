@@ -35,6 +35,8 @@ def classify(request):
 
 
 def analysis(request):
+    subject = request.GET.get('subject', 'ADA')
     template = loader.get_template('reports/analysis.html')
-    context = prepare_data.get_data('ADA')
+    context = prepare_data.get_data(subject)
+    context['subject'] = subject
     return HttpResponse(template.render(context, request))
