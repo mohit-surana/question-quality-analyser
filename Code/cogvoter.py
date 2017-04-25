@@ -58,7 +58,7 @@ else:
 print('Loaded GloVe model')
 
 ####################### ONE TIME MODEL LOADING #########################
-def get_cog_models():
+def get_cog_models(get_ann=True):
     ################# MAXENT MODEL #################
     clf_maxent = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/MaxEnt/maxent_76.pkl'), 'rb'))
     print('Loaded MaxEnt model')
@@ -73,9 +73,10 @@ def get_cog_models():
     print('Loaded BiRNN model')
 
     ################# MLP MODEL #################
-    nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
-    # nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
-    print('Loaded MLP model')
+    if get_ann:
+        nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
+        # nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
+        print('Loaded MLP model')
 
     return clf_svm, clf_maxent, clf_brnn, nn
 
@@ -87,10 +88,13 @@ def predict_cog_label(question, models, subject='ADA'):
         question = question2[0]
     X1 = np.array(question.split()).reshape(1, -1)
 
+    '''
     question2 = get_filtered_questions(question, threshold=0.75, what_type=subject.lower()) # maxEnt
     if len(question2) > 0:
         question = question2[0]
     X2 = np.array(question.split()).reshape(1, -1)
+    '''
+    X2 = X1
 
     # softmax probabilities
     ptest_svm = clf_svm.predict_proba(X1)
@@ -126,7 +130,7 @@ if __name__ == '__main__':
     CREATE_CSV_FILE = False
 
     ################ MODEL LOADING ##################
-    clf_svm, clf_maxent, clf_brnn, nn = get_cog_models()
+    clf_svm, clf_maxent, clf_brnn, _ = get_cog_models(get_ann=False)
 
     if CREATE_CSV_FILE:
         ################# LOADING SO[ADA] questions #################
