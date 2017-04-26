@@ -1,0 +1,193 @@
+Fault Tolerance
+File system reliability has several facets. A file must be robust, i.e., it must survive
+faults in a guaranteed manner. It must be recoverable to an earlier state when a
+
+
+
+766  Part 5  Distributed Operating Systems
+             failure occurs. It must also be available despite faults in the system, i.e., a copy
+             of the file should be accessible at all times and a client process should be able
+             to open it for processing. Robustness and recoverability depend on how files are
+             stored and backed up, respectively, while availability depends on how files are
+             opened and accessed. All these facets are independent of one another. Thus a
+             file may be recoverable without being robust or available, recoverable and robust
+             without being available, available without being recoverable or robust, and so on.
+             Robustness is achieved by using techniques for reliable storage of data, e.g., the
+             disk mirroring technique used in RAID level 1 (see Section 14.3.5). Recoverability
+             and availability are achieved through special techniques discussed in this Section.
+             Faults in the server or intermediate nodes during a file open operation
+             disrupt path name resolution. Such faults are tolerated through availability tech-
+             niques. The DFS maintains many copies of the information required for path
+             name resolution, and many copies of a file. If a copy is inaccessible because of a
+             fault, the DFS uses another copy. However, availability techniques become very
+             complex and expensive if faults that occur during file processing are to be tol-
+             erated (see Section 19.4.2 for the quorum-based fault tolerance techniques to
+             handle replicated data). Hence few, if any, distributed file systems handle such
+             faults.
+             Faults in the server or client nodes during file processing may result in loss of
+             state. As we shall see in Section 20.4.3, a file server can be designed such that its
+             operation is not disrupted if state information is lost because of a fault. However,
+             clients may not use special design techniques to protect against loss of state, so
+             client node crashes can be messy. The only defense against client node crashes
+             is the use of transaction semantics in the file server, whereby the file would be
+             restored to its state before the failed client had started its processing. A fault in
+             an intermediate node does not affect file processing if the communication system
+             has sufficient resiliency, i.e., if it can tolerate a few link and node faults. Hence
+             file systems do not address these faults.
+             Table 20.3 summarizes fault tolerance techniques used in distributed file sys-
+             tems. File replication and cached directories address faults in a file server and
+             in intermediate nodes during an open operation. The stateless file server design
+             addresses faults in a file server during file processing. Following sections describe
+             these techniques.
+             20.4.1 Availability
+             A file is said to be available if a copy of the file can be opened and accessed
+             by a client. Ability to open a file depends on whether path name resolution can
+             be completed, i.e., whether the server node and all nodes involved in path name
+             resolution are functional. Ability to access a file requires only the client and server
+             nodes to be functional, because a path between the two is guaranteed by resiliency
+             of the network.
+             Consider a path name a/b/c/d, where directory files a, b, c and file d exist
+             in nodes A, B, C, and D, respectively. Two approaches can be employed to resolve
+             this path. When the DFS finds that file b exists in node B, it would send the path
+
+
+
+                                                                Chapter 20         Distributed  File  Systems  767
+Table 20.3        Fault Tolerance Techniques of Distributed File Systems
+Technique              Description
+Cached directories     A cached directory is a copy of a directory that exists at a
+                       remote site. It helps the DFS to tolerate faults in intermediate
+                       nodes involved in path name resolution.
+File replication       Several copies of a file are maintained in the interest of
+                       availability. Special techniques are used to avoid
+                       inconsistencies between the copies. The primary copy
+                       technique permits client programs to read-access any copy of
+                       a file but restricts file updates only to a special copy called the
+                       primary copy. The results of these updates are propagated to
+                       other copies. This method simplifies concurrency control.
+Stateless file server  A conventional file server maintains information concerning
+                       state of a file processing activity in the metadata, for example,
+                       in file control blocks and file buffers. A stateless file server
+                       does not maintain such information, so it is immune to faults
+                       that lead to loss of state information.
+name suffix b/c/d to node B. At node B, it would look up c in directory b and
+find that it exists at node C, so it would send c/d to node C, and so on. In an
+alternative approach, the DFS would perform resolution of all path components
+in the client node itself. When it finds that a path name component is the name of
+a directory in a remote node, it would copy the directory from the remote node
+and continue path name resolution using it. This way, all directories would be
+copied into the client node during path name resolution. As we shall see later,
+these approaches have different implications for availability. In either approach,
+an access to file data does not involve the intermediate nodes involved in path
+name resolution. File processing would not be affected if any of these nodes failed
+after the file was opened.
+Cached Directories     An anomalous situation may arise when path names span
+many nodes. In the previous example, let node c fail after file d was opened using
+path name a/b/c/d and its processing was underway. If another client in node
+A tries to open a/b/c/z, where file z also exists in node D, it would fail because
+node c has failed. So file z cannot be processed even though its processing involves
+the same client and server nodes as file d.
+The only way to avoid this anomaly is to cache remote directories accessed
+during path name resolution at the client node. For the path name a/b/c/d,
+it implies that the DFS would cache the directories a/b and a/b/c at node A.
+While resolving path names involving the prefixes a/b and a/b/c, the DFS
+would directly use the cached directories. Thus, it would be able to resolve the
+path name a/b/c/z without having to access nodes B or C. However, informa-
+tion in cached directories may be outdated because of creation or deletion of files
+in some of the intermediate nodes, so a cache updating protocol would have to be
+used. We discuss a related issue in the next section.
+
+
+
+768  Part 5  Distributed Operating Systems
+             File  Replication  The         DFS  performs  replication  in  such  a  way  that  it     is
+             transparent to clients. Replication of a file that is likely to be updated involves a
+             trade-off between cost and complexity of the protocol for updating and its impli-
+             cations for efficient use of the file. A two-phase commit protocol could be used
+             to update all copies of a file at the same time. This way, stale and updated copies
+             of a file would not coexist, so a client would need only one copy of the file to
+             implement a read access. However, an update operation may be delayed if some
+             copies are in use by other processes or are inaccessible because of faults. Alter-
+             natives to this approach focus on speeding up the update operation by reducing
+             the number of copies that need to be updated.
+                   In the primary copy approach, updates are directed at a single copy--the
+             primary copy. Other copies are invalidated when the primary copy is updated;
+             they would be replicated afresh when they are referenced. Alternatively, the DFS
+             can use a protocol similar to the readers-and-writers protocol for replicated data
+             (see Section 19.4.2). To provide efficiency and fault tolerance, it would make the
+             read and write quorums as small as possible. A timestamp would be associated
+             with each copy to indicate when it was last updated. These timestamps would be
+             compared to identify the most recent copy of data in a read quorum.
+                   File replication works best if the use of a stale copy is also meaningful, because
+             changes need not be propagated to all copies of a file immediately. Directories can
+             be replicated in this manner. All updates are made in the primary copy. Staleness
+             of a directory's copy can cause two kinds of failures--a file does not have an
+             entry in the directory even though it has been created, or an entry for a file exists
+             in the directory even though the file has been deleted. If the first kind of failure
+             occurs, the file server can immediately consult the primary copy to check whether
+             the file actually exists, and abort the process only if it does not. The second kind
+             of failure would occur when a read or write operation is attempted on the file.
+             The process would be aborted if it occurs.
+             20.4.2 Client and Server Node Failures
+             As described in Section 13.8, a conventional file system stores information con-
+             cerning the state of a file processing activity in metadata such as the file control
+             block (FCB) of the file. This state information provides an implicit context
+             between the file system and a client, using which a read or write operation on the
+             file can be performed efficiently. For example, to read the next record or byte from
+             a sequential file, the file system simply accesses its FCB to obtain the id of the next
+             record or byte to be read, and accesses the file map table (FMT) to obtain the disk
+             address of the next record or byte; it does not have to access the directory entry
+             of the file to obtain address of its FMT. We refer to this design of a file system as
+             a stateful design. In a distributed file system, the server node can maintain FCBs
+             and the open files table (OFT) in memory, just as in a conventional file system.
+             This arrangement provides good performance. However, use of a stateful DFS
+             design poses problems in the event of client and server crashes.
+                   When a client crashes, the file processing activity would have to be aban-
+             doned and the file would have to be restored to its previous state so that the
+
+
+
+                                                   Chapter 20              Distributed  File  Systems  769
+client can restart its file processing activity. The server would have committed
+resources like the FCB and I/O buffers to service the file processing activity. These
+resources would have to be released, otherwise they would remain committed to
+the aborted file processing activity indefinitely. These issues can be addressed as
+follows: The client and the file server share a virtual circuit (see Section 16.6.5).
+The virtual circuit "owns" the file processing actions and resources like file server
+metadata. These actions and resources become orphans when a client or server
+crash breaks the virtual circuit, so the actions would have to be rolled back and
+the metadata would have to be destroyed. A client­server protocol implementing
+transaction semantics may be used to ensure this. If a DFS does not provide trans-
+action semantics, a client would have to make its own arrangements to restore
+the file to a previous consistent state.
+When a file server crashes, state information stored in server metadata is lost,
+so an ongoing file processing activity has to be abandoned and the file has to be
+restored to its previous state. The stateless file server design described in the next
+section can be used to avoid both these problems.
+20.4.3 Stateless File Servers
+A stateless file server does not maintain any state information about a file pro-
+cessing activity, so there is no implied context between a client and the file server.
+Consequently, a client must maintain state information about a file processing
+activity and provide all relevant information in a file system call. For example, a
+client reading from a sequential file has to keep track of the id of the next record
+or byte to be read from the file so that it can issue the following call:
+read ("alpha", <record/byte id>, <io_area address>);
+At this call, the file server opens file alpha, locates its file map table, and
+uses it to convert <record/byte id> into the pair (disk block id, byte offset) (see
+Section 13.9.2). It then reads the disk block and provides the required record
+or byte to the client. Thus, many actions traditionally performed only at file
+open time are repeated at every file operation. If a file server crashes, time-outs
+and retransmissions occur in the client. The file server processes a retransmit-
+ted request when it recovers, and provides a reply to the client. Thus the client
+perceives only a delayed response to a request and is unaware of a file server crash.
+Use of a stateless file server provides fault tolerance, but it also incurs a
+substantial performance penalty for two reasons. First, the file server opens a file
+at every file operation, and passes back state information to the client. Second,
+when a client performs a write operation, reliability considerations require that
+data should be written into the disk copy of a file immediately. Consequently, a
+stateless file server cannot employ buffering, file caching (see Section 20.5.2), or
+disk caching (see Section 14.12) to speed up its own operation. In Section 20.5.1,
+we discuss a hybrid design of file servers that avoids repeated file open operations.
+A stateless file server is oblivious of client failures because it does not pos-
+sess any state information for a client or its file processing activity. If a client
+fails, recovers and resends some requests to the file server, the file server would

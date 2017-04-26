@@ -1,0 +1,414 @@
+File System Reliability
+File system reliability is the degree to which a file system will function correctly
+even when faults such as data corruption in disk blocks and system crashes due
+to power interruptions occur. The two principal aspects of file system reliability
+are:
+· Ensuring correctness of file creation, deletion and updates.
+· Preventing loss of data in files.
+The former concerns consistency and correctness of metadata, i.e., the control
+data of the file system, while the latter concerns consistency and correctness of
+data stored in files.
+      Reliability literature distinguishes between the terms fault and failure. A fault
+is a defect in some part of the system. A failure is a system behavior that is
+erroneous, or that differs from its expected behavior. Occurrence of a fault causes
+a failure. Thus corruption of a disk block due to a damaged disk head or a power
+outage is a fault, whereas inability of the file system to read a faulty block is a
+failure. Chapter 19 discusses these terms formally.
+13.11.1 Loss of File System Consistency
+File system consistency implies correctness of metadata and correct operation of
+the file system. Loss of consistency arises if the metadata of the file system is lost
+or damaged. It is interesting to see how this can happen. Consider operation of
+a process that updates a file alpha. To ensure efficient operation, the file system
+maintains some of its metadata in memory. Thus, fcbalpha (which exists in the
+
+
+
+514  Part 4  File Systems and I/O Management
+             open files table), part of fmtalpha, and part of the disk status map or free list
+             would be in memory. Some of this metadata, like fmtalpha, are written on a disk
+             when alpha is closed. In addition, the file system may periodically copy the disk
+             status map or free list on the disk. However, metadata is modified constantly, so
+             disk copies of metadata generally do not contain up-to-date information during
+             system operation. When power fails, metadata maintained in memory is lost, and
+             when a disk fails metadata stored on the disk is lost. These situations may result
+             in one or more of the following failures:
+             1. Some data from file alpha may be lost.
+             2. Part of file alpha may become inaccessible.
+             3. Contents of two files may get mixed up.
+             It is easy to visualize a situation of the first kind. For example, suppose a fault
+             occurs after a new disk block has been added to the file alpha. The disk copy
+             of fmtalpha will not contain this block's id, and so data in the newly added block
+             will be lost when the fault occurs. The second and third kind of situation can arise
+             in a file system that does not employ any reliability techniques. We illustrate these
+             situations in a file system that uses linked allocation of disk space and employs
+             Algorithm 13.1 to add a new disk block to a file. The third kind of situation can
+             also arise in a file system that uses indexed allocation of disk space.
+             Algorithm 13.1  Add Block dj between Blocks d1 and d2
+             Input :
+             d1, d2, dj      :  record
+                                      next : . . .; { id of next block }
+                                      data : . . .;
+                                end
+             1. dj .next := d1.next;
+             2. d1.next := address (dj );
+             3. Write d1 to disk.
+             4. Write dj to disk.
+             Algorithm 13.1 adds a new disk block dj between blocks d1 and d2 of the file.
+             Figure 13.24 illustrates how parts of file alpha may become inaccessible due to
+             a fault. Figures 13.24(a), (b) show the file before and after a normal execution of
+             the algorithm. Figures 13.24(c) shows the file if a fault occurs between Steps 3
+             and 4 of Algorithm 13.1. New contents have been written into disk block d1, but
+             not into disk block dj . Hence d1.next points to dj , whereas dj does not contain
+             correct metadata in its next field. Disk blocks d2, d3, . . . would not be accessible
+             as parts of the file any more.
+             Contents of two files may get mixed up if the file system writes metadata to
+             the disk only while closing a file, and not after every file operation. Consider the
+             following situation: A process P1 deletes a disk block dk from some file beta.
+             dk will be returned to the free list (or will be marked free in the disk status map).
+             Now process P2 adds a new record to file alpha. The file system allocates a new
+             disk block dj for this purpose and adds it ahead of disk block dm in file alpha
+
+
+
+                                                                                           Chapter 13        File Systems            515
+                        Before adding dj           After adding dj                                   After a fault
+                   d1       d2      d3        d1              dj       d2                  d1            d2         d2
+                                                                                                         dj
+                   (a)                        (b)                                          (c)
+Figure     13.24   Inconsistencies in metadata due to faults: (a)­(b)  before  and  after  adding    dj  during  normal  operation;  (c)
+after a    fault.
+                        dh      dk        dl                  dh                    d1
+                beta                          ···
+                        d1      dj        d2                  d1       dj           d2
+           alpha                              ···                                               ···
+           (a)                                     (b)
+Figure     13.25   Files alpha and beta: (a) after adding dj during    normal operation;
+(b) if dj  = dk , alpha is closed and a power outage occurs.
+[see Figure 13.25(a)]. Now, consider the situation when dj = dk and the following
+events occur in the system:
+1. File alpha is closed.
+2. The file system updates the disk copy of file alpha. It involves adding disk
+block dj to alpha.
+3. A power outage occurs.
+Note that file beta was not closed before the power outage occurred, so the disk
+contains an old copy of beta that contains block dk, and the new copy of alpha
+that contains block dj . Since dj = dk, alpha and beta now share disk block dj
+and all other blocks accessible through it [see Figure 13.25(b)]. All disk blocks
+of file beta that were previously accessible through dk, i.e., block dl and other
+blocks accessible through it, are now inaccessible. In effect, some data is common
+to files alpha and beta, while some data of beta has been lost.
+13.11.2 Approaches to File System Reliability
+By means of the two approaches described in Table 13.5, operating systems ensure
+that user files are reliably stored over a period of time. Recovery is a classic
+approach that is activated when a failure is noticed. It restores the data and
+metadata of the file system to some previous consistent state. The file system now
+resumes its operation from this state. Thus, deviations from correct behavior do
+occur, but system operation is rectified when deviations are noticed. Fault toler-
+ance, on the other hand, provides correct operation of the file system at all times,
+i.e., it ensures that faults do not lead to failures. It achieves this ability through
+some special techniques.
+
+
+
+516  Part 4  File Systems and I/O Management
+             Table 13.5       Approaches to File System Reliability
+             Approach                         Description
+             Recovery                         Restore data and metadata of the file system to some
+                                              previous consistent state.
+             Fault tolerance                  Guard against loss of consistency of data and metadata
+                                              due to faults, so that system operation is correct at all
+                                              times, i.e., failures do not occur.
+             To see the difference between the two approaches, consider the example of
+             a disk block that becomes unreadable. Inability of the file system to read the
+             block is a failure. Under the recovery approach, the data in the block would
+             be restored to an earlier value when a failure is noticed. With fault tolerance,
+             each data unit would be recorded in two blocks--a primary block and an alter-
+             native block. If a failure occurs while the primary block is being read, the file
+             system would automatically read the alternative block. Of course, fault tolerance
+             is not absolute. The system can tolerate only those faults that it is designed to.
+             For example, when a data unit is recorded in two blocks, the system can toler-
+             ate a fault in the primary block, but not faults in both primary and alternative
+             blocks.
+             13.11.2.1 Recovery Techniques
+             The file system state at some time instant ti is the collection of all data and
+             metadata in the file system at ti. A backup of the file system is a recording of
+             the file system state. To support recovery, the file system periodically produces
+             backups during its operation. Let tlb represent the time at which the latest backup
+             was produced. In the event of a failure, say, at time tf , the file system is restored
+             to the state recorded in its latest backup. File updates performed between tlb
+             and tf are lost; operations that performed these updates need to be reprocessed
+             after recovery. Recovery using backups thus involves two kinds of overheads--
+             overhead of creating backups, and overhead of reprocessing.
+             Reprocessing overhead in recovery can be reduced through a combination
+             of backups and incremental backups of a file system. An incremental backup
+             contains copies of only those files or disk blocks that were modified after the last
+             backup or incremental backup was created. The file system creates backups at
+             large intervals of time, e.g., a day, a few days, or a week. Incremental backups are
+             created at shorter intervals and are discarded when the next backup is created. For
+             example, an incremental backup may be created when a process closes a file after
+             updating it; the incremental backup would contain a copy of only that file. Use
+             of incremental backups increases the overhead of the backing up activity. The
+             space overhead is also high because backups and incremental backups coexist
+             and some files may exist in more than one incremental backup. However, the
+             reprocessing overhead is low for the following reason: After a crash the system
+             could be restored from the latest backup, and incremental backups would then be
+             processed in the same order in which they were created. This action would restore
+
+
+
+                                                           Chapter 13                      File Systems  517
+all files whose modification was completed before the last of the incremental
+backups was created. Only the file processing activities that were in progress at
+the time of the failure would have to be repeated.
+To reduce the recovery overhead, the file system could be restored by pro-
+cessing all incremental backups and the latest backup in the reverse order, taking
+care not to restore a file that has been already restored from a later incremental
+backup. This approach would reduce overhead by restoring each file exactly once.
+However, it would be effective only if the file system metadata is consistent at the
+time of a failure.
+                                                                                                                ·
+Recovery in a File System                                                                  Example       13.10
+Figure 13.26 illustrates a system in which backups were taken at times t1 and
+t4, and incremental backups were taken at t2 and t3. The incremental backups
+contain 3 and 2 disk blocks, respectively, because 3 disk blocks were updated
+between t1 and t2 and 2 disk blocks were updated between t2 and t3. If a
+failure occurs after t4, the system would be restored to the state recorded in
+the backup taken at t4. However, if a failure occurred between t3 and t4, the
+system would have been restored by using the backup taken at t1 and the
+incremental backups taken at t2 and t3.
+                                                                                        ·
+Creating Backups    The key issue in creation of backups is consistency of meta-
+data recorded in a backup. Consider the following scenario during operation of
+a file system.
+1. The free list data structure is written in the backup.
+2. A record is added to a file phi, which requires a new disk block to be allocated
+to phi from the free list.
+3. File phi is now written in the backup.
+Here, recording of the free list and file phi in the backup would be mutually incon-
+sistent. It could lead to a mix-up of data in files as discussed in Section 13.11.1.
+Similar problems would arise even if these three actions are performed in the
+reverse order. Inconsistencies of metadata could be prevented by freezing all
+activities in the file system while a backup is created; however, this method is
+intrusive and it would cause delays in processes. An alternative is to create a
+backup during normal operation of a system, but use some simplifications like
+not writing the free list in a backup. When the state of the file system is restored
+from such a backup, the file system could scan the complete disk and build the free
+list anew. However, in this scheme files would have been recorded in the backup
+at different times, so they would suffer loss of data to different extents if the file
+system is restored by using this backup. Another issue is the backing up of a file
+that is being processed when a backup is initiated--either its backing up should
+be delayed until its processing is complete, or the user would not precisely know
+how much of the file's processing would be lost if the file system is restored by
+
+
+
+518  Part 4  File  Systems   and I/O Management
+                                   Time  File system               Backup media              Kind of backup
+                                   t1                                                        Backup
+                                   t2                                                      Incremental backup
+                                   t3                                                      Incremental backup
+                                   t4                                                        Backup
+                   Figure   13.26  Backups and incremental backups in a file system.
+                   using the backup. An incremental backup that is created when a file is closed does
+                   not face any of these consistency problems because only modified files are writ-
+                   ten into the backup, so file system metadata like free lists would not be written
+                   into it.
+                          What about the overhead of creating a backup? When disk space was expen-
+                   sive, backups were typically created on slower I/O devices like tapes; however,
+                   disk space is affordable in modern computer systems, so it is possible to create
+                   backups on disks. When indexed allocation of disk space is used, it is possible to
+                   create an on-disk backup of a file cheaply by means of a technique that resem-
+                   bles the copy-on-write technique of virtual memory. Figure 13.27 illustrates this
+                   technique.
+                   File Location                                       File      Location
+                   name      info                                  name          info
+                   phi                                                 phi
+                   b_phi                                           b_phi
+                                         fmtphi             23                               fmtphi                  23
+                                         fmtb_phi
+                                                                                                                     78
+                        Directory                                      Directory
+                                                                                             fmtb_phi
+                   (a)                                      d1     d2(b)         d2
+                   Figure 13.27    Creating a backup:  (a)  after  backing up file phi; (b)  when phi is  modified.
+
+
+
+                                                                       Chapter 13       File  Systems  519
+When file phi is to be backed up, the file system creates a copy of the directory
+entry of phi and names the new file appropriately, say b_phi. Now, the FMT
+pointers of phi and b_phi are identical [see Figure 13.27(a)], so file b_phi is
+a copy of phi as desired. If contents of the second disk block allocated to phi
+change from 23 to 78 because of a file update, the file system would perform the
+following actions [see Figure 13.27(b)]:
+1. If the FMT pointers of phi and b_phi are identical, make a copy of the
+FMT and make the directory entry of b_phi point to the copy.
+2. Allocate a new disk block to file phi.
+3. Change the appropriate pointer in fmtphi to point to the new disk block.
+4. Write the new contents into the new disk block.
+Thus, only the FMT and the disk block whose contents are updated after the
+backup is created would be copied. This arrangement conserves both disk space
+and time.
+13.11.2.2 Fault Tolerance Techniques
+File system reliability can be improved by taking two precautions--preventing
+loss of data or metadata due to I/O device malfunction, and preventing inconsis-
+tency of metadata due to faults. These precautions are implemented by using the
+fault tolerance techniques of stable storage and atomic actions, respectively.
+Stable Storage  Lampson (1981) proposed the technique of redundant recording
+of data to ensure reliability. It is called stable storage because it can tolerate one
+fault in the recording of a data item. Two copies of a record, called its primary
+and secondary copy, are maintained on a disk. A write operation updates both
+copies--the primary copy is updated first, followed by the secondary copy. A read
+operation accesses the disk block containing the primary copy. If it is unreadable,
+the block containing the secondary copy is accessed. Since only single faults are
+assumed to occur, one of the blocks is sure to contain readable data.
+Figure 13.28 illustrates operation of the stable storage technique if faults
+occur at times t1, t2, t3, or t4, respectively, while a process Pi is executing an
+update operation on some data D. Parts (a)­(d) show timing charts and values
+in the primary and secondary copies of D when faults occur. In Part (a), a fault
+occurs at time t1, i.e., before the primary copy is updated. Hence the primary
+copy, containing the old value of the data, is accessible after a fault. In Part (b),
+a fault occurs while the primary copy is being updated, so that the primary copy
+becomes unreadable. The old value of the data is accessible from the secondary
+copy. In Part (c), a fault occurs after the primary copy is updated but before
+the secondary copy is updated. New data is accessible in the primary copy after
+the fault occurs. In Part (d), a fault occurs after both copies have been updated.
+Hence both copies are accessible.
+The stable storage technique can be applied to entire files. (Lampson called
+this technique disk mirroring; however, it is different from the disk mirroring
+we will come across in Section 14.3.) However, stable storage incurs high space
+and time overhead, which makes it unsuitable for general use in a file system,
+
+
+
+520  Part 4  File  Systems  and  I/O Management
+                                          Primary           Secondary
+                                          copy is           copy is             Primary     Secondary
+                                          updated           updated             copy        copy
+                                 (a)
+                                                                                old         old
+                                 (b)
+                                                                                unreadable  old
+                                 (c)
+                                                                                new         old
+                                 (d)
+                                                                                new         new
+                                      t1         t2     t3             t4 Time
+                   Figure 13.28  Fault tolerance using  the stable storage technique.
+                   so processes may use it selectively to protect some of their own data. Also, while
+                   stable storage guarantees that one copy of data will survive a single fault, it cannot
+                   indicate whether this value is old or new [see parts (a), (d) of Figure 13.28]. Hence
+                   the user does not know whether to reexecute the update operation in Pi when
+                   system operation is restored. An atomic action overcomes this problem.
+                   Atomic Actions     An action may involve manipulation of many data structures,
+                   e.g., consider Algorithm 13.1 of Section 13.11.1. These data structures may
+                   become inconsistent if a fault interrupts execution of the action. An atomic action
+                   is a method of avoiding such ill effects of faults.
+                   Definition 13.1 Atomic Action            An action that consists of a set of subactions
+                   and whose execution has the property that either
+                   1. The effects of all of its subactions are realized, or
+                   2. The effects of none of its subactions are realized.
+                   Thus, an atomic action has an all-or-nothing property. This property avoids
+                   data inconsistency when faults occur. Consistency of file system metadata can be
+                   preserved by updating all file system data structures by using atomic actions.
+                   Database systems use a concept called an atomic transaction or a database
+                   transaction that ensures certain additional properties such as serializability; our
+                   discussion is restricted to atomic actions for file system reliability only.
+                   The subactions in an atomic action are enclosed between the statements begin
+                   atomic action and end atomic action. Execution of the atomic action begins when
+                   the begin atomic action statement is executed. The action can end in two ways--it
+                   can either fail or succeed. It fails if it loses interest in continuing its execution and
+                   executes an abort statement, or if a fault occurs before the statement end atomic
+                   action is executed. If it fails, the state of each file or metadata used by it should be
+                   left as it was prior to execution of the begin atomic action statement. An atomic
+                   action succeeds when it executes the end atomic action statement. It is said to
+
+
+
+                                                          Chapter 13                           File  Systems  521
+                        begin atomic action add_a_block;
+                        dj .next := d1.next;
+                        d1 .next := address(dj);
+                        write d1 ;
+                        write dj ;
+                        end atomic action add_a_block;
+Figure 13.29  Atomic action add_a_block.
+commit at this time. All updates made by it are guaranteed to survive any faults
+after it commits.
+Figure 13.29 shows Algorithm 13.1 of Section 13.11.1 coded as an atomic
+action named add_a_block. It differs from Algorithm 13.1 only in the use of
+the statements begin atomic action and end atomic action. If the atomic action
+add_a_block commits, disk block dj is added to file alpha and alpha now
+consists of disk blocks . . . d1, dj , d2, . . . . If it fails, disk block dj is not added to
+file alpha; i.e., alpha continues to consist of disk blocks . . . d1, d2, . . . . Thus it
+avoids the problem described in Section 13.11.1 and illustrated in Figure 13.24.
+Atomic actions can be implemented in many ways. In one implementation
+approach, files or metadata are not updated during execution of the atomic action.
+They are updated only after the atomic action commits. This arrangement auto-
+matically tolerates faults that occur before an atomic action commits since no
+updates will have been made in files. Thus it implements the "nothing" part of
+the all-or-nothing property. To implement the "all" part of the all-or-nothing
+property, it is necessary to ensure that all updates will be made even if faults
+occur. Two data structures called intentions list and commit flag are maintained
+to ensure this. Both data structures are maintained in stable storage to protect
+them against data corruption and loss due to faults.
+Every time the atomic action modifies a file or metadata, the file system
+makes an entry of the form (<disk block id>, <new contents>) in the intentions
+list to indicate that <new contents> should be written in the disk block with the
+id <disk block id>. The file system uses the information in the intentions list to
+update the files when the atomic action commits. This action is called commit
+processing. The commit flag contains two fields, transaction id and value. This
+flag is created when the statement begin atomic action of an atomic action Ai is
+executed and its fields are initialized to Ai and "not committed," respectively. The
+value in the commit flag is changed to "committed" when end atomic action is
+executed. The flag is destroyed after all updates described in the intentions list
+have been carried out.
+If a failure occurs, the file system checks for the presence of commit flags
+when its operation is resumed. If a commit flag exists for Ai and has the value "not
+committed," the file system simply destroys the commit flag and the intentions
+list, and executes atomic action Ai again starting with the statement begin atomic
+action. Existence of a commit flag for Ai with the value "committed" implies
+that commit processing of Ai was in progress when occurrence of a fault led to
+
+
+
+522  Part 4  File Systems and I/O Management
+                                                                    Disk   New
+                                                                    block  contents
+                                                                    dj
+                  d1                         Transaction id  Value  d1                   d1
+                                     d2      add_a_block     NC                                          d2
+                                              Commit flag           Intentions list      dj
+                  (a)                                                                    (b)
+                  Figure 13.30  (a)  Before  and (b) after commit processing. (Note: NC  means not  committed.)
+                  a failure. Since it is not known whether any entries of the intentions list were
+                  processed before the fault, the entire commit processing is now repeated.
+                       If faults occur during commit processing, some entries of the intentions list
+                  may be processed many times. However, it does not pose any data consistency
+                  problems because the operation of writing <new contents> into <disk block id>
+                  is an idempotent operation, which has the property that executing it many times
+                  has the same effect as executing it once. The following algorithm summarizes all
+                  actions concerning implementation of an atomic action.
+                  Algorithm 13.2 Implementation of an Atomic Action
+                  1.   Execution of an atomic action Ai:
+                       a.  When the statement begin atomic action is executed, create a commit flag
+                           and an intentions list in stable storage, and initialize them as follows:
+                           commit flag := (Ai, "not committed");
+                           intentions list := "empty";
+                       b.  For every file update made by a subaction, add a pair (d, v) to the
+                           intentions list, where d is a disk block id and v is its new content.
+                       c.  When the statement end atomic action is executed, set the value of Ai's
+                           commit flag to "committed" and perform Step 2.
+                  2.   Commit processing:
+                       a.  For every pair (d, v) in the intentions list, write v in the disk block with
+                           the id d.
+                       b.  Erase the commit flag and the intentions list.
+                  3.   On recovering after a failure:
+                       If the commit flag for atomic action Ai exists,
+                       a.  If the value in commit flag is "not committed": Erase the commit flag
+                           and the intentions list. Reexecute atomic action Ai.
+                       b.  Perform Step 2 if the value in commit flag is "committed."
+·
+   Example 13.11  Implementation of an Atomic Action
+                  Figure 13.30(a) shows the file alpha, the commit flag and the intentions
+                  list when Algorithm 13.2 is applied to the atomic action add_a_block of

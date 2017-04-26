@@ -14,14 +14,14 @@ def clean_no_stemma_stopwords(text, as_list=True):
     if as_list:
         return tokens
     else:
-        return ' '.join(tokens) 
+        return ' '.join(tokens)
 
 def tokenizer(doc):
     return doc.lower().split(" ")
 
 if __name__ == '__main__':
     CURSOR_UP_ONE = '\x1b[1A'
-    ERASE_LINE = '\x1b[2K' 
+    ERASE_LINE = '\x1b[2K'
 
     textbook = 'ADA'
 
@@ -29,9 +29,9 @@ if __name__ == '__main__':
     stopwords = set(stopwords.words('english'))
 
     try:
-        domain = pickle.load(open('resources/domain.pkl',  'rb'))
+        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
     except:
-        domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
+        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
 
     keywords = set()
     for k in domain:
@@ -39,12 +39,12 @@ if __name__ == '__main__':
     stopwords = stopwords - keywords
 
     if textbook == 'OS':
-        questions = [clean_no_stemma_stopwords(q, as_list=False) for q in json.load(open('resources/os_questions.json'))]
+        questions = [clean_no_stemma_stopwords(q, as_list=False) for q in json.load(open(os.path.join(os.path.dirname(__file__), 'resources/os_questions.json')))]
     else:
         questions = []
 
     contents = []
-    os.chdir('resources/%s' %textbook)
+    os.chdir(os.path.join(os.path.dirname(__file__), 'resources/%s' %textbook))
     for filename in sorted(os.listdir('.')):
         if '__' in filename or '.DS_Store' in filename:
             continue
@@ -53,21 +53,21 @@ if __name__ == '__main__':
         except:
             f = open(filename)
         contents.append(clean_no_stemma_stopwords(f.read(), as_list=False))
-        f.close()   
+        f.close()
 
-    os.chdir('../..')
+    os.chdir(os.path.join(os.path.dirname(__file__), '../..'))
 
     print('Training tfidf')
-    sklearn_tfidf = TfidfVectorizer(norm='l2', 
+    sklearn_tfidf = TfidfVectorizer(norm='l2',
                                     min_df=0,
                                     decode_error="ignore",
-                                    strip_accents='unicode',  
-                                    use_idf=True, 
-                                    smooth_idf=False, 
+                                    strip_accents='unicode',
+                                    use_idf=True,
+                                    smooth_idf=False,
                                     sublinear_tf=True)
     tfidf_matrix = sklearn_tfidf.fit_transform(questions + contents)
 
-    pickle.dump(sklearn_tfidf, open('models/tfidf_filterer_%s.pkl' %textbook.lower(), 'wb'))
+    pickle.dump(sklearn_tfidf, open(os.path.join(os.path.dirname(__file__), 'models/tfidf_filterer_%s.pkl' %textbook.lower()), 'wb'))
 
     feature_names = sklearn_tfidf.get_feature_names()
 

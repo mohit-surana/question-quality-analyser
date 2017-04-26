@@ -1,0 +1,397 @@
+Execution of Programs
+A program P written in a language L has to be transformed before it can
+be executed. Several of these transformations perform memory binding--each
+one binds the instructions and data of the program to a new set of addresses.
+Figure 11.2 is a schematic diagram of three transformations performed on
+program P before it can be loaded in memory for execution.
+·  Compilation or assembly: A compiler or an assembler is generically called a
+   translator. It translates program P into an equivalent program in the object
+   module form. This program contains instructions in the machine language of
+   the computer. While invoking the translator, the user specifies the origin of
+   the program, which is the address of its first instruction or byte; otherwise, the
+   translator assumes a default address, typically 0. The translator accordingly
+   assigns addresses to other instructions and data in the program and uses these
+   addresses as operand addresses in its instructions. The execution start address
+   or simply the start address of a program is the address of the instruction with
+   which its execution is to begin. It can be the same as the origin of the program,
+   or it can be different.
+           The addresses assigned by the translator are called translated addresses.
+   Thus, the translator binds instructions and data in program P to translated
+   addresses. An object module indicates the translated origin of the program,
+   its translated start address, and size.
+·  Linking: Program P may call other programs during its execution, e.g., func-
+   tions from mathematical libraries. These functions should be included in the
+   program, and their start addresses should be used in the function call instruc-
+   tions in P. This procedure is called linking. It is achieved by selecting object
+   modules for the called functions from one or more libraries and merging
+   them with program P.
+              Library                                       Data
+   Source     Compiler                                      Binary
+program       or                  Linker            Loader  program                Results
+        P     Assembler
+                         Object           Binary            Data flow
+                         modules          programs          Control flow
+Figure  11.2  Schematic diagram of transformation and execution of a program.
+
+
+
+368  Part 3  Memory Management
+             ·  Relocation: Some object module(s) merged with program P may have con-
+                flicting translated time addresses. This conflict is resolved by changing the
+                memory binding of the object module(s); this action is called relocation of
+                object modules. It involves changing addresses of operands used in their
+                instructions.
+                The relocation and linking functions are performed by a program called
+             a linker. The addresses assigned by it are called linked addresses. The user may
+             specify the linked origin for the program; otherwise, the linker assumes the linked
+             origin to be the same as the translated origin. In accordance with the linked
+             origin and the relocation necessary to avoid address conflicts, the linker binds
+             instructions and data of the program to a set of linked addresses. The resulting
+             program, which is in a ready-to-execute program form called a binary program,
+             is stored in a library. The directory of the library stores its name, linked origin,
+             size, and the linked start address.
+                A binary program has to be loaded in memory for execution. This function is
+             performed by the loader. If the start address of the memory area where a program
+             is to be loaded, which is called its load origin, differs from the linked origin
+             of program, the loader has to change its memory binding yet again. A loader
+             possessing this capability is called a relocating loader, whereas a loader without
+             this capability is called an absolute loader. Note that translators, linkers, and
+             loaders are not parts of the OS.
+                In this section we discuss different forms of programs and their properties
+             concerning memory bindings, processing by the linker, and memory requirements
+             during execution. We use programs written in a simple hypothetical assembly
+             language to illustrate the relocation and linking actions performed by the linker.
+             A Simple Assembly Language           An assembly language statement has the follow-
+             ing format:
+                          [Label]  <Opcode>       <operand spec> ,<operand spec>
+             The first operand is always a general-purpose-register (GPR)--AREG, BREG,
+             CREG or DREG. The second operand is either a GPR or a symbolic name that
+             corresponds to a memory byte. Self-explanatory opcodes like ADD and MULT are
+             used to designate arithmetic operations. The MOVER instruction moves a value
+             from its memory operand to its register operand, whereas the MOVEM instruction
+             does the opposite. All arithmetic is performed in a register and sets a condition
+             code. The condition code can be tested by a branch-on-condition (BC) instruction.
+             The assembly statement corresponding to it has the format
+                          BC       <condition code spec>, <instruction address>
+             where <condition code spec> is a self-explanatory character string describing
+             a condition, e.g., GT for > and EQ for =. The BC instruction transfers control
+             to the instruction with the address <instruction address> if the current value of
+             condition code matches <condition code spec>. For simplicity, we assume that all
+             addresses and constants are in decimal, and all instructions occupy 4 bytes. The
+             sign is not a part of an instruction. The opcode and operands of an instruction
+
+
+
+                                                                            Chapter 11  Memory Management        369
+                       Assembly  statement                   Generated  code
+                                                      Address           Code
+                       START     500
+                       ENTRY     TOTAL
+                       EXTRN     MAX, ALPHA
+                       READ      A                           500)  +    09  0  540
+             LOOP                                            504)
+                       ...
+                       MOVER     AREG, ALPHA                 516)  +    04  1  000
+                       BC        ANY, MAX                    520)  +    06  6  000
+                       ...
+                       BC        LT, LOOP                    532)  +    06  1  504
+                       STOP                                  536)  +    00  0  000
+             A         DS        1                           540)
+             TOTAL     DS        3                           541)
+                       END
+Figure 11.3  Assembly  program   P and its generated  code.
+occupy 2, 1, and 3 digits, respectively, and the GPRs AREG, BREG, CREG,                 and
+DREG are represented by 1, 2, 3, and 4, respectively, in an instruction.
+11.3.1 Relocation
+Figure 11.3 shows program P, an assembly program, and its generated code. The
+ENTRY and EXTRN statements have significance for linking; they are discussed
+later in Section 11.3.2. A DS statement merely reserves the number of bytes men-
+tioned as its operand. The statement START            500 indicates that the translated
+origin of the program should be 500. The translated address of LOOP is therefore
+504. The address of A is 540. The instructions in bytes with addresses 532 and
+500 use these addresses to refer to LOOP and A, respectively. These addresses
+depend on the origin of the program in an obvious way. Instructions using such
+addresses are called address-sensitive instructions. A program containing address-
+sensitive instructions can execute correctly only if it is loaded in the memory area
+whose start address coincides with the origin of the program. If it is to execute in
+some other memory area, addresses in address-sensitive instructions have to be
+suitably modified. This action is called relocation. It requires knowledge of trans-
+lated and linked origins and information about address-sensitive instructions.
+The next example illustrates relocation of P.
+                                                                                                                 ·
+Relocation of a Program                                                                      Example       11.1
+The translated origin of program P in Figure 11.3 is 500. The translated
+address of the symbol A is 540. The instruction corresponding to the state-
+ment READ       A is an address-sensitive instruction. If the linked origin of P is
+900, the linked address of A would be 940. It can be obtained by adding the
+difference between the translated and linked origins, i.e., 900 - 500, to its
+
+
+
+370  Part 3  Memory Management
+                   translated address. Thus, relocation can be performed by adding 400 to the
+                   address used in each address-sensitive instruction. Thus, the address in the
+                   READ instruction would be changed to 940. Similarly, the instruction in trans-
+                   lated memory byte 532 uses the address 504, which is the address of LOOP.
+                   This address would be changed to 904. (Note that operand addresses in the
+                   instructions with addresses 516 and 520 also need to be "corrected." However,
+                   it is an instance of linking, which is discussed in the next section.)
+                   ·
+                   Static and Dynamic Relocation of Programs   When a program is to be executed,
+                   the kernel allocates it a memory area that is large enough to accommodate it,
+                   and invokes the loader with the name of the program and the load origin as
+                   parameters. The loader loads the program in the memory allocated to it, relocates
+                   it using the scheme illustrated in Example 11.1 if the linked origin is different
+                   from the load origin, and passes it control for execution. This relocation is static
+                   relocation as it is performed before execution of the program begins. Some time
+                   after the program's execution has begun, the kernel may wish to change the
+                   memory area allocated to it so that other programs can be accommodated in
+                   memory. This time, the relocation has to be performed during execution of the
+                   program, hence it constitutes dynamic relocation.
+                        Dynamic relocation can be performed by suspending a program's execution,
+                   carrying out the relocation procedure described earlier, and then resuming its exe-
+                   cution. However, it would require information concerning the translated origin
+                   and address-sensitive instructions to be available during the program's execution.
+                   It would also incur the memory and processing costs described earlier. Some com-
+                   puter architectures provide a relocation register to simplify dynamic relocation.
+                   The relocation register is a special register in the CPU whose contents are added to
+                   every memory address used during execution of a program. The result is another
+                   memory address, which is actually used to make a memory reference. Thus,
+                      Effective memory address = memory address used in the current instruction
+                                            + contents of relocation register
+                   The  following  example  illustrates  how   dynamic  relocation         of  a  program  is
+                   achieved by using the relocation register.
+·
+     Example 11.2  Dynamic Relocation through Relocation Register
+                   A program has the linked origin of 50000, and it has also been loaded in the
+                   memory area that has the start address of 50000. During its execution, it is to
+                   be shifted to the memory area having the start address of 70000, so it has to be
+                   relocated to execute in this memory area. This relocation is achieved simply
+
+
+
+                                                                          Chapter 11  Memory          Management  371
+             Program                       CPU                            Memory
+50000
+55000        Add  65784             PSW    75000                 70000
+                               Relocation  20000                 (50000)
+                               register                          75000    Add  65784
+65784                                                            (55000)
+                                           +
+                                                                 85784
+                                                                 (65784)
+(a)                            (b)
+Figure 11.4  Program relocation using a    relocation register:  (a) program; (b) its execution.
+by loading an appropriate value in the relocation register, which is computed
+as follows:
+Value to be loaded in relocation register
+     = start address of allocated memory area - linked origin of program
+     = 70000 - 50000 = 20000
+Consider     execution   of    the  Add    instruction  in       the      program  shown          in
+Figure 11.4(a). This instruction has the linked address 55000 in the program
+and uses an operand whose linked address is 65784. As a result of reloca-
+tion, the program exists in the memory area starting with the address 70000.
+Figure 11.4(b) shows the load addresses of its instructions and data; the corre-
+sponding linked addresses are shown in parenthesis for easy reference. The Add
+instruction exists in the location with address 75000. The address of its operand
+is 65784 and the relocation register contains 20000, so during execution of the
+instruction, the effective address of its operand is 65784 + 20000 = 85784.
+Hence the actual memory access is performed at the address 85784.
+                                                                                                  ·
+11.3.2 Linking
+An ENTRY statement in an assembly program indicates symbols that are defined
+in the assembly program and may be referenced in some other assembly pro-
+grams. Such symbols are called entry points. An EXTRN statement in an assembly
+program indicates symbols that are used in the assembly program but are defined
+in some other assembly program. These symbols are called external symbols and
+uses of these symbols in the assembly program are called external references. The
+assembler puts information about the ENTRY and EXTRN statements in an object
+module for use by the linker.
+Linking is the process of binding an external reference to the correct linked
+address. The linker first scans all object modules being linked together to collect
+the names of all entry points and their linked addresses. It stores this information
+in a table for its own use. It then considers each external reference, obtains the
+
+
+
+372  Part 3  Memory Management
+                   linked address of the external symbol being referenced from its table, and puts
+                   this address in the instruction containing the external reference. This action is
+                   called resolution of an external reference. The next example illustrates the steps
+                   in linking.
+·
+     Example 11.3  Linking
+                   The  statement ENTRY   TOTAL in program P of Figure 11.3 indicates that
+                   TOTAL is an entry point in the program. Note that LOOP and A are not entry
+                   points even though they are defined in the program. The statement EXTRN
+                   MAX, ALPHA indicates that the program contains external references to MAX
+                   and ALPHA. The assembler does not know the addresses of MAX and ALPHA
+                   while processing program P, so it puts zeroes in the operand address fields of
+                   instructions containing references to these symbols (see Figure 11.3).
+                        Consider program Q shown below:
+                                    Assembly statement   Generated code
+                                                         Address              Code
+                                          START  200
+                                          ENTRY  ALPHA
+                                          -   -
+                                   ALPHA  DC     25      232)              +  00  0  025
+                                          END
+                   The DC statement declares a constant 25. Symbol ALPHA is an entry point
+                   in Q; it has the translated address 232. Let the linked origin of program P
+                   of Figure 11.3 be 900. The size of P is 44 bytes, so the linker assigns the
+                   address 944 to the linked origin of Q. Therefore, the linked address of ALPHA
+                   is 232 - 200 + 944 = 976. The linker resolves the external reference to ALPHA
+                   in program P by putting the address 974 in the operand address field of the
+                   instruction that uses ALPHA, i.e., in the instruction with the translated address
+                   516 in P. This instruction has the linked address 916.
+                   ·
+                   Static and Dynamic Linking/Loading    The distinction between the terms link-
+                   ing and loading has become blurred in modern operating systems. However,
+                   we use the terms as follows: A linker links modules together to form an exe-
+                   cutable program. A loader loads a program or a part of a program in memory
+                   for execution.
+                        In static linking, the linker links all modules of a program before its execu-
+                   tion begins; it produces a binary program that does not contain any unresolved
+                   external references. If several programs use the same module from a library, each
+                   program will get a private copy of the module; several copies of the module might
+                   be present in memory at the same time if programs using the module are executed
+                   simultaneously.
+                        Dynamic linking is performed during execution of a binary program. The
+                   linker is invoked when an unresolved external reference is encountered during
+
+
+
+                                                             Chapter 11  Memory Management  373
+its execution. The linker resolves the external reference and resumes execution of
+the program. This arrangement has several benefits concerning use, sharing, and
+updating of library modules. Modules that are not invoked during execution of
+a program need not be linked to it at all. If the module referenced by a program
+has already been linked to another program that is in execution, the same copy
+of the module could be linked to this program as well, thus saving memory.
+Dynamic linking also provides an interesting benefit when a library of modules
+is updated--a program that invokes a module of the library automatically starts
+using the new version of the module! Dynamically linked libraries (DLLs) use
+some of these features to advantage.
+   To facilitate dynamic linking, each program is first processed by the static
+linker. The static linker links each external reference in the program to a dummy
+module whose sole function is to call the dynamic linker and pass the name of
+the external symbol to it. This way, the dynamic linker is activated when such an
+external reference is encountered during execution of the program. It maintains a
+table of entry points and their load addresses. If the external symbol is present in
+the table, it uses the load address of the symbol to resolve the external reference.
+Otherwise, it searches the library of object modules to locate a module that con-
+tains the required symbol as an entry point. This object module is linked to the
+binary program through the scheme illustrated in Example 11.3 and information
+about its entry points is added to the linker's table.
+11.3.3 Program Forms Employed in Operating Systems
+Two features of a program influence its servicing by an OS:
+·  Can the program execute in any area of memory, or does it have to be executed
+   in a specific memory area?
+·  Can the code of the program be shared by several users concurrently?
+   If the load origin of the program does not coincide with the start address of
+the memory area, the program has to be relocated before it can execute. This is
+expensive. A program that can execute in any area of memory is at an advantage
+in this context. Shareability of a program is important if the program may have
+to be used by several users at the same time. If a program is not shareable, each
+user has to have a copy of the program, and so several copies of the program will
+have to reside in memory at the same time.
+   Table 11.1 summarizes important programs employed in operating systems.
+An object module is a program form that can be relocated by a linker, whereas a
+binary program cannot be relocated by a linker. The dynamically linked program
+form conserves memory by linking only those object modules that are referenced
+during its execution. We discussed these three program forms in previous sections.
+A self-relocating program can be executed in any part of memory. This program
+form is not important when a computer provides either a relocation register or
+virtual memory. The reentrant program form avoids the need to have multiple
+copies of a program in memory. These two program forms are discussed in the
+following sections.
+
+
+
+374  Part 3  Memory Management
+             Table 11.1         Program  Forms Employed in Operating Systems
+             Program form                 Features
+             Object module                Contains instructions and data of a program and
+                                          information required for its relocation and linking.
+             Binary program               Ready-to-execute form of a program.
+             Dynamically linked           Linking is performed in a lazy manner, i.e., an object
+             program                      module defining a symbol is linked to a program only
+                                          when that symbol is referenced during the program's
+                                          execution.
+             Self-relocating program      The program can relocate itself to execute in any area
+                                          of memory.
+             Reentrant program            The program can be executed on several sets of data
+                                          concurrently.
+             11.3.3.1 Self-Relocating Programs
+             Recall from Section 11.3.1 that relocation of a program involves modification
+             of its address-sensitive instructions so that the program can execute correctly
+             from a desired area of memory. Relocation of a program by a linker requires its
+             object module form to be available; it also incurs considerable overhead. The self-
+             relocating program form was developed to eliminate these drawbacks; it performs
+             its own relocation to suit the area of memory allocated to it.
+             A self-relocating program knows its own translated origin and translated
+             addresses of its address-sensitive instructions. It also contains a relocating logic,
+             i.e., code that performs its own relocation. The start address of the relocating
+             logic is specified as the execution start address of the program, so the relocating
+             logic gains control when the program is loaded for execution. It starts off by
+             calling a dummy function. The return address formed by this function call is
+             the address of its next instruction. Using this address, it obtains address of the
+             memory area where it is loaded for execution, i.e., its load origin. It now has all
+             the information needed to implement the relocation scheme of Section 11.3.1.
+             After performing its own relocation, it passes control to its first instruction to
+             begin its own execution.
+             11.3.3.2 Reentrant Programs
+             Programs can be shared in both static and dynamic manner. Consider two pro-
+             grams A and B that use a program C. We designate A and B as sharing programs
+             and C as the shared program. Static sharing of C is performed by using static
+             linking. Hence the code and data of C are included in both A and B; the identity
+             of C is lost in the binary programs produced by the linker. If programs A and B are
+             executed simultaneously, two copies of C will exist in memory [see Figure 11.5(a)].
+             Thus, static sharing of a program is simple to implement, but may waste memory.
+             When dynamic sharing is used, a single copy of a shared program's code
+             is loaded in memory and used by all sharing programs in execution. Dynamic
+
+
+
+                                                                            Chapter 11    Memory Management  375
+                              C        Program                     Program
+                                       A                           A
+                                                                   Program
+                              C        Program                     B
+                                       B                           Program
+                                                                   C
+                         (a)                        (b)
+Figure 11.5  Sharing of  program    C  by programs  A and B:  (a)  static sharing; (b) dynamic
+sharing.
+                                                                   AREG     Data(CB)
+                  AREG        Data          AREG    Data(CA)                Data(CA)
+                              C                          C                  C
+             (a)                       (b)                    (c)
+Figure 11.6  (a) Structure of a reentrant program; (b)­(c) concurrent invocations of the
+program.
+sharing is implemented by using dynamic linking. The kernel keeps track of
+shared programs in memory. When a program wishes to use one of the shared
+programs, the kernel dynamically links the program to the copy of the shared
+program in memory. Figure 11.5(b) illustrates dynamic sharing. When program
+A needs to use program C in a shared mode, the kernel finds that C does not
+exist in memory. Hence it loads a copy of C in memory and dynamically links it
+to A. In Figure 11.5(b), this linking is depicted by the arrow from A to C. When
+program B needs to use program C, the kernel finds that a copy of C already
+exists in memory, so it merely links this copy to B. This arrangement avoids the
+need to have multiple copies of a program in memory, but we need to ensure that
+concurrent executions of a program do not interfere with one another.
+A reentrant program is one that can be executed concurrently by many users
+without mutual interference. When invoked, the reentrant program allocates a
+new copy of its data structures and loads the memory address of this copy in
+a general-purpose register (GPR). Its code accesses its data structures through
+the GPR. This way, if the reentrant program is invoked concurrently by many
+programs, the concurrent invocations would use different copies of the data
+structure.
+Figure 11.6 illustrates execution of program C coded as a reentrant program.
+Program C is coded so that it assumes AREG to point to the start of its data area
+[see Figure 11.6(a)]. Data items in this area are accessed by using different offsets
+from the address contained in AREG. When program A calls C, C allocates a data
+area for use during this invocation. It is depicted as Data(CA) in Figure 11.6(b).
+When execution of A is preempted, the contents of AREG are stored in A's PCB;
+they would be loaded back in AREG when A is scheduled again. When C is called
+by B, a data area Data(CB) is similarly allocated and AREG is set to point to the

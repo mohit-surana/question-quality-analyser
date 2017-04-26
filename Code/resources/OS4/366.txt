@@ -1,0 +1,84 @@
+Kernel Structure
+The kernel of a multiprocessor operating system for an SMP architecture is called
+an SMP kernel. It is structured so that any CPU can execute code in the kernel, and
+many CPUs could do so in parallel. This capability is based on two fundamental
+provisions: The code of the SMP kernel is reentrant (see Section 11.3.3 for a
+discussion of reentrant code), and the CPUs executing it in parallel coordinate
+their activities through synchronization and interprocessor interrupts.
+Synchronization   The kernel uses binary semaphores to ensure mutual exclusion
+over kernel data structures (see Section 6.9)--we will refer to them as mutex
+locks. Locking is said to be coarse-grained if a mutex lock controls accesses to a
+group of data structures, and it is said to be fine-grained if a mutex lock controls
+accesses to a single data item or a single data structure. Coarse-grained locking
+provides simplicity; however, two or more of the data structures controlled by
+a lock cannot be accessed in parallel, so execution of kernel functionalities may
+become a bottleneck. Fine-grained locking permits CPUs to access different data
+structures in parallel. However, fine-grained locking may increase the locking
+overhead because a CPU executing the kernel code would have to set and release
+a larger number of locks. It may also cause deadlocks if all CPUs do not set the
+locks in the same order. Hence deadlock prevention policies such as the resource
+ranking policy (see Section 8.8) would have to be used--numerical ranks could
+be associated with locks and a CPU could set locks in the order of increasing
+ranks.
+   Good performance of SMP kernels is obtained by ensuring parallelism
+without incurring substantial locking overhead. It is achieved through two
+means:
+·  Use of separate locks for kernel functionalities: CPUs can perform different
+   kernel functionalities in parallel without incurring high locking overhead.
+·  Partitioning of the data structures of a kernel functionality: CPUs can perform
+   the same kernel functionality in parallel by locking different partitions of the
+   data structures. Locking can be dispensed with altogether by permanently
+   associating a different partition with each CPU.
+Heap Management   Parallelism in heap management can be provided by main-
+taining  several  free  lists,  i.e.,  lists  of  free  memory  areas    in  the  heap
+(see Section 11.5.1). Locking is unnecessary if each CPU has its own free list;
+however, this arrangement would degrade performance because the allocation
+decisions would not be optimal. Forming separate free lists to hold free memory
+areas of different sizes and letting a CPU lock an appropriate free list would pro-
+vide parallelism between CPUs that seek memory areas of different sizes. It would
+
+
+
+346  Part 2  Process Management
+                                 CPU  Assigned
+                     Lawt        id   work          Lrq
+                                 C1          Pi                    Pi       Highest-priority queue
+                                 C2          Pj                    Pj       Lower-than-highest
+                                                                   ...      priority queue
+                           Assigned workload table                          Lowest-priority queue
+                                      (AWT)
+             Figure  10.4  Scheduling data structures in  an  SMP  kernel.
+             also avoid suboptimal performance caused by associating a free list permanently
+             with a CPU.
+             Scheduling          Figure 10.4 illustrates simple scheduling data structures used by
+             an SMP kernel. CPUs C1 and C2 are engaged in executing processes Pi and
+             Pj, respectively. The ready queues of processes are organized as discussed in
+             Section 7.4.3--each ready queue contains PCBs of ready processes having a spe-
+             cific priority. The kernel maintains an additional data structure named assigned
+             workload table (AWT) in which it records the workload assigned to various CPUs.
+             Mutex locks called Lrq and Lawt guard the ready queues data structure and the
+             AWT, respectively. Let us assume that CPUs set these locks in the order Lrq
+             followed by Lawt.
+             However, use of the scheduling data structures shown in Figure 10.4 suffers
+             from heavy contention for mutex locks Lrq and Lawt because every CPU needs
+             to set and release these locks while scheduling. To reduce this overhead, some
+             operating systems partition the set of processes into several subsets of processes,
+             and entrust each subset to a different CPU for scheduling. In this arrangement,
+             the ready queues and the assigned workload table get partitioned on a per-CPU
+             basis. Now, each CPU would access the ready queues data structure that has only
+             the ready processes in its charge. In a preemptible kernel, mutex locks would still
+             be needed to avoid race conditions on each of the per-CPU data structures because
+             the CPU may be diverted due to interrupts; however, these locks would rarely
+             face contention, so the synchronization overhead would be low. The price for this
+             reduction in the synchronization overhead is either poor system performance
+             because some CPUs may be idle while others are heavily loaded, or the overhead
+             of balancing the load across the CPUs by periodically transferring some processes
+             from heavily loaded CPUs to lightly loaded CPUs.
+             An SMP kernel provides graceful degradation because it continues to oper-
+             ate despite failures, even though its efficiency may be affected. For example,
+             failure of a CPU when it is not executing kernel code does not interfere with
+             operation of other CPUs in the system. Hence they would continue to execute
+             normally. Nonavailability of the failed CPU would affect the process whose code
+             it was executing when the failure occurred. It would also affect throughput and
+             response times in the system to some extent, as fewer processes can be scheduled in
+             parallel.

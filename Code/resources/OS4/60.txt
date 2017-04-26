@@ -1,0 +1,325 @@
+OS Interaction with the Computer and User Programs
+To respond readily to events, an OS uses an arrangement in which every event
+causes an interrupt. In this section, we discuss how the OS interacts with the
+computer to ensure that the state of an interrupted program is saved, so that its
+execution can be resumed at a later time, and how an interrupt servicing routine
+obtains information concerning the event that had caused an interrupt, so that
+it can perform appropriate actions. We also discuss how a program invokes the
+services of the OS through a software interrupt. A system call is the term used
+for this method of invoking OS services.
+2.3.1 Controlling Execution of Programs
+To control execution of user programs, the OS has to ensure that various fields of
+the PSW contain appropriate information at all times when user programs are in
+execution, which includes the time when a new program's execution is initiated,
+and also times when its execution is resumed after an interruption. From the
+discussion in Section 2.2, the key points in this function are:
+1. At the start of execution of a user program, the PSW should contain the
+     following information:
+     a. The program counter field (PC field) should contain the address of the first
+     instruction in the program.
+     b. The mode field (M field) should contain a 1 such that the CPU is in the
+     user mode.
+
+
+
+40  Part 1  Overview
+                      c. The memory protection information field (MPI field) should contain infor-
+                      mation about the start address and size of the memory area allocated to
+                      the program.
+                      d. The interrupt mask field (IM field) should be set so as to enable all
+                      interrupts.
+            2.        When a user program's execution is interrupted, the CPU state--which con-
+                      sists of the contents of the PSW and the general-purpose registers--should
+                      be saved.
+            3.        When execution of an interrupted program is to be resumed, the saved CPU
+                      state should be loaded into the PSW and the general-purpose registers.
+                      The OS maintains a table to contain information relevant to this function.
+            For now, we will use the generic name program table for it--in later chapters
+            we will discuss specific methods of organizing this information such as the pro-
+            cess control block (PCB). Each entry in the table contains information pertaining
+            to one user program. One field in this entry is used to store information about
+            the CPU state. The kernel puts information mentioned in item 1 into this field
+            when the program's execution is to be initiated, and saves the CPU state into this
+            field when the program's execution is interrupted--it achieves this by copying
+            information from the saved PSW information area when the program is inter-
+            rupted. Information stored in this field is used while resuming operation of the
+            program. Effectively, relevant fields of the PSW would contain the information
+            mentioned in items 1(b)­1(d) whenever the CPU is executing instructions of the
+            program.
+            2.3.2 Interrupt Servicing
+            As mentioned in Section 2.2.5, for simplicity, we assume that an interrupt vec-
+            tor has the same format as the PSW. The kernel forms the interrupt vectors for
+            various classes of interrupts when the operating system is booted. Each inter-
+            rupt vector contains the following information: a 0 in the mode (M) field to
+            indicate that the CPU should be put in the kernel mode, the address of the
+            first instruction of the interrupt servicing routine in the program counter (PC)
+            field, a 0 and the size of memory in the memory protection information (MPI)
+            field--so that the interrupt servicing routine would have access to the entire
+            memory--and an interrupt mask in the interrupt mask (IM) field that either
+            disables other interrupts from occurring or enables only higher-priority inter-
+            rupts to occur, in accordance with the philosophy of nested interrupt servicing
+            employed in the operating system (we discuss details of this philosophy later in this
+            section).
+                      Figure 2.7 contains a schematic of operation of the kernel--it gets control
+            only when an interrupt occurs, so its operation is said to be interrupt-driven. The
+            interrupt action actually transfers control to an appropriate interrupt servicing
+            routine, also called an ISR, which perform the actions shown in the dashed box.
+            It first saves information about the interrupted program in the program table, for
+            use when the program is scheduled again. This information consists of the PSW
+
+
+
+                                                        Chapter 2  The OS, the Computer, and User  Programs  41
+                                Occurrence of
+                                an interrupt
+                                Context
+                                save
+                                                        Interrupt
+                                                        servicing
+                                Event
+                                handling
+                                Scheduling
+                                Exit from
+                                kernel
+Figure  2.7  Interrupt-driven operation of the kernel.
+Table 2.3    Event Handling     Actions of the Kernel
+Interrupt                       Event handling action
+Arithmetic exception            Abort the program.
+Memory protection violation     Abort the program.
+Software interrupt              Satisfy the program's request if possible; otherwise,
+                                note it for future action.
+End of I/O operation            Find which program had initiated the I/O
+                                operation and note that it can now be considered
+                                for scheduling on the CPU. Initiate a pending I/O
+                                operation, if any, on the device.
+Timer interrupt                 (1) Update the time of the day. (2) Take appropriate
+                                action if a specified time interval has elapsed.
+saved by the interrupt action, contents of GPRs, and information concerning
+memory and resources used by the program. It is called the execution context,
+or simply context, of a program; the action that saves it is called the context save
+action. The interrupt servicing routine now takes actions appropriate to the event
+that had caused the interrupt. As mentioned in Section 2.2.5, the interrupt code
+field of the saved PSW provides useful information for this purpose. Table 2.3
+summarizes these actions, which we call the event handling actions of the kernel.
+The scheduling routine selects a program and switches the CPU to its exe-
+cution by loading the saved PSW and GPRs of the program into the CPU.
+Depending on the event that caused the interrupt and the state of other programs,
+it may be the same program that was executing when the interrupt occurred, or
+it may be a different program.
+
+
+
+42  Part 1  Overview
+                      Example 2.3 illustrates interrupt servicing and scheduling when an interrupt
+                 occurs signaling the end of an I/O operation.
+·
+    Example 2.3  Interrupt Servicing in a Hypothetical Kernel
+                 Figure 2.8(a) shows the arrangement of interrupt vectors and interrupt ser-
+                 vicing routines in memory, while Figure 2.8(b) shows contents of the PSW at
+                 various times during servicing of an I/O interrupt. The interrupt vectors are
+                 formed by the OS boot procedure. Each interrupt vector contains the address
+                 of an interrupt servicing routine, an interrupt mask and a 0 in the mode field.
+                 A user program is about to execute the instruction that exists at the address
+                 ddd in memory when an interrupt occurs signaling the end of an I/O operation
+                 on device d1. The leftmost part of Figure 2.8(b) shows the PSW contents at
+                 this time.
+                      Step 1 of the interrupt action puts d1 in the IC field of the PSW and saves
+                 the PSW in the saved PSW information area. The saved PSW contains a 1
+                 in the mode field, ddd in the PC field, and d1 in the IC field. The contents
+                 of the interrupt vector for the I/O completion interrupt are loaded into the
+                 PSW. Effectively, the CPU is put in the kernel mode of operation, and control
+                 is transferred to the routine that has the start address bbb, which is the I/O
+                 interrupt servicing routine (see the arrow marked Aiin Figure 2.8(a), and the
+                 PSW contents shown in Figure 2.8(b)).
+                      The I/O interrupt servicing routine saves the PSW and contents of the
+                 GPRs in the program table. It now examines the IC field of the saved PSW,
+                 finds that device d1 has completed its I/O operation, and notes that the program
+                 that had initiated the I/O operation can be considered for scheduling. It now
+                 transfers control to the scheduler (see the arrow marked Biin Figure 2.8(a)).
+                 The scheduler happens to select the interrupted program itself for execution, so
+                 the kernel switches the CPU to execution of the program by loading back the
+                 saved contents of the PSW and GPRs (see arrow marked Ciin Figure 2.8(a)).
+                 The Program would resume execution at the instruction with the address ddd
+                 (see the PSW contents in the rightmost part of Figure 2.8(b)).
+                 ·
+                 Nested Interrupt Servicing  Figure 2.9(a) diagrams the interrupt servicing ac-
+                 tions of Example 2.3 in the simplest form: interrupt servicing routine "a" handles
+                 the interrupt and the scheduler selects the interrupted program itself for execu-
+                 tion. If another interrupt occurs, however, while interrupt servicing routine "a"
+                 is servicing the first interrupt, it will lead to identical actions in the hardware and
+                 software. This time, execution of interrupt servicing routine "a" is the "program"
+                 that will be interrupted; the CPU will be switched to execution of another inter-
+                 rupt servicing routine, say, interrupt servicing routine "b" (see Figure 2.9(b)). This
+                 situation delays servicing of the first interrupt, and it also requires careful coding
+
+
+
+                                                    Chapter 2           The OS, the Computer, and     User  Programs  43
+                                                         Memory
+                          aaa:                      bbb:                         ccc:
+                          Save PSW                  Save PSW               B
+                          and GPRs                  and GPRs                     {Select a
+                                                                                 program}
+                          {Handle the               {Handle the
+                          event}                         event}                  Load GPRs
+                                                                                 Transfer to
+                          Branch ccc                Branch ccc                   user program
+                          Program interrupt         I/O interrupt
+                          servicing                      servicing            C  Scheduler
+                                routine                   routine
+                                            I/O          PC         M            PC            M
+                                         interrupt       bbb        0            ddd           1
+                  A                         vector                                             d1
+Interrupt action                                              IM                               IC
+switches the CPU                                         PC         M
+        when an                          Program         aaa        0
+I/O interrupt                            interrupt
+        occurs                              vector            IM
+                                                    Interrupt vectors            Saved PSW
+                          Kernel                              area               information area
+                                                                                 Kernel switches
+                                    <previous instruction>                       the CPU
+                                                                                 to return
+                          ddd: <next instruction>                                from interrupt
+                                                                                 servicing
+                          User program
+(a) Interrupt vectors and interrupt servicing routines.
+             PC   M       PC             M               PC         M            PC            M
+             ddd  1       bbb            0               ccc        0            ddd           1
+                                    d1                              d1                         d1
+                  IC                IC                              IC                         IC
+        Before interrupt  After action      A       After action        B        After action      C
+(b) PSW contents at various times.
+Figure  2.8  Servicing of an I/O interrupt and return to the same user     program.
+of the kernel to avoid a mix-up if the same kind of interrupt were to arise again
+(also see Exercise 2.6). However, it enables the kernel to respond to high-priority
+interrupts readily.
+Operating systems have used two approaches to nested interrupt servicing.
+Some operating systems use the interrupt mask (IM) field in the interrupt vector
+
+
+
+44  Part 1  Overview
+                        User     Interrupt    User                Interrupt   Interrupt
+                        program  routine "a"  program            routine "a"  routine "b"
+                        (a)                   (b)
+            Figure 2.9  Simple and nested interrupt servicing.
+            to mask off all interrupts while an interrupt servicing routine is executing (see
+            Figure 2.8). This approach makes the kernel noninterruptible, which simplifies
+            its design because the kernel would be engaged in servicing only one interrupt
+            at any time. However, noninterruptibility of the kernel may delay servicing of
+            high-priority interrupts. In an alternative approach, the kernel sets the interrupt
+            mask in each interrupt vector to mask off less critical interrupts; it services more
+            critical interrupts in a nested manner. Such a kernel is called an interruptible kernel
+            or a preemptible kernel. Data consistency problems would arise if two or more
+            interrupt servicing routines activated in a nested manner update the same kernel
+            data, so the kernel must use a locking scheme to ensure that only one interrupt
+            processing routine can access such data at any time.
+            User Program Preemption  In the scheme of Figure 2.7, preemption of a user
+            program occurs implicitly when an interrupt arises during its execution and the
+            kernel decides to switch the CPU to some other program's execution. Recall from
+            Example 2.3 that the interrupted program's context is stored in the program table,
+            so there is no difficulty in resuming execution of a preempted program when it is
+            scheduled again.
+            2.3.3 System Calls
+            A program needs to use computer resources like I/O devices during its execution.
+            However, resources are shared among user programs, so it is necessary to prevent
+            mutual interference in their use. To facilitate it, the instructions that allocate or
+            access critical resources are made privileged instructions in a computer's archi-
+            tecture. This way, these instructions cannot be executed unless the CPU is in the
+            kernel mode, so user programs cannot access resources directly; they must make
+            requests to the kernel, and the kernel must access resources on their behalf. The
+            kernel provides a set of services for this purpose.
+                      In a programmer view, a program uses a computer's resources through state-
+            ments of a programming language. The compiler of a programming language
+            implements the programmer view as follows: While compiling a program, it
+
+
+
+                                                      Chapter  2  The OS, the Computer,  and  User  Programs  45
+                                                                  Memory
+                                                                  Kernel              4
+                                                                                      2
+                                                      call     1_open(info);          1
+                                    Compiled code                                     3
+                                    of the program    call     1_read(info)..;
+open      (info);                   Library function           system call ...
+                                    to open file
+read      (info)   ...;             Library function           system call ...
+                                    to read data
+(a)                                 (b)
+Figure 2.10 A schematic of  system  calls: (a) a program and   (b) an execution time
+arrangement.
+replaces statements concerning use of computer resources by calls on library
+functions that implement use of the resources. These library functions are then
+linked with the user program. During execution, the user program calls a library
+function and the library function actually uses the resource through a kernel ser-
+vice. We still need a method by which a library function can invoke the kernel
+to utilize one of its services. We will use system call as a generic term for such
+methods.
+Figure 2.10 shows a schematic of this arrangement. The program shown
+in Figure 2.10(a) opens file info and reads some data from it. The compiled
+program has the form shown in Figure 2.10(b). It calls a library function to open
+                                                      1i. The library function invokes
+the file; this call is shown by the arrow marked
+the kernel service for opening a file through a system call (see the arrow marked
+2i). The kernel service returns to the library function after opening the file, which
+returns to the user program. The program reads the file analogously through a
+                                                                                              3i
+call on a library function, which leads to a system call (see arrows marked
+and 4i).
+A system call is actually implemented through the interrupt action described
+earlier, hence we define it as follows:
+Definition 2.1 System Call          A request that a program makes to the kernel
+through a software interrupt.
+We assume that the software interrupt instruction mentioned in Section 2.2.5
+has the format
+                                    SI   <int_code>
+
+
+
+46  Part 1  Overview
+                 where the value of <int_code>, which is typically an integer in the range 0­255,
+                 indicates which service of the kernel is being requested. A program interrupt
+                 occurs when a program executes this instruction, and Step 1 of the interrupt
+                 action as shown in Figure 2.6 copies <int_code> into the interrupt code (IC) field
+                 of the PSW. The interrupt servicing routine for program interrupts analyzes the
+                 interrupt code field in the saved PSW information area to know the request made
+                 by the program.
+                      A system call may take parameters that provide relevant information for the
+                 invoked kernel service, e.g., the system call to open a file in Figure 2.10 would take
+                 the filename info as a parameter, and the system call to read data would take
+                 parameters that indicate the filename, number of bytes of data to be read, and the
+                 address in memory where data is to be delivered, etc. Several different methods
+                 can be used to pass parameters--parameters can be loaded into registers before
+                 the system call is made, they can be pushed on the stack, or they can be stored
+                 in an area of memory and the start address of the memory area can be passed
+                 through a register or the stack.
+                      The next example describes execution of a system call to obtain the current
+                 time of day.
+·
+    Example 2.4  System Call in a Hypothetical OS
+                 A hypothetical OS provides a system call for obtaining the current time. Let
+                 the code for this time-of-day service be 78. When a program wishes to know
+                 the time, it executes the instruction SI  78, which causes a software interrupt.
+                 78 is entered in the interrupt code field of the PSW before the PSW is saved
+                 in the saved PSW information area. Thus the value d1 in the IC field of the
+                 saved PSW in Figure 2.8 would be 78. As shown in Figure 2.8, the interrupt
+                 vector for program interrupts contains aaa in its PC field. Hence the CPU is
+                 switched to execution of the routine with the start address aaa. It finds that the
+                 interrupt code is 78 and realizes that the program wishes to know the time of
+                 the day. According to the conventions defined in the OS, the time information
+                 is to be returned to the program in a standard location, typically in a data
+                 register. Hence the kernel stores this value in the entry of the program table
+                 where the contents of the data register were saved when the interrupt occurred.
+                 This value would be loaded into the data register when the CPU is switched
+                 back to execution of the interrupted program.
+                 ·
+                      In accordance with the schematic of Figure 2.10, we will assume that a pro-
+                 gram written in a programming language like C, C++, or Java calls a library
+                 function when it needs a service from the OS, and that the library function actu-
+                 ally makes a system call to request the service. We will use the convention that
+                 the name of the library function is also the name of the system call. For example,
+                 in Example 2.4, a C program would call a library function gettimeofday to
+                 obtain the time of day, and this function would make the system call gettimeofday
+                 through the instruction SI  78 as described in Example 2.4.

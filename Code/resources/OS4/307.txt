@@ -1,0 +1,208 @@
+Deadlock Detection and Resolution
+             Consider a system that contains a process Pi, which holds a printer; and a process
+             Pj that is blocked on its request for a printer. If process Pi is not in the blocked
+             state, there is a possibility that it might complete its operation without requesting
+             any more resources; on completion, it would release the printer allocated to it,
+             which could then be allocated to process Pj. Thus, if Pi is not in the blocked state,
+             Pj's wait for the printer is not indefinite because of the following sequence of
+             events: process Pi completes­releases printer­printer is allocated to Pj. If some
+             other process Pl waits for some other resource allocated to Pj, its wait is also not
+             indefinite. Hence processes Pi, Pj, and Pl are not involved in a deadlock at the
+             current moment.
+                  From this observation, we can formulate the following rule for deadlock
+             detection: A process in the blocked state is not involved in a deadlock at the
+             current moment if the request on which it is blocked can be satisfied through a
+             sequence of process completion, resource release, and resource allocation events.
+             If each resource class in the system contains a single resource unit, this check can
+             be made by checking for the presence of a cycle in an RRAG or WFG. However,
+             more complex graph-based algorithms have to be used if resource classes may
+             contain more than one resource unit (see Section 8.7), so we instead discuss a
+             deadlock detection approach using the matrix model.
+                  We check for the presence of a deadlock in a system by actually trying to
+             construct fictitious but feasible sequences of events whereby all blocked processes
+             can get the resources they have requested. Success in constructing such a sequence
+             implies the absence of a deadlock at the current moment, and a failure to construct
+             it implies presence of a deadlock. When we apply this rule to Examples 8.3 and 8.4,
+
+
+
+                                                                Chapter 8                 Deadlocks       287
+it correctly deduces that processes Pi and Pj of Example 8.3 are in a deadlock,
+whereas a deadlock does not exist in Example 8.4.
+We perform the above check by simulating the operation of a system starting
+with its current state. We refer to any process that is not blocked on a resource
+request as a running process, i.e., we do not differentiate between the ready and
+running states of Chapter 5. In the simulation we consider only two events--
+completion of a process that is not blocked on a resource request, and allocation
+of resource(s) to a process that is blocked on a resource request. It is assumed that
+a running process would complete without making additional resource requests,
+and that some of the resources freed on its completion would be allocated to a
+blocked process only if the allocation would put that process in the running state.
+The simulation ends when all running processes complete. The processes that are
+in the blocked state at the end of the simulation are those that could not obtain
+the requested resources when other processes completed, hence these processes
+are deadlocked in the current state. There is no deadlock in the current state if
+no blocked processes exist when the simulation ends. Example 8.6 illustrates this
+approach.
+                                                                                                          ·
+Deadlock Detection                                                                        Example    8.6
+The allocation state of a system containing 10 units of a resource class R1 and
+three processes P1­P3 is as follows:
+                    R1             R1              Total    R1
+                P1  4          P1     6       resources     10
+                P2  4          P2     2            Free
+                P3  2          P3     0       resources     0
+                    Allocated  Requested
+                    resources      resources
+Process P3 is in the running state because it is not blocked on a resource request.
+All processes in the system can complete as follows: Process P3 completes and
+releases 2 units of the resource allocated to it. These units can be allocated to
+P2. When it completes, 6 units of the resource can be allocated to P1. Thus no
+blocked processes exist when the simulation ends, so a deadlock does not exist
+in the system.
+If the requests by processes P1 and P2 were for 6 and 3 units, respectively,
+none of them could complete even after process P3 released 2 resource units.
+These processes would be in the blocked state when the simulation ended, and
+so they are deadlocked in the current state of the system.
+                                                                                       ·
+In our simulation, we assumed that a running process completes its exe-
+cution without making further resource requests. This assumption has two
+consequences. First, our conclusions regarding existence of a deadlock are not
+sensitive to the order in which blocked processes are assumed to become running
+or the order in which running processes are assumed to complete. Second, even
+
+
+
+288  Part 2  Process Management
+             if a system is deadlock-free at the current moment, a deadlock could arise in the
+             future. In Example 8.6, this could happen if P3 makes a request for one more
+             unit of R1. As a consequence, deadlock detection has to be performed repeat-
+             edly during operation of the OS. It can be achieved by devoting a system process
+             exclusively to deadlock detection, and activating it at fixed intervals. Alternatively,
+             deadlock detection can be performed every time a process becomes blocked on a
+             resource request. The overhead of deadlock detection would depend on several
+             factors like the number of processes and resource classes in the system and how
+             often deadlock detection is performed.
+             8.4.1 A Deadlock Detection Algorithm
+             Algorithm 8.1 performs deadlock detection. The inputs to the algorithm are
+             two sets of processes Blocked and Running, and a matrix model of the alloca-
+             tion state comprising the matrices Allocated_resources, Requested_resources, and
+             Free_resources.
+             The algorithm simulates completion of a running process Pi by transferring
+             it from the set Running to the set Finished [Steps 1(a), 1(b)]. Resources allocated
+             to Pi are added to Free_resources [Step 1(c)]. The algorithm now selects a blocked
+             process whose resource request can be satisfied from the free resources [Step 1(d)],
+             and transfers it from the set Blocked to the set Running. Sometime later the
+             algorithm simulates its completion and transfers it from Running to Finished.
+             The algorithm terminates when no processes are left in the Running set. Processes
+             remaining in the set Blocked, if any, are deadlocked.
+             The complexity of the algorithm can be analyzed as follows: The sets Running
+             and Blocked can contain up to n processes, where n is the total number of processes
+             in the system. The loop of Step 1 iterates  n times and Step 1(d) performs an
+             order of n × r work in each iteration. Hence the algorithm requires an order of
+             n2 × r work. Example 8.7 illustrates the working of this algorithm.
+             Algorithm 8.1 Deadlock Detection
+             Inputs
+                     n                    :  Number of processes;
+                     r                    :  Number of resource classes;
+                     Blocked              :  set of processes;
+                     Running              :  set of processes;
+                     Free_resources       :  array [1..r] of integer;
+                     Allocated_resources  :  array [1..n, 1..r] of integer;
+                     Requested_resources  :  array [1..n, 1..r] of integer;
+             Data structures
+                     Finished             :  set of processes;
+             1. repeat until set Running is empty
+                     a. Select a process Pi from set Running;
+                     b. Delete Pi from set Running and add it to set Finished;
+
+
+
+                                                                                    Chapter 8  Deadlocks       289
+    c. for k = 1..r
+        Free_resources[k] := Free_resources[k] + Allocated_resources[i,k];
+    d. while set Blocked contains a process Pl such that
+        for k = 1..r, Requested_resources[l,k]  Free_resources[k]
+        i. for k = 1, r
+        Free_resources[k] := Free_resources[k] - Requested_resources[l, k];
+        Allocated_resources[l, k] := Allocated_resources[l, k]
+                                                  + Requested_resources[l, k];
+        ii. Delete Pl from set Blocked and add it to set Running;
+2.  if set Blocked is not empty then
+        declare processes in set Blocked to be deadlocked.
+                                                                                                               ·
+Operation of a Deadlock Detection Algorithm                                                    Example    8.7
+A system has four processes P1­P4, and 5, 7, and 5 units of resource classes
+R1, R2, and R3, respectively. It is in the following state just before process P3
+makes a request for 1 unit of resource class R1:
+                     R1 R2 R3          R1 R2 R3          Total      R1 R2 R3
+               P1    2   1   0  P1     2  1   3          resources      5  7  5
+               P2    1   3   1  P2     1  4   0                     R1 R2 R3
+               P3    0   1   1  P3                       Free           1  0  1
+               P4    1   2   2  P4     1  0   2          resources
+                     Allocated         Requested
+                     resources         resources
+One  resource  unit      of  resource  class     R1  is  allocated  to     process  P3  and
+Algorithm 8.1 is invoked to check whether the system is in a deadlock.
+Figure 8.4 shows steps in operation of the algorithm. Inputs to it are the
+sets Blocked and Running initialized to {P1, P2, P4} and {P3}, respectively,
+and matrices Allocated_resources, Requested_resources, and Free_resources as
+shown in Figure 8.4(a). The algorithm transfers process P3 to the set Fin-
+ished and frees the resources allocated to it. The number of free units of the
+resource classes is now 1, 1 and 2, respectively. The algorithm finds that pro-
+cess P4's pending request can now be satisfied, so it allocates the resources
+requested by P4 and transfers P4 to the set Running [see Figure 8.4(b)]. Since
+P4 is the only process in Running, it is transferred to the set Finished. After
+freeing P4's resources, the algorithm finds that P1's resource request can be
+satisfied [see Figure 8.4(c)] and, after P1 completes, P2's resource request can
+be satisfied [see Figure 8.4(d)]. The set Running is now empty so the algorithm
+completes. A deadlock does not exist in the system because the set Blocked is
+empty.
+                                                                                        ·
+
+
+
+290  Part 2  Process Management
+                         Initial state
+                                               R1 R2 R3       R1 R2 R3                     R1 R2 R3
+                                           P1  2  1  0    P1  2  1  3           Free       0       0  1
+                                           P2  1  3  1    P2  1  4  0           resources
+                                           P3  1  1  1    P3
+                                           P4  1  2  2    P4  1  0  2
+                                               Allocated      Requested
+                                               resources      resources
+                         After simulating  allocation of  resources to P4 when  process P3 completes
+                                           P1  2  1  0    P1  2  1  3           Free       0       1  0
+                                           P2  1  3  1    P2  1  4  0           resources
+                                           P3  0  0  0    P3
+                                           P4  2  2  4    P4
+                                               Allocated      Requested
+                                               resources      resources
+                         After simulating  allocation of  resources to P1 when  process P4 completes
+                                           P1  4  2  3    P1                    Free       0       2  1
+                                           P2  1  3  1    P2  1  4  0           resources
+                                           P3  0  0  0    P3
+                                           P4  0  0  0    P4
+                                               Allocated      Requested
+                                               resources      resources
+                         After simulating allocation of resources to P2 when process P1 completes
+                                           P1  0  0  0    P1                    Free       3       0  4
+                                           P2  2  7  1    P2                    resources
+                                           P3  0  0  0    P3
+                                           P4  0  0  0    P4
+                                               Allocated      Requested
+                                               resources      resources
+             Figure 8.4  Operation of Algorithm 8.1, the deadlock detection algorithm.
+             8.4.2 Deadlock Resolution
+             Given a set of deadlocked processes D, deadlock resolution implies breaking the
+             deadlock to ensure progress for some processes in D, that is, for processes in some
+             set D   D. It can be achieved by aborting one or more processes in set D, and
+             allocating their resources to some processes in D . Each aborted process is called
+             a victim of deadlock resolution.
+                Thus,    deadlock       resolution   can  be  seen     as  the  act  of    splitting     a  set  of
+             deadlocked processes D into two sets such that D = D  Dv, where
+             ·  Each process in Dv is a victim of deadlock resolution, and
+             ·  The set of processes D is deadlock-free after the deadlock resolution actions
+                are complete. That is, each process in D can complete its operation through
+                a sequence of process completion, resource release and resource allocation
+                events.

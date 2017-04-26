@@ -1,0 +1,2087 @@
+Distributed System Security
+
+
+                                                          Chapte                        r  21
+Distributed System
+Security
+P rocesses in a distributed OS use the network for accessing distant resources
+      and for communicating with other processes. The network may include
+      public communication channels or computer systems called communica-
+tion processors that are not under control of the distributed OS. Hence an intruder
+located in a communication processor may be able to corrupt interprocess mes-
+sages to disrupt operation of processes or fabricate messages to masquerade as a
+user and access his resources.
+A distributed OS employs message security techniques to prevent intruders
+from tampering with interprocess messages. Encryption forms the backbone of
+these techniques; however, use of encryption implies that cryptographic attacks
+must be prevented and processes must know what encryption keys to use while
+communicating with other processes. These issues are tackled either through
+use of public key encryption or through use of session keys, which are securely
+distributed to communicating processes by key distribution centers. To prevent
+masquerading, the distributed OS provides trusted third-party authentication
+means for use while sending messages or using resources.
+In this chapter, we discuss message security and authentication techniques
+of distributed systems. We also discuss how integrity and authenticity of data is
+ensured through message authentication codes and digital signatures, respectively.
+21.1  ISSUES IN DISTRIBUTED SYSTEM SECURITY                                          ·
+We term the nodes that are directly under control of the distributed OS as secure
+nodes. They contain resources and offer services to users and their processes.
+As shown in Figure 21.1, a user process accesses a remote resource through a
+message sent to the resource coordinator process. Such a message may travel
+over public networks and pass through computer systems called communication
+processors, which operate under local operating systems. Communication pro-
+cessors employ a store-and-forward model to route a message to its destination.
+Thus, messages between processes are exposed to observation and interference
+                                                                                           785
+
+
+
+786  Part 5  Distributed Operating Systems
+                                            N1                          N2
+                           Remote                                                    Resource
+                           user                          ··  CP   ··                 coordinator
+                           process          Pi                          Pj           process
+                                            Secure node                 Secure node
+             Figure  21.1  Security threats in a network.
+             by external entities. This situation raises new security threats that do not arise in
+             a conventional system.
+                Security threats in distributed operating systems are of four kinds:
+             1. Leakage: Release of message contents to unauthorized user(s).
+             2. Tampering: Modification of message contents.
+             3. Stealing: Use of system resources without authorization.
+             4. Denial of service to authorized users: This threat can be in the form of willful
+                destruction of system resources not amounting to stealing, i.e., destruction
+                without any gain to the perpetrator, or disruption of access to resources.
+                Leakage and tampering are termed threats to message security. Tampering
+             may be employed to modify the text of a message, which is a threat to its integrity,
+             or modify the identity of its sender, which is a threat to its authenticity. An intruder
+             can perform stealing by masquerading through tampering. Denial of service can
+             be achieved by tampering with the text of a message or ids of its source and
+             destination processes, or by masquerading. These security threats are addressed
+             through two means:
+             ·  Message security techniques: Special techniques are employed to thwart
+                attacks on messages.
+             ·  Authentication of remote users: Trusted means are provided to authenticate
+                remote users.
+             Attacks on integrity and authenticity are addressed through a combination of
+             these two means.
+             21.1.1 Security Mechanisms and Policies
+             Figure 21.2 shows an arrangement of security mechanisms and policies. Authen-
+             tication  in  conventional     systems          has  been  described    earlier  in  Chapter  15.
+             Authentication in a distributed system has two new facets: The authentication ser-
+             vice must be trustworthy and available to all nodes in a system. Encryption is used
+             to ensure secrecy and integrity of the authentication and authorization databases.
+             It is also used to implement message security by encoding the text of messages.
+             Processes need to know what encryption keys to use while communicating with
+             other processes. The lower-level mechanism called key distribution generates and
+
+
+
+                                                          Chapter 21    Distributed System  Security  787
+                                         Policies
+                                 Encryption
+                   Authenti-                       Key
+                                 cation  distribution
+Figure  21.2  Mechanisms and policies for distributed system security.
+Table 21.1       Classes of Security Attacks in Distributed Systems
+Attack             Description
+Eavesdropping      An intruder listens to interprocess messages over the
+                   network to obtain information concerning message content
+                   or statistical features of messages.
+Message tampering  An intruder intercepts messages, alters their contents, and
+                   reinserts them into the communication stream.
+Message replay     An intruder makes copies of messages exchanged by
+                   communicating processes and inserts the copies into the
+                   communication stream at a later time as if they were genuine
+                   messages being sent at that time.
+Masquerading       An intruder is able to pass off as an authorized user of the
+                   system while consuming resources, and while sending and
+                   receiving messages.
+distributes encryption keys for use by communicating processes; it is discussed in
+Section 21.2.1.
+21.1.2 Security Attacks in Distributed Systems
+Security attacks in distributed systems, which are typically launched through
+messages, can be classified into the four classes summarized in Table 21.1. Eaves-
+dropping can take various forms like obtaining the content of a message or
+collecting information about messages exchanged by specific nodes or passing
+over specific links. In a police or military information system, the latter analyses
+can be used to reveal or guess identities of communicating entities. Message tam-
+pering can be used to mislead the recipient of a message. This attack is feasible
+in a store-and-forward network.
+Message replay can be used to achieve a variety of nefarious ends. The recip-
+ient of a replayed message may be misled into thinking that messages are being
+exchanged in real time. If the recipient is a user process, it might be fooled into
+taking actions that are unnecessary, absurd, or wasteful in terms of resources.
+It may also be misled into revealing confidential information. If the recipient is a
+server process, a replayed message may lead to wrong authentication, leading to
+opportunities for masquerading or stealing of resources.
+
+
+
+788  Part 5  Distributed Operating Systems
+             In masquerading, an intruder is able to pass off as an authorized user of the
+             system. The intruder could corrupt or destroy information belonging to the user,
+             or communicate with other processes and trick them into believing that they are
+             communicating with the user.
+             Passive and Active Attacks      Security attacks can be classified into passive attacks
+             and active attacks. A passive attack does not interfere with the system's function-
+             ing in any manner. It neither fabricates messages nor destroys genuine messages.
+             Eavesdropping is an example of a passive attack. An active attack interferes with
+             a system's functioning. Replay, fabrication, modification, and destruction of mes-
+             sages are examples of active attacks. Passive attacks are harder to detect or thwart
+             than active attacks.
+             21.2  MESSAGE SECURITY                                                                     ·
+             Approaches to message security can be classified into link-oriented approaches and
+             end-to-end approaches. In a link-oriented approach, security measures are applied
+             at every link of a communication path. This approach tends to be expensive since
+             its cost depends on the number of links over which a message travels. For example,
+             if a message between process Pi located at node N1 and process Pj located at
+             node N3 passes along the path N1-N2-N3, it has to incur security overhead for
+             links N1-N2 and N2-N3. In the end-to-end approach, security measures can be
+             employed selectively by nodes or processes in the system. This feature permits
+             users to employ security measures with varying degrees of cost and sophistication.
+             In the following discussion, we will assume that end-to-end measures are used.
+             We describe three approaches to message security. They involve encryp-
+             tion using public keys, private keys, and session keys, respectively. Table 21.2
+             summarizes their features.
+             Private Key Encryption         Private key encryption (also called secret key encryption)
+             is the classical approach based on symmetric keys. Each process Pi has a private
+             key Vi known to itself and to a few other processes in the system. A process
+             sending a message to Pi must encrypt it by using Vi. On receiving a message, Pi
+             decrypts it by using Vi. The main advantage of private key encryption is that the
+             number of encryption keys in the system is limited to n, where n is the number of
+             communicating entities in the system. Since all messages intended for process Pi
+             are encrypted with the same key, Pi need not know the identity of the sender of
+             a message in order to read the message.
+             Private key encryption suffers from a few drawbacks. Each sender process
+             needs to know the private key of Pi. Thus, many processes know the private key
+             of a process, and an intruder may discover it as a result of somebody's negligence.
+             The private key is exposed to intruder attacks over a long period of time, so
+             chances of a successful attack on the private key increase with time; however, it is
+             not possible to change the private key of a process because it is known to many
+             other processes in the system.
+
+
+
+                                                           Chapter 21        Distributed System  Security  789
+Table 21.2   Encryption Techniques Used for Message Security
+Technique              Description
+Private key            Employs symmetric encryption. A process Pi has a unique
+encryption             encryption key Vi called the private key. All messages sent
+                       to Pi must be encrypted by using Vi. Process Pi decrypts
+                       them by using Vi. The private key of a process is exposed to
+                       intruder attacks over the entire lifetime of a process.
+Public key encryption  Employs asymmetric encryption. A process Pi has a pair of
+                       unique keys (Ui, Vi). Ui is the public key, which can be
+                       made known to all processes in the system, whereas Vi is
+                       the private key, which is kept secret. Messages to Pi are
+                       encrypted by using Ui, but Pi decrypts them by using Vi.
+                       The Rivest­Shamir­Adelman (RSA) algorithm is widely
+                       used to generate the pair of keys for a process. The private
+                       key of a process is not exposed to intruder attacks.
+Session key            A pair of communicating processes (Pi, Pj ) is assigned a
+encryption             session key SK ij when they begin a communication session.
+                       The session key is used for symmetric encryption of all
+                       messages exchanged during the session. The session key has
+                       a smaller lifetime than a private or public key, so it suffers
+                       less exposure to intruder attacks.
+   User processes do not know each other's private keys, so private key encryp-
+tion is not useful for security of interprocess messages in general. OS processes
+know private keys of user processes, so they use private key encryption while
+communicating with user processes. As discussed in Section 21.2.1, this feature
+is used in the implementation of key distribution centers. User processes need to
+use some other encryption scheme while communicating with one another.
+Public Key Encryption  Each process Pi has a pair of keys (Ui, Vi). Ui is the
+public key of Pi, which can be made known to all processes in the system. Vi is
+the private key known only to process Pi. Ui and Vi are chosen such that
+·  Vi cannot be guessed from Ui, and
+·  For any message m
+                            DVi (EUi (Pm)) = Pm         i                              (21.1)
+   where Pm is the plaintext form of message m and E, D are the encryption and
+decryption functions, respectively (see Section 15.4).
+   When Pj wishes to send a message to Pi, it obtains Pi's public key from the
+OS. Transmission of the message takes place as follows:
+1. Process Pj encrypts the message with the public key of the destination process
+   Pi, i.e., with Ui.
+2. The encrypted message, i.e., EUi (Pm), is transmitted over the network and is
+   received by process Pi.
+
+
+
+790  Part 5  Distributed Operating Systems
+             3. Process Pi decrypts the received message with its own private key, i.e., with
+             Vi. Thus, it performs DVi (EUi (Pm)), which yields Pm.
+             The Rivest­Shamir­Adelman (RSA) encryption algorithm is used to gen-
+             erate pairs of keys (Ui, Vi) that satisfy Eq. (21.1). Let (u, v) be such a pair of
+             keys. Given two numbers x and y, both smaller than a chosen integer number n,
+             encryption and decryption using u and v, respectively, are performed as follows:
+                                            Eu(x) = xu mod n
+                                            Dv(y) = yv mod n
+             To encrypt and decrypt a message m, the RSA algorithm is used as a block cipher
+             with a block size s, which is chosen such that 2s < n, the chosen number. x is now
+             the number formed by the bit string found in a block of Pm, the plaintext form
+             of message m, and y is the number formed by the bit string in the corresponding
+             block of Cm, the ciphertext form of message m. This way, x < 2s and y < 2s, so
+             each of them is smaller than n, as required.
+             The RSA algorithm chooses n as the product of two large prime numbers p
+             and q. Typically, p and q are 100 digits each, which makes n a 200-digit number.
+             Assuming u and v to be the public and private keys, to satisfy Eq. (21.1) v should
+             be relatively prime to (p - 1) × (q - 1) [i.e., v and (p - 1) × (q - 1) should not
+             have any common factors except 1], and u should satisfy the relation
+                                            u × v mod [(p - 1) × (q - 1)] = 1
+             Choice of u and v as the public and private keys implies that a standard value
+             of n is used in the system. Alternatively, the pair (u, n) can be used as the public
+             key and the pair (v, n) can be used as the private key of a process. It will permit
+             different values of n to be used for different pairs of processes.
+             An attack on the RSA cipher can succeed if n can be factored into p and q.
+             However, it is estimated that factorization of a 200 digit number, which would be
+             needed to break the cipher, would need 4 billion years on a computer that can
+             perform 1 million operations per second.
+             Public key encryption suffers from some drawbacks when compared with
+             private key encryption. Keys used in public key encryption are approximately an
+             order of magnitude larger in size than private keys. This is unavoidable since public
+             keys have to be large to make factorization prohibitively expensive. The encryp-
+             tion and decryption operations are also very expensive when compared with
+             symmetric encryption; in many situations, these operations are up to 1000 times
+             slower. Therefore it is not practical to use public key encryption for interprocess
+             messages. Instead, it is used to securely communicate a session key to a pair of
+             processes that intend to start a communication session. This aspect is discussed
+             in the next section.
+             Session Keys  Processes Pi and Pj obtain a session key, also called a conversation
+             key, for one session of communication. This key is used for symmetric encryption
+             during the session and is discarded at the end of the session. If the processes
+
+
+
+                                                                  Chapter 21  Distributed System  Security  791
+wish to enter into another session sometime in the future, they obtain a fresh
+session key. This approach limits exposure of an encryption key to an intruder,
+thereby reducing the risk of a successful attack on the cryptographic system.
+21.2.1 Distribution of Encryption Keys
+A process needs to know what encryption key to use while communicating with
+another process. The OS contains an interactive service called a key distribution
+center (KDC) to provide this information. Figure 21.3 shows a schematic of a key
+distribution center. A process Pi makes a request to the KDC for an encryption
+key to communicate with a process Pj. The KDC returns a key k. Pi uses this
+key to encrypt a message m to be sent to process Pj. If processes use public keys
+to communicate with one another, the KDC maintains a directory containing
+public keys of all entities in the system. If processes use session keys, the KDC
+does not posses a directory; it generates a new session key on demand.
+An important issue in the KDC schematic is the protocol used for securely
+passing the keys. When a public key is requested, it needs to be passed only to
+the requester. When a session key is requested by a process Pi to communicate
+with a process Pj , the key has to be passed to both Pi and Pj . However, Pj is
+unaware that Pi is interested in setting up a session with it, so the KDC does
+not send the session key directly to Pj. Instead, Pi can send the session key to Pj
+along with its first message. These key transmission protocols are described in the
+following.
+Distribution of Public Keys  The following messages are exchanged between Pi,
+the requesting process, and the KDC:
+             1. Pi  KDC                   :       EUkdc (Pi , Pj )             (21.2)
+             2. KDC  Pi                   :       EUi (Pj , Uj )
+Pi sends its own id and Pj, the id of the intended destination process, to the KDC.
+This message is encrypted with Ukdc, the public key of KDC. The KDC replies
+by sending Uj, the public key of Pj, encrypted with the public key of Pi. Here, the
+encryption is not used to protect confidentiality of Pj's key, because an intruder
+can legitimately obtain this key by itself by making a request to the KDC; the
+purpose of encryption is to prevent an intruder from tampering with messages
+                                          KDC
+                             Request key
+                             (Pi, Pj)     Key k
+                             Pi           Ek (m)  Pj
+Figure 21.3  Key distribution center (KDC) in a distributed OS.
+
+
+
+792  Part 5  Distributed Operating Systems
+             between Pi and the KDC to perpetrate a denial-of-service attack. In the absence
+             of encryption, an intruder could have tampered with Pi's message to the KDC
+             and changed Pj to some Pk, so that Pi would not obtain Pj 's key, or the intruder
+             could have tampered with the KDC's message to Pi and changed Pj's key that
+             is being passed to Pi. When encryption is used, both the KDC and Pi would
+             recognize tampered messages and discard them.
+             Distribution of Session Keys          When Pi wishes to obtain a session key to com-
+             municate with Pj, the session key should be made known to both Pi and Pj.
+             Figure 21.4 illustrates how it is achieved in three steps. In the first step, Pi sends
+             a request message containing its own id and the id of Pj to the KDC. The KDC
+             allocates a session key SK i,j for the session between Pi and Pj and sends it to
+             Pj . Its reply to Pj also contains an encrypted unit containing SK i,j , which can be
+             decrypted only by Pj. Pi passes this encrypted unit to Pj in its first message, or in
+             a special message intended for this purpose. Pj obtains SK i,j by decrypting this
+             unit, and keeps it for use during the session with Pi.
+             In a private key system, this exchange can be implemented as follows:
+                          1. Pi  KDC            :        Pi, Pj
+                          2. KDC  Pi            :        EVi (Pj , SK i,j , EVj (Pi, SK i,j ))
+                          3. Pi  Pj             :        EVj (Pi, SK i,j ), ESKi,j (< message >)  (21.3)
+             In the second step, the KDC sends a reply to Pi, which is encrypted with Pi's
+             private key. The reply contains the session key SK i,j and EVj (Pi, SK i,j ), which
+             is the session key encrypted by using Pj's private key. Pi decrypts the KDC's
+             message with its own private key to obtain the session key SK i,j. Decryption
+             also yields EVj (Pi, SK i,j ). Pi copies this unit in the first message it sends to Pj .
+             When Pj decrypts this unit, it obtains SK i,j , which it uses to decrypt all messages
+             from Pi.
+             In a public key system, session keys need not be distributed by the KDC--a
+             sender process can itself choose a session key. It merely has to communicate the
+             session key securely to the destination process, which can be achieved through
+             encryption by using the public key of the destination process. Thus a process Pi
+                                                1                KDC
+                                                Request
+                                                session key      2
+                                                                 Send
+                                                   Pi          session key  Pj
+                                                                 Pass
+                                                               session key
+                                                                 3
+             Figure 21.4  Distribution      of  session keys.
+
+
+
+                                                     Chapter 21   Distributed System     Security  793
+can employ the following protocol to communicate a session key to process Pj:
+          1. Pi  KDC  :  EUkdc (Pi , Pj )
+          2. KDC  Pi  :  EUi (Pj , Uj )
+          3. Pi  Pj   :  EUj (Pi, SK i,j ), ESKi,j (< message >)              (21.4)
+The first two steps of this protocol are identical with the first two steps of protocol
+(21.2); they provide Pi with the public key of Pj. Now, Pi itself generates a session
+key SK i,j and passes the session key and its first message to Pj in Step 3.
+21.2.2 Preventing Message Replay Attacks
+In a message replay attack, an intruder simply copies messages passing over the
+network and "plays them back" in the future. A replayed message may mislead its
+recipient into taking wrong or duplicate actions which may affect data consistency
+or reveal confidential information. For example, in a system using session keys,
+an intruder could replay the message of Step 3 in Protocol (21.3) or Protocol
+(21.4). When Pj receives the replayed message, it would be tricked into thinking
+that Pi is communicating with it using the session key SK i,j . When process Pj
+responds to this message, the intruder would replay the next copied message. In
+this manner, it could replay an entire session.
+   The recipient of a message can employ the challenge­response protocol to
+check whether the message exchange is taking place in real time. Steps of the
+challenge­response protocol are as follows:
+·  Challenge: When a process Pj receives a message originated by a process Pi,
+   it throws a challenge to Pi to prove that it is engaged in a message exchange
+   with it in real time. The challenge is in the form of a message containing a
+   challenge string, which is encrypted in such a manner that only process Pi
+   can decrypt it.
+·  Response: On receiving the challenge message, process Pi is expected to
+   decrypt it, obtain the challenge string, transform it in a manner expected
+   by Pj, encrypt the result so that only Pj can decrypt it, and send it back
+   to Pj .
+·  Detect: On receiving a reply message, process Pj decrypts the message and
+   checks whether the decrypted contents match its expectations. A mismatch
+   indicates that it is subject to a replay attack.
+   A challenger could send a number as the challenge string, and expect a reply
+that is the result of some simple tranformation of that number, like adding 1
+to it; however, the challenger should use a different number in every challenge
+so that a replay of an old conversation would not provide the expected reply.
+Two choices of the challenge string are a random number or the current time
+of the day. The actual value of a challenge string is immaterial, so it is called
+a nonce.
+
+
+
+794  Part 5  Distributed Operating Systems
+             The challenge­response protocol should be used in every situation where a
+             message replay attack would be meaningful. As an example, consider the distribu-
+             tion of session keys through Protocol (21.3). An intruder could save the message
+             of Step 3, and replay it sometime in the future to trick process Pj into starting
+             a conversation with it using SK i,j. So, before using the session key obtained in
+             Step 3, process Pj would use the challenge­response protocol to ensure that the
+             conversation is taking place in real time:
+                                            4. Pj  Pi     :  ESK i,j (n)
+                                            5. Pi  Pj     :  ESKi,j (n + 1)
+             Here n is a nonce. Pi is expected to obtain n through decryption, using the session
+             key SK i,j , add 1 to it, encrypt the result by using SK i,j , and send it back to Pj . An
+             intruder would not be able to perform these actions correctly, since it does not
+             know SK i,j . In fact, Pi's ability to extract n from Pj 's message implicitly verifies
+             its identity. This property is useful in mutual authentication discussed in the next
+             session.
+             21.2.3 Mutual Authentication
+             To defeat masquerading attacks, processes involved in a communication session
+             should validate each other's identity at the start of the session. Recall from the
+             previous section that the challenge­response protocol implicitly verifies the iden-
+             tity of the process that responds to a chellenge, so it can be employed for this
+             purpose. Consider protocol (21.4), which is used to select session keys in a pub-
+             lic key system. In Step 3, Pi sends the session key to Pj in a message that is
+             encrypted by using the public key of Pj. In principle, any process could fabricate
+             such a message and trick process Pj into thinking that it is engaging in a session
+             with process Pi. So Pj must authenticate Pi before it engages in a session with it.
+             Pj can achieve it as in the following protocol, whose first three steps are identical
+             with protocol (21.4):
+                                    1. Pi  KDC         :     EUkdc (Pi , Pj )
+                                    2. KDC  Pi         :     EUi (Pj , Uj )
+                                    3. Pi  Pj          :     EUj (Pi, SK i,j )
+                                    4. Pj  Pi          :     EUi (Pj , n)
+                                    5. Pi  Pj          :     EUj (n + 1)
+                                    6. Pi  Pj          :     ESKi,j (<message>)
+             In Step 4, Pj sends a nonce n encrypted with the public key of Pi. The identity of Pi
+             is verified by its ability to decrypt this message, extract the nonce, and transform
+             it in the expected manner. Note that in Step 4, Pj must not encrypt its message
+             by using the session key SK i,j, as the intruder would be able to decrypt such a
+             message if he had fabricated the message in Step 3!
+
+
+
+                                                      Chapter 21  Distributed System Security  795
+21.3      AUTHENTICATION OF DATA AND MESSAGES                                                  ·
+Authenticity of data requires that a process should be capable of verifying
+that data was originated or sent by a claimed person or process and that it
+has not been tampered with by an intruder. The latter aspect implies integrity
+of data.
+   Integrity of data is ensured as follows: When data d is originated or is to be
+transmitted, a special one-way hash function h is used to compute a hash value v.
+This hash value, also called a message digest, has a fixed length irrespective of
+the size of data. Apart from the properties of one-way functions described earlier
+in Section 15.4.1, this special one-way hash function has the property that a
+birthday attack is infeasible; i.e., given the hash value v of data d, it is impractical
+to construct another data d  whose hash value would also be v. The data and the
+hash value are stored and transmitted as a pair <d, v>. To check the authenticity
+of d, its hash value is computed afresh by using h, and it is compared with v.
+Following from the special property of h mentioned above, data d is considered
+to be in its original form if the two match; otherwise, d has been tampered with.
+For this scheme to work, the value v should itself be protected against tampering
+or substitution by an intruder; otherwise, an intruder could substitute a pair
+<d, v> by another pair <d , v > and mislead other processes into thinking that
+data d    is genuine. Accordingly, the person or process originating or transmitting
+d encrypts v or the pair <d, v>, using its own encryption key, so that tampering
+or substitution of v can be detected. Note that it is less expensive to encrypt v
+rather than <d, v>.
+   Authenticity requires one more check--verify whether v or <d, v> was
+encrypted by the claimed person or process. This check is made by using a certi-
+fication authority, which provides information concerning encryption keys used
+by persons or processes in a secure manner. Details of this check are described in
+the following.
+21.3.1 Certification Authorities and Digital Certificates
+A certification authority (CA) assigns public and private keys to an entity, whether
+a person or a process, after ascertaining its identity by using some means of phys-
+ical verification. The keys are valid for a specific period of time. The certification
+authority also acts like a key distribution center discussed in Section 21.2.1:
+It keeps a record of all keys assigned by it, and when a process requests it for
+the public key of some person or process, it issues a public key certificate which
+includes the following information:
+·  Serial number of the certificate
+·  Owner's distinguished name (DN), which consists of the DNS name of the
+   owner and the owner's name, unit, locality, state, and country in a textual
+   form.
+·  Identifying information of owner, such as address
+·  Owner's public key
+
+
+
+796  Part 5  Distributed Operating Systems
+             · Date of issue and date of expiry, and the issuer's distinguished name
+             · Digital signature on the above information by the certification authority
+             A number of certification authorities could operate in parallel. A server
+             would obtain a certificate from one of these. If a client knows which certifica-
+             tion authority a server is registered with, it can request the certification authority
+             for the server's public key certificate. Alternatively, if it knows the IP address of
+             the server, it can request the server to forward its own public key certificate.
+             The purpose of asking for the certificate of an entity is to obtain its public
+             key for communicating with it. However, before the receiver of the certificate
+             uses the key to communicate with the entity, it has to ensure that the certificate
+             is genuine and belongs to the entity with which it wishes to communicate; i.e.,
+             it is not subject to a security attack called the man-in-the-middle attack. In this
+             attack, an intruder masquerades as a server. When a client requests the server
+             for the server's digital certificate, the intruder intercepts the message and sends
+             a forged certificate containing its own public key to the client. Now, if it can
+             intercept subsequent messages from the client to the server, it can read those
+             messages by using its own private key. If it so desires, it can initiate a conversation
+             with the genuine server, this time masquerading as the client, and pass on the
+             client's messages to the server after reading them. Neither the client nor the
+             server would be able to discover that they are subject to a successful man-in-the-
+             middle attack.
+             The public key certificate contains many items of information that are used
+             to prevent such attacks. The certificate is digitally signed by the certification
+             authority. The client can use this digital signature to ensure that the certificate
+             has not been tampered with or forged. (We discuss details of digital certifi-
+             cates in Section 21.3.2.) For this, it requires the public key of the certification
+             authority that issued the certificate. If it does not already know this key, it
+             can request a higher-order certification authority for a certificate of this certi-
+             fication authority. Once genuineness of the certificate has been established, it
+             can check whether the certificate is valid by checking whether the current date
+             falls within the validity period of the certificate. If it knows the IP address of
+             the server, it can check that against the IP address information mentioned in
+             the certificate. It begins exchanging messages with the server only if all these
+             checks succeed.
+             21.3.2 Message Authentication Codes and Digital Signatures
+             A message authentication code (MAC) is used to check the integrity of data. A
+             process that originates or transmits data d obtains MACd , the message authenti-
+             cation code of d, as follows: It generates a message digest v for d through a one-way
+             hashing function. It encrypts v by using an encryption key that is known only to
+             itself and to the intended recipient of d. The result is MACd . It now stores or
+             transmits the pair <d, MACd>. Only the intended recipient of d can check and
+             verify the integrity of d.
+
+
+
+                                          Chapter 21                    Distributed System Security  797
+A digital signature is used to verify authenticity of data. A person or process
+that originates or transmits data d obtains v from d as mentioned above. It now
+obtains DSd , the digital signature of d, by encrypting v and, optionally, a times-
+tamp, by using its own private key. The pair < d, DSd > is now stored or transmit-
+ted. Any process that wishes to check the authenticity of d decrypts DSd by using
+the public key of the originator of d. Successful decryption validates the integrity
+of d and also identifies its originator or sender. This identification is nonrepudia-
+ble; i.e., the identified originator or sender cannot deny having created or sent the
+data, because the data was encrypted by using the private key of the originator
+or sender, which is known only to itself. The digital signature can also be used to
+detect any modifications of data after the data was created or sent by a process.
+Figure 21.5 illustrates steps in the use of a digital signature. The sender
+applies a one-way hash function to the text of a message to obtain a message
+digest. He signs the message digest by encrypting it with his private key. This
+digital signature is added at the end of the message text before sending the mes-
+sage. The recipient applies the same one-way hash function to the message text
+received by it to obtain its message digest. It now obtains a public key certificate
+of the sender of the message, and uses the public key contained in it to decrypt
+the digital signature. This step yields the message digest that was computed by the
+sender. The recipient compares this message digest with its own message digest.
+The message is authentic only if the two match and the timestamp in the digital
+signature is within the validity period of the public key certificate.
+21.4  THIRD-PARTY AUTHENTICATION                                                                     ·
+An open system uses standard, well-specified interfaces with other systems. A
+process in any node with matching interfaces can request access to resources
+and services of an open system. This fact gives rise to an obvious problem in
+authentication--how does a server know whether a process wishing to act as its
+client was created by an authorized user? One solution is to require each server to
+authenticate every user through a password. This approach is inconvenient since
+each server would have to possess a systemwide authentication database and each
+user would be authenticated several times while using the system. An alternative
+is to use a third-party authenticator and a secure arrangement by which the
+authenticator can introduce an authorized user to a server. This way each server
+does not have to authenticate each user.
+We discuss two protocols for third-party authentication in a distributed sys-
+tem. The Kerberos protocol employs an authentication database, whereas the
+secure sockets layer (SSL) protocol performs authentication in a decentralized
+manner.
+21.4.1 Kerberos
+Kerberos is a third-party authenticator developed in project Athena at MIT for
+use in an open system environment. It enables a user to prove his identity to the
+
+
+
+798  Part 5  Distributed Operating Systems
+                                  Message         4         Message
+                                   text                       text
+                 1                                                                               5
+             One-way                                                                       One-way
+                 hash                                                                            hash
+                     Message                                                                         Message
+                 2     digest                                                                    7     digest
+             Encryption        3   Digital                    Digital  6  Decryption                     N     Not
+                                  signature                 signature                            =?         authentic
+                                   Sent                     Received                             Y
+                                  message                   message                                         Authentic
+             Private key                                                  Public key                        message
+             of sender                                                        of sender
+                     Sender-side actions                                  Receiver-side actions
+             Step       Action                       Description
+             1.         Message digest of            A one-way hash function is applied to the message text
+                        message text                 to produce a message digest, which is a bit string of a
+                                                     standard length.
+             2.         Create digital signature     The message digest and a timestamp are encrypted by
+                                                     using the private key of the sender. The result of
+                                                     encryption is the digital signature.
+             3.         Append signature             The digital signature is added at the end of the message
+                                                     text.
+             4.         Transmission                 The message consisting of the message text and the
+                                                     digital signature is transmitted to the destination.
+             5.         Message digest of            The same one-way hash function as used in the sender is
+                        received text                applied to the message text to produce a message digest.
+             6.         Decryption of digital        The digital signature at the end of the message is
+                        signature                    extracted and decrypted by using the public key of the
+                                                     sender.
+             7.         Authenticity check           The message digest produced in Step 5 and the result of
+                                                     decryption in Step 6 are compared. The message is
+                                                     authentic if the two are identical.
+             Figure  21.5  Message authenticity   through digital signature.
+             servers in an open system without being subject to repeated authentication. A
+             user is authenticated at log in time using a password. The authentication service
+             issues tickets to an authenticated user; each ticket is like a capability--it grants
+             a privilege to access one server. The user presents a ticket to a server whenever it
+             wishes to use its service. The server provides the service if the ticket is valid. Private
+             keys are assigned to users and servers. A user's key is used to encrypt messages
+             from Kerberos to the user's processes, while a server's key is used to encrypt the
+             tickets for the server. Session keys are used to ensure message security. They are
+
+
+
+                                                         Chapter 21    Distributed System  Security  799
+generated by using a schematic similar to Figure 21.4. To limit exposure of a
+session key to intruders, it is valid for only a limited amount of time. Timestamps
+are used to implement this aspect and to foil message replay attacks. Hence nodes
+in the system must contain loosely synchronized clocks.
+A client is a process that operates on a user's computer and requests remote
+services on behalf of the user. When a client C wishes to use the services of
+a server Sj, it creates a new authenticator and presents a ticket for Sj and the
+authenticator to Sj. The ticket is used to communicate the session key to the
+server in a secure manner, while the authenticator is used to prevent message
+replay attacks. The ticket contains the client and server ids, i.e., C and Sj; the
+session key assigned to the communication session between C and Sj; a times-
+tamp indicating when the ticket was created; and the lifetime of the ticket, i.e.,
+its expiry time. It is valid only during the time period starting at timestamp
+and ending at lifetime. Typically this period is about 8 hours. This arrangement
+limits exposure of the session key to intruder attacks. The authenticator pre-
+sented by C contains C's id and address, and a timestamp encrypted by using the
+session key.
+The server decrypts the ticket by using its own key. It checks the timestamp
+and lifetime of the ticket to ensure that the ticket is valid. It now extracts the
+session key and uses it to decrypt the authenticator. It checks the timestamp in
+the authenticator to ensure that the request has originated in real time and within
+the validity period of the ticket. It performs the service requested by the client
+only if all these checks succeed. Thus, an intruder cannot replay authenticators
+and tickets to obtain a service.
+Working of Kerberos  The Kerberos system has two main components: Kerberos
+authentication server (KAS), and ticket granting server (TGS). KAS authenticates
+a user at log in time, using an authentication database and provides him with a
+ticket to TGS. TGS enables a client to obtain tickets to other servers in the
+system. A user achieves use of servers through a three-stage protocol. Figure 21.6
+illustrates various steps in the protocol. n1, n2, and n3 are nonces.
+1. Initial authentication: The user is authenticated at log in time as follows:
+              1.1    User  C      :  U, password
+              1.2    C  KAS       :  U, TGS, n1
+              1.3    KAS  C       :  EVU (n1, SK U ,TGS , TTGS )
+The user submits his id and password to the client in Step 1.1. In Step 1.2, the
+client forwards the user id to KAS. It also encloses a nonce n1 to authenticate
+KAS. This message is a request for a ticket to TGS. Note that the user's password
+is not passed to KAS. This fact avoids its exposure over the network. It also
+implies that authentication is not performed by KAS; it is actually performed by
+C in an interesting manner described later. In Step 1.3, KAS uses the user id U to
+retrieve VU , the private key of U , from the authentication database and uses it to
+encrypt its reply to C. SK U,TGS is a session key for the session between the user
+and TGS, and TTGS is a ticket for TGS encrypted with the key of TGS. TTGS is
+also called a ticket granting ticket (TGT).
+
+
+
+800  Part 5  Distributed Operating Systems
+                                                          Authentication
+                                                          database
+                                                                               Kerberos
+                                                     KAS             TGS
+                                                     1.2  1.3     2.1     2.2
+                                                                          3.1
+                                                             Client            Server
+                                                                          3.2
+                                                               1.1
+                                                             User
+             Figure 21.6 Kerberos.
+                  C has to decrypt the reply from KAS by using the key VU to obtain SK U,TGS
+             and TTGS. This step authenticates the user as follows: VU , the private key of the
+             user, satisfies the relation VU              =    f (password), where f     is a one-way function
+             known to C. C obtains VU by applying f to password. It now decrypts the reply
+             received from KAS by using this key. Decryption would be unsuccessful if the
+             password supplied by the user is invalid. In this case C cannot extract TTGS from
+             the reply sent by KAS, so the user cannot use any services or resources in the
+             system.
+                  2. Obtaining a ticket for a server: When a user wishes to use a server, C obtains
+             a ticket for the server, using the following protocol:
+                      2.1  C  TGS                 :  <Server_id>, TTGS, AU, n2
+                      2.2  TGS  C                 :  ESK U,TGS (n2, T<Server_id>, SK U ,<Server_id>,
+                                                     <Server_id>)
+             where <Server_id> is the name of the server that C wishes to use, AU is an
+             authenticator, SK U,Server_id is a session key for the session between the client and
+             the desired server, and TServer_id is the ticket for the desired server, encrypted by
+             using the key of the server. Before replying to the client, TGS verifies that the
+             ticket presented by the client is valid and that the request has originated in real
+             time and within the validity period of the ticket.
+                  3. Obtaining a service: When user U makes a service request, C generates
+             an  authenticator      and        a  nonce      and     exchanges  the    following  messages  with
+             the server:
+             3.1  C  Server                 :  T<Server_id>, AU , ESKU,<Server_id> (<service request>, n3)
+             3.2  Server  C                 :  ESKU,<Server_id> (n3)
+
+
+
+                                                          Chapter 21  Distributed System Security  801
+    The server performs the service if it finds that the ticket is valid, and the
+request originated in real time and within the validity period of the ticket. It
+returns the nonce n3 to the client so that the client can authenticate it, if it so
+desires.
+21.4.2 Secure Sockets Layer (SSL)
+SSL is a message security protocol providing authentication and communication
+privacy. It works on top of a reliable transport protocol such as the TCP/IP. Its suc-
+cessor, the transport layer security (TLS) protocol, is based on SSL 3.0; we discuss
+features that are common to both. When a client wishes to communicate with a
+server, the SSL handshake protocol is used before message exchange can start. It
+uses RSA public key encryption to authenticate the server and optionally authen-
+ticate the client, and generates symmetric session keys for message exchange
+between the client and the server. Actual message exchange is performed through
+the SSL record protocol, which performs symmetric encryption of messages and
+transmits them over the network. Thus, message communication between the
+client and the server is reliable because of the transport protocol, secure because
+of authentication performed by the handshake protocol, and private because
+of encryption performed by the record protocol. Authenticity of data is ensured
+through a digital signature on a message. If mere integrity checking is desired, it is
+provided through a message authentication code (MAC). Higher-level application
+protocols such as HTTP and FTP can be implemented on top of the SSL.
+    The SSL handshake protocol performs the following functions:
+1.  It performs authentication of the server.
+2.  It allows the client and the server to select the cryptographic algorithms to
+    be used during the session from among RC2, RC4, DES, triple-DES, and a
+    few other algorithms; and digital signature and hash algorithms from among
+    DSA, MD5, and SHA-1.
+3.  It optionally performs authentication of the client.
+4.  It enables the client and the server to generate a shared secret, which would
+    be used to generate the session keys.
+    A simplified overview of the SSL handshake protocol is as follows: The client
+sends a client_hello message to the server. This message contains a specification
+of the cryptographic and compression options, and a 28-byte random number
+that we will call nclient. The server responds with a server_hello message, which
+contains another random number nserver. Immediately following the server_hello
+message, the server sends its certificate. SSL has a list of certificate authorities
+(CAs) on the client side, using which it ensures that the server's certificate is
+from one of the listed CAs, and verifies the server's authenticity by using public
+key cryptography. The server, if it so wishes, asks for the client's certificate and
+verifies the client's identity in a similar manner. Following this, the client sends
+
+
+
+802  Part 5  Distributed Operating Systems
+             the encrypted premaster secret message, which contains a 48-byte premaster secret
+             string encrypted by the public key of the server.
+                 Both client and server now generate a 48-byte master secret string from nclient,
+             nserver, and premaster secret, using a standard one-way function. Use of nclient
+             and nserver, which are randomly chosen values, ensures that the master secret
+             would be different for different sessions between the same client­server pair.
+             The master secret string is used to obtain four symmetric session keys using a
+             standard algorithm. These keys are used as follows: Keys kccrypst and kscrypct are
+             used for encryption and decryption of messages sent by the client to the server,
+             and by the server to the client, respectively, and keys kcmacs and ksmacc are used
+             to generate message authentication codes for messages sent by the client and by
+             the server, respectively. Following key generation, both client and server send
+             finished messages to one another. At this time, the SSL handshake protocol is
+             complete.
+                 Exchange of messages is performed by the SSL record protocol using the
+             session keys generated during the handshake. The steps in sending a message m
+             from the client to the server are as follows:
+             1.  The client generates MACm, which is a message authentication code for
+                 message   m, using the     key   kcmacs .
+             2.  The pair  < m, MACm        > is  encrypted  by  using  the  key  kccrypst ,  and  the  encrypted
+                 string is sent to the server.
+                 The server decrypts the string by using the key kccrypst to obtain the pair
+             3.
+                 < m, MACm >. It accepts m if its MAC computed using the key kcmacs matches
+                 MAC m .
+                 The SSL protocol could be subverted by a man-in-the-middle attack, where
+             an intruder intercepts a client's messages to a server in the SSL handshake pro-
+             tocol and masquerades as the server in all subsequent message exchanges. It may
+             analogously masquerade as the client and set up a secured SSL connection with
+             the server. The client and server processes must take precautions to defeat the
+             man-in-the-middle attack during the initial handshake. When the server provides
+             its certificate to the client in the SSL handshake protocol, the client must verify
+             that the distinguished name and IP address mentioned in the server's certificate
+             match those of the server with which it is attempting to set up the SSL connection.
+             A mismatch would indicate that it is subject to a man-in-the-middle attack, so it
+             should abort the handshake protocol if this is the case.
+                 The server does not know the IP address where a client resides, so it has to
+             use a different approach to authenticate the client. If the server requires client
+             authentication in the SSL handshake protocol, the client is required to provide a
+             certificate and also a piece of random data known to the server which it digitally
+             signs using its private key to authenticate itself. The server obtains the public key
+             of the client from the client certificate and validates the client's digital signature.
+             A failure in this step would indicate that it is subject to a man-in-the-middle
+             attack, so it aborts the handshake protocol. This step is analogous to that in the
+             challenge­response protocol described earlier in Section 21.2.2.
+
+
+
+                                                         Chapter 21        Distributed System Security             803
+21.5  SUMMARY                                                                                                       ·
+Interprocess messages in a distributed system may        distribution center (KDC) is used to provide public
+pass through links and nodes that are not under          keys of processes or to generate session keys on
+control of the distributed OS. It provides an oppor-     demand by communicating processes.
+tunity for an intruder to launch a variety of attacks    An      intruder  can   launch          a  message  replay
+such as unauthorized reading of messages, tamper-        attack  to  masquerade  as     another     user.    In    this
+ing with messages, masquerading as a registered          attack, the intruder records messages to or from a
+user, or interfering with use of resources or ser-       process and plays them back at a later time to
+vices by users, which is called denial of service. In    fool the OS or the KDC. A challenge-response
+this chapter we discussed how a distributed OS           protocol is used to thwart such attacks by authen-
+deals with these threats.                                ticating the sender of a message. This protocol is
+The threats of leakage or tampering are called           included in the protocol for communicating with
+threats to message security. They are countered          the KDC. Processes can also use it for mutual
+through encryption. In private key encryption, mes-      authentication. However, mutual authentication in
+sages sent to a process must be encrypted with           this manner is cumbersome and expensive. Hence
+the key assigned to the process. This arrangement        third-party authenticators such as Kerberos and
+is convenient for communication between system           SSL are employed in practice.
+entities and user processes because the system enti-     When processes exchange data, it is important
+ties can readily find a user's key; however, it is       to know that the data is authentic, that is, it was
+not suitable for communication between user pro-         originated or sent by the claimed process and it has
+cesses. In public key encryption, each process Pi has    not been tampered with by anyone. A digital signa-
+a pair of keys (ui, vi), where ui is the public key      ture is used to verify authenticity of data. It consists
+which is made known to all processes in the sys-         of a hash code generated from the data, which is
+tem and vi is a private key known only to Pi. These      encrypted using the private key of the originator
+keys have the property that a message encrypted          or sender of the data. Authenticity of the data is
+by using ui can be decrypted by using vi, and vice       verified as follows: A public key certificate of the
+versa. The Rivest­Shamir­Adelman (RSA) algo-             originator or sender of the data is obtained from
+rithm is used to generate the pairs of keys for          a certification authority. The digital signature of
+processes. Public key encryption has the disad-          the data is decrypted by using the public key of the
+vantage that the keys are an order of magnitude          originator or sender found in the certificate. A suc-
+larger than the keys used in private key encryption,     cessful decryption establishes that the originator
+so encryption is an expensive operation. Because         or sender had indeed originated or sent the data.
+of these drawbacks, processes are assigned session       The data is genuine if a hash code generated from it
+keys for use during a communication session. A key       matches the decrypted form of its digital signature.
+TEST  YOUR CONCEPTS                                                                                                 ·
+21.1  Classify each of the following statements as true          c. In  a  distributed  system      using  public  key
+      or false:                                                      encryption, a message being sent by process
+      a. Message  replay   is  an  active   security                 Pi to process Pj should be encrypted with the
+      attack.                                                        private key of process Pi.
+      b. Encryption prevents eavesdropping, but can-             d. Public key encryption incurs higher overhead
+      not prevent tampering with messages.                           than private key encryption.
+
+
+
+804         Part 5  Distributed Operating Systems
+      e. Session keys are used to limit exposure of                   b.   In a public key system, a key distribution
+      encryption keys to intruder attacks.                                 center is used
+      f. A challenge­response protocol can be used                         i. To ensure confidentiality of the private
+      to prevent a masquerading attack.                                        key of a process
+      g. A key distribution center is used to distribute                   ii. To distribute information about private
+      private keys of processes.                                               keys of processes
+21.2  Select the appropriate alternative in each of the                    iii. To ensure confidentiality of the public
+      following questions:                                                     key of a process
+      a. A  message  contains       the    id  of  its  sender             iv. To distribute information about public
+      process, the id of the receiver process, and                             keys of processes
+      a ciphertext form of the message text. An                       c.   A digital signature
+      intruder      can  eavesdrop       on    the  message                i.  Is  a   string    that  uniquely  identifies     the
+      readily                                                                  person who sent a message
+      i. If the message text is encrypted by using                         ii. Consists of the text of a message and the
+            a session key                                                      name or id of its sender
+      ii. If the message text is encrypted by using                        iii. Consists     of   the  encrypted      form    of  a
+            the public key of the receiver process                             message       and     the  name   or     id  of    its
+      iii. If the message text is encrypted by using                           sender
+            the private key of the sender process                          iv. None of (i)­(iii)
+      iv. None of (i)­(iii)
+EXERCISES                                                                                                                         ·
+21.1  Devise a public key cipher for n = 77 using the           21.6  Describe use of the lifetime field in a Kerberos
+      RSA approach.                                                   ticket. How is the lifetime guessed? Comment
+21.2  Comment on the following statement : "There is                  on the advantages and disadvantages of using
+      no danger of masquerading if the message sent                   the lifetime field.
+      by a client to a key distribution center request-         21.7  Comment on validity of the following statement:
+      ing a session key for a server is exposed to an                 "Message replay attacks are possible in Kerberos
+      intruder."                                                      until a ticket expires."
+21.3  It is proposed to distribute session keys in a            21.8  The  challenge­response             protocol    for   detect-
+      public key system as follows:                                   ing  message           replay    attacks   described        in
+      1. Pi  KDC : EUkdc (Pi , Pj )                                   Section 21.2.2 consists of the following steps:
+      2. KDC  Pi : EUi (Pj , SK i,j , EUj (Pi , SK i,j ))                              Pj  Pi : ESK i,j (n)
+      3. Pi  Pj      : EUj (Pi , SK i,j )                                              Pi  Pj : ESK i,j (n+1)
+      4. Pj  Pi      : ESK i,j (n)                                    However, in Step 3.2 of the Kerberos protocol,
+      5. Pi  Pj      : ESK i,j (n+1)                                  the server returns the nonce n3 to the client with-
+      6. Pi  Pj      : ESK i,j (<message>)                            out performing any operation on it. Explain why
+      Does this protocol suffer from any weaknesses?                  this is adequate.
+      If so, suggest ways to overcome them.                     21.9  The  challenge­response             protocol    mentioned
+21.4  Can tampering of messages lead to denial of ser-                in   Exercise    21.8      assumes   that     an     intruder
+      vice? (Hint: Think of key distribution centers.)                would not be able to guess or obtain SK i,j .
+21.5  Explain how Kerberos avoids transmitting pass-                  It   fails   if  this  assumption    is    not  valid.    An
+      word information over the network when a user                   intruder can use this fact to subvert security
+      logs in. What actions should be performed when                  of   session     key   distribution  in    a  private     key
+      a user changes his password?                                    system      as   follows:   The     intruder    obtains     an
+
+
+
+                                                                  Chapter 21   Distributed System Security          805
+     SK i,j by some means. Now it replays the message             which Pj believes that it is interacting with Pi. It
+     in Step 3 of (21.3), namely.                                 would enjoy this ability to set up spurious associ-
+                                                                  ations indefinitely. Design a protocol to prevent
+     3. Pi  Pj : EVj (Pi , SK i,j ), ESK i,j (<message>)          this threat. (Hint: Would it help if, instead of
+                                                                  using the challenge­response protocol, Pj tries
+     This way it would be able to set up a spurious               to initiate a fresh session with Pi by obtaining a
+     association with Pj , i.e. set up an association in          session key from the KDC?)
+BIBLIOGRAPHY                                                                                                            ·
+Rivest (1978) and Pfleeger and Pfleeger (2003) describe       3.  Khare, R. (ed.) (1997): Web Security: A Matter of
+the  theory  behind  RSA  encryption.  Woo        and   Lam       Trust, O'Reilly, Sebastopol, Calif.
+(1992) discusses authentication protocols in distributed      4.  Lampson, B., M. Abadi, M. Burrows, and
+systems. Steiner et al. (1988) describes the Kerberos             E. Wobbler (1992): "Authentication in distributed
+protocol.                                                         systems: theory and practice," ACM Transactions
+     Denning and Denning (1998) is a collection of arti-          on Computers, 10, 4, 265­310.
+cles on cyberspace attacks and Internet security. Khare       5.  Pfleeger, C. P., and S. Pfleeger (2003): Security in
+(1997) is a similar collection of articles that covers trust      computing, Prentice Hall, Englewood Cliffs, N.J.
+issues on the Web, including digital signatures and pub-      6.  Rivest, R. L., A. Shamir, and L. Adelman (1978):
+lic key infrastructures. Cheswick et al. (2003) discusses         "On digital signatures and public key
+security attacks, firewalls, and authentication.                  cryptosystems," Communications of the ACM, 21,
+                                                                  2, 120­126.
+                                                              7.  Steiner, J. G., C. Newman and J. I. Schiller (1988):
+1.   Cheswick, W. R., S. M. Bellovin, and A. D. Rubin             "Kerberos: an authentication service for open
+     (2003): Firewalls and Internet Security, 2nd ed.,            network system", Proceedings of the Winter
+     Addison-Wesley Professional, Reading, Mass.                  USENIX conference.
+2.   Denning, D. E., and P. J. Denning (eds.) (1998):         8.  Woo, T. Y. C. and S. S. Lam (1992):
+     Internet Besieged: Countering Cyberspace                     "Authentication for distributed systems," IEEE
+     Scofflaws, Addison-Wesley, Reading, Mass.                    Computer.
+
+
+
+
+
+
+                                                               Index
+A                                     AES, see Advanced encryption     Arrival time, 229, 230, 269
+Absolute path name, 492               standard                         Assembly language, 368­369
+Abstract view, 6, 92, 112, 135        Affinity, 352, 356­357           Asymmetric encryption, 617
+   of OS, 6­8                         hard affinity, 356­357           Asymmetric naming, in message
+Abstraction, 86, 93, 98, 101          soft affinity, 356­357                   passing, 318
+Access control list (ACL), 497,       Affinity-based scheduling, 352,  Asynchronous message
+   627­628                            356­357, 365                             passing, 318
+Access control matrix (ACM), 627      Aging of requests, 233           Asynchronous protocol, 662
+Access descriptor, 625                Agreement protocol, 748          Asynchronous transfer mode
+Access method, 485, 488, 543, 545,    Allocation                               (ATM), 676­678
+   587­588                            disk space allocation, 498­502   switch, 677
+   functions, 588                     indexed allocation, 500­502      ATA interface, 559
+   mechanisms and policies, 545       linked allocation, 499­500       ATM, see Asynchronous transfer
+Access path, 491                      memory allocation, 363­406,              mode
+Access privilege, 605, 608, 625, 638  410­470                          Atomic action, 520­523
+Access time                           resource allocation              example, 522
+   effective memory access time       in distributed operating         implementation, 522
+   using cache, 32                    system, 736­738                  intentions list, 751
+   in virtual memory, 417             Allocation edge, 281             Atomic instruction, 165, see also
+Access time, in I/O, 549              Amnesia fault, 745                       Indivisible instruction
+Adaptive lock, 350                    Amoeba distributed operating     Atomic transaction, 520,
+                                      system, 96, 658                          533­534, 751
+Adaptive mutex, 217                   capabilities, 634­635            abort, 751
+Address                               fast local Internet protocol     commit, 751
+   Internet, 660                      (FLIP), 658                      Attack
+   linked, 368                        Andrew file system, 777­779      birthday attack, 795
+   load time, 368                     file sharing semantics, 777­779  buffer overflow attack, 613­615
+   logical, 393                       path name resolution, 778        man in the middle attack, 796
+   physical, 393                      scalability, 777                 message replay attack, 793­794
+   translated, 368                    shared name space, 777           on cryptographic systems,
+Address sensitive instruction, 369    Append privilege, 497                    618­620
+Address space, 112                    Application layer, 683           chosen plaintext, 620
+   logical, 393, 411                  Application package, 6           ciphertext only, 619
+   physical, 393, 413                 Architecture                     exhaustive attack, 619
+Address space id (ASID),              cluster, 655                     known plaintext, 619
+   see Program id                     distributed system, 655          security attack, 610­613,
+Address translation, 30, 394,         single CPU computer system,              787­788
+   397­398, 424­427                   26­39                            Attributes cache, 772
+Advanced encryption standard          of Unix, 98­99                   Authentication, 15, 606­608, 786
+   (AES), 618, 623                    of Windows, 101­102              biometric, 607
+Adversary, 610                        Arrival pattern, 268             database, 607
+                                                                                                          807
+
+
+
+808             Index
+Authentication (continued)         Biometric feature, 607             C
+   in distributed system, 797­802  Birthday attack, 795               C-look scheduling policy, 576
+     mutual authentication, 794    Bit                                Cache
+   by knowledge, 606               mode bit, 48                          attributes cache, 772
+   module, 640                     modified bit, 415                     cache memory, 30­32, 352
+   by possession, 607              reference bit, 436, 446               directory names cache, 535, 767
+   token, 607                      valid bit, 415                        disk cache, 480, 535, 591­592
+   using passwords, 623­624        Bit map, 498, 529                     file cache, 480, 533, 535, 543
+Authentication token, 607          Bit stream, 549                       page cache, 461
+Authenticity of information,       Bit-interleaved parity, 564           unified disk cache, 591­592
+     609, 786                      Block cipher, 618, 620                Unix buffer cache, 527
+   digital signature, 797          Block-interleaved distributed      Cache coherence, 338
+   message authentication code             parity, 564                   snooping, 338
+     (MAC), 796                    Block-interleaved parity, 564         write-invalidate, 338
+Authorization, 606­608             Blocked state, 119, 120, 127­130,  Cache memory, 30­32
+   database, 607                           287­289                       cache block, 30
+Availability, 71, 688, 766­768     Blocking factor, 585­587              cache line, 30
+Awaiting I/O completion, 574       definition, 585                       flushing, 34
+                                   Blocking of records, 488, 545,        hierarchy, 32
+B                                          584­587                       hit ratio, 32
+                                   Blocking protocol, 662                protection, 34
+B+ tree, 494­495, 532, 535         Blocking, for synchronization,        update, 32
+Background process, 146, 154               176­177                       write-through, 32
+Backup, 516­519, 746               Booting, 11, 80                    Callback, 778
+   creation of, 517                Bootstrapping, 80                  Calloc (of C), 376
+   incremental, 516                Boundary tag, 384­386              Capability
+Backward recovery, 747             Bounded concurrency, 201              in Amoeba, 634­635
+Bad disk block, 498                Bounded wait, 172                     based addressing, 631­632
+Bakery algorithm, 196­197          Bridge, 675                           object id, 630
+Banker's algorithm, 295­300        Buddy system, 386­388                 object table (OT), 631
+   safe allocation state, 296      Buffer
+Bare machine, 84                   bounded, 183                          based computer system, 631­632
+Barrier synchronization, 327       pool, 183                             based protection, 630­636
+Base register, 33, 60, 380         Buffer overflow attack,               confinement, 635
+Basic computation, 715­716                 613­615                       definition, 630
+   example, 716                    Buffering of records, 488, 545,       protection of, 633
+Batch, 58                                  579­584                       protection of objects, 632­633
+Batch processing system, 54, 55,   Bully algorithm, 735­736              revocation of, 635­636
+     58­59                         Bus, 32, 339, 340                     sharing of objects, 632­633
+   command interpreter, 59         Bus mastering, 547                    in software, 633­636
+   turnaround time, 58             Busy wait, 175­177, 183, 185,         structure, 630
+Belady's anomaly, 444                      191, 344                      subset capability, 631
+Best-fit algorithm, 382­383        Byte code, 92                      Capability list (C-list), 628
+Binary program, 367, 374           Byte number, 396                   Capability segment, 633
+Binary semaphore, 200, 210­211,    Byte stream file, 98, 483          Capacity planning, 271
+     see also Mutex                Byzantine                          Carrier sense multiple access
+Binding, 365­367                   agreement problem, 747                    (CSMA), 676
+   dynamic, 366                    consensus problem, 748             Cascaded mounting, 775
+   memory, 365­366                 fault, 747­748                     Causal relationship, 696
+   static, 366                     generals problem, 747              Certification authority (CA), 795
+
+
+
+                                                                                         Index           809
+Challenge­response protocol,       Commit, 521, 751                  Concurrency, 113, 116­117
+       793­794                     flag, 521                         Concurrent events, 696, 701
+Chandy­Lamport algorithm,          processing, 521                   Concurrent processes, 113
+       706­710                     Communication, 71, see            Concurrent program, 113
+example, 708                       Communication protocol,           Concurrent programming
+marker, 706                        Interprocess                      constructs, 180
+properties of recorded state,      communication,                    Concurrent system, 181­182
+       708­709                     Interprocess message,             Condition code, 27­29, 113
+Channel                            Message passing                   Condition variable, 209­213
+interprocess communication,        Communication link, 654,          Conditions for deadlock, 280­281
+       695, 703                    659, 675                          Confidentiality, 609, 617
+state, 704                         Communication processor           Confinement problem, 635
+Checkpoint, 746                    (CP), 674                         Confusion, in encryption, 618,
+Child process, 114­116, 133, 153   Communication protocol            620­623
+benefits, 114                      HDLC, 682                         Connection, 678
+Chunk, 772                         IP, 683                           Connection strategies, 678
+Cipher-block chaining, 622         ISO, 681­683                      Connectionless protocol, 679,
+Ciphertext, 617, 618               TCP, 683, 684                     683, 684
+Circuit switching, 679             TCP/IP, 683­684                   Consensus problem, 748
+Circular scan scheduling policy    UDP, 682­684                      Context save, 41, 81, 93, 118, 125
+       (CSCAN), 576                Communication session, 680, 682   Context, of process, 41, 118,
+Circular wait condition, 280, 293  Compact disk (CD), 565­566        123­125
+Client node, 762                   Compaction, in memory, 386, 391   Contiguous memory allocation,
+Client stub, 326, 668              Compare-and-swap instruction,     390­392
+Client­server computing, 659,      179                               Control block, 307
+       667­668                     Completion time, 229              event control block (ECB),
+Clock                              Computation migration, 666,       128­129
+global, 695                        687, 689                          file control block (FCB),
+local, 695                         Computation speedup, 71, 114,     503­510, 768
+logical, 698­700                   337, 654                          I/O control block (IOCB), 571
+synchronization, 698­701           Computational load, 728           interprocess message control
+vector, 700­701                    Computer system                   block (IMCB), 320
+Clock algorithm, 446­447, 460      distributed computer system,      process control block (PCB),
+Clock tick, 36                     71­72                             124­125
+Cluster, 71, 655                   multiprocessor, 336­341           thread control block
+of computers, 560                  single CPU computer system,       (TCB), 770
+of disk blocks, 498, 502           26­39                             Control computation, 716
+Sun, 657­658                       Computing environment, 15, 51­54  example, 716
+Windows, 657                       distributed computing             Control function, 25, 687
+Co-scheduling, 354                 environment, 53                   Control statement, 59
+Coda file system, 778­779          embedded computing                Control synchronization, 165,
+callback, 778                      environment, 53                   172­175
+Code, 19, 22                       interactive computing             Conversation key, see Session key
+architecture-dependent, 83, 84,    environment, 52­53                Copy-on-write, 453­454, 457,
+       93, 95                      modern computing environment,     460, 463
+byte code, 92                      53­54                             CPU, 27­29
+P-code, 92                         noninteractive computing          base register, 33, 60, 380
+Collision, 676                     environment, 52                   burst, 62
+Command interpreter, 59, 84, 98    real-time computing               condition code (CC), 27, 29
+Command line interface, 7          environment, 53                   flags, 27, 29
+
+
+
+810       Index
+CPU (continued)                      CSMA/CD, 676                         handling, 285­309
+general-purpose register (GPR),      CTSS, 249                            necessary conditions for,
+     27, 28, 40­44, 124­126, 133,    Current directory, 491               301­305
+     135, 141, 149, 156, 167         Current locality, 419                MIMR system, 304­305
+instruction execution cycle, 36      Cut, of distributed system, 704­706  MISR system, 302­303
+interrupt mask, 28                      consistency condition, 705­706    SIMR system, 303­304
+kernel mode, 28, 61, 89­90, 102      Cycle stealing, 547                  SISR system, 301­302
+limit register, 33                   Cycle, in graph model, 283, 284,     processes in, 305­306
+memory protection                       301­304                           in resource allocation, 279­284
+     information, 28                 Cyclic redundancy check (CRC),       resource allocation state model,
+mode, 28                                550­552                           281­285
+privileged instruction, 28           Cylinder group, 498, 528, 529        graph model, 281­284
+program counter (PC), 27             Cylinder skewing, 555                matrix model, 284­285
+program status word (PSW), 27        Cylinder, of disk, 553               resource class model, 301
+relocation register, 370                                                  resource request model, 301
+size register, 33, 60, 380           D                                    sufficient conditions for,
+sleep mode, 251                                                           301­305
+stack pointer, 113                   Daemon process, 146                  MIMR system, 304­305
+state, 28­29, 81                     Data, 19                             MISR system, 302­303
+switching, 25, 36, 38­42, 81            distributed, 665                  SIMR system, 303­304
+user mode, 28, 89­90, 95                file data, 482                    SISR system, 301­302
+CPU burst, 62                           integrity, 795                    Deadlock handling, 285­309, 715
+CPU scheduling, see Scheduling          metadata, 482                     Banker's algorithm, 295­299
+CPU utilization, 56                     migration, 666, 687, 689          deadlock avoidance, 285, 286,
+CPU­I/O activity overlap, 61­64         replication, 665                  295­300
+CPU-bound process, 114, 161,         Data access synchronization, 165,    deadlock detection, 285­290
+     162, 237, 244, 248, 251, 259,      169­177                           algorithm, 288­290
+     262, 263                        Data encryption standard (DES),      deadlock prevention, 285, 286,
+CPU-bound program, 62­64                618, 622­623, 625                 291­295
+CRC, see Cyclic redundancy check        cipher-block chaining, 622        all resources together, 293­294
+Critical section (CS), 165, 170­197     triple DES, 623                   resource ranking, 294­295
+definition, 170                      Data integrity, 795                  deadlock resolution, 285,
+example, 171                         Data link layer, 682                 290­291
+implementation, 177­179              Data recovery, 746                   in distributed operating system,
+     algorithmic implementation,     Data sharing, 131­132, see also      723­728
+     190­197                            Data access synchronization       MIMR system, 304­305
+     Bakery algorithm, 196­197       Data staggering, 554­558             MISR system, 302­303
+     Dekker's algorithm, 192­193     Data transfer rate, 547, 559, 561    practical approach, 306­308
+     Peterson's algorithm, 193­194   Deadline, 69, 230                    resource allocation state
+     using indivisible instruction,     estimation, 255                   modeling, 281­282
+     177­190                            I/O scheduler, 595                SIMR system, 303­304
+     using semaphore, 198­199           overrun, 231                      SISR system, 301­302
+properties of implementation,           scheduling, 254­257, 272          in Unix, 307­308
+     172                             Deadline estimation, 255             in Windows, 308­309
+Crossbar switch, 340, 341            Deadline overrun, 230                Deadlock prevention
+Cryptography, 617                    Deadlock, 18, 176, 188, 192,         in distributed operating
+terms in, 618                           277­309                           system, 728
+CSCAN scheduling policy, 576            characterization, 301­306         Deblocking actions, 585
+CSMA, see Carrier sense multiple        conditions for, 280­281           Degree of multiprogramming, 61
+     access                             definition, 279                   Dekker's algorithm, 192­193
+
+
+
+                                                                                            Index          811
+Demand paging, 413­434, see         Directory graph, 492­493              Disk scheduler, 545
+also Paging                         Directory names cache, 776            Disk scheduling, 560, 576­579
+effective memory access             Directory organization, 494­495       C-look policy, 576
+time, 417                           Directory tree, 490­492               CSCAN policy, 576
+page fault, 416                     Dirty bit, see Modified bit           example, 577
+page replacement, 414               Dirty page, 428, 458, 459             FCFS policy, 576
+thrashing, 421­422                  Disk, 552, see also Disk scheduling,  Look policy, 576
+Denial of service, 610, 786         Disk space allocation,                SCAN policy, 576
+DES, see Data encryption standard   RAID                                  in SCSI disk, 579
+Device controller, 27               access time, 553                      SSTF policy, 576
+Device driver, 83, 94­96, 98, 101,  actuator, 553                         Disk space allocation, 498­502,
+574­576                             bad block, 560                        529­530
+Unix, 592­593                       cache, 535                            bit map, 529
+user-level, 95                      compact disk, 565­566                 file map table, 500
+Windows, 597                        cylinder, 553                         free list, 498, 499
+Device level I/O, 566­576           cylinder skewing, 555                 indexed allocation, 500­502
+Diffusion computation, 725­726      data staggering, 554­558              linked allocation, 499­500
+engaging query, 725                 head skewing, 555                     status map, 498
+non-engaging query, 725             head switching time, 554              Disk strip, 562
+Diffusion, in encryption, 618,      IDE, 559­561                          Disk stripe, 562
+620­623                             mirroring, 519­520, 534, 562          Dispatcher object, 218
+Digital certificate, 795            optical, 565­566                      Dispatching, 82, 118, 125­126
+Digital signature, 92, 797, 801     primary volume descriptor,            Distributed computation
+Dijkstra, 197                       566                                   paradigm, 665­672
+Dining philosophers problem,        platter, 552                          client­server computing,
+187­190                             record address, 554                   667­668
+Direct memory access (DMA), 26,     reliability, 561                      remote evaluation, 670­671
+35­36, 48, 545­547                  SCSI, 536, 559­561                    remote procedure call (RPC),
+buffer, 548                         disk scheduling, 560                  326­327, 668­670
+bus mastering, 547                  tagged command queuing, 579           Distributed computer system,
+first party DMA, 547                sector, 554                           71­72
+third party DMA, 546                sector interleaving, 555­558          Distributed control, 72
+Direct naming, 317                  seek time, 553                        Distributed control algorithm, 657,
+Direct-access file, 485­486         strip, 562                            687, 714­741
+Directory                           stripe, 562                           control action, 714
+current directory, 491              striping, 562                         control data, 714
+entry format, 488­489               throughput, 557­558                   control message, 716
+home directory, 491                 track, 552                            correctness criteria, 717­718
+names cache, 535                    Disk attachment technology            liveness, 717
+operations on, 493­495              advanced technology attachment        safety, 717
+organization, 494­495               (ATA) interface, 559                  diffusion computation, 725­726
+B+ tree, 494­495                    EIDE interface, 559                   edge chasing algorithm, 726­728
+hash table, 494                     SCSI interface, 559­560               operation of, 714­716
+root directory, 566                 Disk block fragment, 529              token-based algorithm,
+search, 493                         Disk cache, 480, 535, 543, 545,       720­723
+structure, 479­480, 488­497         588­592                               Distributed data, 750, 753­754
+graph, 492­493                      unified, 591­592                      Distributed deadlock detection,
+tree, 490­492                       Disk mirroring, 519­520,              715, 724­728
+Directory caching, 767              534, 562                              Distributed deadlock handling,
+Directory FCB pointer, 506          Disk partition, 495, 532              723­728
+
+
+
+812        Index
+Distributed deadlock prevention,    scalability, 654, 667, 673             change of, 630­640
+     728                            scheduling in, 715, 728­732            MULTICS, 638
+wait-or-die, 728                    security, 785­805                      Unix, 639­640
+wound-or-wait, 728                  Distributed scheduling, 715,        Domain-specific event, 70
+Distributed file system (DFS),      728­732                             Domino effect, 750
+     760­779                        receiver initiated, 730             Duplicate request, 664
+Andrew file system, 777­779         sender initiated, 730               Dynamic binary translation, 91
+availability, 766­768               stability, 729                      Dynamic binding, 366
+cache manager, 772                  symmetrically initiated, 730­731    Dynamic data, 378
+cache validation, 772               Distributed system                  Dynamic link library (DLL), 102,
+     client initiated, 773          authentication, 797­802                   373, 657
+     server initiated, 773          benefits, 654­655                   Dynamic linking, 372
+Coda file system, 778­779           cluster, 655                        Dynamic memory allocation,
+fault tolerance, 761­762, 765­770   communication, 654, 659­665               364, 366
+file caching, 771­774               computation speedup, 654            Dynamic priority, 232, 259
+file migration, 761                 consistent state recording,         Dynamic routing, 680
+file server structure, 770          702­710                             Dynamic scheduling, 254
+file sharing semantics, 764­765     cut of a system, 704­706            Dynamically loadable kernel
+GPFS, 779­780                       definition, 72                            module, 94­95, 101
+hint, 771                           event precedence, 696­697
+path name resolution, 766, 767      fault tolerance, 750­754            E
+performance, 762, 770­771           global state, 694
+remote mount, 778                   incremental growth, 654             Earliest deadline first (EDF)
+scalability, 762, 770, 771, 774     local state, 694                          scheduling, 256­257
+stateless file server, 769­770      model, 685­687                      Eavesdropping, 787
+Sun NFS, 774­777                    logical model, 685                  EDF scheduling, see Earliest
+transparency, 761, 763­764          physical model, 685                       deadline first scheduling
+Windows, 781                        node model, 655                     Edge
+Distributed locking, 762            recovery, 743­756                      allocation edge, 281
+Distributed mutual exclusion, 715,  reliability, 654                       in distributed system model,
+     718­723                        resource sharing, 654                     685­687
+fully distributed approach,         security, 785­805                      process precedence edge, 252
+     718­720                        state, 694­703                         request edge, 281
+token-based approach, 720­723       transparency, 55, 761, 763­764         wait-for edge, 281
+     Raymond's algorithm,           Distributed termination condition,  Edge chasing algorithm, 726
+     721­723                        710, 732                            Effective utilization, 8­10, 51
+     for ring topology, 720­721     Distributed termination detection,  Efficiency, 56­57
+Distributed operating system, 54,   715, 732­734                        EIA-232D, 682
+     55, 71­73, 656­689             credit distribution-based,          EIDE interface, 559
+benefits, 71                        732­733                             Election, 715
+computation speedup, 71             diffusion computation-based,        Election algorithm, 735­736
+design issues, 687­689              733­734                                Bully algorithm, 735­736
+distributed control, 55, 72         Distributed transaction,               for ring topologies, 735
+distributed file system (DFS),      753­754                             Elevator algorithm, 576
+     760­779                        DMA, 60, 61, 72                     Embedded computer system, 53,
+recovery, 688­689                   DMA controller, 35                        96, 100
+reliability, 71, 688­689, 750­756   Domain name service (DNS),          Encryption, 617­623, 788­792
+     availability, 71               660­661, 673, 738                      asymmetric, 617
+remote procedure call, 73           Domain, of protection,                 distribution of keys, 791­793
+resource allocation, 736­738        629­640                                key, 617
+
+
+
+                                                                                           Index            813
+   private key encryption, 788­789  classification, 745­746             recovery, 515­517
+   public key encryption, 789­790   communication fault, 745            renaming operation, 484
+   RSA encryption, 790              fail-stop fault, 745                replication, 768
+   session keys, 790                partial amnesia fault, 745          robustness, 765
+   symmetric, 617                   storage fault, 745                  sharing semantics, 510­513,
+Error, 743                          system fault, 745                   764­765
+Error correction code, 562          Fault tolerance, 70, 746, 750­754,  structured file, 483
+Error detection, 552                761­762, 765­770                    type, 480, 483
+Ethernet, 675­676                   in distributed system               File allocation table (FAT), 500
+Event, 16, 36, 127­130, 695         resiliency, 754­756                 File attribute, 483, 532
+   handling, 36, 81, 118, 127­130   in file system, 515, 519­523        File cache, 543, 588­591,
+Event control block (ECB),          atomic action, 520­523              771­774, 776
+   128­129, 148, 321­323            stable storage, 519­520             cache validation, 773­774
+Event handler, 81, 93               Faulty process, 747                 File control block (FCB),
+Event handling, 41, 81              FCB, see File control block         503­510
+Event ordering, 696                 FCFS scheduling, see First-come,    File data, 482
+Event precedence, 696­697,          first-served scheduling             File FCB pointer, 506
+   700­701                          Feasible schedule, 253              File management, 81
+   causal relationship, 696         Field, 483                          File map table (FMT), 500,
+   partial order, 696               FIFO page replacement, 440          506­510
+   total order, 696                 File, 307, 483                      File organization
+   transitive precedence, 696       access, 506­510                     direct-access file, 485­486
+Exception, 36                       attribute, 483                      index sequential file, 486­487
+   addressing exception, 37         availability, 766                   sequential file, 485
+   arithmetic exception, 37         byte stream file, 480, 483          File replication, 767
+   protection violation, 37         cache, 480, 543, 588­591,           File server, 762
+exec() system call, 147             771­774, 776                        File sharing, 497
+Execute privilege, 497              caching, 761, 771­774               File sharing semantics, 764­765
+Exhausted list, of Linux, 264       cache validation, 773­774           session semantics, 513, 765
+Exokernel, 97                       close operation, 484, 506,          transaction semantics, 534, 765
+Export list, 685                    509­510                             Unix semantics, 527, 764
+Extended machine, 86                creation operation, 484             File system, 21, 479­530, see also
+Extensibility, 17, 83               data, 482                           Atomic action, Disk space
+Extent, 502                         deletion operation, 484             allocation, Distributed file
+External data representation        field, 483                          system, File sharing
+   (XDR), 671, 683                  file control block, 503­506         access method, 485, 488
+External fragmentation, 383, 392    internal id, 504                    access validation, 509
+                                    location, 489                       atomic action, 520­523
+F                                   map table, 500                      backup, 516­519
+                                    memory mapping, 454­456             close operation, 509­510
+50-percent rule, 385­386            mutable file, 512­513               consistency, 513­515
+Fail-stop fault, 745                open operation, 484, 505­508        delete operation, 493
+Failure, 743                        operations on, 483­484, 509         direct-access file, 485­486
+Fair share, 230                     organization, 484­487               directory
+Fair share scheduling               primary copy, 768                   entry format, 488­489
+   Solaris, 262                     processing, 482                     structure, 488­497
+   Unix, 261­262                    protection, 497, 625­640            disk space allocation, 498­502
+Fault, 743                          read/write operation, 484           fault tolerance, 515, 519­523
+   amnesia fault, 745               record, 483                         file control block (FCB), 503­506
+   Byzantine fault, 747­748         recoverability, 765                 file operations, 509
+
+
+
+814           Index
+File system (continued)          Fragmentation, see Memory              Hash value, 625
+file sharing, 489                       fragmentation                   Hashing function, 430
+     semantics of, 510­513,      Free list, 381­385, 387, 388,          Head skewing, 555
+     764­765                            400­403                         Heap, 376, 378­390
+index sequential file, 486­487      in disk space allocation, 498, 528  Heap management, 345­346,
+interface with IOCS, 503­506        Unix, 528                              380­390
+internal id, 509                 Free page frames list, 435                parallelism in, 345­346
+journaling file system, 523­524  Free space management                     in Windows, 390
+journaling modes, 524               in disk space allocation, 498, 528  High level data link control
+library modules, 482­483            in memory allocation, 380­386          (HDLC), 682
+link, 492, 529, 532              FTP, see File transfer protocol        Highest response ratio next (HRN)
+Linux, 530­531                   Fully connected network, 675              scheduling, 236
+log-structured, 536­537                                                    performance analysis, 270
+mechanisms and policies, 545     G                                      Hint, 771
+memory mapped files, 454­456                                               in distributed file system, 771
+metadata, 482, 499, 502,         Gang scheduling, 354                      in scheduling, 354
+     516, 525                    Garbage collection, 635                Hit ratio, 364
+mount table, 508                 Gateway, 673                              in cache, 32
+mounted files, 508               General-purpose register (GPR),           in memory, 418
+mounting of, 495­497                    27, 28, 40­44, 113, 124­126,       in TLB, 426, 427
+     cascaded mounting, 775             133, 135, 141, 149, 156, 167    Hold-and-wait condition, 280, 293
+naming freedom, 489              Global clock, 695                      Home directory, 491
+open operation, 506­508          GPFS, 779­780                          Host, 88­91, 655
+performance, 502, 534­537           lock manager, 779                   Host OS, 88­91
+recovery, 515­517                Graceful degradation, 70, 336,         HP AlphaServer, 339
+     overhead of, 516                   337, 346                        HRN scheduling, see Highest
+reliability, 513­517, see also   Graph                                     response ratio next
+     Atomic action, Fault           acyclic, 492                           scheduling
+     tolerance, Recovery            knot, 302                           Hybrid thread model, 145­146
+sequential file, 485                resource knot, 305                  Hypercube, 339
+Solaris, 531                     Graph model                            Hypervisor, 91
+state, 516                          of distributed system, 685­687
+Unix, 526­530                       of process precedences, 252         I
+                                    of resource allocation state
+virtual file system (VFS),          RRAG, 281­284                       I/O, 34­36
+     524­526                        WFG, 281­282                           access time, 549
+Windows, 531­534                 Graphical user interface (GUI), 9         asynchronous mode, 545
+File transfer protocol (FTP),    Guest OS, 88­91                           buffer, 580
+     666, 683                    GUI, see Graphical user interface         command, 546
+Firewall, 15                                                               completion processing, 568,
+First-come, first-served (FCFS)                                            573­574
+     scheduling, 233­234         H                                         device, 307, 547­566
+performance analysis, 270        HAL, see Hardware abstraction             address, 545
+First-fit algorithm, 382­383            layer                              block mode, 548
+Flags, see Condition code,       Hamming code, 550, 551                    character mode, 548
+     113                         Hard affinity, 356­357                    controller, 545
+Flow control, 681, 682, 684      Hard real-time system, 69                 random-access, 547, 552­558
+Flushing, of cache, 34           Hardware abstraction layer                sequential, 547, 550­552
+fork() system call, 146                 (HAL), 101                         DMA mode, 35
+Forward recovery, 747            Hash table, 430, 535, 593                 initiation, 279, 567­568, 573
+
+
+
+                                                                                           Index            815
+instruction, 546                   Inclusion property, 442               reliable protocol, 662
+interrupt, 36                      Incremental backup, 516               RR protocol, 664­665
+interrupt mode, 35                 Incremental growth, 71                RRA protocol, 662­664
+memory mapped I/O, 548             Indefinite wait, 279                  semantics
+organization, 545­547, 566­567     Independent processes, 166            at-least-once semantics, 661
+programmed mode, 35                Index, 486                            at-most-once semantics, 661
+programming, 567­568               Index block, 501, 536, 780            exactly-once semantics, 661,
+scheduler, 571                     in log-structured file system, 536    662, 664
+status information, 545, 567       Index sequential file, 486­487        synchronous protocol, 662
+synchronous mode, 545              Indexed disk space allocation,        unreliable protocol, 662
+time, 549                          500­502                               Interprocess message, 131­132,
+transfer time, 549                 Indirect block, 527                   307, 315­333
+volume, 547                        Indirect naming, 318, 323             Interprocess message control block
+wait time, 579                     Indivisible instruction, 165,         (IMCB), 320
+I/O control block (IOCB), 571,     177­179, 208                          Interprocessor interrupt (IPI), 343
+     573­574                       compare-and-swap, 179                 Interrecord gap, 552
+I/O device                         swap, 179                             Interrupt, 16, 26, 36, 39
+data transfer mode, 548            test-and-set, 178                     action, 38­39
+     block mode, 548               Indivisible operation, 165, 174­175,  classes, 36­37
+     character mode, 548           197                                   code, 41
+error correction, 549­551          definition, 174                       I/O, 37, 38, 41
+error detection, 549­551           implementation, 177­179               mask, 28, 37­40
+I/O fixing, of pages, 433          Inode, 526­527                        masking, 37­38, 42­44
+I/O management, 81                 Input output control system           priority, 36, 37
+I/O programming, 567­568           (IOCS), 479­483, 543­545              program interrupt, 37, 38, 41
+advanced I/O programming           difference with file system, 482      servicing, 40­44
+     blocking, 584­587             library, 481                          nested interrupts, 42­44, 149
+     buffering, 579­584            operations, 504                       software interrupt, 37, 38, 41,
+I/O queue (IOQ), 571               physical organization, 543, 544       45, 132
+I/O wait time, 579                 Instruction execution cycle, 36       timer, 37, 41
+I/O-bound process, 114, 161, 162,  Integrity of information, 609, 786    vector, 38
+     244, 248, 251, 262, 263       Intel 80386, 99, 432                  Interrupt masking, 37­38, 42­44
+I/O-bound program, 62­64           Intel 80x86, 90, 100, 615             Interrupt priority, 36, 37
+IBM                                Intentions list, 751
+360/67, 447                        Interacting processes, 165­166        Interrupt servicing routine, 36,
+JFS, 524                           definition, 166                       40­44, 80­81, 83, 89, 93,
+NUMA-Q, 339                        Interarrival time, 269                96­97, 101
+VM/370, 89                         Interconnection network, 339­341      Interrupt vector, 83, 89
+IDE disk, 559­561                  Internal fragmentation, 383, 390      Intruder, 15, 610, 786
+Idempotent operation, 522, 665     Internal id, of file, 504             Inverted page table, 429­431
+Identifier                         Internet, 10                          IOCS, see Access method, Physical
+group id, 639                      Internet address, 660                 IOCS
+internal id, of file, 504          Internet protocol (IP), 682           IOMMU, 95
+program id, 34                     Interprocess communication            IP, see Internet protocol
+user id, 639                       (IPC), 97                             IP network, 561
+Idle loop, 91                      Interprocess communication (IPC)      IPI, see Interprocessor interrupt
+IEEE scalable coherent interface   protocol, 659­665                     ISO protocol layers, 681­683
+     (SCI), 341, 342               asynchronous protocol, 662            operation, 682
+Immutable file, 511                blocking protocol, 662                ISO protocol stack, 681­683
+Import list, 685                   nonblocking protocol, 662             ISO reference model, 681­683
+
+
+
+816             Index
+J                                    L                                mandatory lock, 530
+Java                                 LAN, see Local area network      virtual file system, 530
+   byte code, 92                     Latency, 553                     I/O scheduling, 595­596
+   monitor, 213                         network, 685                  inode, 530
+   registry, 671                        rotational, 579               kernel, 99­100
+   remote method invocation          Layered OS design, 85­88         dynamically loadable kernel
+      (RMI), 327, 671­672               stratification, 87                  module, 94­95
+   virtual machine, 92               Lazy buddy allocator, 401­403    Linux 2.6 kernel, 100, 264
+Job, 52, 53                          LCN scheduling, see Least        Linux security module
+   scheduling, 244                      completed next scheduling           (LSM), 641
+Journal, for recovery, 780           Least completed next (LCN)       memory management, 403
+Journaling file system, 523­524         scheduling, 237, 240­241      multiprocessor support, 355­356
+   modes, 524                        Least recently used (LRU) page   load balancing, 356
+                                        replacement, 440­442,         reader­writer spinlock, 355
+K                                       446­447                       password security, 625
+                                     Library                          process state, 154
+KB, 96, 99                              file system modules, 481­483  process synchronization, 216­217
+kB/s, 558                               IOCS modules, 571             reader­writer semaphore, 217
+Kerberos, 797­801                       physical IOCS, 572­574        scheduling, 263­264
+   authenticator, 799                   thread library, 141­143       scalability, 264
+   ticket, 799                       Light weight process             security, 640­641
+Kernel, 7, 8, 19, 25, 92­95, 481        (LWP), 154                    superblock, 530
+   and portability, 93               Limit register, 33               virtual memory, 459­460
+   dynamically loadable kernel       Link, 492, 529, 532              Little's formula, 270
+      module, 94­95                     communication, 654, 659, 675  Livelock, 188, 192
+   embedded system, 100              Linked disk space allocation,    Liveness, in distributed control
+   functions, 94                        499­500                             algorithm, 717
+   interrupt-driven operation, 40    Linked list, 381­382, 385, 387,  Load balancing, 352, 356, 687,
+   memory allocation, 400­404           402, 403                            728­732
+   noninterruptible kernel, 44       Linking, 367­373                 Load-add-store sequence, 167
+   NUMA kernel, 347                     definition, 371               Loader, 367, 368
+   preemptible kernel, 44, 100, 250     dynamic linking, 372­373      definition, 372
+   SMP kernel, 345                      entry point, 371              Local area network (LAN), 71,
+   synchronization support, 208         external reference, 371             654, 672­674
+Kernel memory allocation, 400­404       program relocation, 369­371   Local clock, 695
+   lazy buddy allocator, 401­403                                      Local memory, 339
+   McKusick­Karels allocator, 401       definition, 369
+   slab allocator, 403­404              static linking, 372­373       Local procedure call (LPC),
+Kernel mode, of CPU, 28, 39, 42,     Linux, 152­154, 418, 524, 592          332­333
+      89­90, 102                        clone system call, 152­153    Locality, 32, 412, 418­420
+Kernel-based OS design, 92­95           futex, 217                    spatial, 32
+Kernel-level thread, 139­141, 658       authentication, 640           temporal, 32
+Key                                     pluggable authentication      Location independence, 761
+   encryption, 617                      module (PAM), 640             Location transparency, 761
+   in record, 483                       embedded system, 100          Lock
+Key distribution center (KDC),          exhausted list, 264           adaptive lock, 350
+      791­793                           file system, 530­531          coarse-grained, 345
+Key stream, 621                         ext2, 530­531                 distributed locking, 762
+Knot, 302                               journaling file system, 530   fine-grained, 345
+Knuth, 383, 389                         lease, 530                    lease, 530
+
+
+
+                                                                                               Index       817
+lock granularity, 779                 Man in the middle attack, 796        Memory allocators
+mandatory lock, 530                   Mandatory access control, 637        buddy system allocator, 386­388
+queued lock, 349                      Mandatory protection, 637            lazy buddy allocator, 401­403
+queued spinlock, 220                  Marshaling, 668, 669, 672            McKusick­Karels allocator, 401
+reader­writer lock, 220               Masking, of interrupts, 37­38,       power-of-2 allocator, 388­389
+reader­writer spinlock, 355           42­44                                slab allocator, 403­404
+shadow lock, 351                      Masquerading, 610, 788               Memory compaction, 386, 391
+sleep lock, 350                       Master secret, 802                   Memory fragmentation, 383,
+spin lock, 349­350                    Master­slave, 343                    390­391, 404
+Lock variable, 178, 208               Matrix model, of resource            definition, 383
+Log, 750                              allocation state, 284­285            external fragmentation, 392
+operation log, 751                    McKusick­Karels allocator,           internal fragmentation, 390­391
+redo log, 750                         401                                  Memory hierarchy, 30­33
+undo log, 751                         Mean response time, 230              management of, 363­365
+value log, 751                        Mean turnaround time, 230            Memory management, 81, 363­408
+write-ahead logging, 751              Mechanism, 82­83, 93, 95­96, 98,     in Linux, 403
+Log file, 536                         101, 545, 608                        in Unix, 400­404
+Log-structured file system, 536­537   authentication, 623                  in Windows, 390
+index block, 536                      dispatching, 244, 245                Memory management unit
+log file, 536                         event handling, 574                  (MMU), 19, 27, 30, 83, 123,
+Logical address, 30, 393, 411         IOCS mechanism, 481, 503, 545        126, 363, 365, 393­400, 411,
+Logical address space, 393, 396, 411  memory management                    417, 423, 424, 433, 465
+Logical clock, 698­700                mechanism, 391                       Memory map, 58
+synchronization, 698­699              paging mechanisms, 438               Memory mapped files, 454­456
+Logical device, 569­570               process migration, 738               Memory protection, 15, 33­34, 61,
+Logical device table (LDT),           protection mechanism, 608            380, 395, 423­424
+   570­571                            scheduling mechanisms, 246           Memory protection information
+Logical disk, 495                     security mechanisms, 608             (MPI), 28, 33
+Logical organization, 393­394         Medium-term scheduling, 244­245      Memory reuse, 380­386
+Logical record, 585                   Memory, 307                          best-fit, 382­383
+Logical view, 16, 479­482             local memory, 339                    first-fit, 382­383
+Long-term scheduling, 244­245         nonlocal memory, 339                 next-fit, 382­383
+Look scheduling, 576                  physical address space, 393          worst-fit, 406
+Looping                               protection, 380                      Memory utilization factor, 389
+for synchronization, 175­176          Memory allocation, see also Virtual  Memoryless property, 269
+LRU page replacement, see Least       memory                               Merging free memory areas,
+   recently used page                 contiguous allocation, 390­392       384­386
+   replacement                        dynamic allocation, 366, 367         Message
+                                      free list, 380­385, 387, 388,        acknowledgment, 659
+M                                     400­403                              orphan, 749
+                                      heap, 376, 378­390                   queue, 329­331
+Mach operating system, 354­355        kernel memory allocation,            retransmission, 659
+microkernel, 96                       400­404                              Message authentication code
+processor set, 354                    memory reuse, 380­386                (MAC), 796, 801
+scheduling hints, 354                 noncontiguous allocation,            Message digest, 625, 795
+Magnetic tape, 550                    392­397                              MD2, 625
+streaming tape, 552                   to a process, 378­379, 420­422,      MD4, 625
+Mailbox, 323­325                      447­451                              MD5, 625, 640
+Main memory, see Memory               stack, 376­378                       Message passing, 18, 131­132,
+Malloc (of C), 376                    static allocation, 366, 367          307, 315­333
+
+
+
+818          Index
+asymmetric naming, 318             Monitor, 165, 208­213                interconnection network,
+asynchronous, 318                  signal statement, 209                339­341
+blocking send, 318                 wait statement, 209                  Interprocessor interrupt (IPI),
+buffering, 320­321                 condition variable, 209­213          343
+delivery, 321­323                  in Java, 213                         NORMA architecture, 339
+exceptional condition, 319         mutual exclusion, 209                NUMA architecture, 339,
+higher level protocols, 325­328    usage example                        342­343
+     message passing interface     binary semaphore, 210­211            operating system, 343­345
+     (MPI), 327                    producers­consumers,                 SMP architecture, 339, 341­342
+     parallel programming,         212­214                              UMA architecture, 339
+     327­328                       Morris worm, 613                     Multiprogramming system, 54, 55,
+     parallel virtual machine      Motorola 68030, 433                  59­64
+     (PVM), 327                    Mount point, 496                     architectural support, 60
+     RPC, 326­327                  Mounting, of file system, 495­497    CPU­I/O activity overlap,
+     SMTP, 325­326                 cascaded mounting, 775               61­64
+interprocess message control       Multi-site transaction, see          CPU-bound program, 61
+     block (IMCB), 320             Distributed transaction              degree of multiprogramming,
+issues, 317                        MULTICS                              61, 62
+naming, 317­318                    file system, 490­491, 526            I/O-bound program, 62
+nonblocking send, 318              protection domain, 638               kernel functions, 60­64
+symmetric naming, 318              segmentation, 466                    performance, 64
+synchronous, 318                   Multilevel adaptive scheduling, 249  program classification, 61­62
+Unix, 328­331                      Multilevel scheduling, 248­249       program mix, 61­62
+Windows, 332­333                   CTSS, 249                            program priority, 55, 62­64
+Message passing interface (MPI),   Multimedia systems, 69               protection, 60­61
+     327­328                       Multiple instance resource, 301      scheduling, 61­64
+Message replay attack, 787,        Multiple request, 301                schematic, 60
+     793­794                       Multiprocessor kernel structure,     Multistage interconnection
+Message security, 786, 788­794     345­347                              network (MIN), 340­341
+Message switching, 679             NUMA kernel, 347                     Multitasking, 114
+Message tampering, 786             SMP kernel, 345­346                  Mutable file
+Metadata, 21, 482, 499, 502, 516,  Multiprocessor operating system,     multiple image, 512­513
+     525, 761, 780                 336­355                              single image, 512
+Microkernel, 95­97                 co-scheduling, 354                   Mutex, 200
+definition, 95                     gang scheduling, 354                 adaptive, 217
+embedded system, 96                graceful degradation, 346            Mutex lock, see Binary semaphore
+Microkernel-based OS design,       heap management, 345­346             Mutual exclusion, 169, 172, 181
+     95­97                         kernel structure, 345­347            algorithmic approaches, 180
+Migration                          NUMA kernel, 347                     concurrent programming
+computation, 728­732, 764          SMP kernel, 345­346                  constructs, 180
+data, 666, 687, 689                process scheduling, 346­347,         critical section, 170­197
+file, 761, 764                     352­355                              distributed mutual exclusion,
+process, 728­732                   process synchronization, 345,        718­723
+volume, 777                        347­352                              fully distributed approach,
+MIMR system, 304­305               queued lock, 348­349                 718­720
+MISR system, 302­303               sleep lock, 348, 350                 token-based approach,
+Mitchell­Merritt algorithm,        special hardware, 350­351            720­723
+     726­728                       spin lock, 348­350                   in monitors, 209
+Mode bit, of CPU, 48               Multiprocessor system, 336­341       synchronization primitives, 180
+Modified bit, 415, 447, 458        benefits, 337                        using semaphore, 198­200
+
+
+
+                                                                                            Index        819
+N                                  Network-attached storage             distributed operating system,
+Name server, 660, 669, 685,           (NAS), 560                        653­690
+   737­738                         Networking, 672­685                  and effective utilization, 8­10
+Name space, 777                       connection strategies, 678­680    extensibility, 83
+Named pipe, 328                       routing, 680                      file management, 81
+Naming                                technologies, 675­678             functions, 81
+   in communication, 660­661       New (of Pascal), 379                 goals, 8­10
+   domain name service (DNS),      Newcastle connection, 656            efficient use, 8­9
+   660­661                         Next-fit algorithm, 382­383          noninterference, 8
+   in file system, 490, 763        Node, 655                            user convenience, 8­10
+   freedom, 489                       in distributed system, 21         graphical user interface, 7, 9
+   in message passing, 317­318     Nonce, 793                           guest OS, 88
+   of processes, see Process: id   Noncontiguous memory allocation,     I/O management, 81
+Necessary conditions for deadlock     392­397, see also Paging,         interrupt-driven operation, 40, 93
+   MIMR system, 304­305               Segmentation                      kernel, 7, 8, 19
+   MISR system, 302­303            Noninterference in user activities,  mechanism, 82
+                                      10, 22                            memory management, 81
+   SIMR system, 303­304            Nonkernel routine, 7, 101            network management, 81
+   SISR system, 301­302            Nonlocal memory, 339                 network operating system, 656
+Nested interrupts, 42­44           Nonpreemptible server, 233           noninterference, 10, 22
+Nested transaction, 755­756        Nonpreemptive scheduling,            operation of, 10­15, 80­81
+Network                               233­236                           overhead, 8, 12, 13, 17, 19
+   bandwidth, 673, 676­677, 684    Nonrepudiability, 797                policy, 82
+   connection, 673                 Nonshareable resource, 280, 291      portability, 82, 95
+   latency, 673, 685               NRU page replacement, 446            process management, 81
+   layer, 682                      NUMA kernel, 347                     program management, 10, 12
+   local area netwok (LAN),                                             resource management, 11­14
+   672­674                         O                                    structure, 7, 82­103
+   operating system, 656­657                                            kernel-based, 84, 92­95
+   partition, 675                  Object module, 367, 376              layered, 84­88
+   protocol, 673                   Object table (OT), 631               Linux, 99­100
+   routing, 673                    One-time pad, 621                    microkernel-based, 85, 95­97
+   topology, 673­675               One-way function, 618, 619, 625      monolithic, 84­85
+   fully connected, 675            Open files table (OFT), 503­504,     Solaris, 100­101
+   partially connected, 675           506­510, 572, 768                 Unix, 98­99
+   ring, 675                       Open system, 654, 797                virtual machine OS, 88­89
+   star, 675                       Operating system, see also           Windows, 101­102
+   type, 673                          Protection, Security              user convenience
+   wide area netwok (WAN), 672        architecture-dependent code, 83,  good service, 56
+Network bandwidth, 673, 676­677       84, 93, 95                        necessity, 56
+Network file system, 774­777          booting, 11, 12                   resource sharing, 56
+   Sun NFS, 774­777                   classes of, 54­56                 user interface, 81
+                                      batch processing, 54, 55, 58­59   Operation log, 751
+   Mount protocol, 775­776            distributed, 54, 55, 71­73        Operation, of a process, 113
+   NFS protocol, 776                  multiprogramming, 54, 55,         Optical disk, 565­566
+Network latency, 673, 685             59­64                             Optimal page replacement, 440
+Network management, 81                real-time, 54, 55, 68­71          Orphan message, 749
+Network partition, 675, 780           time-sharing, 54, 55, 65­68       Overhead, 8, 12, 13, 17, 19, 25, 56,
+Network protocol, 681                 command line interface, 7         59, 66, 70
+   ISO reference model, 681­683       designer's abstract view, 6       Overlay, 412
+
+
+
+820              Index
+P                                     address translation, 397­398,      Path
+P+Q redundancy, in RAID, 563                  413­418, 423­428           in RRAG, 282­283
+P-code instruction, 92                address translation buffer,        in WFG, 282­283
+Packet, 679                                   424­427                    Path name, 491­492
+Packet switching, 676, 679            current locality, 419              absolute path name, 492
+Page, 33, 413                         demand paging, 413­434             relative path name, 491
+   definition, 394                    effective memory access time, 417  resolution, 506­508, 766, 767,
+   fault, 416­420, 422, 423, 425,     free frames list, 435                    776, 778
+     426, 430                         hardware, 423­428                  Path table, 566
+     desirable characteristic, 422    I/O fixing of pages, 433­434       Performance, 57­58, 569, 770­774
+   frame, 413                         I/O operations, 433­434            scalability, 344, 770, 774
+   optimal page size, 422             inverted page table, 429­431       Performance analysis, of scheduling
+   reference string, 439              memory protection, 423­424               policies, 266­271
+   replacement, 417, 418              multi-level page table, 431­433    FCFS scheduling, 270
+                                      page fault, 416                    highest response ratio next
+   sharing of, 424                    page reference string, 439               (HRN) scheduling, 270
+   table, 413, 435                    page replacement, 414              mathematical modeling, 268
+     entry format, 415                page replacement policies,         queuing theory, 268
+     inverted page table, 429­431             438­447                    round-robin scheduling, 270
+     multi-level page table, 431­433  page sharing, 451­454              simulation, 267
+     two-level page table, 431­432    page table, 435                    SRN scheduling, 270
+   traffic, 417                       sharing of pages, 424              Period, 252
+Page cache, 591                       thrashing, 421­422                 Periodic process, 252
+Page directory, 462                   two-level page table, 431­432      Personal digital assistant (PDA), 53
+Page fault, 416                       Intel 80386, 432                   Peterson's algorithm, 193­194
+Page number, 396                      Paging hardware, 423­428           Phantom deadlock, 313, 717,
+Page reference string, 439            Paging software, 435­454                 718, 724
+Page replacement, 414                 Parallel virtual machine (PVM),    Physical address, 30, 393, 411
+Page replacement policies,                    327­328                    Physical address space, 393, 413
+     438­447                          Parallelism, 116­117               Physical device table (PDT),
+   clock algorithm, 446­447           Paravirtualization, 90                   570­571
+   FIFO replacement, 440, 443         Parbegin­Parend, 166­167           Physical IOCS, 543, 545, 569­594
+   LRU replacement, 440­442           Parent process, 114, 153           data structures, 570­571
+   NRU replacement, 446­447           Parity                             design aims, 569
+   optimal replacement, 440           bit-interleaved parity, 564        device performance, 569
+   practical page replacement         block-interleaved distributed      I/O completion, 573­574
+     policies, 444­447                        parity, 564                I/O control block (IOCB), 570
+   stack property, 442­443            block-interleaved parity, 564      I/O initiation, 573
+Page sharing, 424, 451­454            Parity bit, 550­552                I/O queue, 570
+Page size, 422                        Partial order, 696                 library, 572­574
+Page table, 396                       Partially connected network, 675   logical device, 569
+                                      Partition                          logical device table (LDT),
+   entry format, 415                  of disk, 495, 532                        570­571
+   inverted page table, 429­431       network partition, 675             mechanisms and policies, 545
+   multi-level page table, 431­433    of resources, 13, 60               optimization of device
+Page-in operation, 414, 417           Passive attack, 788                      performance, 569, 576­579
+Page-out operation, 414, 417          Password, 623                      physical device table (PDT),
+Page-table address register           aging, 624                               570­571
+     (PTAR), 423                      encryption, 624, 625               system performance, 569
+Paging, 394, 396­398, 412­413         Password security, 615­617         Physical layer, 682
+
+
+
+                                                                                          Index         821
+Physical organization, 393­394       context, 118, 123­125            state, 118­123, 151­152, 154,
+Physical record, 585                 CPU-bound, 114, 161, 162,        156, 159
+Pipe, 328­329                        237, 244, 248, 251, 259,         definition, 119
+Plaintext, 617, 618                  262, 263                         state transition, 120­123,
+Platter, 552                         creation, 127­128, 146, 158­159  151­152, 154, 159
+Plug-and-play, 73, 83, 574, 597      daemon, 146                      suspend state, 122
+Poisson distribution, 269            data sharing, 131­132            switching, 17, 126
+Policy, 82­83, 93, 545, 608          definition, 112                  overhead, 134
+Pool                                 fault, 745                       synchronization, 17, 131, 345,
+based resource allocation, 13, 60    I/O-bound, 114, 161, 162, 244,   347­352
+of buffers, 183                      248, 251, 262, 263               in multiprocessor system, 345,
+thread pool, 137, 159­160            id, 123                          347­352
+Port, 671                            independent processes, 166       special hardware, 350­351
+Portability, 17                      interacting processes, 131­132,  terminated state, 119
+Portability, of OS, 82­84, 95        165­166                          termination, 128
+POSIX threads, 138­139, 142,         control synchronization,         and thread, 134­138
+      213­215                        172­175                          tree, 114
+Power management, 251­252, 265       data access synchronization,     Unix, 146­152
+Power-of-2 allocator, 388­389        166­170                          Windows, 157­160
+Preallocation of resources, 307      definition, 166                  Process context, 118, 123­125
+Preemption, 12, 62, 230, 231, 293    interprocess communication,      Process control block (PCB),
+Preemptive scheduling, 236­242       131­132, 315­334                 124­125, 128, 129, 133­135,
+Prefetching of data, 560             interprocess message, 131­132    142, 146, 156, 246, 321­323,
+Premaster secret, 802                kernel view of, 112­130          380, 400
+Presentation layer, 683              Linux, 152­154                   Process management, 81
+Primary copy, 519                    memory allocation to, 378­379    Process migration, 666, 728­732,
+Primary process, 114                 message passing, 131­132         738­739
+Print server, 14                     parent process, 133              Process precedence graph (PPG),
+Priority, 55, 62­64, 230, 232­233,   precedence, 252                  252
+      246­247                        primary process, 114             Process scheduling, see Scheduling
+definition, 62                       priority, 230­233, 246­247       Process state, 111
+dynamic, 232, 247, 259               variation of, 232, 233, 251,     definition, 119
+static, 232                          259, 265                         Process synchronization, 165­220,
+variation of, 232, 233, 251, 259,                                     see also Monitor,
+      265                            process control block (PCB),     Semaphore
+Priority inheritance protocol, 176   124­125, 128, 129, 133­135,      classic problems, 183­190
+Priority inversion, 176              142, 146, 156                    dining philosophers, 187­190
+Priority paging, 462                 and program, 111­114             producers­consumers,
+Priority-based scheduling, 62, 231,  ready state, 119                 183­186, 201­204, 212­213
+      246­249                        recovery, 746                    readers­writers, 186­187,
+Privacy, 609, 786                    running state, 119               204­206
+Private key, 788­790, 799­800        scheduling, 118, 125­126,        sleeping barber, 222
+Private key encryption, 788­789      246­252, 346­347, 352­355        control synchronization, 172­175
+Privileged instruction, 28           in distributed operating         data access synchronization,
+Process, 17, 53, 111­160             system, 715, 728­732             166­170
+address space, 364, 365, 392, 411    in multiprocessor system,        Linux, 216­217
+benefits of child processes, 114     346­347, 352­355                 race condition, 166­170
+blocked state, 119                   signal, 131­132                  Solaris, 217­218
+child process, 114­116               stack, 123                       through blocking, 176­177
+concurrent processes, 113            standby state, 159               through looping, 175­176
+
+
+
+822        Index
+Process synchronization (continued)     access control matrix, 627        RAID, 561­564
+Unix, 215­216                           access privilege, 605, 608, 625,  level 0 (disk striping), 562
+Windows, 218­220                            638                           level 1 (disk mirroring), 562
+Processor affinity, see Affinity        in cache, 34                      level 2, 562
+Processor pool, 655                     capability list, 628              RAID, P+Q redundancy, 563
+Producers­consumers problem,            domain, 629­640                   RAM, 30, 48
+     183­186, 201­204                   change of, 630­640                RAM disk, 575
+indivisible operations, 186             MULTICS, 638                      Random access device, 547
+outline, 184, 186                       Unix, 639­640                     Random access memory
+statement of problem, 183               goals, 609                        (RAM), 364
+using monitor, 212­214                  granularity, 626­627              Random events, 269
+using semaphore, 201­204                information, 490                  Rate monotonic scheduling,
+Program, 52, 53                         mechanism, 608                    257­259
+address space, 112                      memory protection, 29, 33­34      Raymond algorithm, 721­723
+compilation, 367                        policy, 608                       RC4, 621
+context, 41                             ring, 638                         Read­write head, 552
+counter, 27, 38, 39                     and security, 11, 606             Reader­writer lock, 220
+kernel program, 7                       structure, 625­640                Readers­writers problem, 186­187,
+linking, 367                            threats, 609­610                  204­206
+mix, 61­62                           Protection granularity, 626­627      outline, 187
+multi-segment, 400                   Protection violation, 37             readers preferred, 186
+nonkernel program, 7                 Protocol, see Communication          statement of problem, 186­187
+preemption, 54                              protocol                      using semaphores, 204­206
+priority, 54, 62­64                  Proximity region, 419                writers preferred, 186
+relocation, 368­371                  PT address register, 423             Ready list, 245­249
+start address, 367                   PT size register, 424                Ready queue, see Ready list
+text, 112                            Pthreads, 138                        Ready state, 119, 127­130
+Program controlled dynamic (PCD)     Public key, 789­792                  Real-time application, 68­71, 115
+     data, 376, 378­379                 distribution, 791                 deadline, 69
+Program counter (PC), 27, 28,        Public key certificate, 795          definition, 69
+     38, 39                          Public key encryption, 789­790       example, 69
+Program execution, 112                                                    response requirement, 69
+Program forms, 373­376               Q                                    Real-time operating system, 54, 55,
+binary program, 367, 374                                                  68­71
+reentrant program, 374­376           Quantum, see Time quantum            deadline-aware scheduling, 70
+self relocating program, 374         Queue                                fault tolerance, 70
+Program id, 34                          I/O, 571
+Program mix, 62                         scheduling, 129                   features of, 70­71
+Program relocation, 369­371          Queued lock, 348­349                 graceful degradation, 70
+definition, 369                      Queuing theory, 268                  Real-time scheduling, 54, 252­259
+Program status word (PSW), 27­33,    Quorum algorithm, 752­753            deadline scheduling, 254­257
+     83, 124­126, 135, 380                                                dynamic scheduling, 254
+Program table, 40, 42, 44                                                 priority-based scheduling, 254
+Programmed I/O, 35                   R                                    rate monotonic (RM)
+Progress condition, 172, 191         Race condition, 166­170              scheduling, 257­259
+Protection, 11, 14­15, 21, 60­61,       in control synchronization,       static scheduling, 254
+     81, see also Capability, File:         172­175                       Real-time system
+     protection, Memory                 definition, 168                   hard, 69, 253
+     protection                         in distributed file system, 780   soft, 69, 253
+access control list, 627­628            example, 168                      Receive operation, 315­334
+
+
+
+                                                                                            Index         823
+Record, 483, 548                  Relocation of program, 368­371     Resource sharing, 71, 277­309
+logical record, 585               definition, 369                    Response ratio, 230, 236
+physical record, 585              Relocation register, 370, 380      Response requirement, 69
+Recoverability, of file, 765      Remote data access, 666            Response time, 56­58, 229, 230
+Recovery                          Remote evaluation, 659, 667,          definition, 58
+in distributed system, 743­756    670­671                               variation with time slice, 239­240
+backward recovery, 747            Remote file processing, 762        Reuse of memory, 380­386
+checkpoint, 746                   Remote method invocation (RMI),       best-fit, 382­383
+data recovery, 746                327, 671­672                          first-fit, 382­383
+definition, 743                   Remote procedure call (RPC), 72,      next-fit, 382­383
+forward recovery, 747             73, 326­327, 333, 659,                worst-fit, 406
+orphan message, 749               667­671                            Revocation, of capability, 635­636
+process recovery, 746             Replicated data, 750­753           Ricart­Agrawala algorithm,
+rollback, 746                     Request, 229                          718­720
+in file system, 516­517           reordering, in scheduling, 232     Ring network, 675
+Redo log, 750                     Request edge, 281                  Robustness, of file, 765
+Redundant array of inexpensive    Request queue, 233, 238            Rollback, 749­750
+disks (RAID), see RAID            Residual state, 738                Root directory, 491
+Reed­Solomon code, 566            Resiliency, 685­686, 746, 754­756  Rotational latency, 530, 553
+Reentrant code, 345               Resolution of deadlock, 290­291    Round-robin (RR) scheduling, 54,
+Reentrant program, 375­376        Resource                              65­66, 237­240, 247
+Reference bit, 436, 446           allocation, 12­14, 279­284            performance analysis, 270
+Reference monitor (RM), 637       partitioning, 13                   Router, 654, 682
+Register                          pool-based allocation, 13          Routing, 680
+base, 33, 60, 380                 virtual resource, 13­14               dynamic, 680
+flags, 27                         class, 279                         RR protocol, 664­665
+general-purpose register          instance, 301                      RRA protocol, 662­664
+(GPR), 27                         knot, 305                          RS-232C, 682
+limit, 33                         partition, 13                      Run-time library, 365
+page table address register, 423  pool, 13                           Running state, 119, 287­289
+PT size register, 424             ranking, 294­295
+relocation register, 370          unit, 279                          S
+segment table address register    Resource allocation, 12­14,
+(STAR), 465                       279­284                            Safe allocation state, 296
+size, 33, 60                      in distributed operating system,   Safety, in distributed control
+timer, 66                         736­738                               algorithm, 717
+Registry, 671                     events in, 279                     Saved PSW information, 38­39,
+Relative path name, 491           partitioning, 13, 60                  41, 42
+Reliability, 71                   pool-based allocation, 13, 60      Scalability, 344, 771
+availability, 71                  state modeling, 281­282               in distributed file system, 762,
+in communication protocol,        matrix model, 284­285                 770, 774
+659­660                           RRAG, 281­284                         in multiprocessor system, 344
+in distributed operating          WFG, 281­282                       SCAN scheduling policy, 576
+system, 688                       virtual resource, 13­14            Schedule length, 230, 231
+in distributed system, 654,       Resource handle, 157               Scheduler, 12, 81
+686, 694                          Resource knot, 305                 Scheduling, 12, 18, 41, 61­62,
+of file system, 513­517           Resource pool, 13                     65­66, 118, 125­126,
+in network, 674­675               Resource ranking, 294­295             228­275
+Reliable protocol, 662            Resource request and allocation       concepts, 230
+Relocating loader, 370            graph (RRAG), 281­284                 CTSS, 249
+
+
+
+824        Index
+Scheduling (continued)               rate monotonic (RM)                   mechanism, 608, 615, 786
+disk, 576­579                        scheduling, 257­259                   password security, 608, 615­617
+in distributed operating system,     real-time scheduling, 54, 70,         policy, 608, 615, 786
+     715, 728­732                    252­259                               privacy, 609, 786
+earliest deadline first (EDF)        request, 229                          and protection, 11
+     scheduling, 256­257             round-robin (RR) scheduling,          reference monitor (RM), 637
+events                               237­240, 247                          secrecy, 609, 786
+     arrival, 229                    short-term scheduling, 244­252        TCSEC classification, 636­637
+     completion, 229                 shortest request next (SRN)           threats, 609­610
+     preemption, 229                 scheduling, 234­236                   Trojan horse, 611
+     scheduling, 229                 shortest time to go (STG)             virus, 612
+fair share scheduling, 249­250,      scheduling, 237, 241­242              Windows, 641­643
+     261­262                         terms, 230                            worm, 613
+first-come, first-served (FCFS)      in time-sharing, 65­66, 245           Security attack, 610­613, 787­788
+     scheduling, 233­234             using resource consumption            denial of service, 610
+fundamentals, 228­233                information, 240­242                  eavesdropping, 787
+heuristics, 250­251                  Scheduling hint, 354                  man in the middle attack, 796
+highest response ratio next          Scheduling list, 67, 68               masquerading, 610, 788
+     (HRN) scheduling, 236           Scheduling overhead, 66               message replay, 787, 793­794
+hint, 354                            Scheduling queue, 65, 233, 238,       message tampering, 787
+job scheduling, 244                  239, 244, 247, 268                    Security classification, 636­637
+least completed next (LCN)           SCSI disk, 559­561                    Security threats
+     scheduling, 237, 240­241        SCSI interface, 559­560               denial of service, 786
+Linux, 263­264                       Secondary copy, 519                   leakage, 786
+long-term scheduling, 244            Secrecy, 609, 786                     stealing, 786
+lottery scheduling, 250              Sector, 554                           tampering, 786
+medium-term scheduling, 244          Sector interleaving, 555­558          Seek time, 553
+multilevel adaptive scheduling,      Secure sockets layer (SSL), 621,      Segment, 394
+     249                             801­802                               Segment linking table (SLT), 466
+multilevel scheduling, 248­249       handshake protocol, 801               Segment table, 399, 465
+in multiprocessor system,            master secret, 802                    Segment table address register
+     352­354                         premaster secret, 802                 (STAR), 465
+in multiprogramming, 61­64           record protocol, 801                  Segmentation, 394, 398­400,
+nonpreemptive, 233­236               Security, 11, 14­15, 21, 81, 785­805  412­413, 465­469
+overhead, 66                         attack, 610­613                       fragmentation, 467, 468
+performance analysis, 266­271        authentication, 606­608               MULTICS, 466
+preemptive, 236­242                  token, 607                            sharing, 467­468
+priority-based scheduling,           authenticity, 609, 786                Segmentation with paging,
+     246­247                         authorization, 606­608                399­400, 468­469
+process scheduling, 246­252          biometric, 607                        fragmentation, 468
+     Linux, 263­264                  birthday attack, 795                  Self relocating program, 374
+     multilevel scheduling, 248­249  buffer overflow attack, 613­615       Semantic gap, 85­86, 88, 92, 93
+     multiprogramming, 246­247       denial of service, 606, 615           definition, 85
+     real-time scheduling, 252­259   in distributed systems, 785­805       Semantics
+     Solaris, 262­263                encryption, 608                       of file sharing, 510­513
+     time sharing, 247               formal aspects, 615­617               of interprocess communication
+     Unix, 259­262                   take-grant model, 615                 (IPC) protocols, 661
+     Windows, 264­265                goals, 609                            Semaphore, 165, 197­208
+queue, 129, 233, 238, 239, 244,      integrity, 609, 786                   binary semaphore, 200
+     247, 268                        Linux, 640­641                        counting semaphore, 197
+
+
+
+                                                                                           Index          825
+definition, 197                  Signal handler, 131­133, 146, 149   Spin lock, 348­350
+implementation, 205­208          default handler, 133, 150           Spooling, 54, 307
+hybrid, 208                      signal operation, 197               SRN scheduling, see Shortest
+kernel-level, 208                Signaled state, 218                       request next scheduling
+lock variable, 208               Signaling, 173, 185, 201            Stable property, 710
+pseudo-code, 189, 207            Silicon graphics XFS, 524           Stable storage, 519­520
+user-level, 208                  Simple mail transfer protocol       Stack, 123, 135, 142, 376­379
+reader­writer semaphore, 217              (SMTP), 325­326            Stack property, 442
+Unix, 215­216                    SIMR system, 303­304                Standby state, 159
+usage example                    Simulation, 267, 287                Star network, 675
+mutual exclusion, 198­200        Single instance resource, 301       Starvation, 172, 200, 233, 236, 576
+producers­consumers,             Single request, 301                 in priority-based scheduling, 233
+201­204                          SISR system, 301­302, 724           State, 743
+readers­writers, 204­206         Site, 655                           of channel, 704
+use for bounded                  Size register, 33, 60, 380          of CPU, 28­29
+concurrency, 201                 Slab allocator, 403­404             of distributed system, 694­703
+use for mutual exclusion,        Sleep lock, 348, 350                      consistent recording, 702­710
+198­200                          Sleep mode, of CPU, 251             global, 694
+use for signaling, 201           SMP kernel, 345                     local, 694
+Windows, 219                     Snapshot of concurrent system, 181  of process, 119­123
+Send operation, 315­334          example, 182, 200, 203, 211, 212    transition, 120­123, 136,
+Sequent Balance, 339             pictorial conventions, 181                151­152, 154, 159
+Sequential file, 485             Socket, 331­332                     Stateless file server, 767, 769­770
+Server, 667                      Soft affinity, 356­357              Static binding, 366
+in microkernel-based OS, 96      Soft real-time system, 69           Static data, 378
+Server node, 762                 Software capability, 633­636        Static linking, 372­373
+Server stub, 326, 668            Software interrupt, 26, 37, 45, 80  Static memory allocation, 364, 366
+Service pattern, 268             Solaris                             Static priority, 232
+Service time, 229, 230, 269      M × N thread model, 154             Static scheduling, 254
+Session key, 790, 792­793, 798   file system, 531                    Statistical distribution, 268
+distribution, 792                asynchronous I/O, 531               Steady state, 269
+Session layer, 683               kernel, 100­101                     Storage area network (SAN), 560
+Session semantics, 764­765       dynamically loadable kernel         Store-and-forward, 679, 684, 785
+Setuid bit, 640                           module, 101                Stratification, 87, 93, 97
+Shadow lock, 351                 kernel thread, 155                  Stream cipher, 618, 621
+Shannon, 620                     light weight process (LWP), 154     Stub
+Sharing                          process synchronization, 217­218    client stub, 668, 762
+data, 166­170                    turnstile, 217                      server stub, 668, 762
+file, 510­513, 764­765           reader­writer semaphore, 217        Subrequest, 53, 229
+of programs, 374­376             remote procedure call, 100          Substitution cipher, 620
+Shell, 147                       scheduler activation, 156­157       Sun
+Short-term scheduling, 244­245   scheduling, 262­263                 cluster, 657­658
+Shortest request next (SRN)      signal handling, 156                RPC, 671
+scheduling, 234­236              Sun NFS, 100                        Sun NFS, 774­777
+performance analysis, 270        thread, 154­157                     architecture, 775
+Shortest seek time first (SSTF)  user thread, 154                    file handle, 775
+policy, 576                      virtual memory, 461­462             file sharing semantics, 776­777
+Shortest time to go (STG)        cyclic page cache, 461              Mount protocol, 775­776
+scheduling, 237, 241­242         priority paging, 462                path name resolution, 776
+Signal, 131­134, 149­151, 156    Spatial locality, 32                Sun OS, 592
+
+
+
+826             Index
+Sun Sparc, 433                        Tagged architecture, 633            scheduling, 55, 65­66
+Superblock, 528                       Tagged command queuing, 579         swapping, 67­68
+Superpage, 427                        Take-grant model, 615               time-slicing, 55, 66­67, 74
+   demotion, 428                      TCP/IP protocol, 683­684            Time-slicing, 55, 66­67, 74
+   promotion, 427                     Temporal locality, 32               Timer object, 219
+Suspend state, 122                    Terminated state, 119               Timestamp, 697­700, 799
+Swap instruction, 179                 Test-and-set instruction, 178       in distributed control algorithm,
+Swap space, 428, 435­436              THE operating system, 87­88         718
+Swap-in operation, 68                 Thrashing, 421­422                  in distributed system, 699­701
+Swap-out operation, 68                Thread, 17, 111, 134­160            Timing diagram, 696
+Swapping, 67­68, 74, 391­392          benefits, 136­138                   TLB, see Translation lookaside
+   definition, 68                     coding for, 138                     buffer
+Switch                                definition, 135                     Token ring, 676
+   ATM, 677                           hybrid threads, 145­146             Token-based algorithm, 720­723
+   crossbar, 341                      kernel-level thread, 139­141, 658   Topology, of network, 674­675
+Switching                             library, 138, 141­143               Total order, 696
+   circuit switching, 679             Linux threads, 152­154              Track, 552
+   of CPU, 25, 36, 38­42              pool, 137, 159­160                  on CD, 565
+   message switching, 679             POSIX threads, 138­139, 142,        Transaction semantics, 764, 765
+   packet switching, 679              213­215                             Transfer time, in I/O, 549
+Switching technique, 678              safe, 138                           Translation lookaside buffer
+Symbolic link, 529, 532               scheduling, 135                     (TLB), 424­427
+Symmetric encryption, 617             Solaris threads, 154­157            coherence, 338­339
+Symmetric multiprocessing (SMP),      stack, 135                          hit ratio, 426, 427
+        341­342, 345­346              state, 136                          miss, 425
+Symmetric naming, in message          state transition, 136               reach, 427
+        passing, 318                  user-level threads, 141­144         shootdown, 339
+Synchronization, see Process          Windows threads, 157­158            Transparency, 54, 72, 687, 761,
+        synchronization               Thread control block (TCB), 135,    763­764
+   of clocks, 698­701                 141, 770                            location independence, 761, 763
+   of processes, see Process          Thread library, 141­143             location transparency, 687,
+        synchronization               Thread pool, 137, 159­160           761, 763
+Synchronization primitives, 180       Thread safe, 138                    Transport control protocol
+Synchronous message passing, 318      Throughput, 56, 57, 61, 230, 231,   (TCP), 683
+Synchronous protocol, 662             234, 235, 337
+System call, 44­47, 80, 89, 93­98,    definition, 57                      Transport layer, 682­683
+        100­101                       Tightly coupled systems, 339        Trap, 36, 37
+   exec(), 147                        Time, 693                           Triple DES, 623
+   exit(), 148                        Time quantum, 250                   Trojan horse, 15, 611
+   fork(), 146                        Time slice, 54, 66                  Trusted computer system
+   wait(), 147, 154                   definition, 66                      evaluation criteria
+   definition, 45                     variation, 232                      (TCSEC), 636­637
+System link and interface controller  Time-out, 659                       Trusted computing base (TCB), 637
+        (SLIC), 350                   in 2 PC protocol, 753               Trusted path, 637
+System performance, 56­58             in IPC protocols, 659               Turnaround time, 56, 57, 229,
+                                      in leader election algorithm, 735   230, 234
+T                                     in message passing, 335             definition, 58
+                                      Time-sharing system, 54, 55, 65­68  Turnstile, 217
+2PC protocol, 753­754, see            memory management, 67­68            Two-phase commit (2PC) protocol,
+        Two-phase commit protocol     response time, 66                   688, 753­754
+
+
+
+                                                                                          Index      827
+U                                      named pipe, 328              VAX 8800, 339
+UDP, see User datagram                 nice value, 259              Vector clock, 700­701
+      protocol                         page fixing, 457             synchronization, 700­701
+Unclean shutdown, 523                  pageout daemon, 457­459      Veritas VxFS, 524
+Undo log, 751                          password security, 625       Vernam cipher, 621
+Unified disk cache, 591­592            pipe, 328­329                Victim process, 290
+Unix                                   process, 146­152             Virtual address, see Logical
+   exec, 147, 639                      creation, 146                address
+   exec(), 457                         kernel running state, 151    Virtual channel, 677
+   fork, 146, 147                      priority, 259                Virtual circuit, 680
+   fork(), 457                         state transitions, 151­152   Virtual device, 58, 87, 93, 292
+   proc structure, 146                 termination, 147             Virtual file system, 524­526,
+   semget, 215                         user running state, 151      774­775
+   semop, 215                          protection domain, 639­640   Virtual machine, 14, 88
+   setuid, 616, 639­640                scheduling, 259­262          Java VM, 92
+   u area, 146                         semaphore, 215­216           Pascal P-code machine, 92
+   architecture of, 98­99              shell, 98, 147               Virtual machine monitor, 91
+   buffer cache, 98, 527, 593­595      signals, 149­151             VMware, 91
+   byte stream file, 98                socket, 331­332              XEN, 91
+   child process, 146­148              swap space, 456­457          Virtual machine OS, 88­89
+   command interpreter, 98             swapping, 459                benefits, 88, 91
+   copy-on-write, 457                  system call, 149             Virtual memory, 14, 19­20, 30, 33,
+   cylinder group, 528, 529            user process, 146            70, 73, 365, 410­412, see also
+   daemon, 146                         virtual memory, 456­459      Paging, Page replacement
+   deadlock handling, 307­308          zero-fill page, 456          policies, Segmentation,
+   device driver, 592­593              zombie process, 147          Virtual memory manager,
+   disk quota, 526                     zombie state, 152            Working set
+   disk space allocation, 527­530   Unix semantics, 764             definition, 412
+   event address, 148               Unreliable protocol, 662        demand loading, 412
+   ext2, 523                        User convenience, 8­10          effective memory access time,
+   fast file system (FFS), 529­530  User datagram protocol          426­427
+   FIFO, 328                           (UDP), 683                   page, 33
+                                    User interface, 7, 80, 81, 92,  Virtual memory manager, 411,
+   file allocation table, 527          93, 98                       435­454
+   file descriptor, 526­527            command line interface, 7    data structures, 435
+   file sharing semantics, 527         GUI, 7                       functions, 435
+   file structure, 526­527          User mode, of CPU, 26, 28,      page replacement, 436­437
+   file system, 526­530                89­90, 95                    protection, 436
+   mounting, 529                    User service, 56­58, 65         Virtual node, see Vnode
+   free list, 528                      in batch processing, 58      Virtual path, 676
+   fsck, 523                           in multiprogramming, 60­61   Virtual resource, 13­14
+   indirect block, 527                 in time-sharing, 65          Virtualization, 90
+   inode, 526­527                   User-level threads, 141­144     Virus, 15, 611, 612
+   interprocess message, 328­331    Utilization factor, of          VM OS, see Virtual machine
+   interrupt servicing, 149            server, 268                  OS, 88
+   kernel memory allocation,                                        VM/370, 89
+      400­404                                                       VMware, 91
+   kernel process, 146              V                               Vnode, 525
+   kernel running state, 151­152    Valid bit, 415                  Volume, 532, 777
+   message queue, 329­331           Value log, 751                  migration, 777
+
+
+
+828         Index
+W                                  local procedure call (LPC), 102,     virtual memory, 462­464
+wait operation, 197                332­333                              page directory, 462
+wait() system call, 147            low fragmentation heap, 390          shared pages, 463
+Wait-for graph (WFG), 281­282,     memory management, 390               virtual address descriptor, 463
+     724­728                       message passing, 332­333             working set, 464
+Wait-or-die, 728                   mutex, 219                           Vista, 160, 220, 356, 405, 534, 599
+WAN, see Wide area network         NTFS file system, 531­534            Readyboost, 405
+Weighted turnaround, 230, 231,     atomic transactions, 533­534         security features, 642­643
+     234, 236                      folder, 532                          sleep state, 265
+Wi-Fi protected access (WPA), 621  logical cluster number, 532          superfetch, 405
+Wide area network (WAN), 71, 672   master file table, 532               wait chain traversal, 308
+Windows, 308­309, 418, 781         virtual cluster number, 532          VM manager, 596
+affinity based scheduling,         power management, 265             Wired equivalent privacy
+     356­357                       prioritized I/O, 599                 (WEP), 621
+architecture, 101­102              process, 157­160                  Working set, 448­450
+cache manager, 596                 creation, 158­159                    definition, 448
+cluster, 532                       process synchronization, 218­220     implementation, 449­451
+cluster server, 657                queued spinlock, 356                 window, 448
+container object, 642              reader­writer lock, 220           Working set memory allocator,
+control blocks, 157­158            real-time threads, 264               449­451
+copy-on-write, 463                 remote differential compression,  Workload, 266
+device driver, 597                 781                               Workload consolidation, 91
+DFS namespace, 781                 resource handle, 157              Workstation, 655
+dispatcher object, 218             RPC, 333                          Worm, 15, 611, 613
+DLL, 102                           scheduling, 264­265                  Code Red, 15
+environment subsystem, 102, 158    security descriptor, 641             Morris worm, 613
+event, 219                         security model, 641­642           Wound-or-wait, 728
+event pair, 333                    semaphore, 219                    Write behind
+executive, 101                     signaled state, 218                  in journaling, 533
+                                   SMP support, 356­358              Write-ahead logging, 751
+failover manager, 657              socket, 333                       Write-through, 773
+file attribute, 532                spanned volume, 532
+file cache, 101, 533               standby state, 159
+file processing, 596­599           synchronization lock, 220         X
+hardware abstraction layer         queued spinlock, 220              XDR, 671, see also External data
+     (HAL), 101                    synchronization objects, 218­220     representation
+I/O request packet, 597            thread                            XEN, 91
+idle thread, 265, 357              state transitions, 159­160
+job object, 158                    thread pool, 159­160              Z
+kernel, 101                        timer object, 219
+lazy writer, 598                   variable priority threads, 264    Zombie process, 147
+
+
+
+
+
+

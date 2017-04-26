@@ -1,0 +1,155 @@
+Controlling Memory Allocation to a Process
+Section 12.2 described how an overcommitment of memory to processes affects
+system performance because of a low degree of multiprogramming, whereas an
+undercommitment of memory to processes leads to thrashing, which is charac-
+terized by high page I/O, low CPU efficiency, and poor performance of processes
+and the system. Keeping the memory allocation for a process within the desirable
+operating zone shown in Figure 12.6 avoids both overcommitment and under-
+commitment of memory to a process. However, it is not clear how the virtual
+memory manager should decide the correct number of page frames to be allocated
+to each process, that is, the correct value of alloc for each process.
+   Two approaches have been used to control the memory allocation for a
+process:
+·  Fixed memory allocation: The memory allocation for a process is fixed. Hence
+   performance of a process is independent of other processes in the system.
+   When a page fault occurs in a process, one of its own pages is replaced. This
+   approach is called local page replacement.
+
+
+
+448  Part 3  Memory Management
+             ·  Variable memory allocation: The memory allocation for a process may be
+                varied in two ways: When a page fault occurs, all pages of all processes that
+                are present in memory may be considered for replacement. This is called global
+                page replacement. Alternatively, the virtual memory manager may revise the
+                memory allocation for a process periodically on the basis of its locality and
+                page fault behavior, but perform local page replacement when a page fault
+                occurs.
+                In fixed memory allocation, memory allocation decisions are performed stat-
+             ically. The memory to be allocated to a process is determined according to some
+             criterion when the process is initiated. To name a simple example, the memory
+             allocated to a process could be a fixed fraction of its size. Page replacement is
+             always performed locally. The approach is simple to implement, and the over-
+             head of page replacement is moderate, as only pages of the executing process are
+             considered in a page replacement decision. However, the approach suffers from
+             all problems connected with a static decision. An undercommitment or overcom-
+             mitment of memory to a process would affect the process's own performance and
+             performance of the system. Also, the system can encounter thrashing.
+                In variable memory allocation using global page replacement, the allocation
+             for the currently operating process may grow too large. For example, if an LRU
+             or NRU page replacement policy is used, the virtual memory manager will be
+             replacing pages of other processes most of the time because their last references
+             will precede references to pages of the currently operating process. Memory allo-
+             cation to a blocked process would shrink, and so the process would face high
+             page fault rates when it is scheduled again.
+                In variable memory allocation using local page replacement, the virtual mem-
+             ory manager determines the correct value of alloc for a process from time to time.
+             In the following, we discuss how this can be done in practice.
+             Working Set Model  The concept of a working set provides a basis for deciding
+             how many and which pages of a process should be in memory to obtain good
+             performance of the process. A virtual memory manager following the working
+             set model is said to be using a working set memory allocator.
+             Definition 12.4 Working Set       The set of pages of a process that have been
+             referenced in the previous    instructions of the process, where  is a parameter
+             of the system.
+                The previous    instructions are said to constitute the working set window.
+             We introduce the following notation for our discussion:
+             WS i (t,    )      Working set for process proci at time t for window size
+             WSS i (t,      )   Size of the working set WSi(t,  ), i.e., the number of pages
+                                in WSi(t,  ).
+             Note that WSSi(t,  )          because a page may be referenced more than once in
+             a working set window. We omit (t,  ) when t and          are either unimportant or
+             obvious from the context.
+
+
+
+                                                                              Chapter 12  Virtual Memory  449
+A working set memory allocator either holds the complete working set of a
+process in memory, or suspends the process. Thus, at any time instant t, a process
+proci either has WSi in memory and alloci = WSSi, or it has alloci = 0. This
+strategy helps in ensuring a good hit ratio in memory through the law of locality
+of reference. It also prevents undercommitment of memory to a process, thereby
+preventing thrashing.
+The working set memory allocator must vary the degree of multiprogram-
+ming in accordance with changes in working set sizes of processes. For example,
+if { prock} is the set of processes in memory, the degree of multiprogramming
+should be decreased if
+                                       kWSSk > #frames
+where #frames is the total number of page frames in memory. The working
+set memory allocator removes some processes from memory until                   kWSSk 
+#frames. The degree of multiprogramming should be increased if                  kWSSk <
+#frames and there exists a process procg such that
+                            WSSg  (#frames -              k WSS k )
+procg should now be allocated WSSg page frames and its operation should be
+resumed.
+Variations in the degree of multiprogramming are implemented as follows:
+The virtual memory manager maintains two items of information for each
+process--alloci       and   WSS i .  When    the  degree  of  multiprogramming  is    to  be
+reduced, the virtual memory manager selects the process to be suspended, say,
+process proci. It now performs a page-out operation for each modified page of
+proci and changes the status of all page frames allocated to it to free. alloci is
+set to 0; however, the value of WSSi is left unchanged. When the degree of mul-
+tiprogramming is to be increased and the virtual memory manager decides to
+resume   proci ,  it  sets  alloci  =  WSSi  and  allocates   as  many  page  frames  as  the
+value of alloci. It now loads the page of proci that contains the next instruction to
+be executed. Other pages would be loaded when page faults occur. Alternatively,
+the virtual memory manager loads all pages of WSi when execution of proci is
+resumed. However, this approach may lead to redundant loading of pages because
+some pages in WSi may not be referenced again.
+Performance of a working set memory allocator is sensitive to the value of
+. If     is too large, memory will contain some pages that are not likely to be
+referenced again. This is overcommitment of memory to processes. Too large
+a value of        also forces the virtual memory manager to reduce the degree of
+multiprogramming, thereby affecting system performance. If              is too small, there
+is a danger of undercommitment of memory to processes, leading to an increase
+in page fault frequency and the possibility of thrashing.
+Implementation of a Working Set Memory Allocator              Use of a working set mem-
+ory allocator suffers from one practical difficulty. It is expensive to determine
+WSi (t,   ) and alloci at every time instant t. To address this difficulty, a virtual
+
+
+
+450  Part 3  Memory Management
+                                  Process      t100          t200          t300            t400
+                                           WSS  alloc    WSS  alloc    WSS      alloc  WSS  alloc
+                                  P1       14        14  12        12  14        14    13        13
+                                  P2       20        20  24        24  11        11    25        25
+                                  P3       18        18  19        19  20        20    18        18
+                                  P4       10        0   10        0   10        10    12        0
+                   Figure  12.21  Operation of a working set memory allocator.
+                   memory manager using a working set memory allocator can determine the work-
+                   ing sets of processes periodically rather than at every time instant. Working sets
+                   determined at the end of an interval are used to decide values of alloc for use
+                   during the next interval. The next example illustrates this approach.
+·
+     Example 12.9  Working Set Memory Allocator
+                   A virtual memory manager has 60 page frames available for allocation to
+                   user processes. It recomputes the working sets of all processes at time instants
+                   tj+×100, j = 1, 2 . . . . Following the computation of working sets, it handles each
+                   process Pi as follows: It sets alloci = WSSi if it can allocate WSSi page frames
+                   to it, else it sets alloci = 0 and removes all pages of Pi from memory. The value
+                   of alloc assigned at t+j×100 is held constant until t(j+1)×100.
+                      Figure 12.21 illustrates operation of the working set memory allocator. It
+                   shows values of alloc and WSS for all processes at time instants t1+00, t2+00, t3+00,
+                   and t4+00. At t1+00, WSS4 = 10, alloc4 = 0, and
+                                                                       i=1, . . . ,3WSSi = 52. It implies
+                   that the working set size of P4 is 10 page frames, however, its operation has been
+                   suspended because only 60 - 52, i.e., 8, page frames are free. At t2+00, values of
+                   WSSi, i = 1, . . . , 3 are recomputed. The value of WSS4 is carried over from
+                   t1+00 since P4 has not been executed in the interval t100­t200. alloci, i = 1, . . . , 3
+                   are now assigned new values. P4 still cannot be swapped in for lack of memory
+                   since   i=1,...,3WSSi = 55, so only five page frames are free and WSS4 = 10.
+                   At t300, P4 is swapped in; however, it is swapped out again at t400. Note that
+                   during the interval t100 - t400 the smallest allocation for P2 is 11 page frames
+                   and the largest allocation is 25 page frames. This variation is performed to
+                   adjust the process's memory allocation to its recent behavior.
+                      Expansion and contraction of alloc is performed as follows: At t200, the
+                   virtual memory manager decides to reduce alloc1 from 14 page frames to 12
+                   page frames, so it uses an NRU-like policy to remove two pages of P1. At t300,
+                   it increases alloc1 to 14 page frames, so it allocates two more page frames to
+                   alloc1. These page frames will be used when page faults arise during operation
+                   of P1.
+                   ·
+                      The virtual memory manager can use the reference bits provided by the pag-
+                   ing hardware to determine the working sets. Reference bits of all pages in memory
+                   can be turned off when working sets are determined. These bits will be turned on

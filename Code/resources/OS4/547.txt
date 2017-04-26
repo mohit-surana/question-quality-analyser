@@ -1,0 +1,373 @@
+Case Studies of File Systems
+             13.14.1 Unix File System
+             The design of the Unix file system is greatly influenced by the MULTICS file
+             system. In this section we describe important features common to most versions
+             of Unix, in the context of the generic description of file processing in Sections 13.4
+             and 13.8.
+             Inodes, File Descriptors, and File Structures    The information that constituted
+             the directory entry of a file in Figure 13.6 is split in Unix between the directory
+             entry and the inode of the file. The directory entry contains only the file name
+             and the inode number; the bulk of the information concerning a file is contained
+             in its inode. Files are considered to be streams of characters and are accessed
+             sequentially. The system administrator can specify a disk quota for each user. It
+             prevents a user from occupying too much disk space.
+                The inode data structure is maintained on disk. Some of its fields contain the
+             following information:
+             ·  File type, e.g., whether directory, link, or special file
+             ·  Number of links to the file
+             ·  File size
+             ·  Id of the device on which the file is stored
+             ·  Inode serial number
+             ·  User and group ids of the owner
+             ·  Access permissions
+             ·  Allocation information
+                The splitting of the conventional directory entry into the directory entry and
+             the inode facilitates creation and deletion of links. A file can be deleted when its
+             number of links drops to zero. Note the similarity between fields of the inode and
+             those of the FCB (see Table 13.3).
+                Figure 13.32 illustrates the arrangement in memory during the processing
+             of a file. It consists of inodes, file structures, and file descriptors. A file structure
+             contains two fields--the current position in an open file, which is in the form of
+             an offset from the start of the file; and a pointer to the inode for the file. Thus an
+             inode and a file structure together contain all the information necessary to access
+             the file. A file descriptor points to a file structure. File descriptors are stored in
+             a per-process table. This table resembles the open files table (OFT) described in
+             Section 13.8.
+                When a process opens a file alpha, the directory entry for alpha is located.
+             A directory lookup cache is employed to speed up this operation. Once the entry
+             of alpha is located, its inode is copied into memory, unless memory already
+
+
+
+                                                                         Chapter        13   File  Systems  527
+               0
+               1
+               2                    Offset
+                                    Inode pointer
+                  Per-process       File                         Disk
+                  table of          structure                    blocks
+               file descriptors                                  of
+                                                                 alpha
+                                                      Inode
+                                                      for alpha
+Figure  13.32     Unix file system  data structures.
+contains such a copy. The arrangement shown in Figure 13.32 is now set up and
+the index of the file descriptor in the file descriptors table, which is an integer,
+is passed back to the process that opened the file. The process can use it in a
+manner that resembles use of the internal id of a file in the generic arrangement
+of Sections 13.4 and 13.8.
+When a process creates a child process, a table of descriptors is created for
+the child process, and the file descriptors of the parent process are copied into it.
+Thus more than one file descriptor may point to the same file structure. Processes
+owning these file descriptors share the offset into the file. A read or write by one
+process will modify the offset for the other processes as well.
+File Sharing Semantics           Several processes may independently open the same file.
+In that case, the arrangement of Figure 13.32 is set up for each process. Thus,
+two or more file structures may point to the same inode. Processes using these file
+structures have their own offsets into the file, so a read or write by one process
+does not modify the offset used by other processes.
+Unix provides single-image mutable file semantics for concurrent file sharing.
+As shown in Figure 13.32, every process that opens a file points to the copy
+of its inode through the file descriptor and file structure. Thus, all processes
+sharing a file use the same copy of the file; changes made by one process are
+immediately visible to other processes sharing the file. Implementation of these
+semantics is aided by the fact that Unix uses a disk cache called buffer cache
+rather than buffers for individual file processing activities (see Section 14.13.1.2).
+To avoid race conditions while the inode of a shared file is accessed, a lock field
+is provided in the memory copy of an inode. A process trying to access an inode
+must sleep if the lock is set by some other process. Processes concurrently using a
+file must make their own arrangements to avoid race conditions on data contained
+in the file.
+Disk Space Allocation            Unix uses indexed disk space allocation, with a disk block
+size of 4 KB. Each file has a file allocation table analogous to an FMT, which is
+maintained in its inode. The allocation table contains 15 entries (see Figure 13.33).
+Twelve of these entries directly point to data blocks of the file. The next entry in
+the allocation table points to an indirect block, i.e., a block that itself contains
+pointers to data blocks. The next two entries point to double and triple indirect
+
+
+
+528  Part 4  File  Systems  and  I/O  Management
+                                      1
+                                          ...
+                                      12                         Single
+                                      13                         indirection
+                                      14                                      Double
+                                      15                                 indirection
+                                                                                      Triple
+                                                                                      indirection
+                   Figure   13.33  Unix file allocation table.
+                   blocks, respectively. In this manner, the total file size can be as large as 242 bytes.
+                   However, the file size information is stored in a 32-bit word of the inode. Hence
+                   file size is limited to 232-1 bytes, for which the direct, single, and double indirect
+                   blocks of the allocation table are adequate.
+                   For file sizes smaller than 48 KB, this arrangement is as efficient as the
+                   flat FMT arrangement discussed in Section 13.7. Such files also have a small
+                   allocation table that can fit into the inode itself. The indirect blocks permit files
+                   to grow to large sizes, although their access involves traversing the indirection in
+                   the file allocation table. A survey of Unix file sizes conducted in 1996 reported
+                   that the average file size in Unix was 22 KB, and over 93 percent of files had sizes
+                   smaller than 32 KB. Thus the Unix file allocation table is as efficient as the flat
+                   FMT for most files.
+                   Unix maintains a free list of disk blocks. Each entry in the list is similar to an
+                   indirect block in an FMT--it contains addresses of free disk blocks, and the id of
+                   the next disk block in the free list. This arrangement minimizes the overhead of
+                   adding disk blocks to the free list when a file is deleted; only marginal processing
+                   is required for files that contain only direct and single indirect blocks. A lock field
+                   is associated with the free list to avoid race conditions when disk blocks are added
+                   and deleted from it. A file system program named mkfs is used to form the free
+                   list when a new file system is created. mkfs lists the free blocks in ascending order
+                   by block number while forming the free list. However, this ordering is lost as disk
+                   blocks are added to and deleted from the free list during file system operation.
+                   The file system makes no effort to restore this order. Thus blocks allocated to a
+                   file may be dispersed throughout a disk, which reduces the access efficiency of a
+                   file. BSD Unix uses cylinder groups to address this issue (see Section 13.7).
+                   Multiple File Systems       The root of a file system is called the superblock. It con-
+                   tains the size of the file system, the free list, and the size of the inode list. In the
+                   interest of efficiency, Unix maintains the superblock in memory but copies it onto
+                   the disk periodically. This arrangement implies that some part of file system state
+                   is lost in the event of a system crash. The file system can reconstruct some of this
+                   information, e.g., the free list, by analyzing the disk status. This is done as a part
+                   of the system booting procedure.
+
+
+
+                                                                         Chapter 13      File  Systems  529
+There can be many file systems in a Unix system. Each file system has to
+be kept on a single logical disk device; hence files cannot span different logical
+disks. A physical disk can be partitioned into many logical disks and a file system
+can be constructed on each of them. Such partitioning provides some protection
+across file systems, and also prevents a file system from occupying too much disk
+space. A file system has to be mounted before being accessed. Only a user with
+the root password, typically a system administrator, can mount a file system.
+Mounting and unmounting of file systems works as follows: A logical disk
+containing a file system is given a device special file name. This name is indi-
+cated as FS_name in a mount command (see Section 13.5). When a file system is
+mounted, the superblock of the mounted file system is loaded in memory. Disk
+block allocation for a file in the mounted file system is performed within the
+logical disk device of the mounted file system. Files in a mounted file system are
+accessed as described in Section 13.9.1.
+A file open call in Unix specifies three parameters--path name, flags, and
+mode. Flags indicate what kind of operations will be performed on the file--
+whether read, write, or read/write. The mode parameter is provided only when
+a file is being created. It specifies the access privileges to be associated with the
+file. This information is typically copied from the file creation mask of the user.
+The owner of a file can change the file protection information any time through
+a chmod command.
+13.14.1.1 Berkeley Fast File System
+The Berkeley fast file system (FFS) for Unix was developed to address the limita-
+tions of the file system s5fs. It supports a symbolic link, which is merely a file that
+contains a reference to another file. If the symbolic link is encountered during
+path name resolution, the path name resolution is simply continued at the refer-
+enced file. It also includes several innovations concerning disk block allocation
+and disk access, which we describe in the following.
+FFS permits use of large disk blocks--blocks can be as large as 8 KB.
+Different file systems can use different block sizes; however, block size cannot vary
+within one file system. A large block size makes larger files accessible through the
+direct blocks in the file allocation table. A large block size also makes I/O opera-
+tions more efficient and makes efficient use of the disk. However, a large block size
+leads to large internal fragmentation in the last disk block of a file. FFS counters
+this effect by allocating a part of a disk block to the last portion of a file. This
+way, a disk block may be shared by many files. To facilitate such allocation, a disk
+block is divided into equal-size parts called fragments. The number of fragments
+in a disk block is a parameter of a file system, and is either 1, 2, 4, or 8. FFS uses
+a bit map to keep track of free fragments of a block. File growth requires special
+attention in this scheme, because a file may need more fragments, which might
+not be available in the same disk block. In such cases, all its fragments are moved
+to another disk block and the previously allocated fragments are freed.
+FFS uses the notion of cylinder groups to reduce the movement of disk heads
+(see Section 13.7). To reduce disk head movement further, it puts all inodes of
+a file system in the same cylinder group and tries to put the inode of a file and
+
+
+
+530  Part 4  File Systems and I/O Management
+             the file itself in the same cylinder group. It also prevents a file from filling up
+             a cylinder group. If a file grows to a size that would violate this constraint, it
+             relocates the entire file into a larger cylinder group. This technique increases the
+             possibility that concurrently accessed files will be found within the same cylinder
+             group, which would reduce disk head movement.
+             FFS tries to minimize rotational latency while reading a sequential file. As
+             described later in Section 14.3.2, a certain period of time elapses between the
+             end of a disk read operation and start of the next disk read operation. During
+             this time, the next few disk blocks inevitably pass under the disk head. Even if a
+             command to read the next disk block is issued immediately, the block can therefore
+             be read only during the next revolution of the disk. To ensure that consecutively
+             numbered blocks on a track can be read during the same disk revolution, FFS
+             separates them by putting a few other disk blocks between them. This feature
+             is similar to the technique of interleaving of sectors in a track discussed later in
+             Section 14.3.2. As illustrated there, this technique has a significant impact on disk
+             throughput.
+             13.14.2 Linux File System
+             Linux provides a virtual file system (VFS) which supports a common file model
+             that resembles the Unix file model. This file model is implemented by using Unix-
+             like data structures such as superblocks and inodes. When a file is opened, the VFS
+             transforms its directory entry into a dentry object. This dentry object is cached
+             so that the overhead of building it from the directory entry is avoided if the file
+             is opened repeatedly during a computing session. The standard file system of
+             Linux is called ext2. The file system ext3 incorporates journaling, which provides
+             integrity of file data and metadata and fast booting after an unclean shutdown
+             (see Section 13.12).
+             Ext2 provides a variety of file locks for process synchronization. Advisory
+             locks are those that are supposed to be heeded by processes to ensure mutual
+             exclusion; however, the file system does not enforce their use. Unix file locks
+             belong to this category of locks. Mandatory locks are those that are checked by
+             the file system; if a process tries to access data that is protected by a mandatory
+             lock, the process is blocked until the lock is reset by its holder. A lease is a special
+             kind of file lock that is valid for a specific amount of time after another process
+             has tried to access the data protected by it. It is implemented as follows: If a
+             process accesses some data that is protected by a lease, the holder of the lease
+             is intimated by the file system. It now has a stipulated interval of time to finish
+             accessing the file and release the lease. If it does not do so, its lease is broken and
+             awarded to the process that tried to access the data protected by it.
+             Design of ext2 was influenced by BSD's fast file system (see Section 13.14.1).
+             Ext2 uses the notion of a block group, which is a set of consecutive disk blocks, to
+             reduce the movement of disk heads when a file is opened and its data is accessed.
+             It uses a bit map to keep track of free disk blocks in a block group. When a file
+             is created, it tries to allocate disk space for the inode of the file within the same
+             block group that contains its parent directory, and also accommodates the file
+
+
+
+                                                                                Chapter 13        File Systems  531
+data within the same block group. Every time a file is extended through addition
+of new data, it searches the bit map of the block group to find a free disk block
+that is close to a target disk block. If such a disk block is found, it checks whether
+a few adjoining disk blocks are also free and preallocates a few of these to the file.
+If such a free disk block is not found, it preallocates a few contiguous disk blocks
+located elsewhere in the block group. This way it is possible to read large sections
+of data without having to move the disk head. When the file is closed, preallocated
+but unused disk blocks are freed. This strategy of disk space allocation ensures use
+of contiguous disk blocks for contiguous sections of file data even when files are
+created and deleted at a high rate; it contributes to high file access performance.
+13.14.3 Solaris File System
+The    Solaris  file  system   provides   Unix-like  file  access  permissions      in  which
+three  access   control     pairs  exist   in  each  access  control     list--for    the   file
+owner, for other users in the file owner's group, and for all other users in
+the  system     (see  Section  13.6).  To   provide  flexibility   that  is  lacking    in  this
+basic  scheme,  it    also  permits    new  pairs  containing     <list_of_user_ids>        and
+<list_of_access_privileges> to be added to the access control list of a file; the
+system administrator specifies a new pair through the setfacl command.
+     Solaris offers convenience and flexibility in file processing, through a virtual
+file system as described in Section 13.13 and through a variety of file processing
+modes. An exclusive open operation on a file fails if the file already exists; oth-
+erwise, it creates the file and returns its descriptor in a single indivisible action.
+This operation avoids race conditions while a new file is created; it is used by pro-
+cesses that create a lock file to synchronize their activities. Record-level locking
+is provided to implement fine-grained synchronization between processes that
+concurrently access a file; when a process tries to access a record whose lock has
+been set by another process, it is blocked until the lock is reset. The nonblocked
+I/O mode is provided to avoid indefinite waits due to this feature. In this mode,
+an I/O operation that tries to access a record that is locked by another process
+simply fails. The process issuing the operation now has an opportunity to perform
+some other actions and retry the I/O operation later. An asynchronous I/O mode
+is provided in which a process is not blocked for its I/O operation to complete.
+This mode is useful in real-time applications. In the direct I/O mode, the file sys-
+tem does not buffer or cache file data; this mode facilitates applications such as
+database systems that wish to perform their own buffering or caching.
+     Data synchronization and file integrity flags can be set in the directory entry
+of a file to obtain reliable operation. When some of these flags are set for a file,
+I/O operations on the file ensure the integrity of metadata and/or the file data in
+a manner resembling the journaling modes summarized in Table 13.6.
+13.14.4 Windows File System
+The NTFS file system of Windows is designed to meet the requirements of servers
+and workstations. It provides support for client­server applications for file and
+
+
+
+532  Part 4  File Systems and I/O Management
+             database servers. A key feature of NTFS is recoverability of the file system, which
+             we will discuss later in this section.
+             A partition is a large collection of contiguous sectors on a disk; A volume is
+             a logical partition on a disk; i.e., it is a virtual disk. A simple volume contains
+             a single partition, while a multipartition volume called a spanned volume may
+             contain up to 32 partitions located on one or more disks. NTFS performs disk
+             space allocation in units called clusters. Each cluster is a group of contiguous
+             sectors; the number of sectors in a cluster is a power of 2. A cluster on a volume is
+             assigned a logical cluster number (LCN), whereas that in a file is assigned a virtual
+             cluster number (VCN).
+             An NTFS volume contains a boot sector, a master file table (MFT), some
+             system files and user files. The presence of a boot sector makes every volume
+             bootable. The MFT typically contains a 1 KB record for each file and directory
+             on the volume, though large files may need multiple MFT records. The MFT also
+             contains information about unused areas on the volume. Each file on a volume has
+             a unique file reference, which consists of two components--a 48-bit file number,
+             which is simply the record number of the MFT record occupied by it, and a 16-bit
+             sequence number, which is a count of the number of times the MFT record has
+             been used to date. The sequence number is used to prevent mix-ups between two
+             files that have used the same MFT record at different times.
+             Each file has a set of attributes, where each attribute is an independent byte
+             stream that can be edited. Some standard attributes are common to all files.
+             In addition, a file may have special attributes required in an application. Each
+             file has an MFT record called its base file record, which contains the file ref-
+             erence of the file, the time of its last update, and its attributes. An unnamed
+             data attribute of a file contains file data. This arrangement permits the data in
+             a small file or directory to be stored in its base file record itself, which provides
+             high file access efficiency. If an attribute cannot fit in the file's base file record,
+             it is stored as a nonresident attribute--it is stored in another MFT record and
+             a pointer to it is put in its base file record. If the nonresident attribute itself
+             cannot fit in one MFT record, it is stored in clusters on the disk and the MFT
+             record pointed to by the file's base file record contains a VCN-to-LCN map-
+             ping for its clusters. When a process opens a file, NTFS sets up a stream control
+             block (SCB) for each of its attributes. An SCB contains a pointer to a file con-
+             trol block for the file, which contains its file reference, and an offset into an
+             attribute. When the process wishes to access an attribute of a file, NTFS uses
+             the SCB to locate the file's base file record, finds information about location
+             of the attribute, and then applies the offset to access the required portion of
+             the attribute.
+             A directory is organized as a B+ tree with files as its leaf nodes, and it is
+             implemented by using an index file. The B+ tree data structure has the property
+             that the length of each path in the tree is the same. This feature facilitates efficient
+             search for a file in a directory (see Section 13.4.4). NTFS provides hard links to
+             set up multiple paths to a file. It also supports symbolic links, called junctions,
+             that redirect path name translation from a directory to an alternative one. This
+             feature provides an effect that is analogous to mounting of file systems.
+
+
+
+                                                                          Chapter 13    File  Systems  533
+   NTFS employs two techniques to save disk space. If a file is sparse, it does not
+allocate disk space to that portion of the file into which either no data has been
+written, or the written data is such that one or more complete sectors contain
+zeroes. It performs data compression for nonsparse files, using 16 consecutive
+virtual clusters in a file as a unit. It replaces them by a compressed form only
+if that action would save at least one cluster, and notes this fact so that it can
+automatically perform decompression when the file is accessed.
+   NTFS stores its metadata also in files. Some of these files are as follows:
+·  The MFT file contains MFT records.
+·  The log file contains information used for recovery; its use is described later
+   in this section.
+·  The attribute definition table contains information about attributes.
+·  A bit map file indicates which clusters in a volume are allocated and which
+   are free.
+·  The boot file contains the boot sector.
+·  A bad clusters file keeps track of clusters that are unusable due to hardware
+   problems.
+   NTFS provides robustness by ensuring consistency of the metadata when a
+crash occurs. It is achieved by treating every modification of the metadata as an
+atomic transaction. From the discussion of atomic actions in Section 13.11.2, it
+would appear that atomic transactions can be implemented simply by writing
+the "intentions" of a transaction in a write-ahead log file, and actually carrying
+out the intentions when the transaction commits. However, certain actions like
+creation of a new file's record in the MFT cannot be delayed until a transaction
+commits, so NTFS uses a combined redo/undo log that contains two kinds of
+records. The collection of redo records in the log resembles the intentions list of
+Section 13.11.2, while the undo records pertain to actions that have been already
+performed by transactions that are yet to commit. During normal operation, only
+the redo records are used--they are processed to actually perform modification
+of NTFS's metadata when a transaction commits. The undo records are used
+only during recovery from a crash, as described in the following.
+   NTFS performs recovery as follows: It modifies its metadata according to
+the redo entries in the log pertaining to transactions that had committed prior to
+the crash. It then processes the undo entries to undo the modifications performed
+by transactions that had not committed prior to the crash. The metadata is in
+a consistent state at the end of these actions, so NTFS now resumes normal
+operation. This feature provides the write behind capabilities of journaling file
+systems discussed in Section 13.12.
+   In principle, log entries pertaining to a transaction can be discarded after all
+of its actions are carried out during normal operation or recovery, or after all
+of its actions are undone during recovery. However, NTFS cannot discard log
+entries in this manner for two reasons--it stores its metadata in files, and it uses a
+file cache (see Section 14.13.3) to speed up file processing activities. Thus, changes
+made in a file containing metadata while processing the redo or undo entries in
+the log would remain in the file cache for a long time and may be lost if a crash

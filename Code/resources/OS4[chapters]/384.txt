@@ -1,0 +1,2103 @@
+Memory Management
+
+
+                                          Chapte                                        r  11
+Memory Management
+A s seen in Chapter 2, the memory hierarchy comprises the cache, the mem-
+       ory management unit (MMU), random access memory (RAM), which is
+       simply called memory in this chapter, and a disk. We discuss management
+of memory by the OS in two parts--this chapter discusses techniques for efficient
+use of memory, whereas the next chapter discusses management of virtual mem-
+ory, which is part of the memory hierarchy consisting of the memory and the
+disk.
+Memory binding is the association of memory addresses with instructions
+and data of a program. To provide convenience and flexibility, memory bind-
+ing is performed several times to a program--the compiler and linker perform
+it statically, i.e., before program execution begins, whereas the OS performs it
+dynamically, i.e., during execution of the program. The kernel uses a model of
+memory allocation to a process that provides for both static and dynamic memory
+binding.
+The speed of memory allocation and efficient use of memory are the two
+fundamental concerns in the design of a memory allocator. To ensure efficient
+use, the kernel recycles the memory released by a process to other processes that
+need it. Memory fragmentation is a problem that arises in memory reuse, leading
+to inefficient use of memory. We will discuss practical techniques for reducing the
+amount of memory fragmentation in an OS, in particular, noncontiguous memory
+allocation using paging or segmentation.
+The kernel creates and destroys data structures used to store control data--
+mainly, various control blocks such as PCBs--at a high rate. The sizes of these
+data structures are known a priori, so the kernel employs a set of techniques that
+exploit this foreknowledge for achieving fast allocation/deallocation and efficient
+use of memory.
+11.1   MANAGING THE MEMORY HIERARCHY                                                 ·
+As discussed earlier in Chapter 2, a memory hierarchy comprises cache memo-
+ries like the L1 and L3 caches, the memory management unit (MMU), memory,
+and a disk. Its purpose is to create an illusion of a fast and large memory at a
+low cost. The upper half of Figure 11.1 illustrates the memory hierarchy. The
+                                                                                           363
+
+
+
+364  Part 3  Memory Management
+                                                            CPU
+                                                 L1 cache
+                                                 MMU
+                                                 L3 cache
+                                                 Memory
+                                                                  Virtual
+                                                                  memory
+                                                            Disk
+             Levels       How managed                             Performance issues
+             Caches       Allocation and use is managed by        Ensuring high hit ratios
+                          hardware
+             Memory       Allocation is managed by the kernel     (1) Accommodating more process
+                          and use of allocated memory is managed  in memory, (2) Ensuring high hit ratios
+                          by run-time libraries
+             Disk         Allocation and use is managed by        Quick loading and storing of parts of
+                          the kernel                              process address spaces
+             Figure 11.1  Managing the memory hierarchy.
+             CPU refers to the fastest memory, the cache, when it needs to access an instruc-
+             tion or data. If the required instruction or data is not available in the cache,
+             it is fetched from the next lower level in the memory hierarchy, which could
+             be a slower cache or the random access memory (RAM), simply called mem-
+             ory in this book. If the required instruction or data is also not available in
+             the next lower level memory, it is fetched there from a still lower level, and so
+             on. Performance of a process depends on the hit ratios in various levels of the
+             memory hierarchy, where the hit ratio in a level indicates what fraction of instruc-
+             tions or data bytes that were looked for in that level were actually present in it.
+             Eq. (2.1) of Chapter 2 indicates how the effective memory access time depends on a
+             hit ratio.
+             The caches are managed entirely in the hardware. The kernel employs special
+             techniques to provide high cache hit ratios for a process. For example, the kernel
+             switches between threads of the same process whenever possible to benefit from
+             presence of parts of the process address space in the cache, and it employs affinity
+
+
+
+                                                              Chapter 11   Memory Management  365
+scheduling in a multiprocessor system (see Section 10.5), to schedule a process
+on the same CPU every time to achieve high cache hit ratios.
+Memory is managed jointly by the kernel and the run-time library of the
+programming language in which the code of the process is written. The kernel
+allocates memory to user processes. The primary performance concern in this
+function is accommodating more user processes in memory, so that both sys-
+tem performance and user service would improve. The kernel meets this concern
+through efficient reuse of memory when a process completes. During opera-
+tion, a process creates data structures within the memory already allocated to
+it by the kernel. This function is actually performed by the run-time library. It
+employs techniques that efficiently reuse memory when a process creates and
+destroys data structures during its operation. Thus some of the concerns and
+techniques employed by the kernel and the run-time libraries are similar.
+As a sequel to the kernel's focus on accommodating a large number of pro-
+cesses in memory, the kernel may decide on keeping only a part of each process's
+address space in memory. It is achieved by using the part of the memory hierar-
+chy called virtual memory that consists of memory and a disk (see the dashed box
+in Figure 11.1). The parts of a process's address space that are not in memory
+are loaded from the disk when needed during operation of the process. In this
+arrangement, the hit ratio of a process in memory determines its performance.
+Hence the kernel employs a set of techniques to ensure a high hit ratio for pro-
+cesses. The disk in the virtual memory is managed entirely by the kernel; the
+kernel stores different parts of each process's address space on the disk in such
+a manner that they can be accessed efficiently. It contributes to good execution
+performance of processes in a virtual memory.
+We discuss management of the memory hierarchy by an operating system
+in two parts. This chapter focuses on the management of memory, and focuses
+on techniques employed for efficient use of memory and for speedy allocation
+and deallocation of memory. Later we discuss how presence of the memory
+management unit (MMU) simplifies both these functions. Chapter 12 discusses
+management of the virtual memory, particularly the techniques employed by the
+kernel to ensure high hit ratios in memory and limit the memory committed to
+each process.
+11.2  STATIC AND DYNAMIC MEMORY ALLOCATION                                                    ·
+Memory allocation is an aspect of a more general action in software opera-
+tion known as binding. Two other actions related to a program--its linking and
+loading--are also aspects of binding.
+Any entity in a program, e.g., a function or a variable, has a set of attributes,
+and each attribute has a value. Binding is the act of specifying the value of an
+attribute. For example, a variable in a program has attributes such as name,
+type, dimensionality, scope, and memory address. A name binding specifies the
+variable's name and a type binding specifies its type. Memory binding is the act
+of specifying the variable's memory address; it constitutes memory allocation for
+
+
+
+366  Part 3  Memory Management
+             the variable. Memory allocation to a process is the act of specifying memory
+             addresses of its instructions and data.
+             A binding for an attribute of an entity such as a function or a variable can be
+             performed any time before the attribute is used. Different binding methods per-
+             form the binding at different times. The exact time at which binding is performed
+             may determine the efficiency and flexibility with which the entity can be used.
+             Broadly speaking, we can differentiate between early binding and late binding.
+             Late binding is useful in cases where the OS or run-time library may have more
+             information about an entity at a later time, using which it may be able to perform
+             a better quality binding. For example, it may be able to achieve more efficient use
+             of resources such as memory. Early and late binding are represented by the two
+             fundamental binding methods of static and dynamic binding, respectively.
+             Definition 11.1 Static Binding   A binding performed before the execution of
+             a program (or operation of a software system) is set in motion.
+             Definition 11.2 Dynamic Binding          A binding performed during the execution
+             of a program (or operation of a software system).
+             Static memory allocation can be performed by a compiler, linker, or loader
+             while a program is being readied for execution. Dynamic memory allocation is
+             performed in a "lazy" manner during the execution of a program; memory is
+             allocated to a function or a variable just before it is used for the first time.
+             Static memory allocation to a process is possible only if sizes of its data
+             structures are known before its execution begins. If sizes are not known, they
+             have to be guessed; wrong estimates can lead to wastage of memory and lack
+             of flexibility. For example, consider an array whose size is not known during
+             compilation. Memory is wasted if we overestimate the array's size, whereas the
+             process may not be able to operate correctly if we underestimate its size. Dynamic
+             memory allocation can avoid both these problems by allocating a memory area
+             whose size matches the actual size of the array, which would be known by
+             the time the allocation is performed. It can even permit the array size to vary
+             during operation of the process. However, dynamic memory allocation incurs
+             the overhead of memory allocation actions performed during operation of a
+             process.
+             Operating systems choose static and dynamic memory allocation under dif-
+             ferent circumstances to obtain the best combination of execution efficiency and
+             memory efficiency. When sufficient information about memory requirements is
+             available a priori, the kernel or the run-time library makes memory allocation
+             decisions statically, which provides execution efficiency. When little information
+             is available a priori, the memory allocation decisions are made dynamically, which
+             incurs higher overhead but ensures efficient use of memory. In other situations,
+             the available information is used to make some decisions concerning memory
+             allocation statically, so that the overhead of dynamic memory allocation can be
+
+
+
+                                                                       Chapter 11  Memory Management  367
+reduced. We discuss an instance of this approach in Section 11.11, where the ker-
+nel exploits its knowledge of its own data structures to achieve efficient memory
+allocation for them.
+11.3       EXECUTION OF PROGRAMS                                                                      ·
+A program P written in a language L has to be transformed before it can
+be executed. Several of these transformations perform memory binding--each
+one binds the instructions and data of the program to a new set of addresses.
+Figure 11.2 is a schematic diagram of three transformations performed on
+program P before it can be loaded in memory for execution.
+·  Compilation or assembly: A compiler or an assembler is generically called a
+   translator. It translates program P into an equivalent program in the object
+   module form. This program contains instructions in the machine language of
+   the computer. While invoking the translator, the user specifies the origin of
+   the program, which is the address of its first instruction or byte; otherwise, the
+   translator assumes a default address, typically 0. The translator accordingly
+   assigns addresses to other instructions and data in the program and uses these
+   addresses as operand addresses in its instructions. The execution start address
+   or simply the start address of a program is the address of the instruction with
+   which its execution is to begin. It can be the same as the origin of the program,
+   or it can be different.
+           The addresses assigned by the translator are called translated addresses.
+   Thus, the translator binds instructions and data in program P to translated
+   addresses. An object module indicates the translated origin of the program,
+   its translated start address, and size.
+·  Linking: Program P may call other programs during its execution, e.g., func-
+   tions from mathematical libraries. These functions should be included in the
+   program, and their start addresses should be used in the function call instruc-
+   tions in P. This procedure is called linking. It is achieved by selecting object
+   modules for the called functions from one or more libraries and merging
+   them with program P.
+              Library                                       Data
+   Source     Compiler                                      Binary
+program       or                  Linker            Loader  program                Results
+        P     Assembler
+                         Object           Binary            Data flow
+                         modules          programs          Control flow
+Figure  11.2  Schematic diagram of transformation and execution of a program.
+
+
+
+368  Part 3  Memory Management
+             ·  Relocation: Some object module(s) merged with program P may have con-
+                flicting translated time addresses. This conflict is resolved by changing the
+                memory binding of the object module(s); this action is called relocation of
+                object modules. It involves changing addresses of operands used in their
+                instructions.
+                The relocation and linking functions are performed by a program called
+             a linker. The addresses assigned by it are called linked addresses. The user may
+             specify the linked origin for the program; otherwise, the linker assumes the linked
+             origin to be the same as the translated origin. In accordance with the linked
+             origin and the relocation necessary to avoid address conflicts, the linker binds
+             instructions and data of the program to a set of linked addresses. The resulting
+             program, which is in a ready-to-execute program form called a binary program,
+             is stored in a library. The directory of the library stores its name, linked origin,
+             size, and the linked start address.
+                A binary program has to be loaded in memory for execution. This function is
+             performed by the loader. If the start address of the memory area where a program
+             is to be loaded, which is called its load origin, differs from the linked origin
+             of program, the loader has to change its memory binding yet again. A loader
+             possessing this capability is called a relocating loader, whereas a loader without
+             this capability is called an absolute loader. Note that translators, linkers, and
+             loaders are not parts of the OS.
+                In this section we discuss different forms of programs and their properties
+             concerning memory bindings, processing by the linker, and memory requirements
+             during execution. We use programs written in a simple hypothetical assembly
+             language to illustrate the relocation and linking actions performed by the linker.
+             A Simple Assembly Language           An assembly language statement has the follow-
+             ing format:
+                          [Label]  <Opcode>       <operand spec> ,<operand spec>
+             The first operand is always a general-purpose-register (GPR)--AREG, BREG,
+             CREG or DREG. The second operand is either a GPR or a symbolic name that
+             corresponds to a memory byte. Self-explanatory opcodes like ADD and MULT are
+             used to designate arithmetic operations. The MOVER instruction moves a value
+             from its memory operand to its register operand, whereas the MOVEM instruction
+             does the opposite. All arithmetic is performed in a register and sets a condition
+             code. The condition code can be tested by a branch-on-condition (BC) instruction.
+             The assembly statement corresponding to it has the format
+                          BC       <condition code spec>, <instruction address>
+             where <condition code spec> is a self-explanatory character string describing
+             a condition, e.g., GT for > and EQ for =. The BC instruction transfers control
+             to the instruction with the address <instruction address> if the current value of
+             condition code matches <condition code spec>. For simplicity, we assume that all
+             addresses and constants are in decimal, and all instructions occupy 4 bytes. The
+             sign is not a part of an instruction. The opcode and operands of an instruction
+
+
+
+                                                                            Chapter 11  Memory Management        369
+                       Assembly  statement                   Generated  code
+                                                      Address           Code
+                       START     500
+                       ENTRY     TOTAL
+                       EXTRN     MAX, ALPHA
+                       READ      A                           500)  +    09  0  540
+             LOOP                                            504)
+                       ...
+                       MOVER     AREG, ALPHA                 516)  +    04  1  000
+                       BC        ANY, MAX                    520)  +    06  6  000
+                       ...
+                       BC        LT, LOOP                    532)  +    06  1  504
+                       STOP                                  536)  +    00  0  000
+             A         DS        1                           540)
+             TOTAL     DS        3                           541)
+                       END
+Figure 11.3  Assembly  program   P and its generated  code.
+occupy 2, 1, and 3 digits, respectively, and the GPRs AREG, BREG, CREG,                 and
+DREG are represented by 1, 2, 3, and 4, respectively, in an instruction.
+11.3.1 Relocation
+Figure 11.3 shows program P, an assembly program, and its generated code. The
+ENTRY and EXTRN statements have significance for linking; they are discussed
+later in Section 11.3.2. A DS statement merely reserves the number of bytes men-
+tioned as its operand. The statement START            500 indicates that the translated
+origin of the program should be 500. The translated address of LOOP is therefore
+504. The address of A is 540. The instructions in bytes with addresses 532 and
+500 use these addresses to refer to LOOP and A, respectively. These addresses
+depend on the origin of the program in an obvious way. Instructions using such
+addresses are called address-sensitive instructions. A program containing address-
+sensitive instructions can execute correctly only if it is loaded in the memory area
+whose start address coincides with the origin of the program. If it is to execute in
+some other memory area, addresses in address-sensitive instructions have to be
+suitably modified. This action is called relocation. It requires knowledge of trans-
+lated and linked origins and information about address-sensitive instructions.
+The next example illustrates relocation of P.
+                                                                                                                 ·
+Relocation of a Program                                                                      Example       11.1
+The translated origin of program P in Figure 11.3 is 500. The translated
+address of the symbol A is 540. The instruction corresponding to the state-
+ment READ       A is an address-sensitive instruction. If the linked origin of P is
+900, the linked address of A would be 940. It can be obtained by adding the
+difference between the translated and linked origins, i.e., 900 - 500, to its
+
+
+
+370  Part 3  Memory Management
+                   translated address. Thus, relocation can be performed by adding 400 to the
+                   address used in each address-sensitive instruction. Thus, the address in the
+                   READ instruction would be changed to 940. Similarly, the instruction in trans-
+                   lated memory byte 532 uses the address 504, which is the address of LOOP.
+                   This address would be changed to 904. (Note that operand addresses in the
+                   instructions with addresses 516 and 520 also need to be "corrected." However,
+                   it is an instance of linking, which is discussed in the next section.)
+                   ·
+                   Static and Dynamic Relocation of Programs   When a program is to be executed,
+                   the kernel allocates it a memory area that is large enough to accommodate it,
+                   and invokes the loader with the name of the program and the load origin as
+                   parameters. The loader loads the program in the memory allocated to it, relocates
+                   it using the scheme illustrated in Example 11.1 if the linked origin is different
+                   from the load origin, and passes it control for execution. This relocation is static
+                   relocation as it is performed before execution of the program begins. Some time
+                   after the program's execution has begun, the kernel may wish to change the
+                   memory area allocated to it so that other programs can be accommodated in
+                   memory. This time, the relocation has to be performed during execution of the
+                   program, hence it constitutes dynamic relocation.
+                        Dynamic relocation can be performed by suspending a program's execution,
+                   carrying out the relocation procedure described earlier, and then resuming its exe-
+                   cution. However, it would require information concerning the translated origin
+                   and address-sensitive instructions to be available during the program's execution.
+                   It would also incur the memory and processing costs described earlier. Some com-
+                   puter architectures provide a relocation register to simplify dynamic relocation.
+                   The relocation register is a special register in the CPU whose contents are added to
+                   every memory address used during execution of a program. The result is another
+                   memory address, which is actually used to make a memory reference. Thus,
+                      Effective memory address = memory address used in the current instruction
+                                            + contents of relocation register
+                   The  following  example  illustrates  how   dynamic  relocation         of  a  program  is
+                   achieved by using the relocation register.
+·
+     Example 11.2  Dynamic Relocation through Relocation Register
+                   A program has the linked origin of 50000, and it has also been loaded in the
+                   memory area that has the start address of 50000. During its execution, it is to
+                   be shifted to the memory area having the start address of 70000, so it has to be
+                   relocated to execute in this memory area. This relocation is achieved simply
+
+
+
+                                                                          Chapter 11  Memory          Management  371
+             Program                       CPU                            Memory
+50000
+55000        Add  65784             PSW    75000                 70000
+                               Relocation  20000                 (50000)
+                               register                          75000    Add  65784
+65784                                                            (55000)
+                                           +
+                                                                 85784
+                                                                 (65784)
+(a)                            (b)
+Figure 11.4  Program relocation using a    relocation register:  (a) program; (b) its execution.
+by loading an appropriate value in the relocation register, which is computed
+as follows:
+Value to be loaded in relocation register
+     = start address of allocated memory area - linked origin of program
+     = 70000 - 50000 = 20000
+Consider     execution   of    the  Add    instruction  in       the      program  shown          in
+Figure 11.4(a). This instruction has the linked address 55000 in the program
+and uses an operand whose linked address is 65784. As a result of reloca-
+tion, the program exists in the memory area starting with the address 70000.
+Figure 11.4(b) shows the load addresses of its instructions and data; the corre-
+sponding linked addresses are shown in parenthesis for easy reference. The Add
+instruction exists in the location with address 75000. The address of its operand
+is 65784 and the relocation register contains 20000, so during execution of the
+instruction, the effective address of its operand is 65784 + 20000 = 85784.
+Hence the actual memory access is performed at the address 85784.
+                                                                                                  ·
+11.3.2 Linking
+An ENTRY statement in an assembly program indicates symbols that are defined
+in the assembly program and may be referenced in some other assembly pro-
+grams. Such symbols are called entry points. An EXTRN statement in an assembly
+program indicates symbols that are used in the assembly program but are defined
+in some other assembly program. These symbols are called external symbols and
+uses of these symbols in the assembly program are called external references. The
+assembler puts information about the ENTRY and EXTRN statements in an object
+module for use by the linker.
+Linking is the process of binding an external reference to the correct linked
+address. The linker first scans all object modules being linked together to collect
+the names of all entry points and their linked addresses. It stores this information
+in a table for its own use. It then considers each external reference, obtains the
+
+
+
+372  Part 3  Memory Management
+                   linked address of the external symbol being referenced from its table, and puts
+                   this address in the instruction containing the external reference. This action is
+                   called resolution of an external reference. The next example illustrates the steps
+                   in linking.
+·
+     Example 11.3  Linking
+                   The  statement ENTRY   TOTAL in program P of Figure 11.3 indicates that
+                   TOTAL is an entry point in the program. Note that LOOP and A are not entry
+                   points even though they are defined in the program. The statement EXTRN
+                   MAX, ALPHA indicates that the program contains external references to MAX
+                   and ALPHA. The assembler does not know the addresses of MAX and ALPHA
+                   while processing program P, so it puts zeroes in the operand address fields of
+                   instructions containing references to these symbols (see Figure 11.3).
+                        Consider program Q shown below:
+                                    Assembly statement   Generated code
+                                                         Address              Code
+                                          START  200
+                                          ENTRY  ALPHA
+                                          -   -
+                                   ALPHA  DC     25      232)              +  00  0  025
+                                          END
+                   The DC statement declares a constant 25. Symbol ALPHA is an entry point
+                   in Q; it has the translated address 232. Let the linked origin of program P
+                   of Figure 11.3 be 900. The size of P is 44 bytes, so the linker assigns the
+                   address 944 to the linked origin of Q. Therefore, the linked address of ALPHA
+                   is 232 - 200 + 944 = 976. The linker resolves the external reference to ALPHA
+                   in program P by putting the address 974 in the operand address field of the
+                   instruction that uses ALPHA, i.e., in the instruction with the translated address
+                   516 in P. This instruction has the linked address 916.
+                   ·
+                   Static and Dynamic Linking/Loading    The distinction between the terms link-
+                   ing and loading has become blurred in modern operating systems. However,
+                   we use the terms as follows: A linker links modules together to form an exe-
+                   cutable program. A loader loads a program or a part of a program in memory
+                   for execution.
+                        In static linking, the linker links all modules of a program before its execu-
+                   tion begins; it produces a binary program that does not contain any unresolved
+                   external references. If several programs use the same module from a library, each
+                   program will get a private copy of the module; several copies of the module might
+                   be present in memory at the same time if programs using the module are executed
+                   simultaneously.
+                        Dynamic linking is performed during execution of a binary program. The
+                   linker is invoked when an unresolved external reference is encountered during
+
+
+
+                                                             Chapter 11  Memory Management  373
+its execution. The linker resolves the external reference and resumes execution of
+the program. This arrangement has several benefits concerning use, sharing, and
+updating of library modules. Modules that are not invoked during execution of
+a program need not be linked to it at all. If the module referenced by a program
+has already been linked to another program that is in execution, the same copy
+of the module could be linked to this program as well, thus saving memory.
+Dynamic linking also provides an interesting benefit when a library of modules
+is updated--a program that invokes a module of the library automatically starts
+using the new version of the module! Dynamically linked libraries (DLLs) use
+some of these features to advantage.
+   To facilitate dynamic linking, each program is first processed by the static
+linker. The static linker links each external reference in the program to a dummy
+module whose sole function is to call the dynamic linker and pass the name of
+the external symbol to it. This way, the dynamic linker is activated when such an
+external reference is encountered during execution of the program. It maintains a
+table of entry points and their load addresses. If the external symbol is present in
+the table, it uses the load address of the symbol to resolve the external reference.
+Otherwise, it searches the library of object modules to locate a module that con-
+tains the required symbol as an entry point. This object module is linked to the
+binary program through the scheme illustrated in Example 11.3 and information
+about its entry points is added to the linker's table.
+11.3.3 Program Forms Employed in Operating Systems
+Two features of a program influence its servicing by an OS:
+·  Can the program execute in any area of memory, or does it have to be executed
+   in a specific memory area?
+·  Can the code of the program be shared by several users concurrently?
+   If the load origin of the program does not coincide with the start address of
+the memory area, the program has to be relocated before it can execute. This is
+expensive. A program that can execute in any area of memory is at an advantage
+in this context. Shareability of a program is important if the program may have
+to be used by several users at the same time. If a program is not shareable, each
+user has to have a copy of the program, and so several copies of the program will
+have to reside in memory at the same time.
+   Table 11.1 summarizes important programs employed in operating systems.
+An object module is a program form that can be relocated by a linker, whereas a
+binary program cannot be relocated by a linker. The dynamically linked program
+form conserves memory by linking only those object modules that are referenced
+during its execution. We discussed these three program forms in previous sections.
+A self-relocating program can be executed in any part of memory. This program
+form is not important when a computer provides either a relocation register or
+virtual memory. The reentrant program form avoids the need to have multiple
+copies of a program in memory. These two program forms are discussed in the
+following sections.
+
+
+
+374  Part 3  Memory Management
+             Table 11.1         Program  Forms Employed in Operating Systems
+             Program form                 Features
+             Object module                Contains instructions and data of a program and
+                                          information required for its relocation and linking.
+             Binary program               Ready-to-execute form of a program.
+             Dynamically linked           Linking is performed in a lazy manner, i.e., an object
+             program                      module defining a symbol is linked to a program only
+                                          when that symbol is referenced during the program's
+                                          execution.
+             Self-relocating program      The program can relocate itself to execute in any area
+                                          of memory.
+             Reentrant program            The program can be executed on several sets of data
+                                          concurrently.
+             11.3.3.1 Self-Relocating Programs
+             Recall from Section 11.3.1 that relocation of a program involves modification
+             of its address-sensitive instructions so that the program can execute correctly
+             from a desired area of memory. Relocation of a program by a linker requires its
+             object module form to be available; it also incurs considerable overhead. The self-
+             relocating program form was developed to eliminate these drawbacks; it performs
+             its own relocation to suit the area of memory allocated to it.
+             A self-relocating program knows its own translated origin and translated
+             addresses of its address-sensitive instructions. It also contains a relocating logic,
+             i.e., code that performs its own relocation. The start address of the relocating
+             logic is specified as the execution start address of the program, so the relocating
+             logic gains control when the program is loaded for execution. It starts off by
+             calling a dummy function. The return address formed by this function call is
+             the address of its next instruction. Using this address, it obtains address of the
+             memory area where it is loaded for execution, i.e., its load origin. It now has all
+             the information needed to implement the relocation scheme of Section 11.3.1.
+             After performing its own relocation, it passes control to its first instruction to
+             begin its own execution.
+             11.3.3.2 Reentrant Programs
+             Programs can be shared in both static and dynamic manner. Consider two pro-
+             grams A and B that use a program C. We designate A and B as sharing programs
+             and C as the shared program. Static sharing of C is performed by using static
+             linking. Hence the code and data of C are included in both A and B; the identity
+             of C is lost in the binary programs produced by the linker. If programs A and B are
+             executed simultaneously, two copies of C will exist in memory [see Figure 11.5(a)].
+             Thus, static sharing of a program is simple to implement, but may waste memory.
+             When dynamic sharing is used, a single copy of a shared program's code
+             is loaded in memory and used by all sharing programs in execution. Dynamic
+
+
+
+                                                                            Chapter 11    Memory Management  375
+                              C        Program                     Program
+                                       A                           A
+                                                                   Program
+                              C        Program                     B
+                                       B                           Program
+                                                                   C
+                         (a)                        (b)
+Figure 11.5  Sharing of  program    C  by programs  A and B:  (a)  static sharing; (b) dynamic
+sharing.
+                                                                   AREG     Data(CB)
+                  AREG        Data          AREG    Data(CA)                Data(CA)
+                              C                          C                  C
+             (a)                       (b)                    (c)
+Figure 11.6  (a) Structure of a reentrant program; (b)­(c) concurrent invocations of the
+program.
+sharing is implemented by using dynamic linking. The kernel keeps track of
+shared programs in memory. When a program wishes to use one of the shared
+programs, the kernel dynamically links the program to the copy of the shared
+program in memory. Figure 11.5(b) illustrates dynamic sharing. When program
+A needs to use program C in a shared mode, the kernel finds that C does not
+exist in memory. Hence it loads a copy of C in memory and dynamically links it
+to A. In Figure 11.5(b), this linking is depicted by the arrow from A to C. When
+program B needs to use program C, the kernel finds that a copy of C already
+exists in memory, so it merely links this copy to B. This arrangement avoids the
+need to have multiple copies of a program in memory, but we need to ensure that
+concurrent executions of a program do not interfere with one another.
+A reentrant program is one that can be executed concurrently by many users
+without mutual interference. When invoked, the reentrant program allocates a
+new copy of its data structures and loads the memory address of this copy in
+a general-purpose register (GPR). Its code accesses its data structures through
+the GPR. This way, if the reentrant program is invoked concurrently by many
+programs, the concurrent invocations would use different copies of the data
+structure.
+Figure 11.6 illustrates execution of program C coded as a reentrant program.
+Program C is coded so that it assumes AREG to point to the start of its data area
+[see Figure 11.6(a)]. Data items in this area are accessed by using different offsets
+from the address contained in AREG. When program A calls C, C allocates a data
+area for use during this invocation. It is depicted as Data(CA) in Figure 11.6(b).
+When execution of A is preempted, the contents of AREG are stored in A's PCB;
+they would be loaded back in AREG when A is scheduled again. When C is called
+by B, a data area Data(CB) is similarly allocated and AREG is set to point to the
+
+
+
+376  Part 3  Memory Management
+             start of this area [see Figure 11.6(c)]. Thus executions of programs A and B do
+             not interfere with one another.
+             11.4   MEMORY ALLOCATION TO A PROCESS                                                   ·
+             11.4.1 Stacks and Heaps
+             The compiler of a programming language generates code for a program and allo-
+             cates its static data. It creates an object module for the program (see Section 11.3).
+             The linker links the program with library functions and the run-time support of
+             the programming language, prepares a ready-to-execute form of the program,
+             and stores it in a file. The program size information is recorded in the directory
+             entry of the file.
+             The run-time support allocates two kinds of data during execution of the
+             program. The first kind of data includes variables whose scope is associated with
+             functions, procedures, or blocks, in a program and parameters of function or
+             procedure calls. This data is allocated when a function, procedure or block is
+             entered and is deallocated when it is exited. Because of the last-in, first-out nature
+             of the allocation/deallocation, the data is allocated on the stack. The second kind
+             of data is dynamically created by a program through language features like the
+             new statement of Pascal, C++, or Java, or the malloc, calloc statements of
+             C. We refer to such data as program-controlled dynamic data (PCD data). The
+             PCD data is allocated by using a data structure called a heap.
+             Stack  In a stack, allocations and deallocations are performed in a last-in, first-
+             out (LIFO) manner in response to push and pop operations, respectively. We
+             assume each entry in the stack to be of some standard size, say, l bytes. Only the
+             last entry of the stack is accessible at any time. A contiguous area of memory is
+             reserved for the stack. A pointer called the stack base (SB) points to the first entry
+             of the stack, while a pointer called the top of stack (TOS) points to the last entry
+             allocated in the stack. We will use the convention that a stack grows toward the
+             lower end of memory; we depict it as upward growth in the figures.
+             During execution of a program, a stack is used to support function calls. The
+             group of stack entries that pertain to one function call is called a stack frame;
+             it is also called an activation record in compiler terminology. A stack frame is
+             pushed on the stack when a function is called. To start with, the stack frame
+             contains either addresses or values of the function's parameters, and the return
+             address, i.e., the address of the instruction to which control should be returned
+             after completing the function's execution. During execution of the function, the
+             run-time support of the programming language in which the program is coded
+             creates local data of the function within the stack frame. At the end of the func-
+             tion's execution, the entire stack frame is popped off the stack and the return
+             address contained in it is used to pass control back to the calling program.
+             Two provisions are made to facilitate use of stack frames: The first entry in
+             a stack frame is a pointer to the previous stack frame on the stack. This entry
+             facilitates popping off of a stack frame. A pointer called the frame base (FB) is
+
+
+
+                                                                            Chapter 11  Memory  Management        377
+                                                   Top of
+                                                   stack       Local data       Stack
+                                                   (TOS)       of calc          frame
+                                                               sum              for
+                                                               b                call on
+                                                               a                calc
+                                                   Frame       ret_ad (sample)
+        Top of                                     base        Previous FB
+        stack       Local data                     (FB)        Local data
+        (TOS)       of sample       Stack                      of sample        Stack
+                    i               frame                      i                frame
+                    y               for                        y                for
+                    x               call on                    x                call on
+        Frame       ret_ad (main)   sample                     ret_ad (main)    sample
+        base        Previous FB                                Previous FB
+        (FB)
+        (a)                                        (b)
+Figure  11.7 Stack  after (a) main  calls sample;  (b) sample  calls calc.
+used to point to the start of the topmost stack frame in the stack. It helps in
+accessing various stack entries in the stack frame. Example 11.4 illustrates how
+the stack is used to implement function calls.
+                                                                                                                  ·
+Use of a Stack                                                                                  Example     11.4
+Figure 11.7 shows the stack during execution of a program containing nested
+function calls. Figure 11.7(a) shows the stack after main, the primary function
+of the program, has made a function call sample(x,y,i). A stack frame
+was pushed on the stack when the call was made. The first entry in the stack
+frame contains the previous value of the frame base, i.e., a pointer to the
+previous stack frame in the stack. The second entry is ret_ad(main), which
+is the return address into function main. The next three entries pertain to
+the parameters x, y, and i, while the entries following them pertain to the
+local data of function sample. The frame base (FB) points to the first entry
+in this stack frame. The TOS pointer points to the last local data in the stack
+frame. The code for function sample accesses the return address, information
+about the parameters, and its local data using displacements from the frame
+base (FB): Assuming each stack entry to be 4 bytes, the return address is at a
+displacement of 4 from the address in the frame base, the first parameter is at
+a displacement of 8, etc.
+        Figure 11.7(b) shows the stack after function sample has made a function
+call calc(a, b, sum). A new stack frame has been pushed on the stack, the
+value of the FB has been saved in the first entry of this stack frame, the FB has
+been set to point at the start of the new stack frame, and the top of stack pointer
+now points at the last entry in the new stack frame. At the completion of the
+function, the TOS pointer would be set to point at the stack entry preceding the
+entry pointed to by FB, and FB would be loaded with the address contained
+
+
+
+378  Part 3  Memory Management
+                   in the stack entry to which it was pointing. These actions would effectively
+                   pop off the stack frame of calc and set FB to point at the start of the stack
+                   frame for sample. The resulting stack would be identical to the stack before
+                   function sample called calc.
+                   ·
+                   Heap  A heap permits allocation and deallocation of memory in a random order.
+                   An allocation request by a process returns with a pointer to the allocated memory
+                   area in the heap, and the process accesses the allocated memory area through this
+                   pointer. A deallocation request must present a pointer to the memory area to be
+                   deallocated. The next example illustrates use of a heap to manage the PCD data
+                   of a process. As illustrated there, "holes" develop in the memory allocation as
+                   data structures are created and freed. The heap allocator has to reuse such free
+                   memory areas while meeting future demands for memory.
+·
+     Example 11.5  Use of a Heap
+                   Figure 11.8 shows the status of a heap after executing the following C program:
+                         float   *floatptr1,      *floatptr2;
+                         int    *intptr;
+                         floatptr1  =     (float  *)  calloc (5,     sizeof (float));
+                         floatptr2  =     (float  *)  calloc (4,     sizeof (float));
+                         intptr  =  (int      *)  calloc (10,  sizeof (int));
+                         free (floatptr2);
+                   The calloc routine is used to make a request for memory. The first call
+                   requests sufficient memory to accommodate 5 floating point numbers. The
+                   heap allocator allocates a memory area and returns a pointer to it. This pointer
+                   is stored in floatptr1. The first few bytes of each allocated memory area
+                   are assumed to contain a length field. This field is used during deallocation
+                   when the routine free is called with a pointer to an allocated memory area.
+                   Figure 11.8(a) shows the heap after all calloc calls have been processed.
+                   Figure 11.8(b) shows the heap after the free call. free has freed the mem-
+                   ory area pointed to by floatptr2. This action has created a "hole" in the
+                   allocation.
+                   ·
+                   11.4.2 The Memory Allocation Model
+                   The kernel creates a new process when a user issues a command to execute a
+                   program. At this time, it has to decide how much memory it should allocate to
+                   the following components:
+                      ·  Code and static data of the program
+                      ·  Stack
+                      ·  Program-controlled dynamic data (PCD data)
+
+
+
+                                                                                  Chapter 11  Memory Management  379
+        floatptr1                 20               floatptr1                   20
+        floatptr2                                  floatptr2        ­  Free
+        intptr                    16               intptr              area
+                                  40                                           40
+                Length
+                   field  Free                                         Free
+                          area                                         area
+        (a)                                        (b)
+Figure  11.8   (a) A heap; (b) A  "hole"  in  the  allocation when  memory is  deallocated.
+                          Low end of
+                          allocated memory         Code
+                                                   Static data
+                                                   PCD Data            Direction
+                                                                       of growth
+                                            Free
+                                            area
+                                                   Stack               Direction
+                          High end of                                  of growth
+                          allocated memory
+Figure  11.9   Memory allocation model for         a process.
+The size of the program can be obtained from its directory entry. Sizes of
+the stack and the PCD data vary during execution of a program, so the kernel
+does not know how much memory to allocate to these components. It can guess
+the maximum sizes the stack and the heap would grow to, and allocate them
+accordingly. However, this amounts to static allocation, which lacks flexibility.
+As discussed in Section 11.2, the allocated memory may be wasted or a process
+may run out of memory during its operation.
+To avoid facing these problems individually for these two components, oper-
+ating systems use the memory allocation model shown in Figure 11.9. The code
+and static data components in the program are allocated memory areas that
+exactly match their sizes. The PCD data and the stack share a single large area of
+memory but grow in opposite directions when memory is allocated to new data.
+The PCD data is allocated by starting at the low end of this area while the stack
+is allocated by starting at the high end of the area. The memory between these
+two components is free. It can be used to create new data in either component.
+In this model the stack and PCD data components do not have individual size
+restrictions.
+A program creates or destroys PCD data by calling appropriate routines of
+the run-time library of the programming language in which it is coded. The library
+routines perform allocations/deallocations in the PCD data area allocated to the
+process. Thus, the kernel is not involved in this kind of memory management. In
+fact it is oblivious to it.
+
+
+
+380  Part 3  Memory Management
+             11.4.3 Memory Protection
+             As discussed in Section 2.2.3, memory protection is implemented through two
+             control registers in the CPU called the base register and the size register. These
+             registers contain the start address of the memory area allocated to a process and its
+             size, respectively. The memory protection hardware raises a memory protection
+             violation interrupt if a memory address used in the current instruction of the
+             process lies outside the range of addresses defined by contents of the base and
+             size registers (see Figure 2.5). On processing this interrupt, the kernel aborts
+             the erring process. The base and size registers constitute the memory protection
+             information (MPI) field of the program status word (PSW). The kernel loads
+             appropriate values into these registers while scheduling a process for execution.
+             A user process, which is executed with the CPU in the user mode, cannot tamper
+             with contents of these registers because instructions for loading and saving these
+             registers are privileged instructions.
+             When a relocation register is used (see Section 11.3.1), memory protection
+             checks become simpler if every program has the linked origin of 0. In Figure 2.5,
+             the comparison with the address contained in the base register can be omitted
+             because the address used in an instruction cannot be < 0. The memory protection
+             hardware merely checks whether an address is smaller than contents of the size
+             register. The relocation register and the size register now constitute the MPI field
+             of the PSW.
+             11.5  HEAP MANAGEMENT                                                                  ·
+             11.5.1 Reuse of Memory
+             The speed of memory allocation and efficient use of memory are the two fun-
+             damental concerns in the design of a memory allocator. Stack-based allocation
+             addresses both these concerns effectively since memory allocation and deallo-
+             cation is very fast--the allocator modifies only the SB, FB, and TOS pointers
+             to manage the free and allocated memory (see Section 11.4.1)--and released
+             memory is reused automatically when fresh allocations are made. However, stack-
+             based allocation cannot be used for data that are allocated and released in an
+             unordered manner. Hence heap allocators are used by run-time support of pro-
+             gramming languages to manage PCD data, and by the kernel to manage its own
+             memory requirements.
+             In a heap, reuse of memory is not automatic; the heap allocator must try
+             to reuse a free memory area while making fresh allocations. However, the size
+             of a memory request rarely matches the size of a previously used memory area,
+             so some memory area is left over when a fresh allocation is made. This memory
+             area will be wasted if it is too small to satisfy a memory request, so the allocator
+             must carefully select the memory area that is to be allocated to the request.
+             This requirement slows down the allocator. Because of the combined effect of
+             unusably small memory areas and memory used by the allocator for its own data
+
+
+
+                                                                              Chapter 11          Memory Management  381
+Table 11.2          Kernel Functions for Reuse of Memory
+Function                          Description
+Maintain a free list              The free list contains information about each free
+                                  memory area. When a process frees some memory,
+                                  information about the freed memory is entered in the
+                                  free list. When a process terminates, each memory area
+                                  allocated to it is freed, and information about it is
+                                  entered in the free list.
+Select a memory area for          When a new memory request is made, the kernel selects
+allocation                        the most suitable memory area from which memory
+                                  should be allocated to satisfy the request.
+Merge free memory areas           Two or more adjoining free areas of memory can be
+                                  merged to form a single larger free area. The areas
+                                  being merged are removed from the free list and the
+                                  newly formed larger free area is entered in it.
+               (a)                                                      -
+                    free list
+                    header     a  x   b        y   c         d             z        e
+               (b)                -                                     -
+                    free list
+                    header     a  x   b        y   c         d             z        e
+Figure  11.10  Free area management:  (a)  singly  linked  free  list;  (b) doubly  linked  free  list.
+structures, a heap allocator may not be able to ensure a high efficiency of memory
+utilization.
+The kernel uses the three functions described in Table 11.2 to ensure efficient
+reuse of memory. The kernel maintains a free list to keep information about free
+memory areas in the system. A memory request is satisfied by using the free
+memory area that is considered most suitable for the request, and the memory
+left over from this memory area is entered in the free list. The allocation policy
+prevents free memory areas from becoming unusably small. The kernel tries to
+merge free areas of memory into larger free areas so that larger memory requests
+can be granted.
+11.5.1.1 Maintaining a Free List
+The kernel needs to maintain two items of control information for each memory
+area in the free list: the size of the memory area and pointers used for forming
+the list. To avoid incurring a memory overhead for this control information, the
+kernel stores it in the first few bytes of a free memory area itself. Figure 11.10(a)
+shows a singly linked free list in a heap that contains five areas marked a­e in
+active use and three free areas x­z. Each memory area in the free list contains
+its size and a pointer to the next memory area in the list. This organization is
+
+
+
+382  Part 3  Memory Management
+             simple; however, it requires a lot of work when a memory area is to be inserted
+             into the list or deleted from it. For example, deletion of a memory area from the
+             list requires a change in the pointer stored in the previous memory area in the list.
+             Insertion of a memory area at a specific place in the list also involves a similar
+             operation. Therefore, insertion and deletion operations on a singly linked list are
+             performed by processing the list from its start. It requires an order of m work,
+             where m is the number of memory areas in the free list.
+                A doubly linked free list is used to facilitate faster insertion and deletion
+             operations on memory areas. Each entry in this list contains two pointers--one
+             points to the next memory area in the list, while the other points to the previous
+             memory area [see Figure 11.10(b)]. If a memory area with a specific address is to
+             be deleted from the list, the kernel can simply take the pointers to the previous and
+             following memory areas in the list, and manipulate the pointers in these areas to
+             perform the deletion. Analogous operations would suffice to add a new memory
+             area at a specific place in the list. Thus the amount of work required to insert or
+             delete a memory area is a constant, irrespective of the number of memory areas
+             in the free list.
+             11.5.1.2 Performing Fresh Allocations by Using a Free List
+             Three techniques can be used to perform memory allocation by using a free list:
+             ·  First-fit technique
+             ·  Best-fit technique
+             ·  Next-fit technique
+                To service a request for n bytes of memory, the first-fit technique uses the
+             first free memory area it can find whose size is  n bytes. It splits this memory
+             area in two parts. n bytes are allocated to the request, and the remaining part
+             of the memory area, if any, is put back into the free list. This technique may
+             split memory areas at the start of the free list repeatedly, so free memory areas
+             become smaller with time. Consequently, the allocator may not have any large free
+             memory areas left to satisfy large memory requests. Also, several free memory
+             areas may become unusably small.
+                The best-fit technique uses the smallest free memory area with size  n. Thus,
+             it avoids needless splitting of large memory areas, however it tends to generate a
+             small free memory area at every split. Hence in the long run it, too, may suffer
+             from the problem of numerous small free memory areas. The best-fit technique
+             also incurs higher allocation overhead because it either has to process the entire
+             free list at every allocation or maintain the free list in ascending order by size of
+             free memory areas.
+                The next-fit technique remembers which entry in the free list was used to make
+             the last allocation. To make a new allocation, it searches the free list starting from
+             the next entry and performs allocation using the first free memory area of size  n
+             bytes that it can find. This way, it avoids splitting the same free area repeatedly
+             as in the first-fit technique and also avoids the allocation overhead of the best-fit
+             technique.
+
+
+
+                                                                                     Chapter 11            Memory  Management        383
+        (a)
+             Free list
+             header                 200           170                  500
+        (b)
+                               100  50                                 400                      First-fit
+                                         50       170                                100
+        (c)
+                                              100 50                   400                      Best-fit
+                                    200                20                            100
+        (d)
+                               100            50                       400                      Next-fit
+                                         100      120                                100
+Figure  11.11 (a) Free  list;  (b)­(d) allocation using    first-fit,  best-fit and  next-fit.
+                                                                                                                                     ·
+First, Best, and Next-Fit Allocation                                                                               Example     11.6
+The free list in Figure 11.11(a) contains three free memory areas of size 200,
+170, and 500 bytes, respectively. Processes make allocation requests for 100,
+50, and 400 bytes. The first-fit technique will allocate 100 and 50 bytes from
+the first free memory area, thus leaving a free memory area of 50 bytes, and
+allocates 400 bytes from the third free memory area. The best-fit technique
+will allocate 100 and 50 bytes from the second free memory area, leaving a
+free memory area of 20 bytes. The next-fit technique allocates 100, 50, and 400
+bytes from the three free memory areas.
+                                                                                                           ·
+Knuth (1973) presents experimental data on memory reuse and concludes
+that both first-fit and next-fit perform better than best-fit. However, next-fit
+tends to split all free areas if the system has been in operation long enough,
+whereas first-fit may not split the last few free areas. This property of first-fit
+facilitates allocation of large memory areas.
+11.5.1.3 Memory Fragmentation
+Definition 11.3 Memory Fragmentation                       The existence of unusable areas in
+the memory of a computer system.
+Table 11.3 describes two forms of memory fragmentation. External fragmen-
+tation occurs when a memory area remains unused because it is too small to be
+allocated. Internal fragmentation occurs when some of the memory allocated to
+a process remains unused, which happens if a process is allocated more memory
+than it needs. In Figure 11.11(c), best-fit allocation creates a free memory area of
+20 bytes, which is too small to be allocated. It is an example of external fragmen-
+tation. We would have internal fragmentation if an allocator were to allocate, say,
+100 bytes of memory when a process requests 50 bytes; this would happen if an
+
+
+
+384  Part 3  Memory Management
+             Table 11.3         Forms of Memory Fragmentation
+             Form of fragmentation    Description
+             External fragmentation   Some area of memory is too small to be allocated.
+             Internal fragmentation   More memory is allocated than requested by a process,
+                                      hence some of the allocated memory remains unused.
+             allocator dealt exclusively with memory blocks of a few standard sizes to limit its
+             overhead.
+             Memory fragmentation results in poor utilization of memory. In this section,
+             and in the remainder of this chapter, we discuss several techniques to avoid or
+             minimize memory fragmentation.
+             11.5.1.4 Merging of Free Memory Areas
+             External fragmentation can be countered by merging free areas of memory to
+             form larger free memory areas. Merging can be attempted every time a new
+             memory area is added to the free list. A simple method would be to search the
+             free list to check whether any adjoining area is already in the free list. If so, it can
+             be removed from the free list and merged with the new area to form a larger free
+             memory area. This action can be repeated until no more merging is possible, and
+             the free memory area at hand can be added to the free list. However, this method
+             is expensive because it involves searching of the free list every time a new memory
+             area is freed. We now describe two generic techniques that perform merging more
+             efficiently; in Section 11.5.2 we describe a special merging technique used in the
+             buddy system allocator.
+             Boundary Tags      A tag is a status descriptor for a memory area. It consists of an
+             ordered pair giving allocation status of the area; whether it is free or allocated,
+             represented by F or A, respectively; and its size. Boundary tags are identical tags
+             stored at the start and end of a memory area, i.e., in the first and last few bytes
+             of the area. If a memory area is free, the free list pointer can be put following the
+             tag at its starting boundary. Figure 11.12 shows this arrangement.
+             When an area of memory becomes free, the kernel checks the boundary tags
+             of its neighboring areas. These tags are easy to find because they immediately
+             precede and follow boundaries of the newly freed area. If any of the neighbors
+             are free, it is merged with the newly freed area. Figure 11.13 shows actions to
+             be performed when memory areas X, Y, and Z are freed while a system using
+             boundary tags is in the situation depicted in Figure 11.13(a). In Figure 11.13(b),
+             memory area X is freed. Only its left neighbor is free, and so X is merged with
+             it. Boundary tags are now set for the merged area. The left neighbor already
+             existed in the free list, so it is enough to simply change its size field. Only the right
+             neighbor of Y is free. Hence when Y is freed, it is merged with its right neighbor
+             and boundary tags are set for the merged area. Now the free list has to be modified
+             to remove the entry for the right neighbor and add an entry for the merged area
+             [see Figure 11.13(c)]. Both neighbors of memory area Z are free. Hence when Z
+
+
+
+                                                                                           Chapter 11  Memory Management  385
+                            boundary tag                           boundary tag
+                        of left neighbor                           of right neighbor
+                                           allocated/free area
+                    free list
+                    pointer        allocation          allocation
+                                   status      size    status      size
+                                   boundary tag        boundary tag
+Figure  11.12  Boundary tags and the free list pointer.
+               (a)             30  30  40      40  40     40   20  20    45        45  30  30
+                    Free list  F   F   A   X   A   A   Y  A    F   F     A   Z     A   F   F
+                    header
+               (b)             70              70  40     40   20  20    45        45  30  30
+                               F               F   A   Y  A    F   F     A   Z     A   F   F
+               (c)             30  30  40      40  60              60    45        45  30  30
+                               F   F   A   X   A   F               F     A   Z     A   F   F
+               (d)             30  30  40      40  40     40   95                          95
+                               F   F   A   X   A   A   Y  A    F                           F
+                                       Status flag values: A: Allocated, F: Free
+Figure 11.13   Merging using boundary tags: (a) free list; (b)­(d) freeing of areas X, Y, and Z,
+respectively.
+is freed, it is merged with both of them to form a single free area. The size field
+of the left neighbor's entry in the free list is modified to reflect the merging. Since
+the right neighbor also had an entry in the free list, the free list is modified to
+remove this entry [see Figure 11.13(d)]. Whenever merging occurs with the right
+neighbor, management of the free list requires an order of m work, where m is
+the number of entries in the free list. As mentioned earlier in Section 11.5.1.1,
+maintaining the free list as a doubly linked list would enable this operation to be
+performed efficiently.
+A relation called the 50-percent rule holds when we use this method of merg-
+ing. When an area of memory is freed, the total number of free areas in the system
+increases by 1, decreases by 1 or remains the same depending on whether the area
+being freed has zero, two, or one free areas as neighbors. These areas of memory
+are shown as areas of type C, A, and B, respectively, in the following:
+               A               B   C       B           A                 B      B          A
+When an allocation is made, the number of free areas of memory reduces by
+1 if the requested size matches the size of some free area; otherwise, it remains
+unchanged since the remaining free area would be returned to the free list.
+
+
+
+386  Part 3  Memory Management
+                            (a)
+                                 Free list  a            b          c      d              e
+                                 header
+                            (b)
+                                            a   b     c       d  e
+             Figure  11.14  Memory compaction.
+             Assuming a large memory so that the situation at both ends of memory can be
+             ignored, and assuming that each area of memory is equally likely to be released,
+             we have
+                                 Number of allocated areas, n = #A + #B + #C
+                                 Number     of  free  areas,  m  =  1  (2  ×  #A  +  #B)
+                                                                    2
+             where #A is the number of free areas of type A etc. In the steady state #A = #C.
+             Hence m = n/2, that is, the number of free areas is half the number of allocated
+             areas. This relation is called the 50-percent rule.
+             The 50-percent rule helps in estimating the size of the free list and, hence,
+             the effort involved in an allocation method like the best-fit method that requires
+             the entire free list to be analyzed. It also gives us a method of estimating the free
+             area in memory at any time. If sf is the average size of free areas of memory, the
+             total free memory is sf × n/2.
+             Memory Compaction              In this approach memory bindings are changed in such a
+             manner that all free memory areas can be merged to form a single free memory
+             area. As the name suggests, it is achieved by "packing" all allocated areas toward
+             one end of the memory. Figure 11.14 illustrates compaction to merge free areas.
+             Compaction is not as simple as suggested by this discussion because it invol-
+             ves movement of code and data in memory. If area b in Figure 11.14 contains a
+             process, it needs to be relocated to execute correctly from the new memory area
+             allocated to it. Relocation involves modification of all addresses used by a process,
+             including addresses of heap-allocated data and addresses contained in general-
+             purpose registers. It is feasible only if the computer system provides a relocation
+             register (see Section 11.3.1); relocation can be achieved by simply changing the
+             address in the relocation register.
+             11.5.2 Buddy System and Power-of-2 Allocators
+             The buddy system and power-of-2 allocators perform allocation of memory
+             in blocks of a few standard sizes. This feature leads to internal fragmentation
+             because some memory in each allocated memory block may be wasted. How-
+             ever, it enables the allocator to maintain separate free lists for blocks of different
+             sizes. This arrangement avoids expensive searches in a free list and leads to fast
+             allocation and deallocation.
+             Buddy System Allocator            A buddy system splits and recombines memory blocks
+             in a predetermined manner during allocation and deallocation. Blocks created by
+             splitting a block are called buddy blocks. Free buddy blocks are merged to form
+             the block that was split to create them. This operation is called coalescing. Under
+
+
+
+                                                                Chapter 11  Memory Management                387
+this system, adjoining free blocks that are not buddies are not coalesced. The
+binary buddy system, which we describe here, splits a block into two equal-size
+buddies. Thus each block b has a single buddy block that either precedes b in
+memory or follows b in memory. Memory block sizes are 2n for different values
+of n  t, where t is some threshold value. This restriction ensures that memory
+blocks are not meaninglessly small in size.
+The buddy system allocator associates a 1-bit tag with each block to indicate
+whether the block is allocated or free. The tag of a block may be located in the
+block itself, or it may be stored separately. The allocator maintains many lists of
+free blocks; each free list is maintained as a doubly linked list and consists of free
+blocks of identical size, i.e., blocks of size 2k for some k  t. Operation of the
+allocator starts with a single free memory block of size 2z, for some z > t. It is
+entered in the free list for blocks of size 2z. The following actions are performed
+when a process requests a memory block of size m. The system finds the smallest
+power of 2 that is  m. Let this be 2i. If the list of blocks with size 2i is not empty,
+it allocates the first block from the list to the process and changes the tag of the
+block from free to allocated. If the list is empty, it checks the list for blocks of
+size 2i+1. It takes one block off this list, and splits it into two halves of size 2i.
+These blocks become buddies. It puts one of these blocks into the free list for
+blocks of size 2i and uses the other block to satisfy the request. If a block of size
+2i+1 is not available, it looks into the list for blocks of size 2i+2, splits one of them
+to obtain blocks of size 2i+1, splits one of these blocks further to obtain blocks
+of size 2i, and allocates one of them, and so on. Thus, many splits may have to
+be performed before a request can be satisfied.
+When a process frees a memory block of size 2i, the buddy system changes
+the tag of the block to free and checks the tag of its buddy block to see whether
+the buddy block is also free. If so, it merges these two blocks into a single block of
+size 2i+1. It now repeats the coalescing check transitively; i.e., it checks whether
+the buddy of this new block of size 2i+1 is free, and so on. It enters a block in a
+free list only when it finds that its buddy block is not free.
+                                                                                                             ·
+Operation of a Buddy System                                                                   Example  11.7
+Figure 11.15 illustrates operation of a binary buddy system. Parts (a) and (b)
+of the figure show the status of the system before and after the block marked
+with the  symbol is released by a process. In each part we show two views of
+the system. The upper half shows the free lists while the lower half shows the
+layout of memory and the buddy blocks. For ease of reference, corresponding
+blocks in the two halves carry identical numbers. The block being released has
+a size of 16 bytes. Its buddy is the free block numbered 1 in Figure 11.15(a),
+and so the buddy system allocator merges these two blocks to form a new
+block of 32 bytes. The buddy of this new block is block 2, which is also free.
+So block 2 is removed from the free list of 32-byte blocks and merged with the
+new block to form a free block of size 64 bytes. This free block is numbered 4
+in Figure 11.15(b). It is now entered in the appropriate free list.
+                                                                                           ·
+
+
+
+388  Part 3  Memory Management
+                             Block       Free list       Free           Block   Free list          Free
+                             size        header     memory blocks       size    header      memory blocks
+                                  16                     1              16               -
+                                  32                     2              32               -
+                                  64     -                              64                         4
+                             128                                        ...
+                                                                        128
+                                                         3                                         3
+                        Memory layout
+                             1        2                  3                   4                     3
+                        Buddy blocks     layout
+                             1
+                                      2
+                                                                             4
+                                                         3                                         3
+                        (a)                                             (b)
+             Figure  11.15   Buddy       system  operation  when  a  block is released.
+                    The check for a buddy's tag can be performed efficiently because block
+             sizes are powers of 2. Let the block being freed have a size of 16 bytes. Since
+             16 is 24, its address is of the form . . . y0000, where four 0s follow y, and y
+             is  0  or  1.   Its  buddy  block      has  the   address  . . . z0000      where  z  =     1 - y.  This
+             address can be obtained simply by performing an exclusive or operation with
+             a number . . . 10000, i.e., with 24. For example, if the address of a block is
+             101010000, its buddy's address is 101000000. In general, address of the buddy
+             of a block of size 2n bytes can be found by performing exclusive or with 2n.
+             This advantage is applicable even if the tags are stored separately in a bitmap
+             (see Exercise 11.8).
+             Power-of-2 Allocator        As in the binary buddy system, the sizes of memory blocks
+             are powers of 2, and separate free lists are maintained for blocks of different
+             sizes. Similarity with the buddy system ends here, however. Each block contains
+             a header element that contains the address of the free list to which it should be
+             added when it becomes free. When a request is made for m bytes, the allocator
+             first checks the free list containing blocks whose size is 2i for the smallest value
+             of i such that 2i  m. If this free list is empty, it checks the list containing blocks
+             that are the next higher power of 2 in size, and so on. An entire block is allocated
+             to a request, i.e., no splitting of blocks takes place. Also, no effort is made to
+             coalesce adjoining blocks to form larger blocks; when released, a block is simply
+             returned to its free list.
+
+
+
+                                                               Chapter 11     Memory Management  389
+System operation starts by forming blocks of desired size and entering them
+into the appropriate free lists. New blocks can be created dynamically either
+when the allocator runs out of blocks of a given size, or when a request cannot
+be fulfilled.
+11.5.3 Comparing Memory Allocators
+Memory allocators can be compared on the basis of speed of allocation and
+efficient use of memory. The buddy and power-of-2 allocators are faster than the
+first-fit, best-fit, and next-fit allocators because they avoid searches in free lists.
+The power-of-2 allocator is faster than the buddy allocator because it does not
+need to perform splitting and merging.
+To compare memory usage efficiency in different memory allocators, we
+define a memory utilization factor as follows:
+               Memory utilization factor =      memory in use
+                                            total memory committed
+where memory in use is the amount of memory being used by requesting pro-
+cesses, and total memory committed includes memory allocated to processes, free
+memory existing with the memory allocator, and memory occupied by the alloca-
+tor's own data structures. Memory in use may be smaller than memory allocated
+to processes because of internal fragmentation and smaller than total memory
+committed because of external fragmentation. The largest value of the memory
+utilization factor represents the best-case performance of an allocator and the
+smallest value at which the allocator fails to grant a memory request represents
+its worst-case performance.
+Allocators using the first-fit, best-fit, or next-fit techniques do not incur
+internal  fragmentation.  However,  external    fragmentation  limits  their  worst-
+case performance because free blocks may be too small to satisfy a request
+(see Exercise 11.4). The buddy and power-of-2 allocators allocate blocks whose
+sizes are powers of 2, so internal fragmentation exists unless memory requests
+match block sizes. These allocators also use up additional memory to store the free
+list headers and tags or header elements for blocks. In a power-of-2 allocator, the
+header element in a block cannot be used by a process. Thus the useful portion of
+a block is somewhat smaller than a power of 2. If a memory request is for an area
+that is exactly a power of 2 in size, this method uses up twice that amount of mem-
+ory. A power-of-2 allocator fails to satisfy a request if a sufficiently large free block
+does not exist. Since it does not merge free blocks into larger blocks, this situation
+can arise even when the total free memory available in smaller-size blocks exceeds
+the size of the request. In a buddy system this situation can arise only if adjoining
+free blocks are not buddies. This is rare in practice. In fact, Knuth (1973) reports
+that in simulation studies the best-case performance of a buddy allocator was
+95 percent.
+
+
+
+390  Part 3  Memory Management
+             11.5.4 Heap Management in Windows
+             The Windows operating system uses a heap management approach that aims at
+             providing low allocation overhead and low fragmentation. By default, it uses a
+             free list and a best-fit policy of allocation. However, this arrangement is not ade-
+             quate for two kinds of situations: If a process makes heavy use of the heap, it might
+             repeatedly allocate and free memory areas of a few specific sizes, so the overhead
+             incurred by the best-fit policy and the merging of free areas is unnecessary. In a
+             multiprocessor environment, the free list may become a performance bottleneck
+             (see Section 10.3). So in such situations Windows uses an arrangement called the
+             low-fragmentation heap (LFH).
+             The low-fragmentation heap maintains many free lists, each containing mem-
+             ory areas of a specific size. The sizes of memory areas are multiples of 8 bytes
+             up to 256 bytes, multiples of 16 bytes up to 512 bytes, multiples of 32 bytes up
+             to 1 KB, where 1 KB = 1024 bytes, etc., up to and including multiples of 1 KB
+             up to 16 KB. When a process requests a memory area that is less than 16 KB in
+             size, a memory area is taken off an appropriate free list and allocated. Neither
+             splitting nor merging is performed for such memory areas. This arrangement is
+             analogous to that used in the power-of-2 allocator, though the blocks are not
+             powers of two, so it inherits its advantages and disadvantages--memory alloca-
+             tion is fast but internal fragmentation exists in an allocated area. For satisfying
+             memory requests exceeding 16 KB in size, the heap manager maintains a single
+             free list and allocates a memory area whose size exactly matches the request.
+             If the heap manager cannot find an appropriately sized memory area in a
+             free list for a request <16 KB, it passes the request to the core heap manager. It
+             also keeps statistics of the requests and the way they were satisfied, e.g., the rate at
+             which memory areas of a specific size were requested and a count of the number
+             of times it could not find memory areas of a specific size, and uses it to fine-tune
+             its own performance by creating free memory areas of appropriate sizes ahead of
+             the actual requests for them.
+             11.6  CONTIGUOUS MEMORY ALLOCATION                                                        ·
+             Contiguous memory allocation is the classical memory allocation model in which
+             each process is allocated a single contiguous area in memory. Thus the kernel allo-
+             cates a large enough memory area to accommodate the code, data, stack, and
+             PCD data of a process as shown in Figure 11.9. Contiguous memory alloca-
+             tion faces the problem of memory fragmentation. In this section we focus on
+             techniques to address this problem. Relocation of a program in contiguous mem-
+             ory allocation and memory protection were discussed earlier in Sections 11.3.1
+             and 11.4.3.
+             Handling Memory Fragmentation  We discussed the causes of internal and exter-
+             nal fragmentation earlier in Section 11.5.1.3. Internal fragmentation has no cure
+             in contiguous memory allocation because the kernel has no means of estimat-
+             ing the memory requirement of a process accurately. The techniques of memory
+
+
+
+                                                             Chapter 11  Memory Management               391
+                    Kernel              Kernel       Kernel
+                    A                   A            A
+                    B                                C
+                    C                   C            D
+                    D                   D            E
+               (a)                 (b)          (c)
+Figure  11.16  Memory compaction.
+compaction and reuse of memory discussed earlier in Section 11.5 can be applied
+to overcome the problem of external fragmentation. Example 11.8 illustrates use
+of memory compaction.
+                                                                                                         ·
+Contiguous Memory Allocation                                                              Example  11.8
+Processes A, B, C, and D are in memory in Figure 11.16(a). Two free areas
+of memory exist after B terminates; however, neither of them is large enough
+to accommodate another process [see Figure 11.16(b)]. The kernel performs
+compaction to create a single free memory area and initiates process E in this
+area [see Figure 11.16(c)]. It involves moving processes C and D in memory
+during their execution.
+                                                                                       ·
+Memory compaction involves dynamic relocation, which is not feasible with-
+out a relocation register (see Section 11.3.1). In computers not having a relocation
+register, the kernel must resort to reuse of free memory areas. However, this
+approach incurs delays in initiation of processes when large free memory areas
+do not exist, e.g., initiation of process E would be delayed in Example 11.8 even
+though the total free memory in the system exceeds the size of E.
+Swapping       The basic mechanism of swapping, and the rationale behind it, was
+described in Section 3.6.1. The kernel swaps out a process that is not in the running
+state by writing out its code and data space to a swapping area on the disk. The
+swapped out process is brought back into memory before it is due for another
+burst of CPU time.
+A basic issue in swapping is whether a swapped-in process should be loaded
+back into the same memory area that it occupied before it was swapped out. If
+so, its swapping in depends on swapping out of some other process that may have
+been allocated that memory area in the meanwhile. It would be useful to be able
+to place the swapped-in process elsewhere in memory; however, it would amount
+
+
+
+392  Part 3  Memory Management
+                   to dynamic relocation of the process to a new memory area. As mentioned earlier,
+                   only computer systems that provide a relocation register can achieve it.
+                   11.7      NONCONTIGUOUS MEMORY ALLOCATION                                                ·
+                   Modern computer architectures provide the noncontiguous memory allocation
+                   model, in which a process can operate correctly even when portions of its address
+                   space are distributed among many areas of memory. This model of memory
+                   allocation permits the kernel to reuse free memory areas that are smaller than the
+                   size of a process, so it can reduce external fragmentation. As we shall see later in
+                   this section, noncontiguous memory allocation using paging can even eliminate
+                   external fragmentation completely.
+                      Example 11.9 illustrates noncontiguous memory allocation. We use the term
+                   component for that portion of the process address space that is loaded in a single
+                   memory area.
+·
+     Example 11.9  Noncontiguous Memory Allocation
+                   In Figure 11.17(a), four free memory areas starting at addresses 100K, 300K,
+                   450K, and 600K, where K = 1024, with sizes of 50 KB, 30 KB, 80 KB and 40
+                   KB, respectively, are present in memory. Process P, which has a size of 140 KB,
+                   is to be initiated [see Figure 11.17(b)]. If process P consists of three components
+                   called P-1, P-2, and P-3, with sizes of 50 KB, 30 KB and 60 KB, respectively;
+                   these components can be loaded into three of the free memory areas as follows
+                   [see Figure 11.17(c)]:
+                                          Process component     Size   Memory start address
+                                           P-1                  50 KB         100K
+                                           P-2                  30 KB         300K
+                   ·                       P-3                  60 KB         450K
+                             Memory                                                     Memory
+                      100 K       Kernel                                          100K       Kernel
+                                           50 KB                                                     P-1
+                                  F                                                          F
+                      300K                 30 KB                                  300K  307488       P-2
+                      450K        C                             Process P         450K       C       P-3
+                                           80 KB             0         xyz                           20 KB
+                                  D                             51488                        D
+                      600K                 40 KB  140K-1                          600K               40 KB
+                      (a)                         (b)                             (c)
+                   Figure  11.17  Noncontiguous memory allocation to process  P.
+
+
+
+                                                                                Chapter 11  Memory Management  393
+11.7.1 Logical Addresses, Physical Addresses,
+         and Address Translation
+In Section 1.1, we mentioned that the abstract view of a system is called its
+logical view and the arrangement and relationship among its components is
+called the logical organization. On the other hand, the real view of the system
+is called its physical view and the arrangement depicted in it is called the physi-
+cal organization. Accordingly, the views of process P shown in Figures 11.17(b)
+and Figures 11.17(c) constitute the logical and physical views of process P of
+Example 11.9, respectively.
+A logical address is the address of an instruction or data byte as used in a
+process; it may be obtained using index, base, or segment registers. The logical
+addresses in a process constitute the logical address space of the process. A physical
+address is the address in memory where an instruction or data byte exists. The set
+of physical addresses in the system constitutes the physical address space of the
+system.
+                                                                                                                      ·
+Logical and Physical Address Spaces                                                            Example         11.10
+In Example 11.9, the logical address space of P extends from 0 to 140K-1,
+while the physical address space extends from 0 to 640K-1. Data area xyz in
+the program of process P has the address 51488 [see Figure 11.17(b)]. This is
+the logical address of xyz. The process component P-1 in Figure 11.17 has a
+size of 50 KB , i.e., 51200 bytes, so xyz is situated in component P-2 and has
+the byte number 288. Since P-2 is loaded in the memory area with the start
+address 300 KB, i.e., 307200 bytes, the physical address of xyz is 307488 [see
+Figure 11.17(c)].
+                                                                                            ·
+The schematic diagram of Figure 11.18 shows how the CPU obtains the
+physical address that corresponds to a logical address. The kernel stores infor-
+mation about the memory areas allocated to process P in a table and makes
+it available to the memory management unit (MMU). In Example 11.9, this
+                                        Memory          Memory
+                                                        allocation
+                                        Kernel          information
+                                        area            of P
+                                  {                     Operand address
+                                                        in current instruction
+                  Memory
+                  Management
+                  Unit                                  Memory areas allocated
+                                                        to process P
+                  Memory address
+                  where operand exists
+Figure  11.18  A  schematic of address translation  in  noncontiguous memory allocation.
+
+
+
+394  Part 3  Memory Management
+             information would consist of the sizes and memory start addresses of P-1,
+             P-2, and P-3. The CPU sends the logical address of each data or instruction used
+             in the process to the MMU, and the MMU uses the memory allocation infor-
+             mation stored in the table to compute the corresponding physical address. This
+             address is called the effective memory address of the data or instruction. The pro-
+             cedure of computing the effective memory address from a logical address is called
+             address translation.
+             A logical address used in an instruction consists of two parts--the id of the
+             process component containing the address, and the id of the byte within the
+             component. We represent each logical address by a pair of the form
+                                   (compi, bytei)
+             The memory management unit computes its effective memory address through
+             the formula
+             Effective memory address of (compi, bytei)
+                                = start address of memory area allocated to compi
+                                + byte number of bytei within compi                (11.1)
+             In Examples 11.9 and 11.10, instructions of P would refer to the data area
+             xyz through the logical address (P-2, 288). The MMU computes its effective
+             memory address as 307,200 + 288 = 307,488.
+             11.7.2 Approaches to Noncontiguous Memory Allocation
+             There are two fundamental approaches to implementing noncontiguous memory
+             allocation:
+             · Paging
+             · Segmentation
+             In paging, each process consists of fixed-size components called pages. The
+             size of a page is defined by the hardware of a computer, and demarcation of pages
+             is implicit in it. The memory can accommodate an integral number of pages. It
+             is partitioned into memory areas that have the same size as a page, and each of
+             these memory areas is considered separately for allocation to a page. This way,
+             any free memory area is exactly the same size as a page, so external fragmentation
+             does not arise in the system. Internal fragmentation can arise because the last
+             page of a process is allocated a page-size memory area even if it is smaller than a
+             page in size.
+             In segmentation, a programmer identifies components called segments in a
+             process. A segment is a logical entity in a program, e.g., a set of functions, data
+             structures, or objects. Segmentation facilitates sharing of code, data, and pro-
+             gram modules between processes. However, segments have different sizes, so the
+             kernel has to use memory reuse techniques such as first-fit or best-fit allocation.
+             Consequently, external fragmentation can arise.
+             A hybrid approach called segmentation with paging combines the features of
+             both segmentation and paging. It facilitates sharing of code, data, and program
+
+
+
+                                                               Chapter 11     Memory   Management  395
+Table 11.4     Comparison of Contiguous and           Noncontiguous
+Memory Allocation
+Function           Contiguous allocation              Noncontiguous allocation
+Memory             The kernel allocates a single      The kernel allocates
+allocation         memory area to a process.          several memory areas to a
+                                                      process--each memory
+                                                      area holds one component
+                                                      of the process.
+Address            Address translation is not         Address translation is
+translation        required.                          performed by the MMU
+                                                      during program execution.
+Memory             External fragmentation             In paging, external
+fragmentation      arises if first-fit, best-fit, or  fragmentation does not
+                   next-fit allocation is used.       occur but internal
+                   Internal fragmentation             fragmentation can occur.
+                   arises if memory allocation        In segmentation, external
+                   is performed in blocks of a        fragmentation occurs, but
+                   few standard sizes.                internal fragmentation
+                                                      does not occur.
+Swapping           Unless the computer system         Components of a
+                   provides a relocation              swapped-in process can be
+                   register, a swapped-in             placed anywhere in
+                   process must be placed in its      memory.
+                   originally allocated area.
+modules between processes without incurring external fragmentation; however,
+internal fragmentation occurs as in paging. We discuss features of these three
+approaches in later sections.
+Table 11.4 summarizes the advantages of noncontiguous memory allocation
+over contiguous memory allocation. Swapping is more effective in noncontigu-
+ous memory allocation because address translation enables the kernel to load
+components of a swapped-in process in any parts of memory.
+11.7.3 Memory Protection
+Each memory area allocated to a program has to be protected against interference
+from other programs. The MMU implements this function through a bounds
+check. While performing address translation for a logical address (compi, bytei),
+the MMU checks whether compi actually exists in the program and whether bytei
+exists in compi. A protection violation interrupt is raised if either of these checks
+fails. The bounds check can be simplified in paging--it is not necessary to check
+whether bytei exists in compi because, as we shall see in the next section, a logical
+address does not have enough bits in it to specify a value of bytei that exceeds the
+page size.
+
+
+
+396  Part 3  Memory Management
+             11.8      PAGING                                                                        ·
+             In the logical view, the address space of a process consists of a linear arrangement
+             of pages. Each page has s bytes in it, where s is a power of 2. The value of s is
+             specified in the architecture of the computer system. Processes use numeric logical
+             addresses. The MMU decomposes a logical address into the pair (pi, bi), where pi
+             is the page number and bi is the byte number within page pi. Pages in a program
+             and bytes in a page are numbered from 0; so, in a logical address (pi, bi), pi  0
+             and 0  bi < s. In the physical view, pages of a process exist in nonadjacent areas
+             of memory.
+             Consider two processes P and R in a system using a page size of 1 KB. The
+             bytes in a page are numbered from 0 to 1023. Process P has the start address 0
+             and a size of 5500 bytes. Hence it has 6 pages numbered from 0 to 5. The last page
+             contains only 380 bytes. If a data item sample had the address 5248, which is
+             5 × 1024 + 128, the MMU would view its address as the pair (5, 128). Process R
+             has a size of 2500 bytes. Hence it has 3 pages, numbered from 0 to 2. Figure 11.19
+             shows the logical view of processes P and R.
+             The hardware partitions memory into areas called page frames; page frames
+             in memory are numbered from 0. Each page frame is the same size as a page. At
+             any moment, some page frames are allocated to pages of processes, while others
+             are free. The kernel maintains a list called the free frames list to note the frame
+             numbers of free page frames. While loading a process for execution, the kernel
+             consults the free frames list and allocates a free page frame to each page of the
+             process.
+             To facilitate address translation, the kernel constructs a page table (PT) for
+             each process. The page table has an entry for each page of the process, which indi-
+             cates the page frame allocated to the page. While performing address translation
+             for a logical address (pi, bi), the MMU uses the page number pi to index the page
+             table of the process, obtains the frame number of the page frame allocated to pi,
+             and computes the effective memory address according to Eq. (11.1).
+             Figure 11.20 shows the physical view of execution of processes P and R.
+             Each page frame is 1 KB in size. The computer has a memory of 10 KB, so page
+             frames are numbered from 0 to 9. Six page frames are occupied by process P, and
+             three page frames are occupied by process R. The pages contained in the page
+             frames are shown as P-0, . . . , P-5 and R-0, . . . , R-2. Page frame 4 is free. Hence
+             the free frames list contains only one entry. The page table of P indicates the page
+             frame allocated to each page of P. As mentioned earlier, the variable sample of
+                                        0
+                                        1
+                                sample  2
+                                        3                         0
+                                        4                         1
+                                        5                         2
+                                           Process P                 Process R
+             Figure  11.19  Logical view of processes in paging.
+
+
+
+                                                                                      Chapter 11   Memory Management  397
+                   Page              Id of
+                frame #              page
+                   0                 R-0
+                   1                 P-0
+                   2                 R-1      Page frame #
+                   3                 P-1          0
+                   4                 R-2                 1
+        sample     5                              1      3          Page frame #
+                   6                 P-3          2      9             0
+                   7                 P-4          3      6                0           4
+                   8                 P-5          4      7             1  2
+                   9                 P-2          5      8             2  5           Free frames
+                                                                                      list
+                         Memory               Page table of     P   Page table of R
+Figure  11.20 Physical   organization in    paging.
+process P has the logical address (5, 128). When process P uses this logical address
+during its execution, it will be translated into the effective memory address by
+using Eq. (11.1) as follows:
+        Effective memory address of (5, 128)
+                         = start address of page frame #8 + 128
+                         = 8 × 1024 + 128
+                         = 8320
+    We use the following notation to describe how address translation is actually
+performed:
+s       Size of a page
+ll      Length of a logical address (i.e., number of bits in it)
+lp      Length of a physical address
+nb      Number of bits used to represent the byte number in a logical address
+np      Number of bits used to represent the page number in a logical address
+nf      Number of bits used to represent the frame number in a physical address
+    The size of a page, s, is a power of 2. nb is chosen such that s = 2nb . Hence
+the least significant nb bits in a logical address give us bi, the byte number within
+a page. The remaining bits in a logical address form pi, the page number. The
+MMU obtains the values of pi and bi simply by grouping the bits of a logical
+address as follows:
+                                          np         -          nb  -
+                                          pi                    bi
+                                                     ll             -
+where   np  =  ll  - nb.  Use    of  a  power        of      2  as  the   page  size  similarly   simplifies
+construction of the effective memory address. Let page pi be allocated page frame
+qi. Since pages and page frames have identical sizes, nb bits are needed to address
+the bytes in a page frame. The physical address of byte 0 of page frame qi is
+therefore
+                                            nf       -          nb  -
+                                              qi             0······0
+                                                         lp         -
+
+
+
+398  Part 3  Memory Management
+                  where nf is the number of bits used to represent the frame number. Hence nf            =
+                  lp - nb. The physical address of byte bi in page frame qi is now given by
+                                                    nf   -   nb   -
+                                                    qi       bi
+                                                         lp       -
+                  The MMU obtains this address simply by concatenating qi and bi to obtain an
+                  l_ p bit number. The next example illustrates address translation in a system using
+                  paging.
+·
+   Example 11.11  Address Translation in Paging
+                  A hypothetical computer uses 32-bit logical addresses and a page size of 4 KB.
+                  12 bits are adequate to address the bytes in a page. Thus, the higher order 20
+                  bits in a logical address represent pi and the 12 lower order bits represent bi.
+                  For a memory size of 256 MB, lp = 28. Thus, the higher-order 16 bits in a
+                  physical address represent qi. If page 130 exists in page frame 48, pi = 130, and
+                  qi = 48. If bi = 600, the logical and physical addresses look as follows:
+                             Logical address                      Physical address
+                             20  -            12    -             16  -             12       -
+                     0  ···  010000010  001001011000     0   ...     00110000  001001011000
+                        During address translation, the MMU obtains pi and bi merely by group-
+                  ing the bits of the logical address as shown above. The 130th entry of the page
+                  table is now accessed to obtain qi, which is 48. This number is concatenated
+                  with bi to form the physical address.
+                  ·
+                  11.9     SEGMENTATION                                                                  ·
+                  A segment is a logical entity in a program, e.g., a function, a data structure, or an
+                  object. Hence it is meaningful to manage it as a unit--load it into memory for
+                  execution or share it with other programs. In the logical view, a process consists
+                  of a collection of segments. In the physical view, segments of a process exist in
+                  nonadjacent areas of memory.
+                        A process Q consists of five logical entities with the symbolic names main,
+                  database, search, update, and stack. While coding the program, the pro-
+                  grammer declares these five as segments in Q. This information is used by the
+                  compiler or assembler to generate logical addresses while translating the program.
+                  Each logical address used in Q has the form (si, bi) where si and bi are the ids of a
+                  segment and a byte within a segment. For example, the instruction correspond-
+                  ing to a statement call     get_sample, where get_sample is a procedure in
+
+
+
+                                                               Chapter 11  Memory Management  399
+                  main
+                        search     update     Name      Size   Address
+                                              main      476    23500
+                                              database  20240  32012
+                  database                    search    378    76248
+                            stack             update    642    91376
+                                              stack     500    54500
+                                              Segment table of Q
+                        Process Q
+Figure  11.21  A  process Q in segmentation.
+segment update, may use the operand address (update, get_sample). Alter-
+natively, it may use a numeric representation in which si and bi are the segment
+number and byte number within a segment, respectively. For simplicity, we assume
+such a representation in this chapter.
+Figure 11.21 shows how the kernel handles process Q. The left part of
+Figure 11.21 shows the logical view of process Q. To facilitate address trans-
+lation, the kernel constructs a segment table for Q. Each entry in this table shows
+the size of a segment and the address of the memory area allocated to it. The size
+field is used to perform a bound check for memory protection. The MMU uses
+the segment table to perform address translation (see Figure 11.18). Segments
+do not have standard sizes, so address translation cannot be performed through
+bit concatenation as in paging. Calculation of the effective memory address for
+the logical address (si, bi) therefore involves addition of bi to the start address of
+segment si according to Eq. (11.1). In Figure 11.21, if get_sample has the byte
+number 232 in segment update, address translation of (update, get_sample)
+will yield the address 91376 + 232 = 91608.
+Memory allocation for each segment is performed as in the contiguous mem-
+ory allocation model. The kernel keeps a free list of memory areas. While loading
+a process, it searches through this list to perform first-fit or best-fit allocation
+to each segment of the process. When a process terminates, the memory areas
+allocated to its segments are added to the free list. External fragmentation can
+occur because segments have different sizes.
+11.10   SEGMENTATION WITH PAGING                                                              ·
+In this approach, each segment in a program is paged separately. Accordingly, an
+integral number of pages is allocated to each segment. This approach simplifies
+memory allocation and speeds it up, and also avoids external fragmentation.
+A page table is constructed for each segment, and the address of the page table is
+kept in the segment's entry in the segment table. Address translation for a logical
+address (si, bi) is now done in two stages. In the first stage, the entry of si is
+located in the segment table, and the address of its page table is obtained. The
+byte number bi is now split into a pair (psi, bpi), where psi is the page number in
+
+
+
+400  Part 3  Memory Management
+                                main
+                                                 update                          Page table
+                                      search                    Name      Size   address
+                                                                main      476
+                                                                database  20240
+                                database                        search    378
+                                              stack             update    642
+                                                                stack     500
+                                                                         Segment table of Q
+                                      Process Q
+             Figure  11.22  A   process Q in segmentation with  paging.
+             segment si, and bpi is the byte number in page pi. The effective address calculation
+             is now completed as in paging, i.e., the frame number of psi is obtained and bpi
+             is concatenated with it to obtain the effective address.
+                Figure 11.22 shows process Q of Figure 11.21 in a system using segmentation
+             with paging. Each segment is paged independently, so internal fragmentation
+             exists in the last page of each segment. Each segment table entry now contains
+             the address of the page table of the segment. The size field in a segment's entry is
+             used to facilitate a bound check for memory protection.
+             11.11   KERNEL MEMORY ALLOCATION                                                       ·
+             The kernel creates and destroys data structures at a high rate during its operation.
+             These are mostly control blocks that control the allocation and use of resources
+             in the system. Some familiar control blocks are the process control block (PCB)
+             created for every process and the event control block (ECB) created whenever the
+             occurrence of an event is anticipated. (In Chapters 13 and 14, we will introduce
+             two other frequently used control blocks: the I/O control block (IOCB) created
+             for an I/O operation and the file control block (FCB) created for every open
+             file.) The sizes of control blocks are known in the design stage of an OS. This
+             prior knowledge helps make kernel memory allocation simple and efficient--
+             memory that is released when one control block is destroyed can be reused when
+             a similar control block is created. To realize this benefit, a separate free list can
+             be maintained for each type of control block.
+                Kernels of modern operating systems use noncontiguous memory allocation
+             with paging to satisfy their own memory requirements, and make special efforts
+             to use each page effectively. Three of the leading memory allocators are:
+             ·  McKusick­Karels allocator
+             ·  Lazy buddy allocator
+             ·  Slab allocator
+                The McKusick­Karels and lazy buddy allocators allocate memory areas
+             that are powers of 2 in size within a page. Since the start address of each page
+             in memory is a larger power of 2, the start address of each allocated memory
+
+
+
+                                                                Chapter 11  Memory Management  401
+area of size 2n is a multiple of 2n. This characteristic, which is called boundary
+alignment on a power of 2, leads to a cache performance problem as follows:
+Some parts of an object are accessed more frequently than others. Because of
+boundary alignment on a power of 2, the frequently accessed parts of objects
+may be mapped into the same areas of a cache by the set-associative technique of
+cache lookup. Hence some parts of the cache face a lot of contention leading to
+poor cache performance of the kernel code. The slab allocator uses an interesting
+technique to avoid this cache performance problem.
+Descriptions of these three allocators follow. In interest of consistency, we use
+the same terminology we used in previous sections; it differs from the terminology
+used in the literature on these allocators. The bibliography at the end of the chapter
+indicates which modern operating systems use these allocators.
+McKusick--Karels Allocator  This is a modified power-of-2 allocator; it is used
+in Unix 4.4 BSD. The allocator has an integral number of pages at its disposal at
+any time, and asks the paging system for more pages when it runs out of memory
+to allocate. The basic operating principle of the allocator is to divide each page
+into blocks of equal size and record two items of information--the block size, and
+a free list pointer--under the logical address of the page. This way, the address
+of the page in which a block is located will be sufficient for finding the size of the
+block and the free list to which the block should be added when it is freed. Hence,
+it is not necessary to have a header containing this information in each allocated
+block as in a conventional power-of-2 allocator.
+With the elimination of the header element, the entire memory in a block can
+be used for the intended purpose. Consequently, the McKusick­Karels allocator
+is superior to the power-of-2 allocator when a memory request is for an area
+whose size is an exact power of 2. A block of identical size can be allocated to
+satisfy the request, whereas the conventional power-of-2 allocator would have
+allocated a block whose size is the next higher power of 2.
+The allocator seeks a free page among those in its possession when it does
+not find a block of the size it is looking for. It then divides this page into blocks
+of the desired size. It allocates one of these blocks to satisfy the current request,
+and enters the remaining blocks in the appropriate free list. If no free page is held
+by the allocator, it asks the paging system for a new page to be allocated to it.
+To ensure that it does not consume a larger number of pages than necessary, the
+allocator marks any page in its possession as free when all blocks in it become
+free. However, it lacks a feature to return free pages to the paging system. Thus,
+the total number of pages allocated to the allocator at any given moment is the
+largest number of pages it has held at any time. This burden may reduce the
+memory utilization factor.
+Lazy Buddy Allocator  The buddy system in its basic form may perform one or
+more splits at every allocation and one or more coalescing actions at every release.
+Some of these actions are wasteful because a coalesced block may need to be split
+again later. The basic design principle of the lazy buddy allocator is to delay
+coalescing actions if a data structure requiring the same amount of memory as
+
+
+
+402  Part 3  Memory Management
+             a released block is likely to be created. Under the correct set of conditions, this
+             principle avoids the overhead of both coalescing and splitting.
+             The lazy buddy allocator used in Unix 5.4 works as follows: Blocks with the
+             same size are considered to constitute a class of blocks. Coalescing decisions for
+             a class are made on the basis of the rates at which data structures of the class are
+             created and destroyed. Accordingly, the allocator characterizes the behavior of
+             the OS with respect to a class of blocks into three states called lazy, reclaiming,
+             and accelerated. For simplicity we refer to these as states of a class of blocks.
+             In the lazy state, allocations and releases of blocks of a class occur at matching
+             rates. Consequently, there is a steady and potentially wasteful cycle of splitting and
+             coalescing. As a remedy, excessive coalescing and splitting can both be avoided
+             by delaying coalescing. In the reclaiming state, releases occur at a faster rate than
+             allocations so it is a good idea to coalesce at every release. In the accelerated state,
+             releases occur much faster than allocations, and so it is desirable to coalesce at an
+             even faster rate; the allocator should attempt to coalesce a block being released,
+             and, additionally, it should also try to coalesce some other blocks that were
+             released but not coalesced in the past.
+             The lazy buddy allocator maintains the free list as a doubly linked list. This
+             way both the start and end of the list can be accessed equally easily. A bit map is
+             maintained to indicate the allocation status of blocks. In the lazy state, a block
+             being released is simply added to the head of the free list. No effort is made to
+             coalesce it with its buddy. It is also not marked free in the bit map. This way the
+             block will not be coalesced even if its buddy is released in future. Such a block
+             is said to be locally free. Being at the head of the list, this block will be allocated
+             before any other block in the list. Its allocation is efficient and fast because the
+             bit map does not need to be updated--it still says that the block is allocated.
+             In the reclaiming and accelerated states a block is both added to the free list
+             and marked free in the bit map. Such a block is said to be globally free. Globally
+             free blocks are added to the end of the free list. In the reclaiming state the allocator
+             tries to coalesce a new globally free block transitively with its buddy. Eventually
+             a block is added to some free list--either to a free list to which the block being
+             released would have belonged, or to a free list containing larger-size blocks. Note
+             that the block being added to a free list could be a locally free block or a globally
+             free block according to the state of that class of blocks. In the accelerated state
+             the allocator tries to coalesce the block being released, just as in the reclaiming
+             state, and additionally tries to coalesce one other locally free block--the block
+             found at the start of the free list--with its buddy.
+             The state of a class of blocks is characterized as follows: Let A, L, and G be the
+             number of allocated, locally free, and globally free blocks of a class, respectively.
+             The total number of blocks of a class is given by N = A + L + G. A parameter
+             called slack is computed as follows:
+                                slack = N - 2 × L - G
+             A class is said to be in the lazy, reclaiming, or accelerated state if the value of
+             slack is  2, 1, or 0, respectively. (The allocator ensures that slack is never < 0.)
+
+
+
+                                                                              Chapter 11  Memory Management  403
+The coalescing overhead is different in these three states. There is no overhead
+in the lazy state. Hence release and allocation of blocks is fast. In the reclaiming
+state the overhead would be comparable with that in the buddy system, whereas
+in the accelerated state the overhead would be heavier than in the buddy system.
+It has been shown that the average delays with the lazy buddy allocator are 10 to
+32 percent lower than average delays in the case of a buddy allocator.
+The implementation of the lazy buddy allocator in Unix 5.4 uses two kinds
+of blocks. Small blocks vary in size between 8 and 256 bytes. Large blocks vary
+in size between 512 and 16 KB. The allocator obtains memory from the paging
+system in 4 KB areas. In each area, it creates a pool of blocks and a bit map to
+keep track of the allocation status of the blocks. When all blocks in the pool are
+free, it returns the area to the paging system. This action overcomes the problem
+of nonreturnable blocks seen in the McKusick­Karels allocator.
+Slab Allocator  The slab allocator was first used in the Solaris 2.4 operating
+system; it has been used in Linux since version 2.2. A slab consists of many
+slots, where each slot can hold an active object that is a kernel data structure,
+or it may be empty. The allocator obtains standard-size memory areas from the
+paging system and organizes a slab in each memory area. It obtains an additional
+memory area from the paging system and constructs a slab in it when it runs out
+of memory to allocate, and it returns a memory area to the paging system when
+all slots in its slab are unused.
+All kernel objects of the same class form a pool. For small objects, a pool
+consists of many slabs and each slab contains many slots. (Large objects are
+not discussed here.) The slabs of a pool are entered in a doubly linked list to
+facilitate addition and deletion of slabs. A slab may be full, partially empty, or
+empty, depending on the number of active objects existing in it. To facilitate
+searches for an empty slab, the doubly linked list containing the slabs of a pool
+is sorted according to the slab's status--all full slabs are at the start of the list,
+partially empty slabs are in the middle, and empty slabs are at the end of the list.
+Each slab contains a free list from which free slots can be allocated. Each pool
+contains a pointer to the first slab that contains a free slot. This arrangement
+makes allocation very efficient.
+Figure 11.23 shows the format of a slab. When the allocator obtains a memory
+area from the paging system, it formats the memory area into a slab by creating
+an integral number of slots, a free list containing all slots, and a descriptor field
+                Coloring                                       Unused
+                area                                           area
+                                     Slot                                     Descriptor
+                Free              ×  Active  Free  Free        ×Aobcjteivcet
+                      slot           object  slot  slot
+                                           Free list pointers
+Figure  11.23  Format of a slab.
+
+
+
+404  Part 3  Memory Management
+             at the end of the slab that contains both the count of active objects in it and
+             the free list header. Each slot in the slab is then initialized; this action involves
+             initializing the various fields in it with object-specific information like fixed strings
+             of constant values. When allocated, the slot can be used as an object straightaway.
+             At deallocation time, the object is brought back to its allocation time status, and
+             the slot is added to the free list. Since some fields of the objects never change, or
+             change in such a manner that their values at deallocation time are the same as
+             their values at allocation time, this approach eliminates the repetitive overhead of
+             object initialization suffered in most other allocators. However, use of initialized
+             objects has some implications for the memory utilization factor. If a free slot were
+             simply free memory, a part of this memory itself could be used as the free list
+             pointer; but a slot is an initialized object, and so the pointer field must be located
+             outside the object's area even when the slot is free (see Figure 11.23).
+             The slab allocator provides improved cache behavior by avoiding the cache
+             performance problem faced by power-of-2 allocators and their variants described
+             at the start of this section. Each slab contains a reserved area at its start called
+             the coloring area (see Figure 11.23). The allocator uses different-size coloring
+             areas in the slabs of a pool. Consequently, objects in different slabs of a pool
+             have different alignments with respect to the closest multiples of a power of
+             2, and so they map into different areas of a set-associative cache. This feature
+             avoids excessive contention for certain areas of a cache, thus improving the cache
+             performance.
+             The slab allocator also provides a better memory utilization factor because
+             it allocates only the required amount of memory for each object. Thus, unlike the
+             McKusick­Karels and lazy buddy allocators, no internal fragmentation exists on
+             a per object basis; only external fragmentation exists in the form of an unused area
+             in each slab. Bonwick (1994) has reported that fragmentation is only 14 percent
+             in the slab allocator as against 45 and 46 percent in the McKusick­Karels and
+             lazy buddy allocators, respectively. The average allocation times are also better
+             than in the other allocators.
+             11.12  USING IDLE RAM EFFECTIVELY                                                          ·
+             A workstation or laptop has a large memory because it is needed for running
+             specific applications. However, memory remains idle when the applications are
+             not active. Operating system designers have long pondered the issue of how idle
+             memory can be exploited for the benefit of the user. A typical solution is to run
+             utilities such as antivirus software during idle periods of a computer so that their
+             execution does not tie up memory and consume CPU time when the computer
+             is being used for productive purposes. However, even such operation of utilities
+             can have a negative impact on performance because the utilities might displace
+             important applications from memory, so they have to be loaded back into memory
+             before they can be used.
+
+
+
+                                                            Chapter 11  Memory Management           405
+     The Windows Vista operating system has a feature called SuperFetch which
+maintains prioritized information about frequently used applications and doc-
+uments, and uses it to preload high-priority applications and documents in idle
+parts of memory. It also ensures that only idle low-priority applications would be
+removed from memory to run antivirus and other utilities. Vista also has another
+feature called Readyboost which uses a flash memory in a USB drive to boost
+system performance by copying applications on the USB drive, from where they
+can be loaded in memory faster than from the disk. When used in conjunction
+with SuperFetch, Readyboost effectively makes the USB drive a cache between
+memory and the disk, which enhances system performance through quick loading
+of applications.
+11.13  SUMMARY                                                                                                   ·
+In this chapter, we discussed techniques of effective  execution of a program commences; however, it
+management of memory, which involves perform-          requires knowledge of the exact amount of mem-
+ing fast allocation and deallocation of memory to      ory  required,  failing  which   it  may  overallocate
+processes and ensuring efficient use of memory so      and waste memory. Dynamic memory allocation is
+that many processes can be accommodated in it          performed during execution of a program, which
+simultaneously.                                        incurs a memory management overhead during
+     When a program is coded or compiled, it is        execution, but makes efficient use of memory by
+not known which area of the memory would be            allocating only the required amount of memory.
+allocated for its execution. However, instructions     The kernel uses a model of memory allocation for
+used in it need to use memory addresses for its        a process that contains a statically allocated com-
+operands. This dilemma is resolved as follows: A       ponent for the code and data of the program, and
+compiler assumes a specific memory area to be          dynamically allocated components for the stack,
+available to a program and generates a program         and for the heap in which a program can dynami-
+form called object module. The linker, which is a      cally allocate memory through statements such as
+system program, uses the procedure called relo-        new or alloc.
+cation, which changes the operand addresses in              When a process completes its execution, or
+a program's instructions such that the program         releases the memory allocated to it, the kernel
+can  execute  correctly  in  the  allocated  memory    reuses the memory to satisfy the requirements of
+area. The linker also connects the program with        other processes. When static memory allocation is
+library functions required by it to prepare a ready-   used, some of the memory allocated to a process
+to-execute program. self-relocating programs can       may remain unused, which is called internal frag-
+perform their own relocation. Computer hardware        mentation. When dynamic memory allocation is
+assists in dynamic relocation of programs through      used, unless new requests exactly match the sizes of
+a special register in the CPU called the reloca-       released memory, some memory is left over when a
+tion register. It permits the kernel to change the     new request is satisfied. It remains unused if it is too
+memory area allocated to a program during the          small to satisfy a request, which is called external
+program's execution.                                   fragmentation.
+     Memory allocation can be performed in two              Two approaches can be used to tackle the
+ways: Static memory allocation is performed before     fragmentation   problem:     In  the  first  approach,
+
+
+
+406         Part 3   Memory Management
+the kernel minimizes fragmentation while reusing                 approaches.       Noncontiguous      memory       allocation
+memory. Various techniques called first-fit allo-                requires use of a memory management unit in the
+cation, best-fit allocation, etc. are used to min-               hardware.
+imize   external    fragmentation,       while  techniques       The kernel creates and destroys control blocks
+called  buddy      systems    allocation  and   power-of-2       such as the PCB at a very fast rate. Since the sizes
+allocation  are     used  to  eliminate   external        frag-  of control blocks are known to the kernel, it mini-
+mentation. In the other approach, noncontiguous                  mizes the memory management overhead and the
+memory      allocation    is  used,  whereby    a   process      fragmentation problem by having many memory
+can be executed even when it is allocated many                   blocks of required size and allocating one of them
+small memory areas that add up to its total size                 when a new control block is to be created. The lazy
+requirement. This way external fragmentation is                  buddy allocator and the slab allocator are some of
+eliminated. Paging and segmentation are two such                 the techniques used by the kernel.
+TEST    YOUR CONCEPTS                                                                                                        ·
+11.1    Classify each of the following statements as true        11.2  Select      the  correct  alternative  in   each  of  the
+        or false:                                                      following questions:
+        a. When a stack is used, reuse of a released                   a. A worst-fit allocator always splits the largest
+            memory area is automatic.                                       free memory area while making an allocation.
+        b. PCD data can be allocated on a stack.                            A free list contains three memory areas of
+        c. The relocation register helps the kernel per-                    sizes 6 KB, 15 KB and 12 KB. The next four
+            form compaction of programs to avoid exter-                     memory requests are for 10 KB, 2 KB, 5 KB,
+            nal fragmentation.                                              and 14 KB of memory. The only placement
+        d.  Memory      allocation   performed  by  using    a              strategy that would be able to accommodate
+            buddy system allocator does not suffer from                     all four processes is
+            internal fragmentation.                                           i.   First-fit,
+        e. When a memory area is released in a sys-                           ii.  best-fit,
+            tem employing a buddy system allocator, the                     iii.   worst-fit,
+            number of free memory areas increases by 1,                     iv.    next-fit.
+            decreases by 1, or remains unchanged.                      b. Three processes requiring 150 KB, 100 KB,
+        f. External     fragmentation     can   occur     when              and 300 KB of memory are in operation in
+            either a buddy system allocator or a power-                     an OS employing a paging system with a page
+            of-2 allocator is used.                                         size of 2 KB. The maximum internal memory
+        g. When     dynamic     linking   and   loading      is             fragmentation due to memory allocation to
+            employed, a routine that is not used in an exe-                 the three processes is
+            cution of a program is not loaded in memory.                      i.   Approximately 2 KB
+        h. In a paging system, it is not possible to swap                     ii.  Approximately 6 KB
+            in a process into a set of noncontiguous mem-                   iii.   275 KB
+            ory area(s) that is different from the set of                   iv.    None of (i)­(iii)
+            noncontiguous memory areas from which it                   c. A reentrant program is one that
+            was swapped out.                                                  i.   Calls itself recursively
+        i. In a paging system, a programmer has to                            ii.  Can have several copies in memory that
+            demarcate the pages in the code and data of                            can be used by different users
+            a program.                                                      iii.   Can   have    a  single   copy  in  memory
+        j. There would be no need for linkers if all pro-                          that  is      executed    by    many  users
+            grams   were      coded  as  self-relocating  pro-                     concurrently
+            grams.
+
+
+
+                                                                    Chapter 11         Memory Management                  407
+EXERCISES                                                                                                                 ·
+11.1  A hypothetical programming language permits                   each. To meet a request for 2 KB, it merges two
+      one of the following three attributes to be asso-             adjoining free areas of 1 KB each, if present, and
+      ciated with a variable in a program:                          allocates the resulting contiguous area. When an
+      a. Static: Variables with this attribute are allo-            area of 2 KB is released, it treats the freed area
+      cated memory at compilation time.                             as two free areas of 1 KB each. Show that if the
+      b. Automatic: When execution of a program                     allocator has 22 KB available for allocation, it
+      is  initiated  or         a  function/subroutine    is        may not be able to honor requests for a total of
+      invoked,    variables        with  the  automatic             16 KB.
+      attribute declared in the program, function,            11.5  A buddy system allocator is allocated an area of
+      or subroutine are allocated memory. Memory                    64 KB. Blocks of size 2 KB, 11 KB, 120 bytes,
+      is deallocated when the program completes                     and 20 KB are allocated in that order.
+      or the invocation of the function/subroutine                  a. Show      the   allocation  status     and  free   lists
+      is exited.                                                    of      the   allocator.  How     many    splits      were
+      c. Controlled: A variable x with the controlled               performed?
+      attribute is allocated memory when the pro-                   b. Show the allocation status and free lists of
+      gram executes the statement new x. Memory                     the allocator after the block of 120 bytes is
+      is deallocated when the program executes the                  freed. How many coalesce operations were
+      statement release x.                                          performed?
+      Discuss the method used to allocate memory              11.6  A power-of-2 allocator uses a minimum block
+      to variables with each of these attributes. Com-              size  of  16  bytes  and  a    maximum         block  size
+      ment on (i) memory utilization efficiency and (ii)            of 32 KB. It starts its operation with one free
+      execution efficiency of these methods.                        block each of sizes 512 bytes, 2 KB, 16 KB and
+11.2  A memory allocator using the best-fit allocation              32 KB. Calculate the internal fragmentation if
+      policy organizes its free list in ascending order             the allocator processes the same requests as in
+      by sizes of free areas. This organization avoids              Exercise 11.5.
+      having to scan the entire free list for making an       11.7  When a memory block is freed, a memory allo-
+      allocation. However, while handling a request                 cator makes an effort to merge it with one or
+      for n bytes, the allocator has to skip over the               both of its neighbors. Do you agree with the
+      entries for memory areas that are < n bytes in                following statement? "If sizes of neighboring
+      size. Propose a method of organizing the free list            blocks are known, it is adequate to have a tag
+      that would eliminate the overhead of examining                at only one boundary of each block. However,
+      and skipping over these entries.                              if sizes of neighboring blocks are not known, it
+11.3  The kernel of an OS uses a separate memory                    is essential to have tags at both boundaries of
+      allocator for handling its own memory require-                each block."
+      ments. It is found that this memory allocator           11.8  A buddy system organizes tags of the blocks in
+      receives requests to grant and release memory                 a bitmap, which is a one-dimensional array of
+      areas of only two sizes, namely, 100 bytes and                tags. Comment on how best the bitmap can be
+      150 bytes, at a high rate. Comment on memory                  organized and used. (Hint: Note that blocks may
+      utilization efficiency and speed of allocation if             be split and coalesced during operation of the
+      the memory allocator is                                       buddy system.)
+      a. A first-fit allocator                                11.9  If a binary buddy system starts its operation with
+      b. A best-fit allocator                                       a single free block of size 2z bytes.
+      c. A slab allocator                                           a. Justify    the  statement   :  "When   a    block  is
+11.4  A memory allocator uses the following policy                  released, the number of free blocks in the
+      to allocate a single contiguous area for requests             system        may    increase     by  1,  may  remain
+      of 1 KB and 2 KB: It sets apart a contiguous                  unchanged,         or  may     decrease   by   a     num-
+      memory area of n KB for handling such requests,               ber between 1 and n, both inclusive, where
+      and splits this memory area into n areas of 1 KB              n < z."
+
+
+
+408      Part 3        Memory Management
+         b. Determine the value of n if the minimum              11.13  Does the 50-percent rule apply to the following
+         block size in the buddy system is 16 bytes.                    allocators?
+11.10    A Fibonacci buddy system uses blocks whose                     a. Buddy system
+         sizes are multiples of the terms of the Fibonacci              b. Power-of-2 allocator
+         series, for example 16, 32, 48, 80, 128, . . . . Hence         c. Slab allocator
+         the size of a block is the sum of the sizes of the      11.14  An OS receives requests for memory allocation
+         two immediately smaller blocks. This formula                   at a high rate. It is found that a large frac-
+         governs  the  splitting  and  merging  of  blocks.             tion of the requests are for memory areas of
+         Compare the execution efficiency and memory                    size 100, 300, and 400 bytes (let us call these
+         efficiency of the Fibonacci buddy system with                  "standard" sizes). Other requests are for areas of
+         the binary buddy system.                                       various other sizes. Design a memory allocation
+11.11    A memory allocator works as follows: Small                     scheme in which no fragmentation arises while
+         memory areas are allocated by using a buddy                    allocating areas of standard sizes and no inter-
+         system. Large memory areas are allocated by                    nal fragmentation arises while allocating areas
+         using a free list and a first-fit allocator. Com-              of other sizes.
+         ment on the efficiency and memory utilization           11.15  Compute the slack for each class of buffers if a
+         achieved by this allocator.                                    lazy buddy allocator were to be used instead of
+11.12    An OS has 110 MB available for user processes.                 the buddy allocator in Exercise 11.5.
+         The maximum memory requirement of a pro-                11.16  If the OS of Exercise 11.12 employed paging with
+         cess for its own code and data is 20 MB, while                 a page size of 2 KB, is it possible to compute the
+         the average memory requirement of a process                    average internal fragmentation in the system?
+         is 10 MB. If the OS uses contiguous memory
+         allocation and does not know sizes of individ-
+         ual processes, what is the average internal and
+         external fragmentation?
+BIBLIOGRAPHY                                                                                                                ·
+Linkers  and  Loaders  are  described  in  Dhamdhere             and Bovet and Cesati (2005) describe its implementa-
+(1999).                                                          tion in Linux. The Windows kernel uses several memory
+     Knuth (1973) is the classical starting point for a          allocation policies for its own memory requirements. It
+study of contiguous memory management. He describes              implements buddy-system-like allocation for medium-
+various techniques of memory allocation and efficient            size blocks and heap-based allocation for small block
+data structures to keep track of free memory. Hoare              sizes. Russinovich and Solomon (2005) describes heap
+and Mckeag (1971) surveys various memory manage-                 allocation and kernel memory allocation in Windows.
+ment techniques. Randell (1969) is an early paper on the
+motivation for virtual memory systems. Denning (1970)            1.  Beck, M., H. Bohme, M. Dziadzka, U. Kunitz,
+describes the fundamentals of virtual memory systems.                R. Magnus, C. Schroter, and D. Verworner
+     Vahalia (1996) describes the various kernel memory              (2002): Linux Kernel Programming, 3rd ed.,
+allocators used in Unix systems. McKusick and Karels                 Pearson Education, New York.
+(1988) describes the McKusick­Karels memory alloca-              2.  Bonwick, J. (1994): "The slab allocator: An
+tor. Lee and Barkley (1989) describes the lazy buddy allo-           object-caching kernel memory allocator,"
+cator. Both these allocators are used in Unix. Bonwick               Proceedings of the Summer 1994 Usenix Technical
+(1994) and Bonwick and Adams (2001) describe the slab                Conference, 87­98.
+allocator. Mauro and McDougall (2006) describes use              3.  Bonwick, J., and J. Adams (2001): "Extending the
+of the slab allocator in Solaris, while Beck et al. (2002),          slab allocator to many CPUs and arbitrary
+
+
+
+                                                             Chapter 11     Memory Management                 409
+     resources," Proceedings of the 2001 USENIX              memory allocation," Proceedings of the Summer
+     Annual Technical Conference, 15­34.                     1989 USENIX Technical Conference, 1­13.
+4.   Bovet, D. P., and M. Cesati (2005): Understanding  11.  Mauro, J., and R. McDougall (2006): Solaris
+     the Linux Kernel, 3rd ed., O'Reilly, Sebastopol,        Internals, 2nd ed., Prentice Hall, Englewood
+     Calif.                                                  Cliffs, N. J.
+5.   Denning, P. J. (1970): "Virtual Memory,"           12.  McKusick, M. K., and M. J. Karels (1988):
+     Computing Surveys, 2 (3), 153­189.                      "Design of a general-purpose memory allocator
+6.   Dhamdhere, D. M. (1999): Systems Programming            for the 4.3 BSD Unix kernel," Proceedings of the
+     and Operating Systems, 2nd revised ed.,                 Summer 1988 USENIX Technical Conference,
+     Tata McGraw-Hill, New Delhi.                            295­303.
+7.   Hoare, C. A. R., and R. M. Mckeag (1971):          13.  Peterson, J. L., and T. A. Norman (1977): "Buddy
+     "A survey of store management techniques," in           systems,"Communications of the ACM, 20 (6),
+     Operating Systems Techniques, by C.A.R. Hoare           421­431.
+     and R.H. Perrott (eds.) Academic Press, London.    14.  Randell, B.(1969): "A note on storage
+8.   Knuth, D. E. (1973): The Art of Computer                fragmentation and program segmentation,"
+     Programming, 2nd ed., Vol. I : Fundamental              Communications of the ACM, 12 (7),
+     Algorithms, Addison-Wesley, Reading, Mass.              365­369.
+9.   Kuck, D. J., and D. H. Lowrie (1970): "The use     15.  Russinovich, M. E., and D. A. Solomon (2005):
+     and performance of memory hierarchies," in              Microsoft Windows Internals, 4th ed., Microsoft
+     Software Engineering, 1, J.T. Tou (ed.), Academic       Press, Redmond, Wash.
+     Press, New York.                                   16.  Vahalia, U. (1996): Unix Internals--The New
+10.  Lee, T. P., and R. E. Barkley (1989):                   Frontiers, Prentice Hall, Englewood
+     "A watermark-based lazy buddy system for kernel         Cliffs, N. J.

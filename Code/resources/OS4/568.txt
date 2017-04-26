@@ -1,0 +1,833 @@
+I/O Devices
+I/O devices operate under a variety of principles, such as electromechanical signal
+generation and electromagnetic or optical data recording. I/O devices work with
+different I/O media, serve different purposes, and organize and access data in
+different ways, so they can be classified through the following criteria:
+·  Purpose: Input, print and storage devices
+·  Nature of access: Sequential and random-access devices
+·  Data transfer mode: Character and block mode devices
+The information written (or read) in one I/O command is said to form a record.
+A sequential-access device uses its I/O medium in a sequential manner; hence an
+operation is always performed on a record that adjoins the record accessed in the
+previous operation. Access to any other record requires additional commands
+to skip over intervening records. A random-access device can perform a read or
+write operation on a record located in any part of the I/O medium. A keyboard,
+a mouse, a network and a tape drive are sequential-access devices. Disks can be
+accessed in both sequential and random manner.
+   A unit of I/O medium is called an I/O volume; thus, a tape cartridge and a
+disk can be called a tape volume and a disk volume, respectively. I/O volumes
+
+
+
+548  Part 4  File Systems
+             for some I/O devices are detachable, e.g., floppy disks, compact disks (CDs), or
+             digital audiotape (DAT) cartridges; while those for other I/O devices like hard
+             disks are permanently fixed in the device.
+             Data Transfer Modes  The data transfer mode of a device depends on its speed
+             of data transfer. A slow I/O device operates in the character mode; i.e., it transfers
+             one character at a time between memory and the device. The device contains a
+             buffer register that can store one character. The device controller raises an inter-
+             rupt after an input device reads a character into the buffer or an output device
+             writes a character from the buffer. Device controllers of such devices can be con-
+             nected directly to the bus. The keyboard, mouse, and printer are character mode
+             devices.
+             A device capable of a high data transfer rate operates in the block mode of
+             data transfer. It is connected to a DMA controller. Tapes and disk drives are
+             block mode devices. A block mode device needs to read or write data at a specific
+             speed. Two kinds of problems would arise if a data transfer is delayed because
+             of contention for the bus: Data would be lost during a read operation if the bus
+             were unable to accept data from an I/O device at the required rate for transfer to
+             memory. A write operation would fail if the bus were unable to deliver data to
+             the I/O device at the required rate.
+             To prevent problems due to contention for the bus, data is not transferred
+             over the bus during the operation; instead, it is transferred between an I/O device
+             and a buffer. During an input operation, the data delivered by the I/O device is
+             stored in a buffer in the DMA controller, which we will call the DMA buffer. It is
+             transferred from the DMA buffer to memory after the I/O operation completes.
+             To perform an output operation, data to be written onto the I/O device is first
+             transferred from memory to the DMA buffer. During the I/O operation, it is
+             transferred from the DMA buffer to the I/O device.
+             Data transfer between the CPU and an I/O device can also be realized by
+             using memory-mapped I/O. In this approach, a set of memory addresses are
+             reserved for an I/O device. These addresses are mapped into some of the reg-
+             isters of the I/O device such that when the CPU writes some data into a memory
+             location with one of the reserved addresses, the data is actually written into the
+             corresponding register of the I/O device. Similarly, when the CPU executes an
+             instruction that reads data from a memory location with one of the reserved
+             addresses, the data actually gets read from the corresponding register of the I/O
+             device. This way the transfer of data takes place without a DMA yet it does
+             not load the CPU much. Memory-mapped I/O is implemented as follows: An
+             I/O device listens on the bus on which memory is connected. When one of its
+             reserved addresses appears on the bus, it simply transfers data between the bus
+             and the register corresponding to the reserved address. Memory-mapped I/O
+             is popular on the PCs because a special I/O bus is not needed, and the CPU
+             does not have to provide any special instructions for initiating I/O operations
+             and for checking the status of I/O devices, which reduces the cost of the CPU.
+             However, more hardware is needed on the memory bus to decode the reserved
+             addresses.
+
+
+
+                                                              Chapter 14          Implementation of File  Operations  549
+Access Time and Transfer Time        We use the following notation while discussing
+I/O operations.
+tio  I/O time, i.e., time interval between the execution of an
+     instruction to initiate an I/O operation and completion of
+     the I/O operation.
+ta   access time, i.e., time interval between the issue of a read or
+     write command and the start of data transfer.
+tx   transfer time, i.e., time taken to transfer the data from/to an
+     I/O device during a read or write operation. It is the time
+     between start of transfer of the first byte to end of transfer of
+     the last byte.
+The I/O time for a record is the sum of its access time and transfer time, i.e.,
+                                     tio = ta + tx                                (14.1)
+Figure 14.3 illustrates the factors influencing tio. The access time in a sequential
+device is a constant because the device can only read or skip a record on either
+side of its current position. The access time in a random-access device varies
+because it can read or write any record in an I/O volume, so it must reposition
+either the read/write head or the I/O medium before commencing a read or write
+operation.
+Error Detection and Correction       Errors might arise during recording or reading
+of data or transferring it between an I/O medium and memory. To facilitate
+detection and correction of such errors, data being recorded or transmitted is
+viewed as a bit stream, i.e., as a stream of 1s and 0s, and special codes are used to
+represent the bit stream. We discuss some of these codes in the following.
+Error detection is performed through recording of redundancy information
+with data. This information, which we will call error detection information, is
+derived from the data by using a standard technique. When data is read off an
+I/O medium, this information is also read off the medium. Now, error detection
+information is computed again from the read data, using the same technique,
+and it is compared with the error detection information read off the medium. A
+mismatch indicates some recording errors. Error correction is performed anal-
+ogously, except that more powerful algorithms are used to generate the error
+correction information. This information can both detect an error and indicate
+                                                tio
+                            Device readied for               Data transfer
+                                data transfer                in progress
+                                     ta                       tx
+                 Read/write command            Data transfer      Data transfer
+                 is issued                           starts                 ends
+Figure 14.3  Access and transfer times in an I/O operation.
+
+
+
+550  Part 4  File  Systems
+                   how it can be corrected. Recording and reading of redundant information causes
+                   an overhead. Error correction incurs more overhead than error detection.
+                   Figure 14.4 describes two approaches to error detection and correction. In
+                   the parity bits approach, np parity bits are computed for nd bits of data. The
+                   parity bits are put in fixed locations in a record. They are indistinguishable from
+                   data, except to the error detection/correction algorithm. In the cyclic redundancy
+                   check (CRC) approach, an nc bit number called the CRC is recorded in the CRC
+                   field of a record. A key difference between the two approaches is that np depends
+                   on nd , while nc is independent of nd .
+                   Both approaches use modulo-2 arithmetic. This arithmetic is analogous to
+                   binary arithmetic, except that it ignores carries or borrows generated in any bit
+                   position. This property makes it very fast. A modulo-2 addition is represented as
+                   an exclusive-OR operation . It uses the following rules: 0  0 = 0, 1  0 = 1,
+                   0  1 = 1, and 1  1 = 0.
+                   A popular variant of the parity bits approach used in RAMs and older
+                   magnetic tapes associates a single parity bit with a byte of data. As described
+                   in Figure 14.4, it is generated from all bits of a byte by using the  oper-
+                   ation. It can detect a single error in a byte, but fails if two errors occur. It
+                   also cannot correct any errors. The error detection overhead is 1 parity bit for
+                   8 bits of data, i.e., 12.5 percent. A Hamming code can detect up to two errors in
+                   a record and can correct a single error. The correct technical name of the code is
+                   (nd + np, nd ) Hamming code. Comparison of the parity bit values in a record read
+                   off the medium with parity values computed from the read data by applying the
+                   rules of the code indicates which bit is in error. The value in this bit is inverted to
+                   correct the error. Figure 14.4 gives the rules for determining the number of parity
+                   bits and computing their values. A (12, 8) Hamming code can perform error detec-
+                   tion and correction for 1 byte. It uses 12 ­ 8, i.e., 4, parity bits. Thus, the overhead is
+                   50 percent. The overhead decreases with the number of data bits; e.g., 8 parity
+                   bits are adequate for 30 bytes of data.
+                   The CRC is computed from data that is to be transmitted or recorded, and it
+                   is put into the CRC field of a record. It can indicate whether one or more errors
+                   have occurred in any byte of data, or if bytes have been swapped or reordered.
+                   When a record is read, a CRC is computed from its data field and compared with
+                   the number in its CRC field. An error exists if the two do not match. A practical
+                   value of nc is 16 or 32 bits, irrespective of the value of nd . With nc < nd , error
+                   detection is not foolproof because two bit streams, say s1 and s2, could generate
+                   the same CRC. If one of them is transformed into the other due to errors, the
+                   errors   cannot  be   detected  using     CRC.    The     probability   of  this  happening   is  1    .
+                                                                                                                     2nc
+                                                             1
+                   Hence,   reliability  of  CRC   is  1  -  2nc  .  For  a  16-bit  CRC,  the  reliability  is  99.9985
+                   percent. For a 32-bit CRC, reliability is 99.9999 percent.
+                   14.3.1 Magnetic Tapes
+                   The I/O medium in a tape or cartridge is a strip of magnetic material on which
+                   information is recorded in the form of 1s and 0s, using principles of electromag-
+                   netic recording. The recording on a tape is multitrack; each track records a bit
+
+
+
+                                                             Chapter 14  Implementation of File Operations  551
+              Data and parity                                Data          CRC
+              nd + np bits               Parity bit          nd bits       nc bits
+              Parity bits approach                           CRC approach
+Calculating a parity bit
+A parity bit is computed from a collection of data bits by modulo-2 arithmetic, i.e., by
+using the exclusive OR operator . For example, the parity bit for 4 data bits bi, bj , bk
+and bl is computed as follows: p = bi  bj  bk  bl  c1, where c1 is a constant which
+is 1 for odd parity and 0 for even parity.
+Hamming code
+Step 1: Determine the number of parity bits as the smallest value of np which satisfies
+nd + np + 1  2np . Fix parity bit positions as powers of 2, i.e., positions b1, b2, b4, b8, . . . ,
+in a record, where bits are numbered as b1, b2 . . . from the start of the record.
+Step 2: Compute the parity bit occupying the 2nth position from the following bits,
+excepting itself: For each value of c2, take 2n consecutive bits starting on bit position
+2n + c2 × 2n+1, where c2 has values 1, 2, 3, . . . , etc. Thus, parity bit b1 is computed
+from b3, b5, . . . ; b2 is computed from b3, b6, b7, b10, b11 . . . ; and b4 is computed from
+b5, b6, b7, b12, b13, b14, b15, . . . .
+Step 3: When a record is received or read, compute parity bits and compare them with
+the parity bit values in the record. Form a binary number e1, e2, e4, . . . as follows: ei is 1
+if the received and computed values of parity bit bi are different; otherwise, it is 0. No
+error has occurred if this number is zero. If a single error exists, this number indicates
+the position of the bit which is in error.
+Example: If 5-bit data 10110 is to be transmitted or recorded, 4 parity bits are used.
+They occupy positions b1, b2, b4, and b8. The record contains 011001100, where the
+parity bits have been underlined. If the record is read as 011001101, the error word is
+1001, indicating that the error has occurred in position 9.
+Cyclic redundancy check (CRC)
+Step 1: A bit stream is looked upon as a binary polynomial, i.e., a polynomial each of
+whose coefficients is either a 0 or a 1. For example, a bit stream 1101 is looked upon as
+a binary polynomial 1 × x3 + 1 × x2 + 0 × x1 + 1 × x0, i.e., x3 + x2 + 1. Here a + is
+interpreted as modulo-2 addition, i.e., an exclusive-OR operation .
+Step 2: The data in a received record is augmented by adding nc zeroes at its end. The
+polynomial obtained from the augmented data is divided by a predefined polynomial of
+degree nc + 1. The remainder of this division is a polynomial of degree nc. Coefficients
+in this polynomial form the CRC. For example, the CRC for data 11100101 using a
+predefined 5-bit polynomial 11011 is 0100.
+Step 3: When a record is received, the receiver computes the CRC from the data part
+of the record and compares it with the CRC part of the record. A mismatch indicates
+error(s). Alternatively, the receiver computes the CRC from the entire record. An error
+exists if the computed CRC is not 0.
+Figure  14.4  Approaches to error detection and correction.
+
+
+
+552  Part 4  File Systems
+             of a byte or a parity bit. A read­write head is positioned on each track. Tape
+             drives are sequential-access devices. The operations that can be performed on
+             these devices are: read/write a specified number of bytes, skip, and rewind.
+             Because of the sequential nature, tapes and DAT cartridges are popularly used for
+             archival purposes, which involve reading or writing of all records on the medium.
+             In older tape technologies, adjoining records on a tape are separated by
+             an interrecord gap. This gap provides for the start­stop motion of the medium
+             between the reading or writing of successive records. The access time (ta) during
+             a read or write operation is caused by both the need to achieve uniform-velocity
+             motion of the I/O medium before the data transfer can be initiated and the need
+             to position the next record under the read­write head. Total I/O time for a record
+             of size s bytes is given by the formula
+                                                           s
+                                                 tio = ta + d × v
+             where         d  recording density
+                           v  velocity of the I/O medium.
+             Interrecord gaps cause heavy penalties--they lead to poor use of the record-
+             ing medium and slow down file processing activities. Despite the drawback of
+             poor utilization of the recording medium, in the 1990s tapes offered a cost per
+             megabyte that was one-tenth of that offered by disks. However, tapes lost this
+             edge in the subsequent decade because disk technology made rapid progress and
+             large disks became both practical and cheap. To regain the cost advantage, a
+             streaming tape technology was developed.
+             A streaming tape contains a single record that is stored without a break
+             irrespective of its size. Hence interrecord gaps do not exist even when a large
+             volume of data is recorded on a tape. A streaming tape device contains a buffer.
+             A write operation is started after putting some data in the buffer. The device writes
+             the data from the buffer onto the tape. To keep the streaming tape operating at
+             full speed, it is important to put new data into the buffer at a speed that matches
+             the writing speed of the tape. The tape drive stops writing when it finds that the
+             buffer is empty. When new data is put into the buffer, the tape drive resumes the
+             write operation. To avoid creating an interrecord gap, the tape is first moved back
+             and then moved forward again so that it can gather recording velocity by the time
+             the head passes over the last bit it has written. It now resumes writing. Effectively,
+             resumption of writing consumes a few milliseconds.
+             The streaming tape provides a high data transfer rate if the buffer is not
+             allowed to become empty at any time. However, if the tape stops frequently, the
+             effective writing speed can drop to a much smaller value. The physical IOCS has
+             to ensure that this does not happen. The stop­start­resume operation of the tape
+             also requires precise positioning and alignment, which makes streaming tapes
+             expensive.
+             14.3.2 Magnetic Disks
+             The essential storage element of a magnetic disk is a flat circular object called a
+             platter, which rotates on its axis. The circular surfaces of a platter are covered with
+
+
+
+                                                  Chapter 14      Implementation of File Operations  553
+magnetic material. A single read­write head records on and reads from a surface,
+so a byte is recorded serially along a circular track on the disk surface. The read­
+write head can move radially over the platter. For each position of the head, the
+recorded information forms a separate circular track. Parity information is not
+used in a disk; a CRC is written with each record to support error detection.
+A start-of-track position is marked on each track, and records of a track are
+given serial numbers with respect to this mark. The disk can access any record
+whose address is specified by the pair (track number, record number). The access
+time for a disk record is given by
+                                    ta = ts + tr                               (14.2)
+where        ts  seek time, i.e., time to position the head on the required track
+             tr  rotational latency, i.e., time to access desired record on the track
+The seek time is the time required for the mechanical motion of the head. Rota-
+tional latency arises because an I/O operation can start only when the required
+record is about to start passing under the head. The average rotational latency
+is the time taken for half a disk revolution. Representative values of the average
+rotational latency are 3­4 ms, seek times are in the range of 5­15 ms, and data
+transfer rates are of the order of tens of megabytes per second.
+Variations in disk organization have been motivated by the desire to reduce
+the access time of a disk, increase its capacity and data transfer rate, and reduce
+its price. The cheapest disk is a floppy disk which is slow and has a small capacity.
+A hard disk has a higher capacity; still higher capacities are obtained mainly
+through mounting of many platters on the same spindle. One read­write head
+is provided for each circular surface of a platter--that is one above and one
+below each platter. All heads in the disk pack are mounted on a single access
+arm, which is called the actuator, and so at any moment all heads are located
+on identically positioned tracks of different surfaces. The set of such identi-
+cally positioned tracks outlines a cylinder (see Figure 14.5), a form that can be
+exploited for data organization. All the tracks in a cylinder are accessible from
+the same position of the access arm; thus, cylinders make several disk tracks
+accessible without requiring any movement of the disk heads, and so I/O opera-
+tions on records situated in the same cylinder can be performed without incurring
+seek times.
+A hard disk can be looked upon as consisting of a set of concentric cylinders,
+from the innermost to the outermost. A record's address can thus be specified
+by the triple (cylinder number, surface number, record number). The necessary
+commands for operation of a disk device are seek (cylinder number, surface
+number) and read/write a specified record.
+Disk capacity can be increased by increasing the number of platters. How-
+ever, more platters require more disk heads, which in turn require a heavier
+actuator and impose more mechanical stresses. Hence disks tend to have only
+a few platters. When a very large capacity is desired, applications use multiple
+disk drives. (In Section 14.3.5, we discuss how arrangements using multiple disk
+
+
+
+554  Part 4  File Systems
+                                                Read-Write heads
+                                 Platter
+                                                                     Access arm
+                                 Cylinder
+                                         Track
+             Figure 14.5   A disk pack.
+             drives can also be exploited to provide high data transfer rates and high reliabil-
+             ity.) Seek times can be reduced by using higher rotational speeds, but high speeds
+             increase the cost of mechanical components, and so fast disks tend to have smaller
+             platters to compensate. PCs and desktop computers tend to use cheaper disks.
+             These disks have large platters, which provide large capacity, and comparatively
+             low rotational speeds. In contrast, servers tend to use costlier disks that are smaller
+             and rotate faster.
+             To optimize use of disk surface, tracks are organized into sectors. A sector
+             is a standard-sized "slot" in a track for a disk record. The sector size is chosen
+             to ensure minimum wastage of recording capacity due to interrecord gaps on the
+             surface. Sectoring can be made a part of the disk hardware (hard sectoring), or
+             could be implemented by the software (soft sectoring).
+             14.3.3 Data Staggering Techniques
+             Recall from Section 14.3 that the data read off an I/O device during a read opera-
+             tion is stored in the DMA buffer, from where the DMA transfers it to memory as
+             a single block. But while this transfer is under way, the disk continues to revolve
+             and one or more following sectors may pass under the head by the time the trans-
+             fer is completed. Hence if a read operation on the next consecutive sector is issued
+             immediately after the previous one, the required sector may have passed under the
+             head by the time the DMA can initiate the read operation. Such a read operation
+             can be performed only in the next disk revolution. Analogously, during a write
+             operation, recording of the data is initiated only after data is transferred from
+             memory to the DMA buffer, so recording in the next sector cannot take place
+             in the same revolution if the sector passes under the read­write head before the
+             data transfer is completed. A similar problem is caused by head switching time,
+             which is the time taken to switch operation between heads positioned on differ-
+             ent platters. By this time a few sectors of the next platter have passed under the
+             read­write head. The seek time to move the head to the next cylinder also causes
+             a similar problem. All these problems adversely affect the throughput of a disk.
+
+
+
+                                                   Chapter 14  Implementation of File Operations  555
+The techniques of sector interleaving, head skewing, and cylinder skewing
+address the problems caused by data transfer time, head switch time, and seek
+time, respectively. These techniques, collectively called data staggering techniques,
+ensure that the next consecutively numbered sector will not pass under the read­
+write head before the head will be in a position to perform a read/write operation
+on it, so that the operation can be performed in the current revolution of the disk.
+Sector interleaving staggers sectors along a track in such a way that consecutively
+numbered sectors are separated by a few other sectors. This arrangement permits
+the I/O operation for a sector to be completed by the time the sector with the next
+consecutive address passes under the head. Head skewing staggers the "start of
+track" positions on different platters of a cylinder so that the times when the last
+sector of a track and the first sector of the next track pass under their respective
+heads are separated by the head switch time. Cylinder skewing analogously stag-
+gers the "start of track" positions on consecutive cylinders to allow for the seek
+time after reading the last sector on a cylinder.
+Figure 14.6 illustrates how the techniques of sector interleaving, head skew-
+ing, and cylinder skewing reduce rotational delays through data staggering. It is
+assumed that the disk has five sectors in a track and uses ten platters, so a cylinder
+has 50 sectors in it. For each data staggering technique, the left and right parts
+of the figure show operation of the disk without and with data staggering. The
+first line in each part shows which sectors pass under the read-write heads of the
+disk at different times. The next few lines show what activities involved in an I/O
+operation are in progress as the disk rotates--they constitute a timing diagram
+for the I/O operation.
+Figure 14.6(a) illustrates sector interleaving. We assume the disk head is
+positioned immediately before the first sector on the first cylinder where a file
+is stored, so the command to read the first sector does not incur any seek or
+rotational latency. Reading of the sector into the DMA buffer completes a little
+before time t1, and the transfer of this data to memory by the DMA controller
+completes a little after time t1. The command to read the next sector is issued
+immediately after reading of the previous sector completes, i.e., a little after time
+t1. By that time the head is positioned somewhere over sector 2, so sector 2
+cannot be read immediately. A rotational delay now occurs that lasts until sector
+2 passes under the head in the next revolution of the disk, i.e., until time t6. The
+right part of the figure shows the arrangement of sectors when sector interleaving
+is employed; sectors 1 and 2 are separated by sector 4 on the track. When the
+command to read sector 2 is issued, the read­write head is located almost at the
+end of sector 4. Now, the rotational delay lasts only until time t2, when sector 2
+starts passing under the head.
+Figure 14.6(b) illustrates head skewing. Here, we show the arrangement of
+sectors in the first two tracks allocated to a file. The read command on sector
+5, which is the last sector on the first track, is issued at time t10. The reading
+of this sector and transfer of the data to memory completes before time t11,
+so the read command for sector 6 is issued some time before t11. However, it
+involves head switching because t11 is located on a different track; head switch-
+ing is not completed before time t11 when sector 6 starts passing under the head.
+
+
+
+556  Part 4  File  Systems
+                                                        Without data staggering                           With data staggering
+                            (a) Sector interleaving
+                                  Sectors of         1      2      3      4      5      1      2     1        4      2      5      3      1      4
+                                  first track
+                                  Seek
+                                  Rotational
+                                  latency
+                                  Read
+                                  Memory
+                                  transfer
+                                                  0     t1     t2     t3     t4     t5     t6     0       t1     t2     t3     t4     t5     t6
+                            (b)  Head skewing
+                                  Sectors of         5      1      2      3      4      5      1     5        1      2      3      4      5      1
+                                  first two       10        6      7      8      9  10         6       9  10         6      7      8      9  10
+                                  tracks
+                                  Seek and
+                                  head
+                                  switching
+                                  Rotational
+                                  latency
+                                  Read
+                                  Memory
+                                  transfer
+                                                  t10   t11    t12    t13    t14    t15    t16    t10     t11    t12    t13    t14    t15    t16
+                            (c) Cylinder skewing
+                                  Sectors of      50    46     47     48     49     50     46        50   46     47     48     49     50     46
+                                 first tracks of  55    51     52     53     54     55     51        53   54     55     51     52     53     54
+                                  2 cylinders
+                                  Seek
+                                  Rotational
+                                  latency
+                                  Read
+                                  Memory
+                                  transfer
+                                                  t20   t21    t22    t23    t24    t25    t26    t20     t21    t22    t23    t24    t25    t26
+                   Figure   14.6  Effect of data staggering: (a) sector interleaving; (b) head skewing; and
+                   (c) cylinder skewing.
+
+
+
+                                                                Chapter 14          Implementation of File Operations  557
+So reading of sector 6 cannot be commenced immediately; it has to wait until
+sector 6 starts passing under the head in the next revolution of the disk at time t16.
+This rotational delay is reduced by staggering the recording on the second track
+by one sector position, as shown in the right half of the figure. Now, the reading
+of sector 6 can commence at time t12, thus incurring a much smaller rotational
+delay. Figure 14.6(c) illustrates cylinder skewing. Here, we show the arrange-
+ment of sectors in the first track of the first two cylinders allocated to a file. The
+seek operation for reading sector 51 results in movement of the read­write head
+by one cylinder. The seek operation completes a little before t23; however, sector
+51 has passed under the read­write head by that time, hence a rotational delay is
+incurred until sector 51 passes under the head in the next revolution at time t26.
+As shown in the right half of the figure, data staggering by two sector positions
+enables sector 51 to be read starting at time t23.
+Sector interleaving had a dramatic impact on the throughput of older disks.
+Modern disks have controllers that transfer data to and from memory at very
+high rates, so that sector interleaving is not needed. However, we discuss sector
+interleaving because it provides an insight into optimizing the peak disk through-
+put through data staggering. Head and cylinder skewing are still used to optimize
+the peak disk throughput.
+Figure 14.7 illustrates sector interleaving. The interleaving factor (Fint) is the
+number of sectors that separate consecutively numbered sectors on the same disk
+track. Part (b) of Figure 14.7 illustrates the arrangement when Fint = 2, i.e., con-
+secutively numbered sectors have two other sectors between them. Interleaving
+is uniform, that is, each pair of consecutively numbered sectors are separated by
+the same number of sectors, if either n - 1 or n + 1 is a multiple of Fint + 1,
+where n is the number of sectors on a track. The arrangement in the figure, where
+there are 8 sectors to a track, is uniform, whereas interleaving with Fint = 1 or 3
+would not be uniform (see the second column in Table 14.2--some consecutive
+sectors are separated by more than Fint sectors). As we shall see in Example 14.2,
+a performance penalty is incurred when interleaving is not uniform.
+Let tst be the time taken to transfer one sector's data between the DMA
+controller and memory, and let tsect be the time taken for one sector to pass under
+the disk head. Optimal performance is obtained if tst = Fint × tsect, since I/O on
+the next sector can be started immediately after the DMA finishes transferring
+                            8     1                          6             1
+              7                           2             3                        4
+              6                           3             8                        7
+                            5     4                          5             2
+              (a)                                       (b)
+Figure  14.7  Sectors in a  disk  track:  (a)  without  interleaving; (b)  with  interleaving  factor  =  2.
+
+
+
+558  Part 4  File Systems
+                   the previous sector's data. If tst > Fint × tsect, the next sector would pass under
+                   the head before the DMA finishes data transfer for the previous sector. Hence the
+                   next sector can be accessed only in the next revolution of the disk. tst < Fint ×tsect
+                   implies that the disk would be idle for some time before the next sector is accessed
+                   in the same revolution. Disk throughput suffers in both these cases. Analogously,
+                   throughput would suffer when other data staggering techniques are employed if
+                   data is staggered by too little or too much. The following example illustrates the
+                   variation of peak disk throughput with the sector interleaving factor.
+·
+     Example 14.2  Sector Interleaving
+                   A disk completes one revolution in 8 ms and has 8 sectors on a track, each
+                   containing 1000 bytes. The values of tst and tsect satisfy the relation tsect <
+                   tst < 2 × tsect. To obtain the peak disk throughput for a value of Fint, we read
+                   the sectors in the order 1, . . . , 8 over and over again and observe the number
+                   of bytes transferred in one second. Figure 14.8 shows variation of peak disk
+                   throughput for different values of Fint.
+                      Table 14.2 shows the arrangement of sectors for different values of Fint
+                   and the corresponding disk throughput represented in units of kB/s where
+                   1 kB/s is 1000 bytes per second. Interleaving with Fint = 1 or 3 is not uniform.
+                   For Fint = 1, the arrangement of sectors on the track is 1, 5, 2, 6, 3, 7, 4, 8.
+                   After reading sector 1, sector 2 cannot be read in the same revolution. Hence
+                   the disk takes 10 ms to read sector 2. Similarly, sectors 3 and 4 require 10 ms.
+                   Sectors 4 and 5 are separated by 2 sectors. Hence they can be read in the same
+                   revolution of the disk; the disk takes only 3 ms to read sector 5 after sector 4
+                   has been read. Reading of sectors 6, 7, and 8 requires 10 ms each, while reading
+                   of sector 1 requires 9 ms.
+                      Figure 14.8 shows the variation of throughput with different values of Fint.
+                   Fint = 2 is adequate to satisfy tst  Fint × tsect, and so the throughput increases
+                   sharply. Values of Fint > 2 are counterproductive since the disk spends some
+                   idle time before the next sector passes under the head. Hence the throughput
+                   dips for Fint > 2.
+                   ·
+                                               350
+                                 Peak          250
+                                 disk
+                                 throughput    150
+                                               50
+                                                    0      1            2  3                  4
+                                                                           Interleaving       factor
+                   Figure  14.8  Variation of  throughput  with sector  interleaving factor.
+
+
+
+                                                              Chapter 14       Implementation of  File  Operations  559
+Table 14.2           Sector Arrangement and Performance in Sector
+Interleaving
+            Arrangement of                                        Average      Peak throughput
+Fint        sectors             tio for sectors (ms)              tio (ms)     (kB/s)
+0       1, 2, 3, 4, 5, 6, 7, 8  9, 9, 9, 9, 9, 9, 9, 9            9            111.1
+1       1, 5, 2, 6, 3, 7, 4, 8  9, 3, 10, 10, 10, 10, 10, 10      9            111.1
+2       1, 4, 7, 2, 5, 8, 3, 6  3, 3, 3, 3, 3, 3, 3, 3            3            333.3
+3       1, 3, 5, 7, 2, 4, 6, 8  9, 5, 5, 5, 4, 4, 4, 4            5            200.0
+4       1, 6, 3, 8, 5, 2, 7, 4  5, 5, 5, 5, 5, 5, 5, 5            5            200.0
+14.3.4 Disk Attachment Technologies
+EIDE and SCSI Interfaces        Enhanced integrated device electronics (EIDE) and
+small computer system interconnect (SCSI) are the leading disk interfaces for
+attaching disks to computers. Disks attached this way have come to be called
+host-attached storage. Integrated device electronics (IDE, also called advanced
+technology attachment, or ATA) was the predecessor of EIDE. Before EIDE
+was developed, the different features of IDE and SCSI made each of them ideal
+for specific applications. For example, IDE was considered to provide excellent
+performance for sequential I/O while SCSI was considered to be superior for
+random I/O. Accordingly, IDE disks were used in the low-cost PC and desk-
+top environment while SCSI disks were used in the server environment. With
+EIDE, the gap in random-access performance has narrowed considerably. Both
+retain their traditional niche areas, but EIDE and SCSI now compete in some
+application segments, such as backup storage media. Both kinds of disks provide
+a large buffer of a few megabytes.
+   IDE disks primarily worked with programmed I/O modes, though they sup-
+ported a DMA mode as well. EIDE supports new DMA modes including the
+first party, i.e., bus mastering, DMA mode; the ultra ATA mode of EIDE sup-
+ports transfer rates of 33.3 MB per second, which is 8 times faster than the IDE
+data transfer rate. EIDE disks use larger platters, rotate relatively slowly, and are
+cheap. Up to two disks can be connected to EIDE; however, only one of them
+can operate at a time.
+   SCSI supports several DMA modes; the fastest of these provides a data
+transfer rate of 80 MB per second. SCSI permits up to 7 disks to be con-
+nected  to    it.  SCSI  is  called    an  interface,   but   technically      it  is  an  I/O  bus
+because it permits simultaneous operation of many disks connected to it. SCSI
+disks are smaller, rotate faster, and are more expensive. Accordingly, they pro-
+vide smaller seek times and higher data transfer rates. A SCSI disk supports
+scatter/gather I/O wherein it can transfer data from a disk block into non-
+contiguous areas of memory or collect data from noncontiguous areas and
+write   them  into   a   disk   block  (see  Section    12.2.4).     It  also  provides    several
+
+
+
+560  Part 4  File Systems
+             functionalities that were traditionally performed by the IOCS, including the
+             following:
+             ·  Disk scheduling: A SCSI disk accepts several I/O requests concurrently and
+                stores them into a queue of requests. It uses its knowledge of the current
+                position of disk heads and the rotational position of the platters to select an
+                I/O operation that involves the minimum delay due to seek and rotational
+                latency. This feature is described in Section 14.7.
+             ·  Bad block recovery: A SCSI disk detects bad disk blocks and assigns substitute
+                disk blocks for them. It maintains a table showing addresses of bad blocks
+                and their substitutes. If an I/O command is directed toward a bad disk block,
+                the disk automatically redirects it at the substitute block. This feature speeds
+                up I/O operations by performing bad block management in the device rather
+                than in the access method layer of IOCS.
+             ·  Prefetching of data: A SCSI disk contains a buffer. At every I/O opera-
+                tion, it reads the next few disk blocks into the buffer. This action speeds
+                up subsequent read operations during processing of a sequential file.
+             Network-Attached Storage and Storage Area Networks      Host attachment of
+             disks suffers from poor scalability because disk sizes are limited by prevailing
+             technologies and the number of disks that can be attached to a host is limited
+             by the interface. Therefore, organizations have to constantly replace disks or
+             add more servers to meet their requirements for more storage. This problem is
+             addressed by facilitating use of remote disks through a network. This approach
+             enables the storage capacity to be increased incrementally and seamlessly, and
+             storage to be shared by applications operating on many servers.
+                A network-attached storage (NAS) is a disk or a redundant array of inexpen-
+             sive disks (RAID), which is discussed in the next section, attached directly to a
+             local area network (LAN) [see Figure 14.9(a)]. NAS is an inexpensive method
+             of providing large disk capacities, because it employs the hardware and software
+             existing in a LAN environment. Functionalities such as a file server or a dis-
+             tributed file system (see Chapter 20) can be provided by using the NAS. However,
+             use of NAS faces some difficulties in practice: LANs use protocols that optimize
+             application-to-application data transfers whereas the file server or distributed file
+             system requires use of a file-based protocol like the Sun NFS protocol discussed
+             in Section 20.6.1, or Microsoft's common interface file system (CIFS) protocol.
+             The load created by the file-based protocol slows down networking applications.
+                A storage area network (SAN) is an alternative arrangement that avoids slow-
+             down of networking applications. A SAN is a network composed of disks that
+             provides a high bandwidth [see Figure 14.9(b)]. The network could be a dedicated
+             fiber channel that uses the SCSI protocol, or an Internet protocol (IP) network
+             that uses the iSCSI protocol. Several servers can be connected to a SAN; each
+             server can access the entire storage. This feature facilitates formation of high-
+             performance clusters of computer systems (see Section 16.2). Data integrity and
+             availability is provided through the redundancy of disks and servers connected
+             to the SAN.
+
+
+
+                                                          Chapter 14            Implementation of File Operations  561
+                          Clients                                      Clients
+Network-                  Local area                                   Local area
+attached           network (LAN)                                network (LAN)
+storage
+                                                                       Server                 Server
+                                                                Storage area
+                                                                network (SAN)
+(a)                                                 (b)
+Figure  14.9  (a) Network-attached storage; (b) storage area network.
+     New technologies that employ the iSCSI protocol over an IP network to
+combine the features of the NAS and SAN technologies are emerging. These
+technologies support both block-accessed SAN devices and file-accessed NAS
+devices without incurring the cost of a fiber channel.
+14.3.5 RAID
+Computer users constantly clamor for disks with larger capacity, faster access to
+data, higher data transfer rate and higher reliability. All these issues are addressed
+through arrangements involving multiple disks. The redundant array of inexpen-
+sive disks (RAID) technology was originally employed for providing large disk
+capacities at a low cost through use of several inexpensive disks. However, the
+recent trend is to enhance disk capacities through network-attached storage and
+storage area networks (see Section 14.3.4). Hence today's RAID technology is
+used for providing fast access, high data transfer rates, and high reliability; it is
+more appropriately called redundant array of independent disks.
+     The   RAID    technology         spreads  the  data  involved     in  an      I/O    operation
+across    several  disks  and  performs        I/O  operations  on     these       disks  in  paral-
+lel. This feature can provide either fast access or a high data transfer rate,
+depending on the arrangement employed. High reliability is achieved by record-
+ing redundant information; however, the redundancy employed in a RAID is
+qualitatively different from that employed in conventional disks: A conven-
+tional disk provides reliability only by writing a CRC at the end of every
+record (see Section 14.3), whereas redundancy techniques in a RAID employ
+extra disks to store redundant information so that data can be recovered even
+when some disks fail. Access to redundant information does not cost addi-
+tional I/O time because both data and redundant information can be accessed in
+parallel.
+
+
+
+562  Part 4  File Systems
+             Recording in a RAID is performed as follows: A disk strip is a unit of data on
+             a disk, which can be a sector, a disk block, or a disk track. Identically positioned
+             disk strips on different disks form a disk stripe. A file is allocated an integral
+             number of disk stripes. The data residing in the strips of the same stripe can be
+             read or written simultaneously because they exist on different disks. If the disk
+             array contains n disks, theoretically the data transfer rate could be n times that
+             of a single disk. Practical values of data transfer rates depend on overhead and
+             on any factors that may limit the parallelism of I/O operations while processing
+             a file.
+             Several RAID organizations using different redundancy techniques and disk
+             striping arrangements have been proposed. These organizations are called RAID
+             levels. Table 14.3 summarizes the properties of various RAID levels. RAID levels
+             0 + 1 and 1 + 0, which are hybrid organizations based on RAID levels 0 and 1,
+             and RAID level 5 are the most popular RAID organizations.
+             RAID Level 0   Level 0 employs only disk striping; it is not really a RAID organi-
+             zation because it does not involve redundant recording of data. It provides high
+             data transfer rates, particularly if each disk is under a separate disk controller.
+             However, it suffers from low reliability. Data becomes inaccessible even if a single
+             disk is inoperative. Also, lack of redundancy implies that data is lost if a disk
+             fails, and so reliability still has to be achieved by means other than the RAID
+             organization.
+             RAID Level 1   Level 1 RAID organization writes identical information on two
+             disks; it is called disk mirroring. When a process writes or updates a record in a
+             file, one copy of the record is written on each disk. This way, RAID 1 incurs 100
+             percent overhead; however, one copy of a record is guaranteed to be accessible
+             even if a single fault occurs. During a read, the RAID simply reads the copy
+             that can be accessed earlier. High data transfer rates can be achieved during read
+             operations because both disks could operate in parallel when no errors arise.
+             Hybrid organizations that use the features of RAID levels 0 and 1 are often
+             used in practice to obtain both high data transfer rates as in RAID level 0 and
+             high reliability as in RAID level 1. RAID 0 +1 employs disk striping as in RAID
+             0, and mirrors each stripe as in RAID 1. RAID 1 + 0 first mirrors each disk
+             and then performs striping. These organizations provide different kinds of fault
+             tolerance: In RAID 0+1, a single error in a copy of a stripe makes the entire copy
+             inaccessible, so errors in both copies of a stripe would make the stripe inaccessible.
+             In RAID 1 + 0, an error on one disk would be tolerated by accessing its mirror
+             disk. A stripe would become inaccessible only if both a disk and its mirror disk
+             have errors.
+             RAID Level 2   This RAID organization uses bit striping, i.e., it stores each bit of
+             data or redundancy information on a different disk. When data is to be written,
+             the ith data strip contains the ith bit of each byte and a parity strip contains one
+             of the parity bits computed from corresponding bits in all strips of the stripe. An
+             error correcting code is used to compute and store redundancy information for
+             each byte (see Section 14.3). Thus, 8 disks are used to record the bits of a byte,
+
+
+
+                                                                        Chapter 14   Implementation of File Operations                       563
+Table 14.3  RAID Levels
+Level       Technique                                                   Description
+Level 0     Disk striping                                               Data is interleaved on several disks. During an I/O oper-
+                                                                        ation, the disks are accessed in parallel. Potentially, this
+                    ...                                                 organization can provide an n-fold increase in data transfer
+                                                                        rates when n disks are used.
+Level 1     Disk mirroring                                              Identical data is recorded on two disks. During reading
+                                                                        of data, the copy that is accessible faster is used. One of
+                                                                        the copies is accessible even after a failure occurs. Read
+            Disk 1  Disk 2                                              operations can be performed in parallel if errors do not
+                                                                        arise.
+Level 2     Error correction codes                                      Redundancy information is recorded to detect and cor-
+                                                                        rect errors. Each bit of data or redundancy information is
+                    ...     ...                              ...        stored on a different disk and is read or written in parallel.
+            D            D                                P          P  Provides high data transfer rates.
+Level 3     Bit-interleaved parity                                      Analogous to level 2, except that it uses a single parity disk
+                                                                        for error correction. An error that occurs while reading
+                    ...                                                 data from a disk is detected by its device controller. The
+            D            D                             P                parity bit is used to recover lost data.
+Level 4     Block-interleaved parity                                    Writes a block of data, i.e., consecutive bytes of data, into
+                                                                        a strip and computes a single parity strip for strips of
+                    ...                                                 a stripe. Provides high data transfer rates for large read
+            D            D                             P                operations. Small read operations have low data transfer
+                                                                        rates; however, many such operations can be performed in
+                                                                        parallel.
+Level 5     Block-interleaved                                           Analogous to level 4, except that the parity information
+            distributed parity                                          is distributed across all disk drives. Prevents the parity
+                    ...                                                 disk from becoming an I/O bottleneck as in level 4. Also
+                                                                        provides better read performance than level 4.
+Level 6     P + Q redundancy                                            Analogous to RAID level 5, except that it uses two inde-
+                                                                        pendent    distributed  parity                   schemes.  Supports  recovery
+                    ...                                      ...        from failure of two disks.
+            D            D                             P          P
+Note: D and P indicate disks that contain only data and only parity information, respectively.  indicates a strip. · Indicates bits of a byte that
+are stored on different disks, and their parity bits.             indicates a strip containing only parity information.
+
+
+
+564  Part 4  File Systems
+             and a few more disks are used to record redundancy information. For example,
+             the (12, 8) Hamming code, which is adequate for recovery from a single failure,
+             would require 4 redundancy bits. The RAID 2 arrangement employing this code
+             would consist of 8 data disks and 4 disks containing redundancy information,
+             each storing 1 bit of data or parity information. This RAID arrangement can
+             read/write data 8 times faster than a single disk. However, it is expensive because
+             several disks are needed to store redundancy information, hence it is not practical.
+             RAID Level 3    Level 3 employs disk striping with a bit-interleaved parity scheme;
+             i.e., it employs bit interleaving--it writes the bits of a byte on different disks--and
+             employs a single parity bit per byte. The data strips of a stripe are stored on 8 data
+             disks and the parity strip is stored on the parity disk. Thus, RAID level 3 employs
+             a significantly smaller amount of redundant information than RAID level 2. A
+             read operation is performed as follows: The disk controller checks whether an
+             error exists within a strip. If so, it ignores the entire strip and recovers the data in
+             the strip using the parity strip--the value of a data bit is the modulo-2 difference
+             between the parity bit and the modulo-2 sum of corresponding bits of other strips
+             in the stripe.
+             All data disks participate in an I/O operation. This feature provides high
+             data transfer rates. However, it also implies that only one I/O operation can be in
+             progress at any time. Another drawback of RAID level 3 is that parity compu-
+             tation can be a significant drain of the CPU power. Hence parity computation is
+             off-loaded to the RAID itself.
+             RAID Level 4    Level 4 is analogous to level 3 except that it employs block-
+             interleaved parity. Each strip accommodates a block of data, i.e., a few consecutive
+             bytes of data. If an I/O operation involves a large amount of data, it will involve
+             all data disks as in RAID level 3, hence RAID level 4 can provide high data
+             transfer rates for large I/O operations. A fault-free read operation whose data fits
+             into one block will involve only a single data disk, so small I/O operations have
+             small data transfer rates; however, several such I/O operations can be performed
+             in parallel.
+             A write operation involves computation of parity information based on data
+             recorded in all strips of a stripe. This can be achieved by first reading data con-
+             tained in all strips of a stripe, replacing the data in some of the strips with new
+             data that is to be written, computing the new parity information, and writing
+             the new data and parity information on all disks. However, this procedure limits
+             parallelism because all disks are involved in the write operation even when new
+             data is to be written into a single block blocki of stripe stripei. Hence, the parity
+             information is computed by a simpler method that involves the exclusive OR of
+             three items--the old information in the parity block, the old data in block blocki,
+             and the new data to be written in block blocki. This way, only the disk(s) contain-
+             ing the block(s) to be written into and the parity block are involved in the write
+             operation, and so several small fault-free read operations involving other disks
+             can be performed in parallel with the write operation.
+             RAID Level 5    Level 5 uses block level parity as in level 4, but distributes the
+             parity information across all disks in the RAID. This technique permits small
+
+
+
+                                                Chapter 14   Implementation of File Operations  565
+write operations that involve a single data block to be performed in parallel if their
+parity information is located on different disks. Small fault-free read operations
+can be performed in parallel as in RAID level 4. Hence this organization is
+particularly suitable for small I/O operations performed at a high rate. Larger
+operations cannot be performed in parallel; however, the organization provides
+high data transfer rates for such operations. It also provides higher peak disk
+throughput for read operations than level 4 because one more disk can participate
+in read operations.
+RAID   Level  6  This  organization  uses  two  independent  distributed  parity
+schemes. These schemes support recovery from failure of two disks. Peak disk
+throughput is slightly higher than in level 5 because of the existence of one more
+disk.
+14.3.6 Optical Disks
+Data is recorded on an optical disk by creating changes in reflectivity of the disk,
+and it is read by a laser and a photosensitive assembly that picks up changes in
+reflectivity of the surface under the disk head. A compact disc (CD) is an optical
+disk. The disk writer stores a 1 by causing a change in reflectivity compared
+with the data bit in the preceding position, and stores a 0 by retaining the same
+reflectivity as the preceding bit.
+Recording on a CD can be performed by various means. Mass-produced
+prerecorded CDs that contain music are produced by mechanical means. They
+are called stamped CDs. Recording can also be performed by using a laser beam.
+A laser-recorded CD contains three layers: a polycarbonate layer, a polymer dye,
+and a reflective metallic layer. When a strong laser beam is directed at a spot
+on the CD, it heats the dye and creates a permanent mark on the disk called
+a pit, which has a lower reflectivity. This is why the recording process is called
+"burning" a CD. Data is recorded in a shallow spiral groove on a CD that extends
+from the inside diameter of the disk to its outside diameter. A CD contains
+22,188 spiral revolutions, which are about 1.6 microns apart. Each revolution
+is called a track. Speed control and absolute time information are prerecorded
+on a CD.
+A CD contains several regions reserved for use by a CD recorder. The power
+calibration area is used to calibrate the power of the writing laser. The program
+memory area stores track information for all sessions in the CD. It is followed
+by lead-in, program, and lead-out areas for each session. A lead-in area is a table
+of contents of a session. It indicates the number of tracks, track start and stop
+points, and the length of the session. The program area contains data tracks of
+the session. The lead-out area indicates end of a session.
+Two features of a CD are important from an operating system viewpoint--
+recording of data and creation of a file system. Data is recorded in the form
+of sectors on a track. A CD-ROM intended for computer use contains sec-
+tors of 2 KB. It has a capacity of about 650 MB. A DVD (digital versatile disk),
+on the other hand, has a capacity of about 5 GB. Data is recorded on either

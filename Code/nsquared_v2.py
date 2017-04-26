@@ -7,6 +7,7 @@ import sys
 
 import nltk
 import numpy as np
+import gensim
 from gensim import corpora, models, similarities
 from gensim.matutils import cossim, sparse2full
 from nltk import stem
@@ -26,10 +27,7 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
 
-if len(sys.argv) < 2:
-    subject = 'ADA'
-else:
-    subject = sys.argv[1]
+subject = 'ADA'
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
@@ -42,9 +40,9 @@ skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Rec
 punkt = {',', '"', "'", ':', ';', '(', ')', '[', ']', '{', '}', '.', '?', '!', '`', '|', '-', '=', '+', '_', '>', '<'}
 
 if(platform.system() == 'Windows'):
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 else:
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 
 stopwords.update(punkt)
 
@@ -71,19 +69,20 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 ####################### ONE TIME MODEL LOADING #########################
 
 def get_know_models(__subject):
-    global docs, texts
-    if not docs:
-        docs, texts = load_docs(__subject)
-    nsq = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (__subject, ), 'rb'))
-    lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (__subject, ))
-    lda.minimum_phi_value = 0
-    lda.minimum_probability = 0
-    lda.per_word_topics = False
-    # ann = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %__subject)
-    ann = joblib.load('models/Nsquared/%s/know_ann_clf_61_shrey.pkl' %__subject)
+    global subject
+    subject = __subject
+    load_texts(subject)
 
-    dictionary = corpora.Dictionary.load('models/Nsquared/%s/dictionary.dict' % (__subject, ))
-    corpus = corpora.MmCorpus('models/Nsquared/%s/corpus.mm' % (__subject, ))
+    nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
+    lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
+    # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
+    ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
+    lda.minimum_phi_value = 0.01
+    lda.minimum_probability = 0.01
+    lda.per_word_topics = False
+
+    dictionary = corpora.Dictionary.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' % (subject, )))
+    corpus = corpora.MmCorpus(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/corpus.mm' % (subject, )))
 
     print('Loaded models for visualization')
 
@@ -91,7 +90,9 @@ def get_know_models(__subject):
     
 ##################### PREDICTION WITH PARAMS ############################
 
-def predict_know_label(question, models):
+def predict_know_label(question, models, subject='ADA'):
+    load_texts(subject)
+
     nsq, lda, ann, dictionary, corpus = models
     x = question
     p_list = []
@@ -113,15 +114,15 @@ def predict_know_label(question, models):
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
 
     
-def load_docs(__subject):
+def load_texts(subject):
+    global docs, texts
     docs = {}
-    for file_name in sorted(os.listdir('resources/%s' % (__subject, ))):
-        with open(os.path.join('resources', __subject, file_name), encoding='latin-1') as f:
+    for file_name in sorted(os.listdir(os.path.join(os.path.dirname(__file__), 'resources/%s' % (subject, )))):
+        with open(os.path.join(os.path.dirname(__file__), 'resources', subject, file_name), encoding='latin-1') as f:
             content = f.read() #re.split('\n[\s]*Exercise', f.read())[0]
             title = content.split('\n')[0]
             if len([1 for k in skip_files if (k in title or k in file_name)]):
                 continue
-            
             docs[title] = __preprocess(content, stop_strength=1, remove_punct=False)
 
     doc_set = list(docs.values())
@@ -157,22 +158,23 @@ if __name__ == '__main__':
         TRAIN_LDA = False
         
         if TRAIN_LDA:
-            lda = models.LdaModel(corpus=corpus,
+            lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 10000),
                                   id2word=dictionary,
                                   num_topics=len(docs),
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
 
-            lda.minimum_phi_value = 0
-            lda.minimum_probability = 0
+            lda.minimum_phi_value = 0.01
+            lda.minimum_probability = 0.01
+            lda.per_word_topics = False
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-            lda.minimum_phi_value = 0
-            lda.minimum_probability = 0
+            lda.minimum_phi_value = 0.01
+            lda.minimum_probability = 0.01
             lda.per_word_topics = False
 
     if MODEL[1] in USE_MODELS:
@@ -224,19 +226,15 @@ if __name__ == '__main__':
     y = np.bincount(y_data)
     ii = np.nonzero(y)[0]
     print(list(zip(ii, y[ii])))
-
     data_dict = { i : [] for i in range(4) }
     for x, y in zip(x_data, y_data):
         data_dict[y] = x
-
     x_data = []
     y_data = []
-
     for k in data_dict:
         x = data_dict[k][:128]
         x_data.extend(x)
         y_data.extend(list(np.repeat(k, len(x))))
-
     x_all_data = list(zip(x_data, y_data))
     random.shuffle(x_all_data)
     x_data = [x[0] for x in x_all_data]
@@ -294,6 +292,7 @@ if __name__ == '__main__':
     #print('Accuracy: {:.2f}%'.format(nCorrect / nTotal * 100))
 
     x_train, x_test, y_train, y_test = train_test_split(y_probs, y_data, test_size=0.20)
+    print(x_train[0])
 
 
     ###### NEURAL NETWORK BASED SIMVAL -> KNOW MAPPING ########
@@ -305,8 +304,21 @@ if __name__ == '__main__':
 
     else:
         ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+        
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
     print(classification_report(y_real, y_pred))
 
     print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+
+    ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
+    ann_clf.fit(x_train, y_train)
+    print('ANN training completed')
+    joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
+
+    y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
+
+    print(classification_report(y_real, y_pred))
+
+    print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+

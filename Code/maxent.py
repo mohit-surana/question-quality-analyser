@@ -1,3 +1,4 @@
+import os
 import pickle
 
 import nltk
@@ -7,11 +8,11 @@ from nltk import MaxentClassifier, classify
 from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
 
 try:
-    domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
+    domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
 except:
-    domain = pickle.load(open('resources/domain.pkl',  'rb'))
+    domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
-domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() } 
+domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() }
 inverted_domain = {}
 for k in domain:
     for v in domain[k]:
@@ -93,10 +94,10 @@ if __name__ == '__main__':
     if TRAIN:
         classifier = MaxentClassifier.train(train_set, max_iter=100)
         classifier.predict_proba = classifier.prob_classify
-        pickle.dump(classifier, open('models/MaxEnt/maxent.pkl', 'wb'))
+        pickle.dump(classifier, open(os.path.join(os.path.dirname(__file__), 'models/MaxEnt/maxent.pkl'), 'wb'))
 
     if not TRAIN:
-        classifier  = pickle.load(open('models/MaxEnt/maxent_85.pkl', 'rb'))
+        classifier  = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/MaxEnt/maxent_85.pkl'), 'rb'))
     
     pred = []
     actual = [x[1] for x in test_set]
@@ -109,7 +110,7 @@ if __name__ == '__main__':
     print(classify.accuracy(classifier, test_set))
 
     '''
-    questions = open('datasets/ADA_v2_Exercise_Questions.txt').read().split('\n')
+    questions = open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_v2_Exercise_Questions.txt')).read().split('\n')
 
     X_ada = []
     X_ada_orig = []
@@ -124,7 +125,7 @@ if __name__ == '__main__':
     for t in X_ada_features:
         preds.append(classifier.classify(t))
 
-    with open('datasets/ADA_v2_Exercise_Questions_Labelled.csv', 'w', encoding="utf-8") as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_v2_Exercise_Questions_Labelled.csv'), 'w', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile)
         for q, p in zip(X_ada_orig, preds):
             csvwriter.writerow([q, mapping_cog2[p]])

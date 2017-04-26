@@ -1,0 +1,365 @@
+Summary
+Process    synchronization  is  a  generic    term  for     control synchronization--processes may not wait
+data  access  synchronization,     which  is  used      to  for each other's actions as expected. Hence avoid-
+update shared data in a mutually exclusive man-             ance of race conditions is a primary issue in process
+ner,  and  control  synchronization,  which   is    used    synchronization.
+to ensure that processes perform their actions in           The computer provides indivisible instructions,
+a desired order. Classic process synchronization            which  access  memory  locations  in  a  mutually
+problems such as producers­consumers, readers­              exclusive manner. A process may use an indivis-
+writers, and dining philosophers represent impor-           ible instruction on a lock variable to implement
+tant classes of process synchronization problems.           a critical section. However, this approach suffers
+In this chapter we discussed the fundamental issues         from busy waits because a process that cannot
+in process synchronization, and the support for             enter the critical section keeps looping until it
+process synchronization provided by the computer,           may do so, hence the kernel provides a facility
+the kernel, and programming languages. We also              to block such a process until it may be permit-
+analyzed classic process synchronization problems           ted to enter a critical section. Compilers of pro-
+and demonstrated use of various synchronization             gramming languages implement process synchro-
+facilities of programming languages and operating           nization primitives and constructs by using this
+systems in implementing them.                               facility. A semaphore is a primitive that facilitates
+      A race condition is a situation in which actions      blocking and activation of processes without race
+of concurrent processes may have unexpected con-            conditions. A monitor is a construct that provides
+sequences, such as incorrect values of shared data          two facilities--it implements operations on shared
+or faulty interaction among processes. A race con-          data as critical sections over the data and it pro-
+dition exists when concurrent processes update              vides statements for control synchronization.
+shared data in an uncoordinated manner. It is               Operating systems provide features for effi-
+avoided through mutual exclusion, which ensures             cient implementation of process synchronization;
+that only one process updates shared data at any            e.g., Linux provides readers­writers semaphores,
+time. A critical section on a shared data d is a            Solaris provides priority inheritance to avoid some
+section of code that accesses d in a mutually exclu-        of the problems related to busy waits, and Windows
+sive manner. A race condition may also exist in             provides dispatcher objects.
+
+
+
+                                                                   Chapter 6    Process Synchronization                  221
+TEST  YOUR CONCEPTS                                                                                                      ·
+6.1   Classify each of the following statements as true                Figure 6.21 is modified to remove the action
+      or false:                                                        "lift the forks one at a time" from the while
+      a. An application can contain a race condition                   loop and put it following the while loop.
+          only if the computer system servicing the           6.2  A semaphore is initialized to 1. Twelve wait
+          application contains more than one CPU.                  operations and seven signal operations are per-
+      b. Control synchronization is needed when pro-               formed on it. What is the number of processes
+          cesses generate and analyze of Figure 1.6(b)             waiting on this semaphore?
+          share the variable sample.                               a. 12,       b. 7,      c. 4,    d. 5
+      c. A    process   may    be  starved  of  entry  to  a  6.3  A binary semaphore is initialized to 1. 5 wait
+          critical section if the critical section imple-          operations are performed on it in a row, fol-
+          mentation does not satisfy the bounded wait              lowed    by  8     signal  operations.   Now      5   more
+          condition.                                               wait    operations  are    performed     on    it.   What
+      d. A process may be starved of entry to a critical           is  the  number     of     processes  waiting     on  this
+          section if the critical section implementation           semaphore?
+          does not satisfy the progress condition.                 a. 1,       b. 2,   c. 4,      d. 5
+      e. A busy wait is unavoidable unless a system           6.4  Ten    processes    share  a   critical  section     imple-
+          call is made to block a process.                         mented by using a counting semaphore named
+      f. Indefinite busy waits are possible in an OS               x. Nine of these processes use the code wait(x);
+          using priority-based scheduling, but not pos-            {critical section} signal(x). However, one pro-
+          sible in an OS using round-robin scheduling.             cess erroneously uses the code signal(x); {critical
+      g. Algorithm 6.1 can be used to implement a                  section} signal(x). What is the maximum num-
+          single-buffer producers­consumers system if              ber of processes that can be in the critical section
+          process P1 is a producer and P2 is a consumer.           at the same time?
+      h. When a lock variable is used, an indivisi-                a. 1,       b. 2,   c. 10,       d. 3
+          ble instruction is not needed to implement
+          a critical section.                                 6.5  In a readers­writers system, a read operation
+      i. In a producers­consumers system consisting                consumes 3 time units and a write operation con-
+          of many producer processes, many consumer                sumes 5 time units. No readers or writers exist
+          processes, and many buffers in the buffer-               in the system at time ti - 1. One reader arrives at
+          pool, it is possible for many producer pro-              time ti, and 5 readers and 1 writer arrive at time
+          cesses to be producing and many consumer                 ti + 1. If no more readers or writers arrive, when
+          processes to be consuming at the same time.              will the writer finish writing?
+      j.  In  a  writers-preferred  readers­writers    sys-        a. ti + 8,
+          tem, some reader processes wishing to read               b. ti + 20,
+          the shared data may become blocked even                  c. ti + 9,
+          while some other reader processes are reading            d. none of a­c
+          the shared data.                                    6.6  A producer process produces a new item of infor-
+      k. A    deadlock  cannot      occur   in  the  dining        mation in 10 seconds and a consumer process
+          philosophers problem if one of the philoso-              consumes an item in 20 seconds. In a producers­
+          phers can eat with only one fork.                        consumers system consisting of a single pro-
+      l. A    critical  section     implemented        using       ducer process, a single consumer process, and
+          semaphores would satisfy the bounded wait                a single buffer, both the producer and the con-
+          property only if the signal operation activates          sumer processes start their operation at time 0.
+          processes in FIFO order.                                 At what time will the consumer process finish
+      m. A race condition can occur over forks if the              consuming 3 items?
+          outline of the dining philosophers problem in            a. 20, b. 60, c. 70, d. 90, e. none of a­d
+
+
+
+222      Part 2  Process Management
+EXERCISES                                                                                                                        ·
+6.1  A concurrent program contains a few updates of                 and activate for process synchronization. It has a
+     a shared variable x, which occur inside critical               race condition. Describe how this race condition
+     sections. Variable x is also used in the following             arises.
+     section of code which is not enclosed in a critical      6.10  The readers­writers solution of Figure 6.30 uses
+     section:                                                       two semaphores even though a single entity--
+                         if x < c                                   the shared data--is to be controlled. Modify this
+                         then y :=x;                                solution to use a single semaphore rw_permi-
+                         else y :=x + 10;                           ssion    instead       of    semaphores          reading     and
+                         print x, y;                                writing. (Hint: perform a wait(rw_permission)
+                                                                    in the reader only if reading is not already in
+     Does this program have a race condition?                       progress.)
+6.2  Two concurrent processes share a data item sum,          6.11  Modify        the      readers­writers            solution   of
+     which is initialized to 0. However, they do not use            Figure   6.30      to  implement          a  writer-preferred
+     mutual exclusion while accessing its value. Each               readers­writers system.
+     process contains a loop that executes 50 times           6.12  Implement      a       critical  section     using   the    Test-
+     and contains the single statement sum :=sum+1.                 and-set or Swap instructions of Section 6.5.2.
+     If no other operations are performed on sum,                   Use ideas from Section 6.8.2 to ensure that the
+     indicate the lower bound and upper bound on                    bounded wait condition is satisfied.
+     the value of sum when both processes terminate.          6.13  A   resource       is  to  be    allocated       to  requesting
+6.3  Analyze Algorithms 6.1 and 6.2 and comment                     processes in a FIFO manner. Each process is
+     on  the   critical  section   properties  violated   by        coded as
+     them. Give examples illustrating the violations.
+6.4  Answer the following in context of Dekker's                        repeat
+     algorithm:                                                              ...
+     a. Does   the   algorithm        satisfy  the  progress                 request-resource(process_id, resource_id);
+         condition?                                                          { Use resource }
+     b. Can a deadlock condition arise?                                      release-resource(process_id, resource_id);
+     c. Can a livelock condition arise?                                      { Remainder of the cycle }
+6.5  Is  the   bounded   wait      condition   satisfied  by            forever
+     Peterson's algorithm?
+6.6  The following changes are made in Peterson's                   Develop       the  procedures        request-resource        and
+     algorithm (see Algorithm 6.4): The statements                  release-resource using semaphores.
+     flag[0] :=true and flag[0] :=false in process P0         6.14  Can one or more of the following features elim-
+     are interchanged, and analogous changes are                    inate deficiencies of the outline of the dining
+     made in process P1. Discuss which properties                   philosophers problem shown in Figure 6.20?
+     of the implementation of critical sections are                 a. If n philosophers exist in the system, have
+     violated by the resulting system.                                  seats for at least n + 1 philosophers at the
+6.7  The statement while flag[1] and turn = 1 in Peter-                 dining table.
+     son's algorithm is changed to while flag[1] or turn            b. Make       sure     that      at  least   one     left-handed
+     = 1, and analogous changes are made in process                     philosopher and at least one right-handed
+     P1. Which properties of critical section imple-                    philosopher sit at the table at any time.
+     mentation are violated by the resulting system?          6.15  In  Figure     6.35,       producers         and     consumers
+6.8  Comment on the effect of deleting the statement                always   execute       the   statements          buf_full .signal
+     while choosing[j] do { nothing }; on working of                and buf_empty.signal. Suggest and implement
+     Lamport's Bakery algorithm.                                    a   method    of       reducing      the    number   of   signal
+6.9  The solution of the producers­consumers prob-                  statements    executed           during     the   operation  of
+     lem shown in Figure 6.37 uses kernel calls block               the system.
+
+
+
+                                                                              Chapter 6        Process  Synchronization    223
+      type
+              item = . . .;
+      var
+              buffer : item;
+              buffer_full : boolean;
+              producer_blocked : boolean;
+              consumer_blocked : boolean;
+      begin
+              buffer_full := false;
+              producer_blocked := false;
+              consumer_blocked := false;
+      Parbegin
+             repeat                                       repeat
+             if buffer_full = false then                  if buffer_full = true then
+                   { Produce in buffer }                           { Consume from buffer }
+                   buffer_full := true;                            buffer_full := false;
+                   if consumer_blocked = true then                 if producer_blocked = true then
+                     activate(consumer);                            activate(producer);
+                   { Remainder of the cycle }                      { Remainder of the cycle }
+             else                                         else
+                   producer_blocked := true;                       consumer_blocked := true;
+                   block(producer);                                block(consumer);
+                   consumer_blocked := false;                      producer_blocked := false;
+            forever                                       forever
+      Parend
+                     Producer                                       Consumer
+Figure 6.37  The producer­consumer problem          with a synchronization error due to a race
+condition.
+6.16  Implement      the     dining       philosophers    problem             of them and starts serving him; otherwise, he
+      using monitors. Minimize the number of execu-                           goes to sleep in the barber's chair. A customer
+      tions of signal statements in your solution and                         enters the waiting room only if there is at least
+      observe its effect on the logical complexity of                         one vacant seat and either waits for the barber
+      your solution.                                                          to call him if the barber is busy, or wakes the
+6.17  A customer gives the following instructions to a                        barber if he is asleep. Identify the synchroniza-
+      bank manager: Do not credit any funds to my                             tion requirements between the barber and cus-
+      account if the balance in my account exceeds                            tomer processes. Code the barber and customer
+      n, and hold any debits until the balance in the                         processes such that deadlocks do not arise.
+      account is large enough to permit the debit.                  6.19      A monitor is to be written to simulate a clock
+      Design a monitor to implement the customer's                            manager used for real-time control of concur-
+      bank account.                                                           rent processes. The clock manager uses a variable
+6.18  The    synchronization             problem  called  sleeping            named clock to maintain the current time. The
+      barber is described as follows: A barber shop has                       OS supports a signal called elapsed_time that is
+      a single barber, a single barber's chair in a small                     generated every 2 ms. The clock manager pro-
+      room, and a large waiting room with n seats. The                        vides a signal handling action for elapsed_time
+      barber and the barber's chair are visible from the                      (see Section 5.4.1) that updates clock at every
+      waiting room. After servicing one customer, the                         occurrence of the signal. This action is coded as
+      barber checks whether any customers are wait-                           a procedure of the monitor. A typical request
+      ing in the waiting room. If so, he admits one                           made to the clock manager is "wake me up at
+
+
+
+224            Part 2       Process Management
+         9.00 a.m." The clock manager blocks the pro-                                  this system, using any synchronization primitive
+         cesses making such requests and arranges to                                   or control structure of your choice. To prevent
+         activate them at the designated times. Implement                              starvation of queries, it is proposed to handle a
+         this monitor.                                                                 maximum of 10 queries on a part of the data
+6.20     Nesting of monitor calls implies that a proce-                                at any time. Modify the monitor to incorporate
+         dure in monitor A calls a procedure of another                                this feature.
+         monitor, say monitor B. During execution of the                         6.23  A bridge on a busy highway is damaged by a
+         nested call, the procedure of monitor A con-                                  flood. One-way traffic is to be instituted on the
+         tinues to hold its mutual exclusion. Show that                                bridge by permitting vehicles traveling in oppo-
+         nested monitor calls can lead to deadlocks.                                   site directions to use the bridge alternately. The
+6.21     Write a short note on the implementation of                                   following rules are formulated for use of the
+         monitors. Your note must discuss:                                             bridge:
+         a. How to achieve mutual exclusion between the                                a. At any time, the bridge is used by vehicle(s)
+             monitor procedures.                                                       traveling in one direction only.
+         b. Whether         monitor      procedures          need      to              b. If vehicles are waiting to cross the bridge at
+             be    coded     in   a   reentrant       manner           (see            both ends, only one vehicle from one end is
+             Section 11.3.3.2).                                                        allowed to cross the bridge before a vehicle
+6.22     A   large    data   collection    D  is    used    merely     to              from the other end starts crossing the bridge.
+         answer queries, i.e., no updates are carried out                              c. If no vehicles are waiting at one end, then
+         on D, so queries can be processed concurrently.                               any number of vehicles from the other end
+         Because of the large size of D, it is split into sev-                         are permitted to cross the bridge.
+         eral parts D1, D2, . . . , Dn, and at any time only                           Develop a concurrent system to implement these
+         one of these parts, say D1, is loaded in mem-                                 rules.
+         ory to handle queries related to it. If no queries                      6.24  When vehicles are waiting at both ends, the rules
+         are active on D1, and queries exist on some other                             of Exercise 23(a) lead to poor use of the bridge.
+         part of data, say D2, D2 is loaded in memory and                              Hence up to 10 vehicles should be allowed to
+         queries on it are processed concurrently. When                                cross the bridge in one direction even if vehi-
+         D is split into two parts D1 and D2, this system                              cles are waiting at the other end. Implement the
+         is called a readers­readers system. Implement                                 modified rules.
+CLASS PROJECT 1: INTERPROCESS COMMUNICATION                                                                                                ·
+An interprocess message communication system uses                            20  message       buffers.  The  system  is  to  operate      as
+the asymmetric naming convention described later in                          follows:
+Section    9.1.1,   which       uses  the    following      rules:     To
+send  a    message,     a   sender    provides      the     id   of    the   1.  Each process has a cyclic behavior. Its operation is
+destination    process      to  which    it  is   to  be    delivered,           governed by commands in a command file that is
+and   the   text    of  the     message.     To     receive     a    mes-        used exclusively by it. In each iteration, it reads a
+sage, a process simply provides the name of a vari-                              command from the file and invokes an appropri-
+able in which the message should be deposited; the                               ate operation of the monitor. Three commands are
+system   provides       it  with  a   message         sent   to    it  by        supported:
+some process.                                                                    a. send <process_id>, <message_text>: The pro-
+      The system consists of a monitor named Com-                                      cess should send a message.
+munication_Manager          and   four     processes.     The      moni-         b. receive <variable_name>: The process should
+tor  provides    the    operations    send    and     receive,     which               receive a message.
+implement    message        passing   using      a  global      pool   of        c. quit: The process should complete its operation.
+
+
+
+                                                               Chapter 6          Process Synchronization    225
+2.  When a process invokes a send operation, the mon-          process performing the receive operation is blocked
+    itor copies the text of the message in a free message      if no message exists for it. It would be activated
+    buffer from the global pool of message buffers. If         when a message is sent to it.
+    the destination process of the message is currently    4.  After performing a send or receive operation, the
+    blocked on a receive operation, the message is deliv-      monitor writes details of the actions performed by
+    ered to it as described in Item 3 and the process          it in a log file.
+    is activated. In either case, control is returned to   5.  The monitor detects a deadlock situation, in which
+    the process executing the send operation. If none of       some of the processes are blocked indefinitely. It
+    the message buffers in the global pool of 20 mes-          writes details of the deadlock situation in the log
+    sage buffers is free, the process performing the send      file and terminates itself.
+    operation is blocked until a message buffer becomes    6.  The interprocess message communication system
+    free.                                                      terminates itself when all processes have completed
+3.  When a process invokes a receive operation, it is          their operation.
+    given a message sent to it in FIFO order. The mon-
+    itor finds the message buffer that contains the first
+    undelivered message that was sent to the process,          Write the monitor Communication_Manager and
+    copies the text of the message into the variable       test its operation with several sets of sample command
+    mentioned by the process, and frees the message        files for the processes that create various interesting sit-
+    buffer. If a process executing the send operation was  uations in message passing, including some deadlock
+    blocked as mentioned in Item 2, it is activated. The   situations.
+CLASS PROJECT 2: DISK SCHEDULER                                                                                           ·
+A disk scheduler is that part of an OS which decides the   exclusively by it. Each command is for performing a
+order in which I/O operations should be performed on a     read or write operation on a disk block. In each itera-
+disk to achieve high disk throughput (see Section 14.7).   tion, a process reads a command from its command file
+Processes that wish to perform I/O operations on the disk  and invokes the monitor operation IO_request to pass
+use a monitor named Disk_scheduler and the following       details of the I/O operation to the monitor. IO_request
+pseudocode:                                                blocks the process until its I/O operation is scheduled.
+    var Disk_scheduler : Disk_Mon_type;                    When the process is activated, it returns from IO_request
+    Parbegin                                               and performs its I/O operation. After completing the I/O
+    begin { User process Pi }                              operation, it invokes the monitor operation IO_complete
+             var disk_block_address : integer;             so that the monitor can schedule the next I/O opera-
+             repeat                                        tion. The monitor writes details of its actions in a log file
+                                                           every time the IO_request or IO_complete operation is
+              {read a command from file Fi }               invoked.
+              Disk_scheduler . IO_request                      Code the monitor type Disk_Mon_type. For sim-
+                      (Pi, IO_operation,                   plicity, you may assume that I/O operations are sched-
+                      disk_block_address);                 uled in FIFO order, and that the number of processes
+              { Perform I/O Operation }                    does not exceed 10. (Hint: Note the process id of a pro-
+              Disk_scheduler . IO_complete (Pi);           cess along with details of its I/O operation in a list in
+              { Remainder of the cycle }                   the monitor. Decide how many condition variables you
+             forever                                       would need to block and activate the processes.)
+    end;                                                       Modify Disk_Mon_type such that I/O operations
+    ...               { other user processes      }        would be performed by the monitor itself rather than by
+    Parend;                                                user processes. (Hint: Operation I/O_complete would no
+    Each process has cyclic behavior. Its operation is     longer be needed.)
+governed by commands in a command file that is used
+
+
+
+226          Part 2  Process Management
+BIBLIOGRAPHY                                                                                                           ·
+Dijkstra (1965) discusses the mutual exclusion problem,        2.   Ben Ari, M. (1982): Principles of Concurrent
+describes Dekker's algorithm, and presents a mutual                 Programming, Prentice Hall, Englewood Cliffs,
+exclusion algorithm for n processes. Lamport (1974,                 N.J.
+1979) describes and proves the Bakery algorithm. Ben           3.   Ben Ari, M. (2006): Principles of Concurrent and
+Ari (1982) describes the evolution of mutual exclusion              Distributed Programming, 2nd ed., Prentice Hall,
+algorithms and provides a proof of Dekker's algorithm.              Englewood Cliffs, N.J.
+Ben Ari (2006) discusses concurrent and distributed pro-       4.   Bovet, D. P., and M. Cesati (2005): Understanding
+gramming. Peterson (1981), Lamport (1986, 1991), and                the Linux Kernel, 3rd ed., O'Reilly, Sebastopol.
+Raynal (1986) are other sources on mutual exclusion            5.   Brinch Hansen, P. (1972): "Structured
+algorithms.                                                         multiprogramming," Communications of the
+     Dijkstra  (1965)  proposed      semaphores.  Hoare             ACM, 15 (7), 574­578.
+(1972) and Brinch Hansen (1972) discuss the critical           6.   Brinch Hansen, P. (1973): Operating System
+and conditional critical regions, which are synchroniza-            Principles, Prentice Hall, Englewood Cliffs, N.J.
+tion constructs that preceded monitors. Brinch Hansen          7.   Brinch Hansen, P. (1975): "The programming
+(1973) and Hoare (1974) describe the monitor concept.               language concurrent Pascal," IEEE Transactions
+Buhr et al. (1995) describes different monitor implemen-            on Software Engineering, 1 (2), 199­207.
+tations. Richter (1999) describes thread synchronization       8.   Brinch Hansen, P. (1977): The Architecture of
+in C/C++ programs under Windows. Christopher and                    Concurrent Programs, Prentice Hall, Englewood
+Thiruvathukal (2001) describes the concept of monitors              Cliffs, N.J.
+in Java, compares it with the monitors of Brinch Hansen        9.   Buhr, M., M. Fortier, and M. H. Coffin (1995):
+and Hoare, and concludes that Java synchronization is               "Monitor classification," Computing Surveys, 27
+not as well developed as the Brinch Hansen and Hoare                (1), 63­108.
+monitors.                                                      10.  Chandy, K. M., and J. Misra (1988): Parallel
+     A     synchronization  primitive  or  construct       is       Program Design: A Foundation, Addison-Wesley,
+complete if it can be used to implement all process syn-            Reading, Mass.
+chronization problems. The completeness of semaphores          11.  Christopher, T. W., and G. K. Thiruvathukal
+is discussed in Patil (1971), Lipton (1974), and Kosaraju           (2001): Multithreaded and Networked
+(1975).                                                             Programming, Sun Microsystems.
+     Brinch Hansen (1973, 1977) and Ben Ari (1982,             12.  Courtois, P. J., F. Heymans, and D. L. Parnas
+2006) discuss the methodology for building concurrent               (1971): "Concurrent control with readers and
+programs. Owicki and Gries (1976) and Francez and                   writers," Communications of the ACM, 14 (10),
+Pneuli (1978) deal with the methodology of proving the              667­668.
+correctness of concurrent programs.                            13.  Dijkstra, E. W. (1965): "Cooperating sequential
+     Vahalia (1996) and Stevens and Rago (2005) dis-                processes," Technical Report EWD-123,
+cuss process synchronization in Unix, Beck et al. (2002),           Technological University, Eindhoven.
+Bovet and Cesati (2005), and Love (2005), discuss syn-         14.  Eisenberg, M. A., and M. R. McGuire (1972):
+chronization in Linux, Mauro and McDougall (2006)                   "Further comments on Dijkstra's concurrent
+discusses  synchronization  in  Solaris,   while  Richter           programming control problem," Communications
+(1999) and Russinovich and Solomon (2005) discuss                   of the ACM, 15(11), 999.
+synchronization features in Windows.                           15.  Francez, N., and A. Pneuli (1978): "A proof
+                                                                    method for cyclic programs," Acta Informatica, 9,
+                                                                    133­157.
+1.   Beck, M., H. Bohme, M. Dziadzka, U. Kunitz,               16.  Hoare, C. A. R. (1972): "Towards a theory of
+     R. Magnus, C. Schroter, and D. Verworner                       parallel programming," in Operating Systems
+     (2002): Linux Kernel Programming, Pearson                      Techniques, C.A.R. Hoare and R.H. Perrot (eds.),
+     Education, New York.                                           Academic Press, London, 1972.
+
+
+
+                                                             Chapter 6        Process Synchronization            227
+17.  Hoare, C. A. R (1974): "Monitors: an operating     26.  Owicki, S., and D. Gries (1976): "Verifying
+     system structuring concept," Communications of          properties of parallel programs: An axiomatic
+     the ACM, 17(10), 549­557.                               approach," Communications of the ACM, 19,
+18.  Kosaraju, S. (1973): "Limitations of Dijkstra's         279­285.
+     semaphore primitives and petri nets," Operating    27.  Patil, S. (1971): "Limitations and capabilities of
+     Systems Review, 7, 4, 122­126.                          Dijkstra's semaphore primitives for co-ordination
+19.  Lamport, L. (1974): "A new solution of Dijkstra's       among processes," Technical Report, MIT.
+     concurrent programming problem," Communica-        28.  Peterson, G. L. (1981): "Myths about the mutual
+     tions of the ACM, 17, 453­455.                          exclusion problem," Information Processing
+20.  Lamport, L. (1979): "A new approach to proving          Letters, 12, 3.
+     the correctness of multiprocess programs," ACM     29.  Raynal, M. (1986): Algorithms for Mutual
+     Transactions on Programming Languages and               Exclusion, MIT Press, Cambridge, Mass.
+     Systems, 1, 84­97.                                 30.  Richter, J. (1999): Programming Applications for
+21.  Lamport, L. (1986): "The mutual exclusion               Microsoft Windows, 4th ed., Microsoft Press,
+     problem," Communications of the ACM, 33 (2),            Redmond, Wash.
+     313­348.                                           31.  Russinovich, M. E., and D. A. Solomon (2005):
+22.  Lamport, L. (1991): "The mutual exclusion               Microsoft Windows Internals, 4th ed., Microsoft
+     problem has been solved," ACM Transactions on           Press, Redmond, Wash.
+     Programming Languages and Systems, 1,              32.  Stevens, W. R., and S. A. Rago (2005): Advanced
+     84­97.                                                  Programming in the Unix Environment, 2nd ed.,
+23.  Lipton, R. (1974): "On synchronization primitive        Addison Wesley, Reading, Mass,.
+     systems," Ph.D. Thesis, Carnegie-Mellon            33.  Vahalia, U. (1996): Unix Internals--The New
+     University.                                             Frontiers, Prentice Hall, Englewood
+24.  Love, R. (2005): Linux Kernel Development, 2nd          Cliffs, N.J.
+     ed., Novell Press.
+25.  Mauro, J., and R. McDougall (2006): Solaris
+     Internals, 2nd ed., Prentice Hall, Englewood
+     Cliffs, N.J.

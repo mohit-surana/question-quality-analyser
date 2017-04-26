@@ -1,0 +1,161 @@
+Summary
+An operating system uses the notions of time and               relationship between events--that is, cause-and-
+state for controlling operation of user processes              effect relationship--to find which of the events
+and for organizing its own functioning. However,               occurred earlier. For example, in interprocess mes-
+each node in a distributed system has its own clock            sage communication, the sending of a message is a
+and memory, so these notions cannot be employed                cause and its receipt is the effect. Hence the receive
+as simply as in a conventional operating system.               event of a message is known to occur after its send
+In this chapter, we developed alternative notions              event. Using transitivity, it follows that an event
+of time and state for use in a distributed system.             that preceded a send event of a message must have
+     An  OS     uses  the  notion  of  time  to      know      occurred before an event that followed its receipt.
+the  order  in  which  events  occurred,     so      that  it  However, for some pairs of events, it is not possible
+can service events in time-dependent orders such               to know which of the events occurred earlier. Such
+as FCFS and LIFO. The notion of precedence                     events are called concurrent events.
+of events, which indicates which event occurred                It is laborious to deduce the precedence of
+before which other event, is transitive, that is, if           events by using transitivity. Hence an OS asso-
+event ei occurred before ej and event ej occurred              ciates a timestamp, i.e., occurrence time, with each
+before ek, then ei must have occurred before ek.               event and compares the timestamps of two events
+The OS can determine precedence of events as fol-              to know which of them occurred earlier. To facil-
+lows: If two events occurred in the same node,                 itate timestamping, the OS maintains a clock in
+the OS knows which of them occurred earlier. For               each process, which is called the local clock of the
+events occurring in different nodes, the OS uses               process, and keeps the local clocks of processes well
+transitivity of events and the notion of a causal              synchronized. It performs clock synchronization
+
+
+
+                                                          Chapter 17  Theoretical Issues in Distributed Systems            711
+by using the causal relationship governing inter-                    of its nodes obtained at exactly the same instant of
+process messages as follows: Each message con-                       time. It is not possible to record the global state
+tains the timestamp of its send event. The local                     by asking each node to record its local state at a
+clock in the process receiving the message must                      specific time instant, because clocks in the nodes
+show a time larger than the timestamp in the mes-                    are not perfectly synchronized. An arbitrary collec-
+sage. If it is not so, the local clock in the receiving              tion of local states of nodes may be inconsistent.
+process is incremented to a time that is larger than                 For example, if nodes record their states sponta-
+the timestamp in the message. Since local clocks                     neously, the local state of node Ni may be recorded
+do not show the real time, they are called logical                   before it sent a message m to node Nj and the local
+clocks. Timestamps using logical clocks have the                     state of Nj may be recorded after it received mes-
+property that if ti, tj are the timestamps of events                 sage m. This problem was overcome by Chandy and
+ei, ej ,  respectively,   ti   <  tj  if  event ei  precedes   ej .  Lamport (1985) by using special messages called
+An alternative system of clocks called vector clocks                 markers to instruct individual nodes to record their
+has the additional property that ti < tj implies that                local states. They showed that if interprocess com-
+event ei occurred before ej. For concurrent events,                  munication is FIFO, the local states of processes
+it is immaterial how we order them. Hence a pair                     recorded by their algorithm were mutually consis-
+(process id, timestamp) is used to obtain a total                    tent. The collection of these local states can be used
+order on events.                                                     to detect stable properties, which are properties that
+The state of a node is called its local state. The                   do not change with time, such as presence of cycles
+global state of a system is a collection of local states             in wait-for graphs.
+TEST      YOUR CONCEPTS                                                                                                       ·
+17.1      Classify each of the following statements as true           a.  If process Pi sends messages to process Pj ,
+          or false:                                                       but process Pj does not send messages to pro-
+          a.  Events ei and ej are concurrent events only                 cess Pi, states of processes Pi, Pj are mutually
+              if ts(ei) = ts(ej ), where ts(ei), ts(ej ) are the          consistent local states only if
+              timestamps of ei, ej using logical clocks.                  i. All messages sent by process Pi to process
+          b.  Even if ts(ei) > ts(ej ), event ei could have               Pj have been received by process Pj .
+              occurred earlier than event ej .                            ii. Some        messages  sent  by     process  Pi  to
+          c.  Even if vts(ei) > vts(ej ), event ei could have             process         Pj  have  not   been   received     by
+              occurred earlier than event ej .                            process Pj .
+          d.  A message from process Pi to process Pj that                iii. All messages received by process Pj from
+              intersects with a cut of a system is a mes-                 process Pi have been sent by process Pi.
+              sage that has been sent by Pi but not received              iv. None of (i)­(iii).
+              by  Pj  in  the  states  of  processes  Pi  and  Pj     b.  If event ei in process Pi is in the past of a
+              represented by the cut.                                     cut Ck,
+          e. In a state recorded by the Chandy­Lamport                    i. All events in the system that precede event
+              algorithm, the state of channel Chij is likely              ei are in the past of the cut Ck.
+              to be nonempty only if process Pj receives a                ii. Some of the events that precede event ei
+              marker on some other channel before receiv-                 may be in the past of the cut Ck.
+              ing the marker on channel Chij .                            iii. All events that occur after event ei are in
+17.2      Select the appropriate alternative in each of the               the future of the cut Ck.
+          following questions:                                            iv. None of (i)­(iii).
+
+
+
+712         Part 5  Distributed Operating Systems
+EXERCISES                                                                                                                       ·
+17.1  In Example 17.2, P3's time is much larger than                    using causal relationships. Give an example of
+      that of P1 or P2. List all conditions under which                 a    system  showing      such  events.      Comment    on
+      this can happen.                                                  the advantages and drawbacks of using rela-
+17.2  The following events occur in a system consisting                 tion (17.1).
+      of three processes:                                        17.5   Instead of using relation (17.2) to obtain a total
+      process P1            process P2      process P3                  order using vector timestamps, it is proposed to
+                                                                        use the following relation:
+      event e1;             event e3;       event e5;                        ei precedes ej  iff
+      ­­                    ­­              ­­                          (i) pvts(ei).local time < pvts(ej ).local time, or
+      Send                  Receive         Send
+      message               message         message                     (ii) pvts(ei).local time = pvts(ej ).local time and
+      to P2;                from P3;        to P2;                               pvts(ei).process id < pvts(ej ).process id
+      event e2;             Receive         event e6;                   Comment on the correctness of this proposal.
+                            message                              17.6   ti and tj are timestamps of events ei and ej .
+                            from P1;                                    a. Give an example of a system in which ti < tj
+                            ­­              Receive                          when logical clocks are used but ti < tj when
+                                            message                          vector clocks are used.
+                                            from P2;                    b. If ti < tj when vector clocks are used, show
+                            event e4;       ­­                               that ti < tj when logical clocks are used.
+                            Send            event e7;                   c. If ti < tj when logical clocks are used, show
+                            message                                          that ti > tj when vector clocks are used.
+                            to P3;                               17.7   Vector   timestamps         of  concurrent      events  ei
+      a. Draw a timing diagram for the system.                          and  ej  are   such    that     vts(ei )[k]  <  vts(ej )[k].
+      b. Show event precedences in this system.                         Show     that  events     ei  and    el  are    concurrent
+      c. List the concurrent events.                                    if vts(el )[g] = vts(ej )[g] for all g          =  k  and
+17.3  Synch(Pi, Pj , tk) = true if the logical clocks of Pi             vts(el )[k] > vts(ej )[k].
+      and Pj are reasonably consistent at time instant           17.8   Explain, with the help of an example, why the
+      tk; i.e., if the difference between their values is               Chandy­Lamport algorithm requires channels
+      <, for some small value . If RP(i, k) is the set                  to be FIFO.
+      of processes from whom Pi has received a mes-              17.9   A transitless state of a system is a state in which
+      sage before tk and SP(i, k) is the set of processes               no messages are in transit. (See Table 17.4 for an
+      to which Pi has sent a message before tk, deter-                  example.) Give an example of a system in which
+      mine whether Synch(Pi, Pj , tk) would be true in                  all  states   recorded    by    the  Chandy­Lamport
+      the following situations:                                         algorithm are necessarily transitless.
+      a. RP(i, k)        RP( j, k) =                             17.10  A system consists of processes Pi, Pj and chan-
+      b. There      exists  a   Pg          SP(i, k)  such that         nels Chij and Chji. Each process sends a message
+          Pj   SP(g, k)                                                 to the other process every  seconds. Every mes-
+      c.  Pj   SP(i, k)                                                 sage requires  seconds to reach Pj . Prove that
+      d.  Pj   RP(i, k) but Pj  RP(i, k - 1)                            if   <    , the state recording initiated by Pi
+      e.  Pj   SP(i, k) and Pi  SP(j, k)                                using the Chandy­Lamport algorithm cannot
+      f.  Pj   RP(i, k) but Pj            RP(i, k - 1)      and         be transitless.
+          Pi has not received any message from any               17.11  Give an example of a system in which the state
+          process after the time it sent a message to Pj .              recorded by the Chandy­Lamport algorithm is
+17.4  Relation    (17.1)    imposes      a  total  order  even          one of the states in which the system existed
+      if  events    can     be  only   partially   ordered   by         sometime during the execution of the algorithm.
+
+
+
+                                                    Chapter  17      Theoretical Issues in Distributed Systems           713
+17.12  What will be the state recording in Example 17.6,     17.14   The assumption concerning FIFO channels can
+       if the state recording request in channel Ch42 is             be removed from Algorithm 17.2 as follows: A
+       delayed and delivered to process P2 immediately               flag field is added to each message. This field
+       after event e23 occurs?                                       contains the values before token or after token
+17.13  The  Chandy­Lamport        algorithm  works  cor-             depending on whether the message is sent before
+       rectly if more than one node in a distributed                 or after sending a token on the same channel.
+       system spontaneously initiates a state record-                If a process receives a message with the flag
+       ing. Describe working of the algorithm if pro-                value after token before it receives a token on the
+       cesses P2 and P4 of Figure 17.6 initiate state                same channel, it performs the same actions as it
+       recording (a) before sending any messages, (b)                would have performed on receiving a token, and
+       after one message has been sent on each of                    ignores the token when it is received later. For-
+       Ch21, Ch32  and  Ch43      and  no  other  messages           mulate rules for recording the state of a channel
+       are sent.                                                     using this scheme.
+BIBLIOGRAPHY                                                                                                              ·
+Lamport (1978) discusses ordering of events in a dis-            5.  Lai, T. H., and T. H. Yang (1987) : "On
+tributed system and defines a partial order on events.               distributed snapshots," Information Processing
+Mattern (1989), Garg (2002), and Attiya and Welch                    Letters, 25, 153­158.
+(2004) discuss vector clocks and consistency of cuts.            6.  Lamport L. (1978): "Time, clocks, and the
+Consistency of cuts is also discussed in Chandy and                  ordering of events in a distributed system,"
+Lamport (1985) and Knapp (1987).                                     Communications of the ACM, 21, 7 (July 1978),
+    Chandy and Lamport (1985) developed the dis-                     558­565.
+tributed snapshot problem described in Section 17.2,             7.  Li, H. F., T. Radhakrishnan, and K. Venkatesh
+which requires FIFO channels. Li, Radhakrishnan, and                 (1987) : "Global state detection in non-FIFO
+Venkatesh (1987), Lai and Yang (1987), and Mattern                   networks," Proceedings of the 7th International
+(1989) describe algorithms that do not require chan-                 Conference on Distributed Computing Systems,
+nels to be FIFO. Lynch (1996) and Tel (2000) discuss                 364­370.
+algorithms for global snapshots.                                 8.  Lynch, N. (1996): Distributed Algorithms,
+1.  Attiya, H., and J. Welch (2004): Distributed                     Morgan Kaufmann.
+    Computing: Fundamentals, Simulations and                     9.  Mattern, F. (1989) : "Virtual time and global
+    Advanced Topics, John Wiley, New York.                           states of distributed systems," M. Cosnard et al.
+2.  Chandy K. M., and L. Lamport (1985):                             (eds.), Parallel and Distributed Algorithms,
+    "Distributed snapshots: Determining global                       Elsevier Science, North Holland.
+    states of distributed systems," ACM Transactions         10.     Spezialetti, M., and P. Kearns (1986) : "Efficient
+    on Computer Systems, 3, 1 (Feb. 1985), 63­75.                    distributed snapshots," Proceedings of the 6th
+3.  Garg, V. K. (2002): Elements of Distributed                      International Conference on Distributed
+    Computing, Wiley-IEEE, New York.                                 Computing Systems, 382­388.
+4.  Knapp, E. (1987): "Distributed deadlock                  11.     Tel, G. (2000): Introduction to Distributed
+    Detection," Computing Surveys, 19, 4 (Dec. 1987),                Algorithms, 2nd ed. Cambridge University
+    303­328.                                                         Press, Cambridge.

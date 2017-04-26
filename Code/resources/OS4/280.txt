@@ -1,0 +1,317 @@
+Case Studies
+7.6.1 Scheduling in Unix
+Unix is a pure time-sharing operating system. It uses a multilevel adaptive
+scheduling policy in which process priorities are varied to ensure good system
+performance and also to provide good user service. Processes are allocated numer-
+ical priorities, where a larger numerical value implies a lower effective priority.
+In Unix 4.3 BSD, the priorities are in the range 0 to 127. Processes in the user
+mode have priorities between 50 and 127, while those in the kernel mode have
+priorities between 0 and 49. When a process is blocked in a system call, its prior-
+ity is changed to a value in the range 0­49, depending on the cause of blocking.
+When it becomes active again, it executes the remainder of the system call with
+this priority. This arrangement ensures that the process would be scheduled as
+soon as possible, complete the task it was performing in the kernel mode and
+release kernel resources. When it exits the kernel mode, its priority reverts to its
+previous value, which was in the range 50­127.
+     Unix uses the following formula to vary the priority of a process:
+     Process priority =    base priority for user processes
+                           + f (CPU time used recently) + nice value       (7.5)
+It is implemented as follows: The scheduler maintains the CPU time used by a
+process in its process table entry. This field is initialized to 0. The real-time clock
+raises an interrupt 60 times a second, and the clock handler increments the count
+in the CPU usage field of the running process. The scheduler recomputes process
+priorities every second in a loop. For each process, it divides the value in the CPU
+usage field by 2, stores it back, and also uses it as the value of f. Recall that a
+large numerical value implies a lower effective priority, so the second factor in
+Eq. (7.5) lowers the priority of a process. The division by 2 ensures that the effect
+of CPU time used by a process decays; i.e., it wears off over a period of time, to
+avoid the problem of starvation faced in the least completed next (LCN) policy
+(see Section 7.3.2).
+     A process can vary its own priority through the last factor in Eq. (7.5). The
+system call "nice(<priority value>);" sets the nice value of a user process. It takes
+a zero or positive value as its argument. Thus, a process can only decrease its
+effective priority to be nice to other processes. It would typically do this when it
+enters a CPU-bound phase.
+
+
+
+260  Part 2  Process Management
+     Table 7.5             Operation of a Unix-like   Scheduling  Policy
+     When Processes Perform I/O
+                       P1          P2          P3         P4         P5
+                                                                             Scheduled
+     Time          P       T   P       T   P       T  P       T   P       T  process
+     0.0           60      0                                                 P1
+     1.0                   60
+                   90      30                                                P1
+     2.0                   90          0
+                   105     45  60      0                                     P2
+     3.0                   45          60          0
+                   82      22  90      30  60      0                         P3
+     3.1           82      22  90      30  60      6                         P1
+     4.0                   76          30          6
+                   98      38  75      15  63      3                         P3
+     4.1           98      38  75      15  63      9                         P2
+     5.0                   38          69          9          0
+                   79      19  94      34  64      4  60      0              P4
+     6.0                   19          34          4          60
+                   69      9   77      17  62      2  90      30             P3
+·
+     Example 7.13      Process Scheduling in Unix
+                       Table 7.5 summarizes operation of the Unix scheduling policy for the processes
+                       in Table 7.2. It is assumed that process P3 is an I/O bound process that initiates
+                       an I/O operation lasting 0.5 seconds after using the CPU for 0.1 seconds, and
+                       none of the other processes perform I/O. The T field indicates the CPU time
+                       consumed by a process and the P field contains its priority. The scheduler
+                       updates the T field of a process 60 times a second and recomputes process
+                       priorities once every second. The time slice is 1 second, and the base priority
+                       of user processes is 60. The first line of Table 7.5 shows that at 0 second, only P1
+                       is present in the system. Its T field contains 0, hence its priority is 60. Two lines
+                       are shown for the time 1 second. The first line shows the T fields of processes
+                       at 1 second, while the second line shows the P and T fields after the priority
+                       computation actions at 1 second. At the end of the time slice, the contents of
+                       the T field of P1 are 60. The decaying action of dividing the CPU time by 2
+                       reduces it to 30, and so the priority of P1 becomes 90. At 2 seconds, the effective
+                       priority of P1 is smaller than that of P2 because their T fields contain 45 and
+                       0, respectively, and so P2 is scheduled. Similarly P3 is scheduled at 2 seconds.
+                           Since P3 uses the CPU for only 0.1 second before starting an I/O operation,
+                       it has a higher priority than P2 when scheduling is performed at 4 seconds;
+                       hence it is scheduled ahead of process P2. It is again scheduled at 6 seconds.
+                       This feature corrects the bias against I/O-bound processes exhibited by pure
+                       round-robin scheduling.
+                      ·
+
+
+
+                                                                  Chapter 7           Scheduling           261
+Table  7.6  Operation of Fair Share     Scheduling   in Unix
+            P1                 P2                P3           P4                      P5
+                                                                                                  Scheduled
+Time   P    C   G         P    C    G   P        C   G   P    C   G   P               C   G       process
+0      60   0          0                                                                          P1
+1      120  30  30                                                                                P1
+2      150  45  45        105  0    45                                                            P2
+3      134  22  52        142  30   52  60       0   0                                            P3
+4      97   11  26        101  15   26  120      30  30  86   0   26                              P4
+5      108  5   43        110  7    43  90       15  15  133  30  43                              P3
+6      83   2   21        84   3    21  134      37  37  96   15  21                              P1
+7                         101  1    40  96       18  18  107  7   40                              P3
+8                         80   0    20  138      39  39  83   3   20              80  0   20      P5
+9                         100  0    40  98       19  19  101  1   40  130             30  40      P3
+10                        80   0    20  138      39  39  80   0   20              95  15  20      P2
+11                        130  30   40  98       19  19  100  0   40  107             7   40      P3
+12                        95   15   20                   80   0   20              83  3   20      P4
+13                        107  7    40                                101             1   40      P5
+14                        113  3    50                                110             0   50      P5
+15                        116  1    55                                                            P2
+16
+Fair Share Scheduling     To ensure a fair share of CPU time to groups of processes,
+Unix schedulers add the term f (CPU time used by processes in the group) to
+Eq. (7.5). Thus, priorities of all processes in a group reduce when any of them
+consumes CPU time. This feature ensures that processes of a group would receive
+favored treatment if none of them has consumed much CPU time recently. The
+effect of the new factor also decays over time.
+                                                                                                             ·
+Fair Share Scheduling in Unix                                                            Example 7.14
+Table 7.6 depicts fair share scheduling of the processes of Table 7.2. Fields P,
+T, and G contain process priority, CPU time consumed by a process, and CPU
+time consumed by a group of processes, respectively. Two process groups exist.
+The first group contains processes P1, P2, P4, and P5, while the second group
+contains process P3 all by itself.
+       At 2 seconds, process P2 has just arrived. Its effective priority is low
+because process P1, which is in the same group, has executed for 2 seconds.
+However, P3 does not have a low priority when it arrives because the CPU
+time already consumed by its group is 0. As expected, process P3 receives a
+favored treatment compared to other processes. In fact, it receives every alter-
+nate time slice. Processes P2, P4, and P5 suffer because they belong to the same
+process group. These facts are reflected in the turnaround times and weighted
+
+
+
+262  Part 2  Process Management
+             turnarounds of the processes, which are as follows:
+                          Process              P1       P2        P3      P4    P5
+                          Completion time      7     16       12        13      15
+                          Turnaround time      7     14           9       9     7
+                          Weighted turnaround  2.33     4.67      1.80    4.50  2.33
+                                   Mean turnaround time (ta) = 9.2 seconds
+                                   Mean weighted turnaround (w¯ ) = 3.15
+             ·
+             7.6.2 Scheduling in Solaris
+             Solaris supports four classes of processes--time-sharing processes, interactive
+             processes, system processes, and real-time processes. A time slice is called a time
+             quantum in Solaris terminology. Time-sharing and interactive processes have pri-
+             orities between 0 and 59, where a larger number implies a higher priority. System
+             processes have priorities between 60 and 99; they are not time-sliced. Real-time
+             processes have priorities between 100 and 159 and are scheduled by a round-robin
+             policy within a priority level. Threads used for interrupt servicing have priorities
+             between 160 and 169.
+                Scheduling of time-sharing and interactive processes is governed by a dis-
+             patch table. For each priority level, the table specifies how the priority of a process
+             should change to suit its nature, whether CPU-bound or I/O-bound, and also to
+             prevent starvation. Use of the table, rather than a priority computation rule as in
+             Unix, provides fine-grained tuning possibilities to the system administrator. The
+             dispatch table entry for each priority level contains the following values:
+                ts_quantum       The time quantum for processes of this priority level
+                ts_tqexp         The new priority of a process that uses its entire time quantum
+                ts_slpret        The new priority of a process that blocks before using its
+                                 complete time quantum
+                ts_maxwait       The maximum amount of time for which a process can be
+                                 allowed to wait without getting scheduled
+                ts_lwait         The new priority of a process that does not get scheduled
+                                 within ts_maxwait time
+                A process that blocks before its time quantum elapses is assumed to be an
+             I/O-bound process; its priority is changed to ts_slpret, which is a higher
+             priority than its present priority. Analogously, a process that uses its entire time
+             quantum is assumed to be a CPU-bound process, so ts_tqexp is a lower priority.
+             ts_maxwait is used to avoid starvation, hence ts_lwait is a higher priority. In
+             addition to these changes in priority effected by the kernel, a process can change
+             its own priority through the nice system call with a number in the range -19 to
+             19 as a parameter.
+                Solaris 9 also supports a fair share scheduling class. A group of processes
+             is called a project and is assigned a few shares of CPU time. The fair share of
+
+
+
+                                                                  Chapter 7            Scheduling  263
+a project at any time depends on the shares of other projects that are active
+concurrently; it is the quotient of the shares of the project and the sum of the
+shares of all those projects that have at least one process active. In multiprocessor
+systems, shares are defined independently for each CPU. Solaris 10 added the
+notion of zones on top of projects. CPU shares are now assigned for both zones
+and projects to provide two-level scheduling.
+7.6.3 Scheduling in Linux
+Linux supports both real-time and non-real-time applications. Accordingly, it has
+two classes of processes. The real-time processes have static priorities between 0
+and 100, where 0 is the highest priority. Real-time processes can be scheduled in
+two ways: FIFO or round-robin within each priority level. The kernel associates
+a flag with each process to indicate how it should be scheduled.
+Non-real-time processes have lower priorities than all real-time processes;
+their priorities are dynamic and have numerical values between -20 and 19,
+where -20 is the highest priority. Effectively, the kernel has (100 + 40) priority
+levels. To start with, each non-real-time process has the priority 0. The priority
+can be varied by the process itself through the nice or setpriority system calls.
+However, special privileges are needed to increase the priority through the nice
+system call, so processes typically use this call to lower their priorities when they
+wish to be nice to other processes. In addition to such priority variation, the
+kernel varies the priority of a process to reflect its I/O-bound or CPU-bound
+nature. To implement this, the kernel maintains information about how much
+CPU time the process has used recently and for how long it was in the blocked
+state, and adds a bonus between 5 and -5 to the nice value of the process. Thus,
+a highly interactive process would have an effective priority of nice-5, while a
+CPU-bound process would have an effective priority of nice+5.
+Because of the multilevel priority structure, the Linux kernel organizes its
+scheduling data as shown in Figure 7.12 of Section 7.4.3. To limit the schedul-
+ing overhead, Linux uses a scheduler schematic analogous to Figure 5.9. Thus,
+scheduling is not performed after every event handling action. It is performed
+when the currently executing process has to block due to a system call, or when
+the need_resched flag has been set by an event handling action. This is done
+while handling expiry of the time slice, or while handling an event that acti-
+vates a process whose priority is higher than that of the currently executing
+process.
+Non-real-time processes are scheduled by using the notion of a time slice;
+however, the Linux notion of a time slice is actually a time quantum that a process
+can use over a period of time in accordance with its priority (see Section 7.4.8).
+A process that exhausts its time slice would receive a new time slice only after
+all processes have exhausted their time slices. Linux uses time slices in the range
+of 10 to 200 ms. To ensure that a higher-priority process would receive more
+CPU attention than a lower-priority process, Linux assigns a larger time slice to
+a higher-priority process. This assignment of time slices does not affect response
+
+
+
+264  Part 2  Process Management
+             times because a high-priority process would be interactive in nature, hence it
+             would perform an I/O operation before using much CPU time.
+             The Linux scheduler uses two lists of processes, an active list and an exhausted
+             list. Both lists are ordered by priorities of processes and use the data structure
+             described earlier. The scheduler schedules a process from the active list, which
+             uses time from its time slice. When its time slice is exhausted, it is put into the
+             exhausted list. Schedulers in Linux kernel 2.5 and earlier kernels executed a pri-
+             ority recomputation loop when the active list became empty. The loop computed
+             a new time slice for each process based on its dynamic priority. At the end of
+             the loop, all processes were transferred to the active list and normal scheduling
+             operation was resumed.
+             The Linux 2.6 kernel uses a new scheduler that incurs less overhead and scales
+             better with the number of processes and CPUs. The scheduler spreads the priority
+             recomputation overhead throughout the scheduler's operation, rather than lump
+             it in the recomputation loop. It achieves this by recomputing the priority of a
+             process when the process exhausts its time slice and gets moved to the exhausted
+             list. When the active list becomes empty, the scheduler merely interchanges the
+             active and exhausted lists.
+             The scalability of the scheduler is ensured in two ways. The scheduler has a
+             bit flag to indicate whether the list of processes for a priority level is empty. When
+             invoked, the scheduler tests the flags of the process lists in the order of reducing
+             priority, and selects the first process in the first nonempty process list it finds. This
+             procedure incurs a scheduling overhead that does not depend on the number of
+             ready processes; it depends only on the number of scheduling levels, hence it is
+             bound by a constant. This scheduling is called O(1), i.e., order 1, scheduling.
+             Schedulers in older Linux kernels used a synchronization lock on the active list
+             of processes to avoid race conditions when many CPUs were supported. The
+             Linux 2.6 kernel maintains active lists on a per-CPU basis, which eliminates the
+             synchronization lock and associated delays. This arrangement also ensures that
+             a process operates on the same CPU every time it is scheduled; it helps to ensure
+             better cache hit ratios.
+             7.6.4 Scheduling in Windows
+             Windows scheduling aims at providing good response times to real-time and inter-
+             active threads. Scheduling is priority-driven and preemptive. Scheduling within
+             a priority level is performed through a round-robin policy with time-slicing. A
+             time slice is called a quantum in Windows terminology. Priorities of non-real-
+             time threads are dynamically varied to favor interactive threads. This aspect is
+             analogous to multilevel adaptive scheduling (see Section 7.4.5).
+             Real-time threads are given higher priorities than other threads--they have
+             priorities in the range 16­31, while other threads have priorities in the range 1­15.
+             Priorities of non-real-time threads can vary during their lifetime, hence this class
+             of threads is also called the variable priority class. The effective priority of a thread
+             in this class at any moment is a combination of three factors--the base priority
+             of the process to which the thread belongs; the base priority of the thread, which
+
+
+
+                      Chapter 7                                                         Scheduling  265
+is in the range -2 to 2; and a dynamic component assigned by the kernel to favor
+interactive threads.
+The kernel varies a thread's dynamic component of priority as follows: If the
+thread uses up its complete time slice when scheduled, its priority is reduced by
+1. When a waiting, i.e., blocked, thread is activated, it is given a priority increase
+based on the nature of the event on which it was blocked. If it was blocked on
+input from the keyboard, its priority is boosted by 6. To deny an unfair advantage
+to an I/O-bound thread, the remaining time of its current quantum is reduced by
+one clock tick every time it makes an I/O request. To guard against starvation,
+the priority of a ready thread that has not received CPU time for more than
+4 seconds is raised to 15 and its quantum is increased to twice its normal value.
+When this quantum expires, its priority and quantum revert back to their old
+values.
+The scheduler uses a data structure resembling that shown in Figure 7.12,
+except for two refinements that provide efficiency. Since priority values lie in the
+range 0­31, with priority 0 reserved for a system thread, an array of 32 pointers is
+used to point at the queues of ready threads at different priority levels. A vector of
+32 bit flags is used to indicate whether a ready thread exists at each of the priority
+levels. This arrangement enables the scheduler to speedily locate the first thread
+in the highest-priority nonempty queue. When none of the system or user threads
+is in the ready state, the scheduler schedules a special idle thread on the CPU that
+continually executes an idle loop until a thread is scheduled on it. In the loop,
+it activates functions in the hardware abstraction layer (HAL) at appropriate
+times to perform power management. In a multiprocessor system, the scheduler
+operating on one CPU may schedule a thread on another CPU that is idle (see
+Section 10.6.3). To facilitate such scheduling, the idle loop also examines the
+scheduling data structures to check whether a thread has been scheduled on the
+CPU that is executing the idle loop, and switches the CPU to the scheduled thread
+if this is the case.
+To conserve power when the computer is idle, Windows provides a num-
+ber of system states wherein the computer operates in a mode that consumes
+low power. In the hibernate state, the states of running applications are stored
+on the disk and the system is turned off. When the system is activated, appli-
+cation states are restored from the disk before operation is resumed. Use of the
+disk to store application states leads to slow resumption; however, it provides
+reliability because operation of the computer is immune to loss or depletion of
+power while the computer is in hibernation. In the standby state, states of running
+applications are saved in memory, and the computer enters a low-power mode of
+operation. Resumption using the application states stored in memory is faster.
+However, the state information would be lost if power is lost or depleted while
+the system is in the standby state, so computer operation is not reliable. Hence
+Windows Vista introduced a new hybrid state called the sleep state wherein the
+application states are stored both in memory and on the disk. System operation is
+resumed as in the standby state if application states are available in memory; oth-
+erwise, it is resumed as in the hibernate state using the application states stored on
+the disk.

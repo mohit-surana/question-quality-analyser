@@ -1,0 +1,269 @@
+Reliable Interprocess Communication
+In a conventional OS, processes that wish to communicate through messages
+exist in the same host, and have unique ids assigned by its kernel. However, in a
+distributed system, processes existing in different nodes may wish to communicate
+with one another, hence the distributed OS assigns globally unique names to
+processes. It also provides an arrangement through which a process with a given
+name can be located in the system, so that other processes can communicate with
+it. We discuss both these features in Section 16.4.1.
+Once the location of a destination process is determined, a message meant
+for it can be sent to it over the network. However, message delivery may fail
+because of faults in communication links or nodes located in network path(s)
+to the destination process, hence processes must make their own arrangement
+to ensure reliable delivery of messages. This arrangement is in the form of an
+interprocess communication protocol (IPC protocol), which is a set of rules and
+conventions aimed at handling transient faults during message transmission. The
+sender and destination processes invoke protocol routines when they execute the
+send and receive statements. These routines perform necessary actions to
+ensure reliable delivery of messages.
+Table      16.2  summarizes  three        key  provisions  in     IPC         protocols--
+acknowledgments, time-outs, and retransmissions. An acknowledgment informs
+the sender process that its message has been delivered to the destination process.
+A time-out is said to have occurred if the sender process does not receive an
+acknowledgment in an expected interval of time. The message is now retransmit-
+ted. These steps are repeated until the sender process receives an acknowledgment.
+The protocol is implemented as follows: When a process sends a message, the
+protocol routine invoked by it makes a system call to request an interrupt at the
+end of a specific time interval. This interrupt is called a time-out interrupt. When
+the message is delivered to the destination process, the protocol routine invoked
+by the destination process sends an acknowledgment to the sender process to
+inform it that its message has been delivered. If the time-out interrupt occurs
+Table 16.2       Provisions  for Reliability in an IPC Protocol
+Provision                    Description
+Acknowledgment               When a process receives a message, the protocol
+                             routine invoked by it sends an acknowledgment to
+                             the sender of the message.
+Time-out                     The protocol specifies an interval of time within
+                             which it expects a sender process to receive an
+                             acknowledgment. A time-out is said to have occurred if
+                             the acknowledgment is not received within this interval.
+Retransmission of a          If a time-out interrupt occurs before the sender receives
+message                      an acknowledgment, the protocol routine invoked by
+                             the sender retransmits the message.
+
+
+
+660  Part 5  Distributed Operating Systems
+             in the sender's site before an acknowledgment is received, the protocol routine
+             retransmits the message and makes a system call to request another time-out
+             interrupt. These actions are repeated until the sender receives an acknowledg-
+             ment. A similar arrangement may be used to ensure that a reply, if any, sent by
+             the destination process reaches the sender process. We discuss IPC protocols in
+             Sections 16.4.2­16.4.3.
+             16.4.1 Naming of Processes
+             All entities in a distributed system, whether processes or resources, are assigned
+             unique names as follows: Each host in a system is assigned a systemwide unique
+             name, which can be either numeric or symbolic, and each process or resource
+             in  a  host  is  assigned      an  id  that  is  unique  in  the  host.  This  way,  the  pair
+             (<host_name>, <process_id>) is unique for each process and can be used as
+             its name. A process that wishes to send a message to another process uses a
+             pair like (human_resources, Pj) as the name of the destination process, where
+             human_resources is the name of a host. This name should be translated into
+             a network address for sending the message.
+                 To easily locate a host in the Internet, the Internet is partitioned into a set of
+             domains that have unique names, each domain is partitioned into smaller domains
+             that have unique names in the domain, and so on. A host has a unique name in the
+             immediately containing domain, but its name may not be unique in the Internet,
+             so a unique name for a host is formed by adding names of all the domains that
+             contain it, separated by periods, starting with the smallest domain and ending
+             with the largest domain. For example, the host name Everest.cse.iitb.ac.in refers
+             to the server Everest in the Computer Science and Engineering Department of
+             IIT Bombay, which is in the academic domain in India.
+                 The domain name space is hierarchically organized; the top level in the hier-
+             archy is occupied by an unnamed root domain. This domain contains a small
+             number of top-level domains that represent either organizations of a specific kind,
+             or organizations within a country. In the host name Everest.cse.iitb.ac.in, "in"
+             is the top-level domain representing India and "ac" is the name of a domain
+             containing academic organizations. Hence "ac.in" contains academic organiza-
+             tions in India. "ac" is called a second-level domain because its name contains
+             two domain names.
+                 Each host connected to the Internet has a unique address known as the Inter-
+             net protocol address (IP address). The domain name system (DNS) is a distributed
+             Internet directory service that provides the IP address of a host with a given name.
+             It has a name server in every domain, which contains a directory giving the IP
+             address of each host in the domain. When a process operating in a host hi wishes
+             to send a message to another process with the name (<host_name>, <process_
+             id>), host hi performs name resolution to determine the IP address of <host
+             name>. Host hi is called the resolver. Name resolution proceeds as follows: The
+             resolver knows the address of a name server for the root domain. To resolve the
+             name <host_name>, the resolver sends it to the name server of the root domain.
+             This name server responds by returning the IP address of a name server for the
+
+
+
+                                      Chapter 16                    Distributed Operating  Systems  661
+top-level domain in <host_name>. The resolver now sends <host_name> to this
+name server, which returns the address of a name server for the second-level
+domain, and so on, until a name server returns the address of the required host.
+Name resolution using name servers can be slow, so each resolver can cache
+some name server data. This technique speeds up repeated name resolution the
+same way a directory cache speeds up repeated references to the directory entry
+of a file (see Section 13.15). An IP address can be kept in the cache for the amount
+of time specified as the time to live, which is 1 hour. The name server of a domain
+is replicated to enhance its availability and to avoid contention.
+16.4.2 IPC Semantics
+IPC semantics is the set of properties of an IPC protocol. IPC semantics depend
+on the arrangement of acknowledgments and retransmissions used in an IPC
+protocol. Table 16.3 summarizes three commonly used IPC semantics.
+At-most-once semantics result when a protocol does not use acknowledg-
+ments or retransmission. These semantics are used if a lost message does not
+pose a serious threat to correctness of an application, or if the application knows
+how to recover from such situations. For example, an application that receives
+periodic reports from other processes knows when a message is not received as
+expected, so it may itself communicate with a sender whose message is lost and ask
+it to resend the message. These semantics provide high communication efficiency
+because acknowledgments and retransmissions are not used.
+At-least-once semantics result when a protocol uses acknowledgments and
+retransmission, because a destination process may receive a message more than
+Table 16.3  IPC Semantics
+Semantics                Description
+At-most-once semantics   A destination process either receives a message once, or
+                         does not receive it. These semantics are obtained when
+                         a process receiving a message does not send an
+                         acknowledgment and a sender process does not
+                         perform retransmission of messages.
+At-least-once semantics  A destination process is guaranteed to receive a
+                         message; however, it may receive several copies of the
+                         message. These semantics are obtained when a process
+                         receiving a message sends an acknowledgment, and a
+                         sender process retransmits a message if it does not
+                         receive an acknowledgment before a time-out occurs.
+Exactly-once semantics   A destination process receives a message exactly once.
+                         These semantics are obtained when sending of
+                         acknowledgments and retransmissions are performed
+                         as in at-least-once semantics; however, the IPC protocol
+                         recognizes duplicate messages and discards them so
+                         that the receiver process receives the message only once.
+
+
+
+662  Part 5  Distributed Operating Systems
+             once if an acknowledgment is lost or delayed because of congestion in the net-
+             work. A message received for the second or subsequent time is called a duplicate
+             message. An application can use at-least-once semantics only if processing of
+             duplicate messages does not pose any correctness problems such as updating of
+             data many times instead of only once.
+             Exactly-once semantics result when a protocol uses acknowledgments and
+             retransmission, but discards duplicate messages. These semantics hide transient
+             faults from both sender and receiver processes; however, the IPC protocol incurs
+             high communication overhead due to handling of faults and duplicate messages.
+             16.4.3 IPC Protocols
+             An IPC protocol specifies what actions should be performed at the sites of sender
+             and destination processes so that a message is delivered to a destination process
+             and its reply is delivered to the sender process. We describe how IPC protocols
+             are classified and present a couple of examples.
+             Reliable and Unreliable Protocols   A reliable protocol guarantees that a message,
+             or its reply, is not lost. It achieves this through at-least-once or exactly-once
+             semantics for both messages and their replies. An unreliable protocol does not
+             guarantee that a message or its reply would not be lost--it provides at-most-
+             once semantics either for messages or for their replies. As commented in the last
+             section, a reliable protocol incurs substantial overhead due to acknowledgments
+             and retransmission of messages and replies, whereas an unreliable protocol does
+             not incur these overheads.
+             Blocking and Nonblocking Protocols     As discussed in Chapter 9, it is common to
+             block a process that executes a receive system call if no messages have been sent
+             to it. There are no intrinsic reasons to block a process that executes a send system
+             call; however, blocking of a sender process may simplify a protocol, reduce its
+             overhead, and also add some desirable features to its semantics. For example, if a
+             sender process is blocked until its message is delivered to a destination process, the
+             message would never have to be retransmitted after the sender is activated, so the
+             message need not be buffered by the protocol after the sender is activated. Also,
+             blocking of the sender helps to provide semantics similar to the conventional
+             procedure call.
+             A protocol is a blocking protocol if a sender process is blocked until it receives
+             a reply to its message; otherwise, it is a nonblocking protocol. We assume that if
+             a protocol does not block a sender process, interrupt(s) will be generated to
+             notify the process of the arrival of a reply or an acknowledgment so that it can
+             take appropriate actions. Blocking and nonblocking protocols are also called
+             process-synchronous and asynchronous protocols, respectively.
+             16.4.3.1 The Request-Reply-Acknowledgment Protocol
+             The request-reply-acknowledgment (RRA) protocol is a reliable protocol for use
+             by processes that exchange requests and replies. Receipt of the reply implies that
+             the destination process has received the request, so a separate acknowledgment
+
+
+
+                                                          Chapter 16     Distributed Operating Systems  663
+             Request                    1
+             buffer                     2    Header       Reply
+                                        3                        Reply
+                                        4                        buffer
+                                        5
+                          Sender             Destination
+                          site                      site
+Figure 16.3  Operation of a blocking version of the request-reply-acknowledgment (RRA)
+protocol.
+of the request is not needed. The sender, however, sends an an explicit acknowl-
+edgment of the reply. A blocking version of the RRA protocol is presented as
+Algorithm 16.1. Figure 16.3 depicts its operation.
+Algorithm 16.1 A Blocking Version of the RRA Protocol
+1.  When a process makes a request: The request is copied in a buffer called the
+    request buffer in its site and also sent to the destination process in the form of
+    a message. A system call is made to request a time-out interrupt. The sender
+    process is blocked until a reply is received from the destination process.
+2.  When a destination process receives a message: The destination process ana-
+    lyzes the request contained in the message and prepares a reply. The reply is
+    copied in a buffer called the reply buffer in the destination site and also sent
+    to the sender process. A system call is made to request a time-out interrupt.
+3.  When a time-out occurs in the sender process: The copy of the request stored
+    in the request buffer is retransmitted.
+4.  When the sender process receives a reply: The sender process sends an
+    acknowledgment to the destination process. It also releases the request buffer,
+    if not already done.
+5.  When a time-out occurs in the destination process: The copy of the reply stored
+    in the reply buffer is retransmitted.
+6.  When the destination process receives an acknowledgment: The destination
+    process releases the reply buffer.
+    The sender process is blocked until it receives a reply, so a single request buffer
+in the sender site suffices irrespective of the number of messages a process sends
+out, or the number of processes it sends them to. The destination process is not
+blocked on an acknowledgment, so it could handle requests from other processes
+while it waits for an acknowledgment. Accordingly, the destination site needs
+one reply buffer for each sender process. The number of messages can be reduced
+through piggybacking, which is the technique of including the acknowledgment of
+a reply in the next request to the same destination process. Since a sender process is
+blocked until it receives a reply, an acknowledgment of a reply is actually implicit
+in the next request it makes. Hence only the reply to the last request would require
+an explicit acknowledgment message.
+
+
+
+664  Part 5  Distributed Operating Systems
+                 The RRA protocol has the at-least-once semantics because messages and
+             replies cannot be lost; however, they might be delivered more than once. As
+             mentioned in Table 16.3, duplicate requests would have to be discarded in the
+             destination site to provide exactly-once semantics. It can be achieved as follows:
+             A sender assigns ascending sequence numbers to its requests and includes them in
+             its request messages. The sequence number of a message is copied into its reply and
+             acknowledgment, and into the header field of the reply buffer in the destination
+             site. The destination process also separately preserves the sequence number of the
+             last request received from the sender process. If the sequence number in a request is
+             not greater than the preserved sequence number, the request is a duplicate request
+             so the destination process simply retransmits the reply if its copy is present in the
+             reply buffer. Otherwise, either the copy of the reply in the reply buffer would have
+             been discarded after receiving its acknowledgment, in which case the request is an
+             outdated retransmission, or the destination process is still processing the request
+             and would send its reply sometime in future. In either of these cases, the duplicate
+             request is simply discarded.
+             16.4.3.2 The Request-Reply Protocol
+             The request-reply (RR) protocol simply performs retransmission of a request
+             when a time-out occurs. A nonblocking version of the RR protocol that provides
+             the exactly-once semantics is presented as Algorithm 16.4.3. Figure 16.4 depicts
+             its operation.
+             Algorithm 16.2 A Nonblocking Version of the RR Protocol
+             1.  When a process makes a request: The request is copied in a request buffer
+                 in the sender site and also sent to the destination process in the form of a
+                 message. A system call is made to request a time-out interrupt. The sender
+                 process proceeds with its computation.
+             2.  When the destination process receives a message: If the message is not a dupli-
+                 cate request, the destination process analyzes the request contained in the
+                 message and prepares a reply, copies it in a reply buffer and also sends it to
+                 the sender process. Otherwise, it simply locates the reply of the message in a
+                 reply buffer and sends it to the sender process.
+                             Request                1
+                                            buffer  2    Header    Reply
+                                                    3                     Reply
+                                                                          buffers
+                                            Sender       Destination
+                                            site         site
+             Figure  16.4  Operation of a nonblocking version of the request-reply (RR) protocol.

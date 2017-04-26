@@ -1,0 +1,131 @@
+Implementing Message Passing
+             9.2.1 Buffering of Interprocess Messages
+             When a process Pi sends a message to some process Pj by using a nonblocking
+             send, the kernel builds an interprocess message control block (IMCB) to store
+             all information needed to deliver the message (see Figure 9.3). The control block
+             contains names of the sender and destination processes, the length of the message,
+             and the text of the message. The control block is allocated a buffer in the kernel
+             area. When process Pj makes a receive call, the kernel copies the message from
+             the appropriate IMCB into the message area provided by Pj.
+                  The pointer fields of IMCBs are used to form IMCB lists to simplify message
+             delivery. Figure 9.4 shows the organization of IMCB lists when blocking sends
+             and FCFS message delivery are used. In symmetric naming, a separate list is
+             used for every pair of communicating processes. When a process Pi performs a
+             receive call to receive a message from process Pj, the IMCB list for the pair Pi­Pj
+             is used to deliver the message. In asymmetric naming, a single IMCB list can
+             be maintained per recipient process. When a process performs a receive, the first
+             IMCB in its list is processed to deliver a message.
+                  If blocking sends are used, at most one message sent by a process can be
+             undelivered at any point in time. The process is blocked until the message is
+             delivered. Hence it is not necessary to copy the message into an IMCB. The
+                                                       Sender process
+                                                     Destination process
+                                                       Message length
+                                                       Message text
+                                                       or address
+                                                       IMCB pointer
+             Figure 9.3  Interprocess message control block (IMCB).
+                  List headers           IMCB lists                    List headers       IMCB lists
+                  for process pairs                                    for processes
+             Pi­Pj                                                     Pi
+                                                       ­                                                  ­
+             Pi­Pk                                                     Pj   ­
+                                                                            ...
+                         ...             ­
+                                                                       Pr
+             Pi­Pl       ­                                                                ­
+             (a)                                                       (b)
+             Figure 9.4  Lists of IMCBs  for blocking  sends  in  (a)  symmetric naming;  (b) asymmetric  naming.
+
+
+
+                                                                      Chapter 9            Message  Passing  321
+kernel can simply note the address of the message text in the sender's memory
+area, and use this information while delivering the message. This arrangement
+saves one copy operation on the message. However, it faces difficulties if the
+sender is swapped out before the message is delivered, so it may be preferable to
+use an IMCB. Fewer IMCBs would be needed than when sends are nonblocking,
+because at most one message sent by each process can be in an IMCB at any time.
+   The kernel may have to reserve a considerable amount of memory for inter-
+process messages, particularly if nonblocking sends are used. In such cases, it may
+save message texts on the disk. An IMCB would then contain the address of the
+disk block where the message is stored, rather than the message text itself.
+9.2.2 Delivery of Interprocess Messages
+When a process Pi sends a message to process Pj, the kernel delivers the message
+to Pj immediately if Pj is currently blocked on a receive call for a message from
+Pi, or from any process. After delivering the message, the kernel must also change
+the state of Pj to ready. If process Pj has not already performed a receive call, the
+kernel must arrange to deliver the message when Pj performs a receive call later.
+Thus, message delivery actions occur at both send and receive calls.
+   Recall from Section 5.2.4 that the kernel uses an event control block (ECB)
+to note actions that should be performed when an anticipated event occurs. The
+ECB contains three fields:
+·  Description of the anticipated event
+·  Id of the process that awaits the event
+·  An ECB pointer for forming ECB lists
+   Figure 9.5 shows use of ECBs to implement message passing with symmetric
+naming and blocking sends. When Pi makes a send call, the kernel checks whether
+an ECB exists for the send call by Pi, i.e., whether Pj had made a receive call and
+was waiting for Pi to send a message. If it is not the case, the kernel knows that
+the receive call would occur sometime in future, so it creates an ECB for the event
+"receive from Pi by Pj" and specifies Pi as the process that will be affected by
+the event. Process Pi is put into the blocked state and the address of the ECB is
+put in the event info field of its PCB [see Figure 9.5(a)]. Figure 9.5(b) illustrates
+            Pi        receive from Pi            Pj                   send to Pj
+          blocked           by Pj                blocked              by Pi
+        Event info          Pi                   Event info           Pj
+          PCB of            ECB of               PCB of               ECB of
+   sender process Pi  receiver process Pj   receiver process Pj       sender process Pi
+   (a)                                      (b)
+Figure 9.5  ECBs to   implement symmetric  naming and blocking sends  (a) at send; (b) at
+receive.
+
+
+
+322  Part 2  Process Management
+             the case when process Pj makes a receive call before Pi makes a send call. An ECB
+             for a "send to Pj by Pi" event is now created. The id of Pj is put in the ECB to
+             indicate that the state of Pj will be affected when the send event occurs.
+             Figure 9.6 shows complete details of the kernel actions for implementing
+             message passing by using symmetric naming and blocking sends. For reasons
+             mentioned earlier, the kernel creates an IMCB even though a sender process is
+             blocked until message delivery. When process Pi sends a message to process Pj,
+             the kernel first checks whether the send was anticipated, i.e., whether an ECB was
+             created for the send event. It will have happened if process Pj has already made a
+             receive call for a message from Pi. If this is the case, action S3 immediately delivers
+             the message to Pj and changes its state from blocked to ready. The ECB and the
+             IMCB are now destroyed. If an ECB for send does not exist, step S4 creates an
+             ECB for a receive call by process Pj, which is now anticipated, blocks the sender
+             process, and enters the IMCB in the IMCB list of process Pj. Converse actions
+             are performed at a receive call: If a matching send has already occurred, a message
+             is delivered to process Pj and Pi is activated; otherwise, an ECB is created for a
+             send call and Pj is blocked.
+                     At send to Pj by Pi:
+                          Step                             Description
+                          S1     Create an IMCB and initialize its fields;
+                          S2     If an ECB for a `send to Pj by Pi' event exists
+                          S3     then
+                                       (a) Deliver the message to Pj ;
+                                       (b) Activate Pj ;
+                                       (c) Destroy the ECB and the IMCB;
+                                       (d) Return to Pi;
+                          S4     else
+                                       (a) Create an ECB for a `receive from Pi by Pj ' event and
+                                                 put id of Pi as the process awaiting the event;
+                                       (b) Change the state of Pi to blocked and put the ECB
+                                                 address in Pi's PCB;
+                                       (c) Add the IMCB to Pj 's IMCB list;
+                     At receive from Pi by Pj :
+                          Step                             Description
+                          R1     If a matching ECB for a `receive from Pi by Pj ' event exists
+                          R2     then
+                                       (a) Deliver the message from appropriate IMCB in Pj 's list;
+                                       (b) Activate Pi;
+                                       (c) Destroy the ECB and the IMCB;
+                                       (d) Return to Pj ;
+                          R3     else
+                                       (a) Create an ECB for a `send to Pj by Pi' event and
+                                                 put id of Pj as the process awaiting the event;
+                                       (b) Change the state of Pj to blocked and put the ECB
+                                                 address in Pj 's PCB;
+             Figure  9.6  Kernel actions in message passing using symmetric naming and blocking sends.

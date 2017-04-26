@@ -1,0 +1,182 @@
+Distributed Deadlock Handling
+The deadlock detection, prevention, and avoidance approaches discussed in
+Section 8.3 make use of state information. This section illustrates problems in
+extending these approaches to a distributed system, and then describes distributed
+
+
+
+724  Part 5  Distributed Operating Systems
+                   deadlock detection and distributed deadlock prevention approaches. No spe-
+                   cial techniques for distributed deadlock avoidance have been discussed in OS
+                   literature. For simplicity, the discussion in this section is restricted to the single-
+                   instance, single-request (SISR) model of resource allocation (see Section 8.3).
+                   18.4.1 Problems in Centralized Deadlock Detection
+                   Distributed applications may use resources located in several nodes of the system.
+                   Deadlocks involving such applications could be detected by collecting the wait-
+                   for graphs (WFGs) of all nodes at a central node, superimposing them to form
+                   a merged WFG, and employing a conventional deadlock detection algorithm
+                   to check for deadlocks. However, this scheme has a weakness. It may obtain
+                   WFGs of individual nodes at different instants of time, so the merged WFG may
+                   represent a misleading view of wait-for relationships in the system. This could
+                   lead to detection of phantom deadlocks, which is a violation of the safety property
+                   in deadlock detection. Example 18.3 illustrates such a situation.
+·
+     Example 18.3  Phantom Deadlock
+                   The sequence of events in a system containing three processes P4, P5, and P6
+                   is as follows:
+                      1.  Process P5 requests and obtains resource r5 in node N3.
+                      2.  Process P6 requests and obtains resource r4 in node N3.
+                      3.  Process P5 requests and obtains resource r6 in node N4.
+                      4.  Process P4 requests resource r5 in node N3.
+                      5.  Process P5 requests resource r4 in node N3.
+                      6.  Node N3 sends its local WFG to the coordinator node.
+                      7.  Process P6 releases resource r4 in node N3.
+                      8.  Process P6 requests resource r6 in node N4.
+                      9.  Node N4 sends its local WFG to the coordinator node.
+                   Figures 18.5(a) and (b) show WFGs of the nodes at Steps 6 and 9, respectively.
+                   It can be seen that no deadlock exists in the system at any of these times. How-
+                   ever, the merged WFG is constructed by superimposing the WFG of node N3
+                   taken at Step 6 and WFG of node N4 taken at Step 9 [see Figure 18.5(c)],
+                   so     it  contains  a  cycle  {P5, P6}  and  the  coordinator  detects  a  phantom
+                   deadlock.
+                   ·
+                   18.4.2 Distributed Deadlock Detection
+                   Recall from Chapter 8 that a cycle is a necessary and sufficient condition for
+                   a deadlock in an SISR system, whereas a knot is a necessary and sufficient
+
+
+
+                                                           Chapter 18      Distributed Control  Algorithms  725
+P4               P4              P4              P4                    P4
+r5                               r5                        r6             r5    r6
+     P5  r4  P6      P5  P6           P5   P6        P5        P6           P5  r4  P6
+     Node N3         Node N4          Node N3        Node N4
+         WFGs at Step 6                    WFGs at Step 9              Merged   WFG
+(a)                              (b)                                   (c)
+Figure 18.5 Phantom deadlock in  Example 18.3: Node WFGs at Steps  6,  9
+and the merged WFG.
+condition for a deadlock in an MISR system. In the distributed deadlock detec-
+tion approach, cycles and knots are detected through joint actions of nodes in
+the system, and every node in the system has the ability to detect and declare a
+deadlock. We discuss two such algorithms.
+Diffusion Computation-Based Algorithm      The diffusion computation was pro-
+posed by Dijkstra and Scholten (1980) for termination detection; they called
+it the diffusing computation. The diffusion computation contains two phases--
+a diffusion phase and an information collection phase. In the diffusion phase,
+the computation originates in one node and spreads to other nodes through
+control messages called queries that are sent along all edges in the system.
+A node may receive more than one query if it has many in-edges. The first
+query received by a node is called an engaging query, while queries received
+later are called nonengaging queries. When a node receives an engaging query,
+it sends queries along all its out-edges. If it receives a nonengaging query sub-
+sequently, it does not send out any queries because it would have already sent
+queries when it received the engaging query. In the information collection phase,
+each node in the system sends a reply to every query received by it. The reply
+to an engaging query contains information pertaining to the node to which
+the engaging query was directed, and about some other nodes connected to
+that node. The reply to a nonengaging query typically does not contain any
+information. It is called a dummy reply. If the initiator receives its own query
+along some edge, it sends a dummy reply immediately. The Chandy­Lamport
+algorithm for consistent state recording of a distributed system discussed in
+Section 17.4.2 actually uses the first phase of a diffusion computation (see
+Exercise 18.5).
+Algorithm 18.4 uses a diffusion computation to perform deadlock detection.
+It was proposed by Chandy, Misra, and Haas (1983), and works for both SISR and
+MISR systems. The diffusion computation spreads through edges in the WFG.
+All steps in the algorithm are performed atomically, so if a process receives two
+messages at the same time, they will be processed one after another. It is assumed
+that diffusion computations initiated by different processes are assigned distinct
+ids, and that their queries and replies carry these ids. This way, different diffusion
+computations do not interfere with one another.
+
+
+
+726  Part 5  Distributed Operating Systems
+                          P1   P2           P3  P4  P1   P2              P3    P4
+                          (a)                       (b)
+             Figure 18.6  System for illustrating diffusion computation-based distributed deadlock
+             detection.
+             Algorithm 18.4 Diffusion Computation-Based Distributed Deadlock Detection
+             1.  When a process becomes blocked on a resource request: The process initiates
+                 a diffusion computation through the following actions:
+                 a. Send queries along all its out-edges in the WFG.
+                 b. Remember the number of queries sent out, and await replies to them.
+                 c. If replies are received for all the queries sent out and it has been in the
+                 blocked state continuously since it initiated the diffusion computation,
+                 declare a deadlock.
+             2.  When a process receives an engaging query: If the process is blocked, it
+                 performs the following actions:
+                 a. Send queries along all its out-edges in the WFG.
+                 b. Remember the number of queries sent out, and await replies to them.
+                 c. If replies are received for all the queries sent out and it has been in the
+                 blocked state continuously since it received the engaging query, send a
+                 reply to the node from which it received the engaging query.
+             3.  When a process receives a nonengaging query: If the process has been in the
+                 blocked state continuously since it received the engaging query, send a dummy
+                 reply to the node from which it received the nonengaging query.
+                 Consider an SISR system that contains four processes P1­P4. The WFG of
+             Figure 18.6(a) shows the system state immediately after process P1 requests a
+             resource that is currently allocated to P2. P1, P2, and P3 are now in the blocked
+             state, whereas P4 is not. P1 initiates a diffusion computation when it becomes
+             blocked. When P2 receives its query, it sends a query to P3, which sends a query
+             to P4. However, P4 is not in the blocked state, so it does not reply to P3's query.
+             Thus, P1 does not receive a reply and consequently does not declare that it is
+             in a deadlock. Let P4 now request the resource allocated to P2 and get blocked
+             [see the WFG of Figure 18.6(b)]. P4 would now initiate a diffusion computation
+             that would spread to processes P2 and P3. Since these processes are blocked, P4
+             will get the reply to its query and declare that it is involved in a deadlock. The
+             condition that a process should be continuously in the blocked state since the time
+             it initiated the diffusion computation or since the time it received the engaging
+             query ensures that a phantom deadlock would not be detected.
+             Edge Chasing Algorithm         In this algorithm, a control message is sent over a wait-
+             for edge in the WFG to facilitate detection of cycles in the WFG, hence the name
+             edge chasing algorithm. It was proposed by Mitchell and Merritt (1982). Each
+
+
+
+                                                                Chapter 18     Distributed Control  Algorithms  727
+               Name of rule   Precondition                  After applying the rule
+                              u               x                 z           x
+                Block                                           z
+                Activate
+                Transmit      u             w                   w           w
+                                 u<w
+                              u               u                 u           u
+                Detect        u                                 u
+Figure   18.7  Rules of Mitchell­Merritt algorithm.
+process is assigned two numerical labels called a public label and a private label.
+The public and private labels of a process are identical when the process is created.
+These labels change when a process gets blocked on a resource. The public label
+of a process also changes when it waits for a process having a larger public label.
+A wait-for edge that has a specific relation between the public and private labels
+of its start and end processes indicates existence of a deadlock.
+         Figure 18.7 illustrates rules of the Mitchell­Merritt algorithm. A process is
+                u
+represented as          where u and v are its public and private labels, respectively.
+                v
+Figure 18.7 illustrates rules of the Mitchell­Merritt algorithm. A rule is applied
+when the public and private labels of processes at the start and end of a wait-for
+edge satisfy the pre-condition. It changes the labels of the processes as shown to
+the right of "  ". Details of the four rules are as follows:
+1.       Block: The public and private labels of a process are changed to a value
+         z when it becomes blocked because of a resource request. The value z is
+         generated through the statement z := inc(u, x), where u is the public label of
+         the process, x is the public label of the process for which it waits, and function
+         inc generates a unique value larger than both u and x.
+2.       Activate: The out-edge of a process is removed from WFG when it is activated
+         following a resource allocation. Its labels remain unchanged.
+3.       Transmit: If the public label of the process at the start of a wait-for edge (u)
+         is smaller than the public label of the process at the end of the edge (w), then
+         u is replaced by w.
+4.       Detect: A deadlock is declared if the public and private labels of a process at
+         the start of a wait-for edge are identical and also equal to the public label of
+         the process at the end of the edge.
+         Operation of the algorithm can be explained as follows: Consider a path in
+                                                                   uvii
+the      WFG from Pi to       Pk. Let labels of process Pi  be           and let those of Pk  be
+uvkk
+      .  According to the     transmit rule applied to all  edges        in the path from Pi  to
+Pk, ui is greater than or equal to the public label of every process on the path
+from Pi to Pk. Let Pk make a resource request that results in a wait-for edge
+(Pk, Pi). According to the block rule, public and private labels of Pk assume a
+value given by inc(uk, ui). Let this be n. Hence n > ui. According to the transmit

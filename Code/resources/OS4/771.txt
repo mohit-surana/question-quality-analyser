@@ -1,0 +1,158 @@
+Fault Tolerance Techniques
+             The basic principle in fault tolerance is to ensure that a fault either does not cause
+             an error, or the error can be removed easily. In some earlier chapters and sections,
+             we saw how fault tolerance techniques ensure that no error in state would arise due
+             to process, storage, and communication faults: Section 19.2 described how pro-
+             cess faults of a Byzantine nature can be tolerated, Section 13.11.2.2 discussed how
+             the stable storage technique tolerates storage faults, and Section 16.4 discussed
+             an arrangement involving acknowledgment and retransmission of messages to
+             tolerate communication faults.
+                In this section, we discuss two facets of the tolerance of system faults that
+             follow the fail-stop model.
+             ·  Fault tolerance for replicated data: Despite a fault, data should be avail-
+                able and applications should see values resulting from the latest update
+                operation.
+             ·  Fault tolerance for distributed data: Despite a fault, mutual consistency of
+                different parts of the data should not be affected.
+             19.4.1 Logs, Forward Recovery, and Backward Recovery
+             A log is a record of actions or activities in a process. Two kinds of logs are used
+             in practice:
+             · Do logs: A do log records those actions that should be performed to ensure
+                correctness of state of an entity or a system. A do log is also called a redo log
+
+
+
+                                                            Chapter 19  Recovery and Fault  Tolerance  751
+   because actions recorded in it may be performed more than once if a fault
+   occurs. Do logs are used to implement forward recovery.
+·  Undo logs: An undo log contains a record of those actions that should be
+   undone to remove an error in state caused by occurrence of a fault. Undo
+   logs are used to implement backward recovery.
+   A write-ahead logging principle is used to construct a log--a process writes
+information concerning an action it intends to take into a log before performing
+the action. This way, the log would contain all information necessary to achieve
+the correct state should a fault occur before the action is completed. A log could
+be an operation log, which contains a list of actions to be performed so that entities
+in the system would achieve correct states, or a value log, which contains a list of
+values or data images that should be assigned to entities.
+   The  implementation  scheme    for   an  atomic         action  discussed  in  Sec-
+tion 13.11.2.2 used an intentions list. The intentions list is a value log that is
+used as a redo log. Being a value log, recovery actions that use it are idempotent;
+this property is needed because entries in the log would be processed more than
+once if faults occur during commit processing. Recovery using the intentions
+list constitutes forward recovery. If the subactions in an atomic action directly
+updated data, an undo log would have to be maintained so that the actions could
+be undone if a fault occurred before the atomic action could commit. The undo
+log would contain data images taken before updates were performed. Its use to
+undo data updates constitutes backward recovery.
+   The idea of atomic execution of a sequence of operations on a file can be
+extended to operations involving several files. A language construct called the
+atomic transaction is provided in a programming language or a database query
+language for this purpose. It has the following syntax:
+        begin transaction <transaction id>
+                        {Access and modify files}
+                        if <condition>
+                                  then abort transaction;
+                        {Access and modify files}
+        end transaction <transaction id>
+   An atomic transaction has an all-or-nothing property like an atomic action.
+Its execution commences when a process executes the begin transaction statement.
+The atomic transaction is said to commit if the process executes the end trans-
+action statement. All files modified by the atomic transaction would be updated
+consistently at this time. If the process executes the abort transaction statement,
+or if a fault occurs before the transaction commits, execution of the transaction
+would be aborted and no file updates would be made. In this case, all files would
+remain in their original states.
+19.4.2 Handling Replicated Data
+Availability of data D can be provided through replication. We can make n copies
+of D, n > 1 and locate them strategically in the system such that at least one copy
+of D would be accessible from any node despite anticipated faults in the system.
+
+
+
+752  Part 5  Distributed Operating Systems
+             If data D may be modified, it is essential to use rules that would ensure correctness
+             of data access and updates. We use the following rules:
+             1. Many processes can concurrently read D.
+             2. Only one process can write a new value into D at any time.
+             3. Reading and writing cannot be performed concurrently.
+             4. A process reading D must see the latest value of D.
+             Rules  1­3  are  analogous     to  rules  of  the  readers  and  writers  problem           of
+             Section 6.7.2. Rule 4 addresses a special issue in data replication.
+             Quorum Algorithms              A quorum is the number of copies of D that must be accessed
+             to perform a specific operation on D. Quorum algorithms ensure adherence to
+             Rules 1­4 by specifying a read quorum Qr and a write quorum Qw. Two kinds of
+             locks are used on D. A read lock is a shared lock, and a write lock is an exclusive
+             lock. A process requesting a read lock is granted the lock if D is presently unlocked
+             or if it is already under a read lock. Request for a write lock is granted only if D is
+             presently unlocked. Processes use read and write quorums while accessing D, so
+             a process can read D after putting a read lock on Qr copies of D, and can write
+             D after putting a write lock on Qw copies of D.
+             Since a read lock is a shared lock, any value of Qr would satisfy Rule 1. For
+             implementing Rules 2 and 3, we choose Qr and Qw such that
+                                                      2 × Qw > n                       (19.1)
+                                                Qr + Qw > n                            (19.2)
+             Equation (19.2) also ensures that a reader will always lock at least one copy that
+             participated in the latest write operation. This copy contains the latest value of
+             D, so Eq. (19.2) also satisfies Rule 4.
+             A choice of values that satisfies Eqs. (19.1) and (19.2) is Qr = 1 and Qw = n.
+             With these quorums, a read operation is much faster than a write operation.
+             It would be appropriate if read operations are more frequent than write opera-
+             tions. Many other quorum values are also possible. If write operations are more
+             frequent, we could choose values of Qr and Qw such that Eqs. (19.1) and (19.2)
+             are satisfied and Qw is as small as possible. If Qw = n, a writer would not update
+             all copies of D, so a reader would access some copies of D that contain its latest
+             value, and some copies that contain its old values. To be able to identify the latest
+             value, we could associate a timestamp with each copy of D to indicate when it was
+             last modified.
+             The choice of Qr = 1 and Qw = n is not fault tolerant. Qw = n implies that a
+             process would have to put locks on all n copies of D in order to perform a write
+             operation. Hence a writer would be unable to write if even one node containing
+             a copy of D failed or became inaccessible to it. If a system is required to tolerate
+             faults in up to k nodes, we could choose
+                                                Qr = k + 1
+                                                Qw = n - k
+                                                n>2×k
+
+
+
+                                                     Chapter 19  Recovery and Fault Tolerance  753
+These quorum sizes are large, however it is unavoidable because Eq. (19.1) is
+essential to ensure consistency of data and Eq. (19.2) is essential to ensure that
+reading and writing are not performed concurrently.
+19.4.3 Handling Distributed Data
+A distributed transaction (also called a multisite transaction) is a facility for manip-
+ulating files located in different nodes of a distributed system in a mutually
+consistent manner. Each node participating in a distributed transaction Ti con-
+tains a transaction manager. It maintains information about data updates to be
+made on behalf of the transaction, which could be similar to the intentions list
+of atomic actions (see Section 13.11.2.2). In addition, it also maintains a log
+that is local to it. The node where the transaction was initiated contains a trans-
+action coordinator. The coordinator implements the all-or-nothing property of
+transactions through the two-phase commit protocol, also called the 2PC pro-
+tocol. It initiates this protocol when the application executes the statement end
+transaction Ti. In the first phase the protocol checks whether each participating
+node can commit the updates of the transaction. Depending on responses from
+participating nodes, it decides whether to commit or abort the transaction. In the
+second phase, it informs its decision to each participating node, so that it could
+commit or abort accordingly. The 2PC protocol is presented as Algorithm 19.1.
+Algorithm 19.1    Two-Phase Commit Protocol
+Phase 1:
+1.  Actions of the transaction coordinator: Write the record prepare Ti in the log.
+    Set a time-out interval  and send a prepare Ti message to each participat-
+    ing node. Wait until either each participating node replies, or a time-out
+    occurs.
+2.  Actions of a participating node: On receiving a prepare Ti message, the partici-
+    pating node decides whether it is ready to commit. If so, it writes information
+    about data updates to be made, followed by the record prepared Ti in its
+    log and sends a prepared Ti reply to the coordinator. Otherwise, it writes
+    the record abandoned Ti in its log and sends an abandoned Ti reply to the
+    coordinator.
+Phase 2:
+1.  Actions of the transaction coordinator: If each participating node sent a pre-
+    pared Ti reply, write the record commit Ti in its log and send a commit Ti
+    message to each participating node. If a participating node sent an abandoned
+    Ti message, or a time-out occurred, write the record abort Ti in its log and
+    send an abort Ti message to each participating node. In either case, wait until
+    an acknowledgment is received from each participating node, and write a
+    complete Ti record in its log.

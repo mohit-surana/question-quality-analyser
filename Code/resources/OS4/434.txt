@@ -1,0 +1,982 @@
+Demand Paging
+As discussed earlier in Section 11.8, a process is considered to consist of pages,
+numbered from 0 onward. Each page is of size s bytes, where s is a power of 2. The
+memory of the computer system is considered to consist of page frames, where a
+page frame is a memory area that has the same size as a page. Page frames are
+numbered from 0 to #frames-1 where #frames is the number of page frames of
+memory. Accordingly, the physical address space consists of addresses from 0 to
+#frames × s - 1. At any moment, a page frame may be free, or it may contain a
+page of some process. Each logical address used in a process is considered to be a
+pair (pi, bi), where pi is a page number and bi is the byte number in pi, 0  bi < s.
+The  effective  memory      address  of  a  logical  address  (pi, bi)  is  computed    as
+follows:
+      Effective memory address of logical address (pi, bi)                      (12.1)
+          = start address of the page frame containing page pi + bi
+The size of a page is a power of 2, and so calculation of the effective address is
+performed through bit concatenation, which is much faster than addition (see
+Section 11.8 for details).
+     Figure 12.2 is a schematic diagram of a virtual memory using paging in which
+page size is assumed to be 1 KB, where 1 KB = 1024 bytes. Three processes P1, P2
+and P3, have some of their pages in memory. The memory contains 8 page frames
+numbered from 0 to 7. Memory allocation information for a process is stored in a
+page table. Each entry in the page table contains memory allocation information
+for one page of a process. It contains the page frame number where a page resides.
+Process P2 has its pages 1 and 2 in memory. They occupy page frames 5 and 7
+respectively. Process P1 has its pages 0 and 2 in page frames 4 and 1, while process
+P3 has its pages 1, 3 and 4 in page frames 0, 2 and 3, respectively. The free frames
+list contains a list of free page frames. Currently only page frame 6 is free.
+
+
+
+414  Part 3  Memory Management
+                                                                    0      4
+                                                                    1         Page table
+                                                                    2      1        of P1
+                           Memory                                   3
+                                                    MMU                       Page
+             0                                      pi  bi                    frame #
+             1                           1                          0
+             2                                      2   480  2      1      5  Page table
+             3                                                      2      7        of P2
+                                                                    3
+             4                                      7   480  3      4
+             5             Add ·· 2 480             qi  bi
+             6                                                      0
+             7                                                      1      0               6
+                                                                    2         Page table
+                                         4                          3      2        of P3  Free frames
+                                                                    4      3               list
+                                                                    5
+             Figure  12.2  Address translation  in  virtual memory  using  paging.
+             Process P2 is currently executing the instruction `Add ·· 2528', so the MMU
+             uses P2's page table for address translation. The MMU views the operand address
+             2528 as the pair (2, 480) because 2528 = 2 × 1024 + 480. It now accesses the entry
+             for page 2 in P2's page table. This entry contains frame number 7, so the MMU
+             forms the effective address 7 × 1024 + 480 according to Eq. (12.1), and uses it to
+             make a memory access. In effect, byte 480 in page frame 7 is accessed.
+             12.2.1 Demand Paging Preliminaries
+             If an instruction of P2 in Figure 12.2 refers to a byte in page 3, the virtual memory
+             manager will load page 3 in memory and put its frame number in entry 3 of P2's
+             page table. These actions constitute demand loading of pages, or simply demand
+             paging.
+             To implement demand paging, a copy of the entire logical address space of a
+             process is maintained on a disk. The disk area used to store this copy is called the
+             swap space of a process. While initiating a process, the virtual memory manager
+             allocates the swap space for the process and copies its code and data into the swap
+             space. During operation of the process, the virtual memory manager is alerted
+             when the process wishes to use some data item or instruction that is located in a
+             page that is not present in memory. It now loads the page from the swap space into
+             memory. This operation is called a page-in operation. When the virtual memory
+             manager decides to remove a page from memory, the page is copied back into the
+             swap space of the process to which it belongs if the page was modified since the
+             last time it was loaded in memory. This operation is called a page-out operation.
+             This way the swap space of a process contains an up-to-date copy of every page
+             of the process that is not present in memory. A page replacement operation is
+             one that loads a page into a page frame that previously contained another page.
+             It may involve a page-out operation if the previous page was modified while it
+             occupied the page frame, and involves a page-in operation to load the new page.
+
+
+
+                                                                                                     Chapter 12  Virtual  Memory  415
+In this section we describe the data structures used by the virtual memory
+manager, and the manner in which the virtual memory manager performs the
+page-in, page-out, and page replacement operations. We then discuss how the
+effective memory access time for a process depends on the overhead of the virtual
+memory manager and the time consumed by the page-in, page-out, and page
+replacement operations.
+Page Table         The page table for a process facilitates implementation of address
+translation, demand loading, and page replacement operations. Figure 12.3
+shows the format of a page table entry. The valid bit field contains a boolean
+value to indicate whether the page exists in memory. We use the convention that
+1 indicates "resident in memory" and 0 indicates "not resident in memory." The
+page frame # field, which was described earlier, facilitates address translation. The
+misc info field is divided into four subfields. Information in the prot info field is
+used for protecting contents of the page against interference. It indicates whether
+the process can read or write data in the page or execute instructions in it. ref info
+contains information concerning references made to the page while it is in mem-
+ory. As discussed later, this information is used for page replacement decisions.
+The modified bit indicates whether the page has been modified, i.e., whether it is
+dirty. It is used to decide whether a page-out operation is needed while replacing
+the page. The other info field contains information such as the address of the disk
+block in the swap space where a copy of the page is maintained.
+Page Faults and Demand Loading of Pages                      Table 12.2 summarizes steps in
+address translation by the MMU. While performing address translation for a
+logical address (pi, bi), the MMU checks the valid bit of the page table entry of pi
+                                                       Misc info
+                             Valid    Page      Prot   Ref   Modi-  Other
+                             bit    frame #     info   info  fied   info
+        Field                Description
+        Valid bit            Indicates whether the page described by the entry currently exists
+                             in memory. This bit is also called the presence bit.
+        Page frame #         Indicates which page frame of memory is occupied by the page.
+        Prot info            Indicates how the process may use contents of the page--whether
+                             read, write, or execute.
+        Ref info             Information concerning references made to the page while it is in
+                             memory.
+        Modified             Indicates whether the page has been modified while in memory,
+                             i.e., whether it is dirty. This field is a single bit called the dirty
+                             bit.
+        Other info           Other useful information concerning the page, e.g., its position in
+                             the swap space.
+Figure  12.3 Fields   in  a  page table entry.
+
+
+
+416  Part 3  Memory Management
+             Table 12.2         Steps in      Address Translation by the MMU
+             Step                                Description
+             1. Obtain page number               A logical address is viewed as a pair (pi, bi), where bi
+             and byte number in                  consists of the lower order nb bits of the address, and pi
+             page                                consists of the higher order np bits (see Section 11.8).
+             2. Look up page table               pi is used to index the page table. A page fault is raised
+                                                 if the valid bit of the page table entry contains a 0, i.e.,
+                                                 if the page in not present in memory.
+             3. Form effective memory            The page frame # field of the page table entry contains
+             address                             a frame number represented as an nf -bit number. It is
+                                                 concatenated with bi to obtain the effective memory
+                                                 address of the byte.
+                                                        Swap space
+                                                           of P2                         5
+                                                                                               VM
+                                                                                               Manager
+                   6
+                   Page-in                                                   Page table
+                   operation                        3      Page                          7
+                                                           fault             updating
+                                Memory                                 Page table
+                      0                             pi     bi             of P2
+                      1                       1                        0
+                      2                             3      682         1  1  5              4
+                      3                                           2    2  1  7
+                                                                       3  0
+                      4                                                4
+                      5         Sub ·· 3 682        qi     bi
+                      6                                              Valid Page Misc           6
+                      7                             MMU              bit  frame info           Free frames
+                                                                             #                 list
+             Figure 12.4 Demand loading       of a  page.
+             (see Step 2 in Table 12.2). If the bit indicates that pi is not present in memory, the
+             MMU raises an interrupt called a missing page interrupt or a page fault, which is a
+             program interrupt (see Section 2.2.5). The interrupt servicing routine for program
+             interrupts finds that the interrupt was caused by a page fault, so it invokes the
+             virtual memory manager with the page number that caused the page fault, i.e., pi,
+             as a parameter. The virtual memory manager now loads page pi in memory and
+             updates its page table entry. Thus, the MMU and the virtual memory manager
+             interact to decide when a page of a process should be loaded in memory.
+             Figure 12.4 is an overview of the virtual memory manager's actions in demand
+             loading of a page. The broken arrows indicate actions of the MMU, whereas
+
+
+
+                                                         Chapter 12                       Virtual Memory  417
+firm arrows indicate accesses to the data structures, memory, and the disk by
+the virtual memory manager when a page fault occurs. The numbers in circles
+indicate the steps in address translation, raising, and handling of the page fault--
+Steps 1­3 were described earlier in Table 12.2. Process P2 of Figure 12.2 is in
+operation. While translating the logical address (3, 682), the MMU raises a page
+fault because the valid bit of page 3's entry is 0. When the virtual memory manager
+gains control, it knows that a reference to page 3 caused the page fault. The Misc
+info field of the page table entry of page 3 contains the address of the disk block
+in P2's swap space that contains page 3. The virtual memory manager obtains
+this address. It now consults the free frames list and finds that page frame 6 is
+currently free, so it allocates this page frame to page 3 and starts an I/O operation
+to load page 3 in page frame 6. When the I/O operation completes, the virtual
+memory manager updates page 3's entry in the page table by setting the valid
+bit to 1 and putting 6 in the page frame # field. Execution of the instruction
+"Sub ·· (3, 682)", which had caused the page fault, is now resumed. The logical
+address (3, 682) is translated to the effective address of byte number 682 in page
+frame 6, i.e., 6 × 1024 + 682.
+Page-in, Page-out, and Page Replacement Operations  Figure 12.4 showed how
+a page-in operation is performed for a required page when a page fault occurs
+in a process and a free page frame is available in memory. If no page frame
+is free, the virtual memory manager performs a page replacement operation to
+replace one of the pages existing in memory with the page whose reference caused
+the page fault. It is performed as follows: The virtual memory manager uses a
+page replacement algorithm to select one of the pages currently in memory for
+replacement, accesses the page table entry of the selected page to mark it as "not
+present" in memory, and initiates a page-out operation for it if the modified bit
+of its page table entry indicates that it is a dirty page. In the next step, the virtual
+memory manager initiates a page-in operation to load the required page into the
+page frame that was occupied by the selected page. After the page-in operation
+completes, it updates the page table entry of the page to record the frame number
+of the page frame, marks the page as "present," and makes provision to resume
+operation of the process. The process now reexecutes its current instruction. This
+time, the address translation for the logical address in the current instruction
+completes without a page fault.
+The page-in and page-out operations required to implement demand paging
+constitute page I/O; we use the term page traffic to describe movement of pages in
+and out of memory. Note that page I/O is distinct from I/O operations performed
+by processes, which we will call program I/O. The state of a process that encounters
+a page fault is changed to blocked until the required page is loaded in memory,
+and so its performance suffers because of a page fault. The kernel can switch the
+CPU to another process to safeguard system performance.
+Effective Memory Access Time     The effective memory access time for a process
+in demand paging is the average memory access time experienced by the process.
+It depends on two factors: time consumed by the MMU in performing address
+translation, and the average time consumed by the virtual memory manager in
+
+
+
+418  Part 3  Memory Management
+             handling a page fault. We use the following notation to compute the effective
+             memory access time:
+             pr1      probability that a page exists in memory
+             tmem     memory access time
+             tpfh     time overhead of page fault handling
+             pr1 is called the memory hit ratio. tpfh is a few orders of magnitude larger than
+             tmem because it involves disk I/O--one disk I/O operation is required if only a
+             page-in operation is sufficient, and two disk I/O operations are required if a page
+             replacement is necessary.
+             A process's page table exists in memory when the process is in operation.
+             Hence, accessing an operand with the logical address (pi, bi) consumes two mem-
+             ory cycles if page pi exists in memory--one to access the page table entry of pi
+             for address translation, and the other to access the operand in memory using the
+             effective memory address of (pi, bi). If the page is not present in memory, a page
+             fault is raised after referencing the page table entry of pi, i.e., after one memory
+             cycle. Now the required page is loaded in memory and its page table entry is
+             updated to record the frame number where it is loaded. When operation of the
+             process is resumed, it requires two more memory references--one to access the
+             page table and the other to actually access the operand. Accordingly, the effective
+             memory access time is as follows:
+             Effective memory access time = pr1 × 2 × tmem                              (12.2)
+                                                + (1 - pr1) × (tmem + tpfh + 2 × tmem)
+             The effective memory access time can be improved by reducing the number
+             of page faults. One way of achieving it is to load pages before they are needed by
+             a process. The Windows operating system performs such loading speculatively--
+             when a page fault occurs, it loads the required page and also a few adjoining
+             pages of the process. This action improves the average memory access time if a
+             preloaded page is referenced by the process. The Linux operating system permits
+             a process to specify which pages should be preloaded. A programmer may use
+             this facility to improve the effective memory access time.
+             12.2.1.1 Page Replacement
+             Page replacement becomes necessary when a page fault occurs and there are
+             no free page frames in memory. However, another page fault would arise if the
+             replaced page is referenced again. Hence it is important to replace a page that
+             is not likely to be referenced in the immediate future. But how does the virtual
+             memory manager know which page is not likely to be referenced in the immediate
+             future?
+             The empirical law of locality of reference states that logical addresses used by
+             a process in any short interval of time during its operation tend to be bunched
+             together in certain portions of its logical address space. Processes exhibit this
+             behavior for two reasons. Execution of instructions in a process is mostly sequen-
+             tial in nature, because only 10­20 percent of instructions executed by a process
+
+
+
+                               Chapter 12                                               Virtual Memory        419
+are branch instructions. Processes also tend to perform similar operations on
+several elements of nonscalar data such as arrays. Due to the combined effect of
+these two reasons, instruction and data references made by a process tend to be
+in close proximity to previous instruction and data references made by it.
+We define the current locality of a process as the set of pages referenced in
+its previous few instructions. Thus, the law of locality indicates that the logical
+address used in an instruction is likely to refer to a page that is in the current
+locality of the process. As mentioned in Section 2.2.3, the computer exploits the
+law of locality to ensure high hit ratios in the cache. The virtual memory manager
+can exploit the law of locality to achieve an analogous effect--fewer page faults
+would arise if it ensures that pages that are in the current locality of a process are
+present in memory.
+Note that locality of reference does not imply an absence of page faults. Let
+the proximity region of a logical address ai contain all logical addresses that are in
+close proximity to ai. Page faults can occur for two reasons: First, the proximity
+region of a logical address may not fit into a page; in this case, the next address
+may lie in an adjoining page that is not included in the current locality of the
+process. Second, an instruction or data referenced by a process may not be in
+the proximity of previous references. We call this situation a shift in locality of a
+process. It typically occurs when a process makes a transition from one action in
+its logic to another. The next example illustrates the locality of a process.
+                                                                                                              ·
+Current Locality of a Process                                                              Example      12.1
+In Figure 12.5, bullets indicate the last few logical addresses used during opera-
+tion of a process Pi. Dashed boxes show the proximity regions of these logical
+addresses. Note that the proximity region of a logical address may extend
+beyond a page boundary. Proximity regions of logical addresses may also
+overlap; we show the cumulative proximity regions in Figure 12.5; e.g., the
+proximity regions of logical addresses referenced in page 4 cumulatively cover
+the entire page 4 and parts of pages 3 and 5. Thus, proximity regions are located
+in pages 0, 1, 3, 4, 5, 6, and 7; however, the current locality of Pi is the set of
+pages whose numbers are marked with the  marks in Figure 12.5, i.e., the set
+of pages {0, 1, 4, 6}.
+                                                                                        ·
+The law of locality helps to decide which page should be replaced when a
+page fault occurs. Let us assume that the number of page frames allocated to a
+process Pi is a constant. Hence whenever a page fault occurs during operation
+of Pi, one of Pi's own pages existing in memory must be replaced. Let t1 and t2
+be the periods of time for which pages p1 and p2 have not been referenced during
+the operation of Pi. Let t1 > t2, implying that some byte of page p2 has been
+referenced or executed (as an instruction) more recently than any byte of page p1.
+Hence page p2 is more likely to be a part of the current locality of the process
+than page p1; that is, a byte of page p2 is more likely to be referenced or executed
+than a byte of page p1. We use this argument to choose page p1 for replacement
+
+
+
+420  Part 3  Memory  Management
+                                             Page  Logical address
+                                             no    space of process Pi            Logical
+                                             0*              ·                    address
+                                 A page                                           accessed
+                                 in current  1*           ·
+                                 locality                                         Proximity
+                                             2                                    region of
+                                                                                  logical
+                                             3                                    address
+                                             4*    ··  ·     ··
+                                             5
+                                             6*                 ·
+                                                   ·
+                                             7
+                                             8
+             Figure 12.5 Proximity regions   of previous references and  current  locality of  a  process.
+             when a page fault occurs. If many pages of Pi exist in memory, we can rank
+             them according to the times of their last references and replace the page that has
+             been least recently referenced. This page replacement policy is called LRU page
+             replacement.
+             12.2.1.2 Memory Allocation to a Process
+             Figure 12.6 shows how the page fault rate of a process should vary with the
+             amount of memory allocated to it. The page fault rate is large when a small
+             amount of memory is allocated to the process; however, it drops when more
+             memory is allocated to the process. This page fault characteristic of a process is
+             desired because it enables the virtual memory manager to take corrective action
+             when it finds that a process has a high page fault rate--it can bring about a
+             reduction in the page fault rate by increasing the memory allocated to the process.
+             As we shall discuss in Section 12.4, the LRU page replacement policy possesses
+             a page fault characteristic that is similar to the curve of Figure 12.6 because it
+             replaces a page that is less likely to be in the current locality of the process than
+             other pages of the process that are in memory.
+                     How much memory should the virtual memory manager allocate to a pro-
+             cess? Two opposite factors influence this decision. From Figure 12.6, we see that
+             an overcommitment of memory to a process implies a low page fault rate for the
+             process; hence it ensures good process performance. However, a smaller number
+             of processes would fit in memory, which could cause CPU idling and poor system
+             performance. An undercommitment of memory to a process causes a high page
+             fault rate, which would lead to poor performance of the process. The desirable
+             operating zone marked in Figure 12.6 avoids the regions of overcommitment and
+             undercommitment of memory.
+                     The main problem in deciding how much memory to allocate to a process
+             is that the page fault characteristic, i.e., the slope of the curve and the page
+
+
+
+                                                                                    Chapter 12  Virtual Memory  421
+                        Region of low      Region of moderate      Region of high
+                        memory allocation  memory allocation   memory allocation
+                        and high           and moderate            and low
+                        page fault rate    page fault rate         page fault rate
+              Page                         Desirable
+              fault                        operating
+              rate                         zone
+                     0  No. of page frames allocated to a process
+Figure  12.6  Desirable variation of page fault rate with memory allocation.
+fault rate in Figure 12.6, varies among processes. Even for the same process, the
+page fault characteristic may be different when it operates with different data.
+Consequently, the amount of memory to be allocated to a process has to be
+determined dynamically by considering the actual page fault characteristic of the
+process. This issue is discussed in Section 12.5.
+Thrashing     Consider a process that is operating in the region of low memory
+allocation and high page fault rate in Figure 12.6. Due to the high page fault rate,
+this process spends a lot of its time in the blocked state. Such a process is not in a
+position to use the CPU effectively. It also causes high overhead due to high page
+fault rate and process switching caused by page faults. If all processes in the system
+operate in the region of high page fault rates, the CPU would be engaged in per-
+forming page traffic and process switching most of the time. CPU efficiency would
+be low and system performance, measured either in terms of average response time
+or throughput, would be poor. This situation is called thrashing.
+Definition 12.2 Thrashing  A condition in which high page traffic and low
+CPU efficiency coincide.
+Note that low CPU efficiency can occur because of other causes as well, e.g.,
+if too few processes exist in memory or all processes in memory perform I/O
+operations frequently. The thrashing situation is different in that all processes
+make poor progress because of high page fault rates.
+From Figure 12.6, we can infer that the cause of thrashing is an under-
+commitment of memory to each process. The cure is to increase the memory
+allocation for each process. This may have to be achieved by removing some
+processes from memory--that is, by reducing the degree of multiprogramming.
+A process may individually experience a high page fault rate without the system
+thrashing. The same analysis now applies to the process--it must suffer from an
+
+
+
+422  Part 3  Memory Management
+             undercommitment of memory, so the cure is to increase the amount of memory
+             allocated to it.
+             12.2.1.3 Optimal Page Size
+             The size of a page is defined by computer hardware. It determines the number of
+             bits required to represent the byte number in a page. Page size also determines
+             1. Memory wastage due to internal fragmentation
+             2. Size of the page table for a process
+             3. Page fault rates when a fixed amount of memory is allocated to a process
+             Consider a process Pi of size z bytes. A page size of s bytes implies that the
+             process has n pages, where n =  z/s  is the value of z/s rounded upward. Average
+             internal fragmentation is s/2 bytes because the last page would be half empty
+             on the average. The number of entries in the page table is n. Thus internal frag-
+             mentation varies directly with the page size, while page table size varies inversely
+             with it.
+             Interestingly, page fault rate also varies with page size if a fixed amount of
+             memory is allocated to Pi. This can be explained as follows: The number of pages
+             of Pi in memory varies inversely with the page size. Hence twice as many pages of
+             Pi would exist in memory if the page size were made s/2. Now let the proximity
+             region of an instruction or data byte as defined in Section 12.2 be small compared
+             with s/2, so that it can be assumed to fit within the page that contains the byte.
+             When the page size is s/2, memory contains twice as many proximity regions
+             of recent logical addresses as when the page size is s bytes. From the page fault
+             characteristic of Figure 12.6, page fault rates would be smaller for smaller page
+             sizes.
+             We can compute the page size that minimizes the total of memory penalty due
+             to internal fragmentation and memory commitment to page tables. If s             zand
+             each page table entry occupies 1 byte of memory, the optimal value of s is            2z.
+             Thus, the optimal page size is only 400 bytes for a process size of 80 KB, and it
+             is 800 bytes for a process of 320 KB. However, computers tend to use larger page
+             sizes (e.g., Pentium and MIPS use page sizes of 4 KB or more, Sun Ultrasparc
+             uses page sizes of 8 KB or more and the PowerPC uses a page size of 4 KB) for
+             the following reasons:
+             1. Page table entries tend to occupy more than 1 byte.
+             2. Hardware costs are high for smaller page sizes. For example, the cost of
+             address translation increases if a larger number of bits is used to represent a
+             page number.
+             3. Disks, which are used as paging devices, tend to operate less efficiently for
+             smaller disk block sizes.
+             The decision to use larger page sizes than the optimal value implies somewhat
+             higher page fault rates for a process. This fact represents a tradeoff between the
+             hardware cost and efficient operation of a process.
+
+
+
+                                                                                Chapter 12  Virtual  Memory  423
+12.2.2 Paging Hardware
+Figure 12.7 illustrates address translation in a multiprogrammed system. Page
+tables for many processes are present in memory. The MMU contains a special
+register called the page-table address register (PTAR) to point to the start of a page
+table. For a logical address (pi, bi), the MMU computes <PTAR> + pi × lPT_entry
+to obtain the address of the page table entry of page pi, where lPT_entry is the
+length of a page table entry and <PTAR> denotes the contents of the PTAR.
+The PTAR has to be loaded with the correct address when a process is scheduled.
+To facilitate this, the kernel can store the address of the page table of a process in
+its process control block (PCB).
+Table 12.3 summarizes the functions performed by the paging hardware. We
+describe the techniques used in implementing these functions, and name a few
+modern computer systems that use them.
+12.2.2.1 Memory Protection
+A memory protection violation interrupt should be raised if a process tries to
+access a nonexistent page, or exceeds its access privileges while accessing a page.
+The MMU provides a special register called the page-table size register (PTSR)
+to detect violations of the first kind. The kernel records the number of pages
+                                                                    Page table
+                   Memory         MMU                               of P1
+                                                PTAR
+             Add                            +             2
+                   ··         1
+                                            pi  bi              fi  Page table
+                                            ?                1      of P2
+                                                       3
+                                  PTSR
+                              1             fi  bi
+                           4                                        Page table
+                                                                    of P3
+                   Memory protection exception
+Figure 12.7  Address translation in a multiprogrammed  system.
+Table 12.3         Functions of the Paging Hardware
+Function                      Description
+Memory protection             Ensure that a process can access only those memory
+                              areas that are allocated to it.
+Efficient address             Provide an arrangement to perform address translation
+translation                   efficiently.
+Page replacement support      Collect information concerning references made to
+                              pages. The virtual memory manager uses this
+                              information to decide which page to replace when a
+                              page fault occurs.
+
+
+
+424  Part 3  Memory Management
+             contained in a process in its process control block (PCB) and loads this number
+             from the PCB in the PTSR when the process is scheduled. A memory protection
+             violation is raised if the page number in a logical address is not smaller than
+             contents of PTSR; this check is analogous to the one using the size register in the
+             memory protection scheme of Chapter 2.
+             The access privileges of a process to a page are stored in the prot info field of
+             the page's entry in the page table. During address translation, the MMU checks
+             the kind of access being made to the page against this information and raises a
+             memory protection violation if the two are not compatible. The information in
+             the prot info field can be bit-encoded for efficient access--each bit in the field
+             corresponds to one kind of access to the page (e.g., read, write, etc.); it is set "on"
+             only if the process possesses the corresponding access privilege to the page.
+             12.2.2.2 Address Translation and Page Fault Generation
+             The MMU follows the steps of Table 12.2 to perform address translation. For a
+             logical address (pi, bi), it accesses the page table entry of pi by using pi × lPT_entry
+             as an offset into the page table, where lPT_entry is the length of a page table entry.
+             lPT_entry is typically a power of 2, so pi × lPT_entry can be computed efficiently by
+             shifting the value of pi by a few bits.
+             Address Translation Buffers        A reference to the page table during address trans-
+             lation consumes one memory cycle because the page table is stored in memory.
+             The translation look-aside buffer (TLB) is a small and fast associative memory that
+             is used to eliminate the reference to the page table, thus speeding up address trans-
+             lation. The TLB contains entries of the form (page #, page frame #, protection
+             info) for a few recently accessed pages of a program that are in memory. During
+             address translation of a logical address (pi, bi), the TLB hardware searches for an
+             entry of page pi. If an entry is found, the page frame # from the entry is used to
+             complete address translation for the logical address (pi, bi). Figure 12.8 illustrates
+                                                                           Page     Page     Prot
+                                                                           #        frame #  info
+                                                                                    2  7     Translation
+                                                                                    1  5     look-aside
+                                                                2                            buffer (TLB)
+                           Memory                      MMU              3  TLB
+                     0                                 pi  bi              hit
+                     1                   1                                    0
+                     2                                 2   480          2     1     15
+                     3                                                        2     17       Page table
+                     4                                                        3                    of P2
+                                                       7   480          3     4
+                     5     Add ·· 2 480                qi  bi
+                     6
+                     7                                                     Valid    Page     Prot
+                                                4                          bit      frame    info
+                                                                                       #
+             Figure  12.8  Address translation  using  the translation  look-aside  buffer and the page table.
+
+
+
+                                                                                       Chapter  12  Virtual Memory  425
+              Address (pi, bi)
+        Y      pi's entry                          Page fault
+               in TLB?
+               N                                   Page-out          N
+               pi in                               needed?               Load
+                                N
+               memory?                             Y                     page pi
+                                   Raise           Remove page pi
+               Y                   page fault      from memory           Update PT
+               Enter (pi, fi)                                            entry of pi
+               in TLB                              Update PT entry,
+                                                   erase TLB entry       Invoke scheduler
+              Form physical                        of pj
+              address using fi
+                  MMU actions                      Virtual memory        manager actions
+Figure  12.9   Summary of address translation  of  (pi, bi) (note: PT =  page table).
+operation of the TLB. The arrows marked 2          and 3            indicate TLB lookup. The
+TLB contains entries for pages 1 and 2 of process P2. If pi is either 1 or 2, the TLB
+lookup scores a hit, so the MMU takes the page frame number from the TLB
+and completes address translation. A TLB miss occurs if pi is some other page,
+hence the MMU accesses the page table and completes the address translation if
+page pi is present in memory; otherwise, it generates a page fault, which activates
+the virtual memory manager to load pi in memory.
+Figure 12.9 summarizes the MMU and software actions in address trans-
+lation and page fault handling for a logical address (pi, bi). MMU actions
+concerning use of the TLB and the page table are as described earlier. The vir-
+tual memory manager is activated by a page fault. If an empty page frame is
+not available to load page pi, it initiates a page-out operation for some page pj
+to free the page frame, say page frame fj, occupied by it. pj's page table entry
+is updated to indicate that it is no longer present in memory. If pj has an entry
+in the TLB, the virtual memory manager erases it by executing an "erase TLB
+entry" instruction. This action is essential for preventing incorrect address trans-
+lation at pj's next reference. A page-in operation is now performed to load pi in
+page frame fj, and pi's page table entry is updated when the page-in operation
+is completed. Execution of the instruction that caused the page fault is repeated
+when the process is scheduled again. This time pi does not have an entry in the
+TLB but it exists in memory, and so the MMU uses information in the page table
+to complete the address translation. An entry for pi has to be made in the TLB
+at this time.
+New entries in the TLB can be made either by the hardware or by the virtual
+memory manager. Hardware handling of the TLB is more efficient; the hard-
+ware can make a new entry in the TLB whenever it has to complete address
+
+
+
+426  Part 3  Memory Management
+             translation through a reference to the page table. When the TLB is managed
+             by the virtual memory manager, the MMU raises a "missing TLB entry" inter-
+             rupt whenever it cannot find an entry for the required page in the TLB, and the
+             virtual memory manager executes several instructions to make the TLB entry.
+             In this approach, the MMU performs address translation exclusively through
+             the TLB, and the page table is used only by the virtual memory manager. This
+             arrangement provides flexibility because the virtual memory manager can use dif-
+             ferent organizations of the page table to conserve memory (see Section 12.2.3).
+             The PowerPC and Intel 80x86 architectures use hardware-managed TLBs, while
+             the MIPS, Sparc, Alpha, and PA-RISC architectures use software-managed
+             TLBs.
+             A few features are common to both the approaches. A replacement algorithm
+             is used to decide which TLB entry should be overwritten when a new entry is to be
+             made. Use of the TLB can undermine protection if the MMU performs address
+             translation through TLB entries that were made while some other process was
+             in operation. This issue is analogous to the protection issue in a cache discussed
+             earlier in Section 2.2.3. Hence the solutions are also analogous. Each TLB entry
+             can contain the id of the process that was in operation when the entry was made--
+             that is, each TLB entry can have the form (process id, page #, page frame #,
+             protection info)--so that the MMU can avoid using it when some other process
+             is in operation. Alternatively, the kernel must flush the TLB while performing
+             process switching.
+             We use the following notation to compute the effective memory access time
+             when a TLB is used:
+             pr1    probability that a page exists in memory
+             pr2    probability that a page entry exists in TLB
+             tmem   memory access time
+             tTLB   access time of TLB
+             tpfh   time overhead of page fault handling
+             As mentioned earlier in Section 12.2.1, pr1 is the memory hit ratio and tmem is a
+             few orders of magnitude smaller than tpfh. Typically tTLB is at least an order of
+             magnitude smaller than tmem. pr2 is called the TLB hit ratio.
+             When the TLB is not used, the effective memory access time is as given by
+             Eq. (12.2). The page table is accessed only if the page being referenced does not
+             have an entry in the TLB. Accordingly, a page reference consumes (tTLB + tmem)
+             time if the page has an entry in the TLB, and (tTLB + 2 × tmem) time if it does
+             not have a TLB entry but exists in memory. The probability of the latter situation
+             is (pr1- pr2). When the TLB is used, pr2 is the probability that an entry for the
+             required page exists in the TLB. The probability that a page table reference is both
+             necessary and sufficient for address translation is (pr1- pr2). The time consumed
+             by each such reference is (tTLB + 2 × tmem) since an unsuccessful TLB search
+             would precede the page table lookup. The probability of a page fault is (1 - pr1).
+             It occurs after the TLB and the page table have been looked up, and it requires
+             (tpfh + tTLB + 2 × tmem) time if we assume that the TLB entry is made for the
+
+
+
+                                                                  Chapter 12          Virtual Memory  427
+page while the effective memory address is being calculated. Hence the effective
+memory access time is
+Effective memory access time =
+pr2 × (tTLB + tmem) + (pr1 - pr2) × (tTLB + 2 × tmem)             (12.3)
+            + (1 - pr1) × (tTLB + tmem + tpfh + tTLB + 2 × tmem)
+To provide efficient memory access during operation of the kernel, most
+computers provide wired TLB entries for kernel pages. These entries are never
+touched by replacement algorithms.
+Superpages  Sizes of computer memories and processes have grown rapidly since
+the 1990s. TLB sizes have not kept pace with this increase because TLBs are
+expensive as a result of their associative nature; their sizes have grown from about
+eight in the 1960s to only about a thousand in 2005. Hence TLB reach, which is
+the product of the number of entries in a TLB and the page size, has increased
+marginally, but its ratio to memory size has shrunk by a factor of over 1000.
+Consequently, TLB hit ratios are poor, and average memory access times are
+high [see Eq. (12.3)]. Processor caches have also become larger than the TLB
+reach, which affects performance of a cache that is searched by physical addresses
+because access to contents of the cache may be slowed down by TLB misses and
+lookups through the page table. A generic way of countering these problems is
+to use a larger page size, so that the TLB reach becomes larger. However, it leads
+to larger internal fragmentation and more page I/O. In the absence of a generic
+solution, techniques were developed to address specific problems created by the
+low TLB reach. Searching the cache by logical addresses took the TLB out of
+the path from the CPU to the cache, which avoided a slowdown of cache lookup
+due to limited TLB reach. However, poor TLB hit ratios continued to degrade
+virtual memory performance.
+Superpages were evolved as a generic solution to the problems caused by
+low TLB reach. A superpage is like a page of a process, except that its size is a
+power-of-2 multiple of the size of a page, and its start address in both the logical
+and physical address spaces is aligned on a multiple of its own size. This feature
+increases the TLB reach without increasing the size of the TLB, and helps to
+obtain a larger TLB hit ratio. Most modern architectures permit a few standard
+superpage sizes and provide an additional field in a TLB entry to indicate the size
+of superpage that can be accessed through the entry.
+The virtual memory manager exploits the superpages technique by adapting
+the size and number of superpages in a process to its execution characteristics. It
+may combine some pages of a process into a superpage of an appropriate size if
+the pages are accessed frequently and satisfy the requirement of contiguity and
+address alignment in the logical address space. This action is called a promotion.
+The virtual memory manager may have to move the individual pages in memory
+during promotion to ensure contiguity and address alignment in memory. A
+promotion increases the TLB reach, and releases some of the TLB entries that
+were assigned to individual pages of the new superpage.
+
+
+
+428  Part 3  Memory Management
+                If the virtual memory manager finds that some pages in a superpage are not
+             accessed frequently, it may decide to disband the superpage into individual pages.
+             This action, called demotion, frees some memory that can be used to load other
+             pages. Thus, it has the potential to reduce page fault frequency.
+             12.2.2.3 Support for Page Replacement
+             The virtual memory manager needs two kinds of information for minimizing
+             page faults and the number of page-in and page-out operations during page
+             replacement:
+             1. The time when a page was last used.
+             2. Whether a page is dirty, i.e., whether a write operation has been performed
+                on any byte in the page. (A page is clean if it is not dirty.)
+                The time of last use indicates how recently a page was used by a process; it
+             is useful in selecting a candidate for page replacement. However, it is expensive
+             to provide a sufficient number of bits in a page table entry for this purpose, so
+             most computers provide a single bit called the reference bit. The modified bit in
+             a page table entry is used to indicate whether a page is clean or dirty. If a page
+             is clean, its copy in the swap space of the process is still current, so no page-out
+             operation is needed; the page being loaded can simply overwrite such a page in
+             memory. For a dirty page, a page-out operation must be performed because its
+             copy in the swap space is stale. A page-in operation for the new page to be loaded
+             can be started only after the page-out operation is completed.
+             12.2.3 Practical Page Table Organizations
+             A process with a large address space requires a large page table. Hence the virtual
+             memory manager has to commit a large amount of memory for each page table.
+             For example, in a computer system using 32-bit logical addresses and a page size
+             of 4 KB, a process can have 1 million pages. If the size of a page table entry is
+             4 bytes, the page table has a size of 4 MB. Thus, the virtual memory manager might
+             tie up a few hundred megabytes of memory for storing page tables of processes!
+             The memory requirements would be even larger when 64-bit logical addresses are
+             used. Two approaches are followed to reduce the size of memory committed to
+             page tables:
+             ·  Inverted page table: The inverted page table (IPT) has one entry for each page
+                frame in memory that indicates which page, if any, occupies the page frame;
+                the table got this name because the information in it is the "inverse" of the
+                information in a page table. The size of an inverted page table is governed by
+                the size of memory, so it is independent of the number and sizes of processes.
+                However, information about a page cannot be accessed directly as in a page
+                table; it has to be searched for in the IPT.
+             ·  Multilevel page table: The page table of a process is itself paged; the entire
+                page table therefore does not need to exist in memory at any time. A higher-
+                level page table is used to access pages of the page table. If the higher-level
+                page table is large, it could itself be paged, and so on. In this organization,
+
+
+
+                                                                                                Chapter 12  Virtual Memory  429
+the page table entry of a page has to be accessed through relevant entries of
+the higher-level page tables.
+In both approaches, the TLB is used to reduce the number of memory
+references needed to perform address translation.
+12.2.3.1 Inverted Page Tables
+Figure 12.10(a) illustrates address translation using an inverted page table (IPT).
+Each entry of the inverted page table is an ordered pair consisting of a process id
+and a page number. Thus a pair (R, pi) in the fith entry indicates that page frame
+fi is occupied by page pi of a process R. While scheduling a process, the scheduler
+copies the id of the process from its PCB into a register of the MMU. Let this
+id be P. The MMU performs address translation for a logical address (pi, bi) in
+process P, using the following steps:
+1. Separate the components pi and bi of the logical address.
+2. Using the process id P, form the pair (P, pi).
+3. Search for the pair (P, pi) in the IPT. Raise a page fault if the pair does not
+exist in the IPT.
+        (a)                                                      MMU
+                                                             Page
+                                                                fault
+               Memory                       P    Process
+                                                     id                     Page       Ref
+                                                 pi      bi                  id        info
+                               1         2                   3
+                                            P    pi
+                                                                       fi  (P, pi)
+                                                 fi      bi  4
+               Add     ··
+                                         5
+                                                                           Inverted page table
+        (b)                pi                                Page      Ref
+                    P                                        id        info  Pointer
+                       h                             fk      (Q, pk)
+                                  v  fk              fi      (P, pi)
+                                                     fl      (R, pl )               -
+                                     Hash table              Inverted page table
+Figure  12.10  Inverted page table: (a) concept; (b) implementation using a hash table.
+
+
+
+430  Part 3  Memory Management
+                      4. If the pair (P, pi) exists in entry fi of the IPT, copy the page frame number fi
+                      for use in address translation.
+                      5. Calculate the effective memory address using fi and bi.
+                   These steps are shown as the circled numbers 1 to 5 in Figure 12.10(a).
+                      The search for (P, pi) in Step 3 should be conducted efficiently, otherwise it
+                   would slow down address translation. Accordingly, a hash table is used to speed
+                   up the search in the inverted page table. Figure 12.10(b) shows an arrangement
+                   called hash-with-chaining, which operates as follows: Each entry of the inverted
+                   page table contains an additional field pointer, which points to another entry in the
+                   same table. To hash a pair (P, pi), we first concatenate the bit strings representing
+                   P and pi to obtain a larger bit string. We now interpret this bit string as an integer
+                   number x, and apply the following hash function h to it:
+                                               h(x)    =  remainder  (  x    )
+                                                                          a
+                   where a is the size of the hash table, which is typically some prime number. h(x),
+                   which is in the range 0, . . . , a - 1, is an entry number in the hash table. Let v
+                   designate its value. Hashing of many process id­page id pairs may produce the
+                   same value v, because the total number of pages of all processes in memory is
+                   much larger than the size of the hash table. Entries of all these pairs in the inverted
+                   page table are chained together by the pointer field.
+                      The inverted page table is constructed and maintained by the virtual memory
+                   manager as follows: When page pi of process P is loaded in page frame fi in
+                   memory, the virtual memory manager stores the pair (P, pi) in the fith entry of
+                   the inverted page table. It now hashes this pair to obtain an entry number, say
+                   v, and adds the fith entry of the inverted page table in the chain starting on the
+                   vth entry of the hash table as follows: It copies the value found in the vth entry
+                   of the hash table into the pointer field of the fith entry of the inverted page table,
+                   and enters fi into the vth entry of the hash table. When this page is removed from
+                   memory, the virtual memory manager deletes its entry from the chain starting
+                   on the vth entry of the hash table. In Figure 12.10(b), the pages (R, pl ), (P, pi)
+                   and (Q, pk) were loaded into page frames fl , fi and fk, respectively, and they all
+                   happened to hash into the vth entry of the hash table. Example 12.2 describes
+                   how the MMU uses the inverted page table during address translation.
+·
+     Example 12.2  Search in the Inverted Page Table
+                   The logical address (pi, bi) is to be translated by using the inverted page table
+                   of Figure 12.10(b). The pair (P, pi) is hashed to obtain an entry number v in
+                   the hash table. The chain starting on this entry is searched. The pair (P, pi)
+                   does not match with the pair (Q, pk) found in the page id field of the first entry
+                   of the chain. Therefore, the MMU uses the pointer field of this entry to locate
+                   the next entry in the chain. The pair in this entry matches (P, pi), so the MMU
+                   uses the entry number of this entry, i.e., fi, as the frame number to form the
+                   physical address (fi, bi).
+                   ·
+
+
+
+                                                                    Chapter 12          Virtual Memory  431
+The average number of comparisons required to locate the entry of a pair
+(P, pi) in the inverted page table depends on the average length of the chain starting
+on an entry of the hash table. Increasing the size of the hash table, a, reduces the
+average length of the chain. A value of a > 2 × #frames ensures that the average
+number of entries in a linked list is less than 2. The inverted page table contains
+exactly #frames entries in it. Note that the inverted page table does not contain
+any information about pages that are not present in memory; a conventional page
+table would have to be maintained on disk to contain their information. Inverted
+page tables have been used in the IBM RS 6000 and AS 400 systems, and in the
+PowerPC and PA-RISC architectures. They have also been used in Solaris OSs
+for Sparc architectures.
+12.2.3.2 Multilevel Page Tables
+The memory requirement of the page table of a process is reduced by paging
+the page table itself and loading its pages on demand just like pages of pro-
+cesses. This approach requires a two-tiered addressing arrangement in which a
+higher-level page table contains entries that hold information about pages of
+the page table and the page table contains information concerning pages of the
+process. The information in each of these tables is similar to the information
+contained in a conventional page table. Figure 12.11 illustrates the concept of a
+two-level page table. Memory now contains two kinds of pages--pages of pro-
+cesses and pages of page tables of processes, which we shall call PT pages. Only
+three PT pages of a process P are currently in memory. For address translation
+of a logical address (pi, bi) in process P, page pi of process P should exist in
+memory and the PT page that contains the entry for page pi should also exist
+in memory.
+As mentioned in Section 12.2, the page number and byte number in a logical
+address (pi, bi) are represented in np and nb bits. The size of each page table entry
+is a power of 2, so the number of page table entries that fit in one PT page is also a
+power of 2. If the size of a table entry is 2e bytes, the number of page table entries
+in one PT page is 2nb /2e, i.e., 2nb-e. Therefore, the page number pi in the logical
+address itself consists of two parts--id of the PT page that contains the page table
+entry of pi, and an entry number within the PT page. As shown in Figure 12.11,
+we call these two parts p1i and p2i , respectively. From the preceding discussion, pi2
+is contained in the lower order nb - e bits of pi. Since the binary representation
+of pi contains np bits, pi1 is contained in np - (nb - e) higher-order bits.
+Figure 12.11 illustrates address translation for a logical address (pi, bi). It
+consists of the following steps:
+1. The address (pi, bi) is regrouped into three fields
+                          np - (nb - e)- nb - e -       nb       -
+                                  pi1  p2i              bi
+The contents of these fields are pi1, p2i and bi, respectively.
+
+
+
+432  Part 3  Memory Management
+                                                                              Pages of
+                                                       Pages of the           process P
+                                                   page table of P
+                                                   (i.e., PT pages of P)
+                                Higher-level
+                                page table
+                                pi1  x
+                                     x
+                                     x
+                                                   p2i                                   Page pi
+                                                                          bi             Byte with
+                                                                                         address (pi ,bi)
+                                     p1i      pi2  bi
+                                          pi
+             Figure 12.11  Two-level page table organization.
+             2.  The PT page with the number p1i contains the page table entry for pi. The
+                 MMU checks whether this page exists in memory and raises a page fault if it
+                 does not. The page fault is serviced by the virtual memory manager to load
+                 the PT page in memory.
+             3.  pi2 is the entry number for pi in the PT page. The MMU uses information in
+                 this entry to check whether page pi exists in memory and raises a page fault
+                 if it does not. The virtual memory manager services the page fault and loads
+                 page pi in memory.
+             4.  The contents of pi's page table entry are used to perform address translation.
+                 Thus, address translation requires two memory accesses--one to access the
+             higher-level page table and another to access the page table of process P. It can be
+             speeded up through the TLB by making two kinds of entries--entries of the form
+             (P, p1i , frame number, protection info) help to eliminate accesses to the higher-
+             level page table of process P and entries of the form (P, pi1, pi2, frame number,
+             protection info) help to eliminate accesses to the page table of P.
+                 When the size of the higher-level page table in a two-level page table organiza-
+             tion is very large, the higher-level page table can itself be paged. This arrangement
+
+
+
+                                              Chapter 12                                     Virtual Memory  433
+results in a three-level page table structure. Address translation using three-level
+page tables is performed by an obvious extension of address translation in two-
+level page tables. A logical address (pi, bi) is split into four components pi1, p2i , pi3,
+and bi, and the first three components are used to address the three levels of the
+page table. Thus address translation requires up to three memory accesses. In
+computer systems using 64-bit addresses, even the highest-level page table in a
+three-level page table organization may become too large. Four-level page tables
+are used to overcome this problem.
+The Intel 80386 architecture used two-level page tables. Three and four-level
+page tables have been used in the Sun Sparc and Motorola 68030 architectures,
+respectively.
+12.2.4 I/O Operations in a Paged Environment
+A process makes a system call for performing I/O operations. Two of its param-
+eters are the number of bytes to be transferred and the logical address of the
+data area, which is the area of memory that participates in the data transfer. The
+call activates the I/O handler in the kernel. The I/O subsystem does not contain
+an MMU; it uses physical addresses to implement data transfer to and from
+the memory. Consequently, the I/O handler has to perform a few preparatory
+actions before initiating the I/O operation. The first of these is to replace the
+logical address of the data area with its physical address, using information from
+the page table of the process. It has to perform some more actions to address two
+more issues discussed in the following.
+The data area in an I/O operation may span several pages of the process. A
+page fault while accessing a page of the data area would disrupt the I/O oper-
+ation, so all these pages must remain in memory while I/O is being performed.
+The I/O handler satisfies this requirement by loading all pages of the data area
+into memory and putting an I/O fix on each page to instruct the virtual memory
+manager that these pages should not be replaced until the I/O fix is removed at
+the end of the I/O operation. It now starts the I/O operation. A simple way to
+implement I/O fixing of pages is to add an I/O fix bit in the misc info field of each
+page table entry.
+Since the I/O subsystem operates without an MMU, it expects the data area
+to occupy a contiguous area of memory. However, the process is paged, hence
+pages of the data area may not have contiguous physical addresses. This situa-
+tion can be addressed in two ways. Most I/O subsystems provide a scatter/gather
+feature, which can deposit parts of an I/O operation's data in noncontiguous
+areas of memory. For example, the first few bytes from an I/O record can be
+read into a page frame located in one part of memory and the remaining bytes
+can be read into another page frame located in a different part of memory.
+Analogously, a "gather write" can draw the data of the I/O operation from
+noncontiguous memory areas and write it into one record on an I/O device.
+Example 12.3 illustrates how a scatter-read operation is used to implement an
+I/O operation that spans two pages in a process. If an I/O subsystem does not
+provide the scatter/gather feature, the I/O handler can handle the situation in
+
+
+
+434  Part 3  Memory Management
+                   two ways. It can either instruct the virtual memory manager to put pages con-
+                   taining the data area contiguously in memory, or it can first read the data into
+                   a kernel area that has contiguous physical addresses and then copy it to the
+                   data area in the process. Analogous provisions can be made to support a write
+                   operation.
+·
+     Example 12.3  I/O Operations in Virtual Memory
+                   Page i2 of a process Pi contains a system call "perf_io (alpha, read, 828,
+                   (i1, 520))," where alpha is a file, 828 is the count of data bytes to be read,
+                   and (i1, 520) is the logical address of the start of the data area. Figure 12.12
+                   illustrates how the I/O operation is implemented. The page size is 1 KB, and so
+                   the data area is situated in pages i1 and i1 + 1 of the process. Before initiating
+                   the I/O operation, the I/O handler invokes the virtual memory manager to
+                   load pages i1 and i1 + 1 into memory. They are loaded into page frames 14
+                   and 10 of memory. The I/O handler puts an I/O fix on these pages by setting
+                   the I/O fix bits in the misc info field of their page table entries. These pages are
+                   not replaced until the I/O fix is removed at the end of the I/O operation. The
+                   I/O handler now generates a scatter-read operation to read the first 504 bytes
+                   starting at byte number 520 in page frame 14, and the remaining 324 bytes
+                   starting at byte number 0 in page frame 10. It removes the I/O fix on pages 14
+                   and 10 when the I/O operation completes.
+                   ·
+                                  Logical address space           frame                Memory
+                                                                      #                                         scatter-read
+                                                                         8    Perf_io  (read, 828, (i1,  520))  504, (14,520),
+                           i2     Perf_io (read, 828, (i1, 520))                                                324, (10,0)
+                                                                      10
+                           i1
+                           i1+1
+                                                                      14
+                                                 Valid            Page        Misc
+                                                 bit              frame #     info
+                                           i1    1                14        I/O fix
+                                           i1+1  1                10        I/O fix
+                                           i2    1                8
+                                                                  Page table
+                   Figure  12.12  An  I/O  operation in virtual memory.

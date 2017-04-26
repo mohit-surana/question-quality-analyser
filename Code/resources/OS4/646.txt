@@ -1,0 +1,198 @@
+Protection Structures
+A protection structure is the classical name for the authorization database dis-
+cussed in Section 15.1 and illustrated in Figure 15.1. It contains information
+indicating which users can access which files in what manner. We begin by dis-
+cussing the nature of information contained in a protection structure, and how
+the information is used to implement protection. Later in this section, we discuss
+the key issues in organization of the protection structure.
+Recall from Section 15.1 that an access privilege for a file is a right to make
+a specific form of access to the file, e.g., a read access or a write access. A user
+may hold one or more access privileges for a file, e.g., he may be permitted to
+only read a file, or read and write a file but not execute it. An access descriptor is
+a representation of a collection of access privileges for a file. The access control
+information for a file is a collection of access descriptors; it represents access
+privileges for the file held by all users in the system.
+We use the notations r, w, and x to represent access privileges to read, write,
+and execute the data or program in a file. An access descriptor can be repre-
+sented as a set of access privileges, e.g., the set {r, w} indicates privileges to both
+read and write a file. We will use a set representation in this chapter for simplicity;
+however, a set representation is expensive in terms of both memory requirements
+and access efficiency, so operating systems actually use a bit-encoding scheme for
+access descriptors. In this scheme, an access descriptor is a string of bits, where
+each bit indicates the presence or absence of a specific access privilege. For exam-
+ple, in an OS using only three access privileges r, w, and x, the access descriptor
+110 could be used to indicate that the read and write privileges are present but
+the execute privilege is absent.
+
+
+
+626  Part 4  File Systems and I/O Management
+                 As discussed in Section 15.1, the access control information for a file alpha
+             is created and used as follows:
+             1.  When a user A creates file alpha, he specifies the access control information
+                 for it. The file system stores it in the protection structure.
+             2.  When a user X logs in, he is authenticated. The authentication service gen-
+                 erates an authentication token for him, which is typically a user id. When
+                 a process initiated by user X wishes to open or access file alpha, his
+                 authentication token is passed to the file system.
+             3.  The file system uses the authentication token to find the access privileges
+                 of user X for file alpha in the protection structure, and checks whether
+                 the kind of access desired by the process is consistent with the access
+                 privileges.
+                 Organization     of  the     protection  structure  influences  two  key  aspects         of
+             protection--how much discrimination the owner of a file can exercise in Step 1
+             while specifying which other users can access the file, and how efficiently the
+             protection check of Step 3 can be implemented. We discuss these issues in the
+             following sections.
+             15.6.1 Granularity of Protection
+             Granularity of protection signifies the degree of discrimination a file owner can
+             exercise concerning protection of files. We define three levels of granularity in
+             Table 15.7.
+                 Coarse-grained protection implies that users are clubbed into groups and
+             access privileges are specified for a group of users, whereas medium-grained
+             protection implies that the owner of a file can specify access privileges individu-
+             ally for each user in the system. Fine-grained protection permits access privileges
+             to be specified for a process or for different phases in operation of a process.
+             This way, different processes created by the same user may possess different
+             access privileges for a file, or the same process may possess different access priv-
+             ileges for the file at different times. It helps in ensuring privacy of information
+             (see Section 15.1.1).
+             Table 15.7       Granularity of Protection
+             Granularity              Description
+             Coarse-grained           Access privileges for a file can be specified only for groups of
+             protection               users. Each user in a group has identical access privileges for
+                                      the file.
+             Medium-grained           Access privileges for a file can be specified individually for
+             protection               each user in the system.
+             Fine-grained             Access privileges for a file can be specified for a process, or for
+             protection               a phase in operation of a process.
+
+
+
+                                                               Chapter 15   Security and Protection  627
+                      Files   alpha        beta   gamma
+             Users    Jay     {r}          {r,w}
+                      Anita   {r,w,x}             {r}    Access privileges
+                      Sheila                      {r}          of Anita
+                      Access control information
+                              for alpha
+Figure 15.7  Access control matrix (ACM).
+Users desire medium- or fine-grained protection. However, such protection
+leads to a large size of the protection structure. This is why operating systems
+resort to coarse-grained protection.
+15.6.2 Access Control Matrix
+An access control matrix (ACM) is a protection structure that provides efficient
+access to both access privileges of users for various files, and access control infor-
+mation for files. Each element of the ACM contains access privileges of one user
+for one file. Each user has a row in the ACM, while each file has a column in it.
+This way, a row in the ACM describes one user's access privileges for all files in
+the system, and each column describes the access control information for a file.
+When a user ui wishes to access file fk, the element ACM(ui, fk) can be accessed
+efficiently to validate the kind of access being made by ui. Figure 15.7 shows an
+ACM. User Jay has {read, write} access privileges for beta but only a {read}
+privilege for alpha.
+The ACM provides medium-grained protection. However, it is large in size
+because an OS has a large number of users and contains a large number of files.
+Accordingly, a large area of memory has to be committed to hold the ACM,
+or parts of it, in memory during system operation. Operating systems use two
+approaches to reduce the size of access control information. In the first approach,
+the number of rows is reduced by assigning access privileges to groups of users
+rather than to individual users. This approach retains the basic advantage of the
+ACM, namely efficient access to both access privileges of users and access control
+information of files. However, it leads to coarse-grained protection because all
+users in a group have identical access privileges for a file.
+The second approach to reducing size of the protection structure exploits
+the fact that a typical user possesses access privileges for only a few files. Thus,
+most elements in an ACM contain null entries, so space can be conserved by
+organizing the protection information in the form of lists containing only nonnull
+access privileges. This approach does not affect the granularity of protection;
+however, it compromises access efficiency of the protection structure. We present
+two list-organized protection structures in the following sections.
+15.6.3 Access Control Lists (ACLs)
+The access control list (ACL) of a file is a representation of its access con-
+trol information; it contains the non-null entries that the file's column would
+
+
+
+628  Part 4  File Systems and I/O Management
+                                              File          Access control list
+                                              name          (ACL)
+                                              alpha  {(Jay, {r}), (Anita,{r, w, x})}
+                                              beta          {(Jay, {r, w})}
+                                              gamma  {(Anita, {r}), (Sheila, {r})}
+             Figure  15.8  Access control lists (ACLs).
+                                                     (alpha, {r, w, x})
+                                                         (gamma, {r})
+             Figure  15.9  Capability list for user Anita.
+             have contained in the ACM. It is stored as a list of pairs of the form (user_id,
+             access_privileges). Figure 15.8 shows access control lists for the files alpha,
+             beta, and gamma of Figure 15.7. The ACL for alpha is {(Jay, {read}), (Anita,
+             {read, write, execute})}, which indicates that user Jay can only read file alpha
+             while Anita can read, write, or execute the file. User Sheila is not permitted
+             any kind of access to alpha, since alpha's ACL does not contain an entry for
+             Sheila.
+             Even though use of an ACL eliminates the need to store null access privileges,
+             presence of a large number of users in a system leads to large ACL sizes, and
+             thereby to large disk and memory overhead in the file system. The time overhead
+             is also high because the ACL has to be searched for validating a file access. Both
+             memory and CPU time can be conserved at the cost of using coarse-grained
+             protection by specifying protection information for groups of users rather than
+             for individual users. Such an ACL could be small enough to be stored in the
+             directory entry of a file. For example, if users Jay and Anita belong to the same
+             group of users, the ACL of file alpha would contain a single pair. It would now
+             be easier to determine whether Jay can access alpha; however, both Jay and
+             Anita would have identical access privileges.
+             15.6.4 Capability Lists (C-lists)
+             A capability list (C-list) represents access privileges of a user for various files in
+             the system; it contains the non-null entries that the user's row in the ACM would
+             have contained. Each entry in the C-list is a capability, which represents access
+             privileges for one file; it is a pair of the form (file_id, access_privileges). Figure 15.9
+             shows a C-list for user Anita of Figure 15.7. Anita can read, write, or execute
+             file alpha and can read file gamma. Anita has no access privileges for file beta,
+             since no entry for beta exists in the C-list. C-lists are usually small in size; this
+             feature limits the space and time overhead in using them for protection of files.
+             We discuss how capabilities are used in a computer in Section 15.7.
+
+
+
+                                       Chapter 15                        Security and     Protection        629
+15.6.5 Protection Domain
+The access control matrix, access control list, or capability list is used to confer
+access privileges on users. This arrangement serves the secrecy goal of security and
+protection because only authorized users can access a file. However, the privacy
+goal of security and protection requires that information should be used only for
+intended purposes (see Section 15.1.1), and this requirement could be violated
+as follows: A user is granted an access privilege for a file because some process
+initiated by the user requires it. However, every other process initiated by the user
+also has the same access privilege for the file; some of these processes may access
+the file in an unintended manner, thus violating the privacy requirement. The
+next example illustrates how privacy of information may be jeopardized.
+                                                                                                            ·
+Privacy Violation                                                                         Example     15.2
+A user ui has an execute privilege for a program invest owned by another
+user uj. When ui executes invest, invest operates as a process initiated
+by user ui. It can access any file for which user ui holds an access privilege,
+including files that have nothing to do with investments. If uj so wishes, he can
+code invest to obtain a listing of ui's current directory and either copy or
+modify some of the files found in it.
+                                                                                       ·
+Violation of privacy raises a major reliability concern, as the correctness of
+data would depend not only on correct manipulation by processes that are sup-
+posed to access it, but also on harmlessness of the accesses made by processes that
+are not supposed to access it. The concept of a protection domain is used to prevent
+privacy violations. We can think of a protection domain as a conceptual "execu-
+tion environment": Access privileges are granted to a protection domain rather
+than to a user or his process. A process operates "within" a protection domain
+and can access those files for which the protection domain has access privileges.
+This arrangement facilitates implementation of the need-to-know principle with
+a fine granularity--a process should be allowed to operate within a protection
+domain only if it needs to access the files for which the protection domain has
+access privileges. The following example illustrates how this approach ensures
+privacy of information.
+                                                                                                            ·
+Protection Domains                                                                        Example     15.3
+Figure 15.10 shows three protection domains. Domain D1 has read and write
+privileges for the files personal and finance, while D2 possesses only a
+read privilege for finance. Domain D3 has read and write privileges for
+the files memos and notes and a read privilege for the file project. Thus
+domains D1 and D2 overlap while domain D3 is disjoint with both of them.

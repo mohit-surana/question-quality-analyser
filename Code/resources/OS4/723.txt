@@ -1,0 +1,329 @@
+Recording the State of a Distributed System
+             As discussed in Section 17.2.1, the global state of a distributed system at a time
+             instant t is the collection of local states of all entities in the system at time t.
+             However, it is not possible to get all nodes to record their states at the same time
+             instant because local clocks are not perfectly synchronized. Any other collection
+             of local states may be inconsistent. Consider the distributed system shown in
+             Figure 17.5. A banking application has a process P1 in node N1 and a process P2
+             in node N2, which perform the following actions:
+             1. Process P1 debits $100 to account A.
+             2. Process P1 sends a message to process P2 to credit $100 to account B.
+             3. Process P2 credits $100 to account B.
+             The recorded states of nodes N1 and N2 would be inconsistent if the balance
+             in account A is recorded before Step 1 and that in account B is recorded
+             after Step 3. A distributed OS cannot use such a state to perform its control
+             functions.
+             In this section we present an algorithm for obtaining a consistent collec-
+             tion of local states. Such a collection of states is not a substitute for the global
+             state; however, it has properties that facilitate some of the control functions in a
+             distributed OS.
+             Consistent State Recording              A state recording is a collection of local states of
+             entities in a system obtained through some algorithm. A consistent state recording
+             is one in which process states of every pair of processes in the system are consistent
+             according to Definition 17.1.
+             Definition 17.1 Mutually Consistent Local States       Local states of processes
+             Pk and Pl are mutually consistent if
+             1.    Every message recorded as "received from Pl " in Pk's state is  recorded          as
+                   "sent to Pk" in Pl 's state, and
+             2.    Every message recorded as "received from Pk" in Pl 's state is  recorded          as
+                   "sent to Pl " in Pk's state.
+             In the state recording mentioned at the start of this section, the state of P2
+             indicates that it has received the message from P1 concerning credit of $100 in
+             account B, but the state of P1 does not indicate that it has sent such a message.
+                                                A              B
+                                            N1  900            300  N2
+             Figure 17.5  A funds transfer system.
+
+
+
+                                                     Chapter 17        Theoretical Issues in Distributed Systems  703
+Hence the state recording is inconsistent. A state recording that shows any of the
+following situations would have been consistent:
+1. Accounts A and B contain $900 and $300, respectively.
+2. Accounts A and B contain $800 and $400, respectively.
+3. Accounts A and B contain $800 and $300, respectively.
+In case 1, none of the processes had received a message before its state was
+recorded, so the process states are consistent. In case 2, the message recorded as
+received from P1 in P2's state is recorded as sent in P1's state. In case 3, again
+none of the process states records receipt of a message. The message from P1 to
+P2 is in transit. It will be delivered to process P2 sometime in future, and process
+P2 will add $100 to account B when it receives the message. This is why mutual
+consistency of process states requires that every message recorded as received
+should be recorded as sent, but not vice versa.
+17.4.1 Properties of a Consistent State Recording
+Figure 17.6 shows a model of a distributed computation. The computation
+consists of four processes P1­P4 that communicate among themselves through
+messages. An edge (Pi, Pj ) represents a channel Chij , i.e., an interprocess commu-
+nication path that is used by process Pi to send messages to process Pj. Note that
+a channel is unidirectional--a process either sends or receives messages along a
+channel, but not both. Channels Ch23 and Ch32 together indicate that processes
+P2 and P3 send messages to one another.
+Figure 17.7 shows the timing diagram of the computation. Table 17.2 shows
+states of processes P1­P4 recorded at time instants tP1 , tP2 , tP3 , and tP4 , respec-
+tively. These time instants are marked with the symbol                 in the figure. The state
+of process P1 shows that it has received message m21, but not sent out any mes-
+sages, while the state of process P2 shows that it has sent out messages m21 and
+m23 before tP2 but not received any messages. These states are mutually consistent
+according to Definition 17.1. However, the states of P3 and P4 are not mutually
+consistent because the state of process P3 records message m43 as received but
+process P4's state does not record it as sent. Hence the state recording of Table 17.2
+is not a consistent state recording.
+                             P1                                  P4
+                                               Ch42
+                             Ch21                                Ch43
+                                               Ch23
+                             P2                                  P3
+                                               Ch32
+Figure 17.6  A  distributed  computation  for  state recording.
+
+
+
+704  Part 5  Distributed Operating Systems
+                                                 e11       e12  tP1       e13
+                              P1
+                                                 m21                 tP2
+                              P2                      e23                      e24     e25
+                                            e21  e22            m23
+                                                      e32 tP3                       m32
+                              P3                 e31
+                                                                     e33  e34
+                                            tP4       m43                 m42
+                              P4                 e41                 e42
+             Figure 17.7  A  timing diagram for the distributed computation of Figure       17.6.
+             Table 17.2       Local States of Processes
+             Process          Description of recorded state
+             P1               No messages have been sent. Message m21 has been received.
+             P2               Messages m21 and m23 have been sent. No messages have been
+                              received.
+             P3               No messages have been sent. Message m43 has been received.
+             P4               No messages have been sent. No messages have been received.
+             Cut of a System  The notion of a cut of a system helps in determining the con-
+             sistency of a state recording. Let tPi be the point in a timing diagram at which
+             the state of a process Pi is recorded.
+             Definition 17.2 Cut of a System          A curve that connects the points in a tim-
+             ing diagram at which states of processes are recorded, in increasing order by
+             process number.
+                 The cut of the distributed computation shown in Figure 17.7 represents the
+             recorded state shown in Table 17.2. The term "a cut is taken" means that a
+             collection of local states is recorded. An event that had occurred in a process
+             before the state of the process was recorded is said to occur "to the left of the
+             cut" in the timing diagram. Such an event belongs in the past of the cut. An event
+             that would occur in a process after the state of the process was recorded is said
+             to occur "to the right of the cut" in the timing diagram. Such an event belongs
+             to the future of the cut. A cut represents a consistent state recording of a system
+             if the states of each pair of processes satisfy Definition 17.1.
+             State of a Channel             The state of a channel Chij is the set of messages con-
+             tained in Chij, i.e., the messages sent by process Pi that are not yet received
+
+
+
+                                                 Chapter 17    Theoretical Issues in Distributed Systems  705
+by  process  Pj .  We   use  the   following   notation  to    determine  the  state  of  a
+channel Chij :
+      Recorded_sentij   The set of messages recorded as sent over channel Chij
+                        in the state of Pi
+      Recorded_recd ij  The set of messages recorded as received over channel
+                        Chij in the state of Pj
+    Recorded_sentij     =    Recorded_recd ij  implies   that  all  messages   sent   by  Pi
+have  been   received   by   Pj .  Hence  the  channel   is  empty.  Recorded_sentij      -
+Recorded_recdij = , where "-" represents the set difference operator, implies
+that some messages sent by Pi have not been received by Pj. These messages are
+still contained in channel Chij . Recorded_recdij - Recorded_sentij = , implies
+that process Pj has recorded as received at least one message that is not recorded
+as sent by process Pi. This situation indicates inconsistency of the recorded
+local states of Pi and Pj according to Definition 17.1.
+    A cut in the timing diagram may intersect with a message mk sent by process
+Pi to process Pj over channel Chij . The manner of the cut indicates whether the
+recorded states of Pi and Pj are consistent with respect to the sending and receipt
+of the message. It also indicates the state of the channel. Three possibilities are:
+·   No intersection with a message: The message send and receive events are either
+    both located to the left of the cut or both located to the right of the cut. In
+    either case, the message did not exist in channel Chij when the cut was taken.
+·   Forward intersection with a message: The message send event is located to
+    the left of the cut and the message receive event is located to the right of
+    the cut. Hence, the message existed in channel Chij when the cut was taken.
+    The cut in the timing diagram of Figure 17.7 has a forward intersection with
+    message m23.
+·   Backward intersection with a message: The message send event is located to
+    the right of the cut and the message receive event is located to the left of the
+    cut. Hence, the message had been received but had not been sent when the cut
+    was taken. Such a message indicates an inconsistency in the recorded state.
+    The cut in the timing diagram of Figure 17.7 has a backward intersection
+    with message m43.
+    From these observations, we can formulate a consistency condition for a cut
+as follows:
+    CC       A cut C represents a consistent state recording of a distributed
+             system if the future of the cut is closed under the precedes relation
+             on events, i.e., closed under "".
+    Condition CC can be explained as follows: A set of items I is said to be closed
+under a relation R, if using the relation on any item in I yields an item that is also
+in I . Let I be the set of events in the future of a cut. Applying the relation ""
+to an event ei  I gives us an event ej such that ei  ej , i.e., ei precedes ej . If I is
+closed under "", this event also belongs to I . That is, it does not belong to the
+past of the cut. This condition is equivalent to the restriction that a cut should
+
+
+
+706  Part 5  Distributed Operating Systems
+                                                      C1       e12        C2          e13            C3
+                                   P1
+                                   P2                 e23
+                                                 e22
+                                   P3                        e32
+                                                                     e33  e34
+                                   P4                 e41
+                   Figure 17.8  Consistency  of  cuts--cuts  C1, C2  are  consistent  while  C3  is  inconsistent.
+                   not have a backward intersection with a message. A forward intersection does
+                   not violate condition CC since its send event is in the past and its receive event is
+                   in the future.
+·
+     Example 17.4  Consistency of a Cut
+                   In Figure 17.8, cuts C1 and C2 are consistent cuts because there is no event
+                   ej belonging to the past of the cut that follows an event ei in the future of the
+                   cut. Cut C3 is inconsistent because event e13 follows event e34 because of the
+                   cause-and-effect relationship between a send and a receive; however, e34 is in
+                   the future of C3 while e13 is in its past.
+                   ·
+                   17.4.2 An Algorithm for Consistent State Recording
+                   This section describes the state recording algorithm by Chandy and Lamport
+                   (1985). The algorithm makes the following assumptions:
+                      1. Channels are unidirectional.
+                      2. Channels have unbounded capacities to hold messages.
+                      3. Channels are FIFO.
+                   The assumption of FIFO channels implies that messages received by a destination
+                   process must be the first few messages sent by a sender process, and messages
+                   contained in a channel must be the last few messages sent by a process.
+                      To initiate a state recording, a process records its own state and sends
+                   a state recording request called a marker on every outgoing channel. When
+                   a process receives a marker, it records the state of the channel over which
+                   it received the marker. If the marker is the first marker it received from any
+                   process, it also records its own state and sends a marker on every outgoing
+
+
+
+                                         Chapter 17       Theoretical Issues in Distributed Systems        707
+channel. We use the following notation to discuss how the state of a channel is
+determined:
+    Receivedij       The set of messages received by process Pj on channel
+                     Chij before it received the marker on channel Chij .
+    Recorded_recdij  The set of messages recorded as received over channel
+                     Chij in the state of process Pj .
+Algorithm 17.2 Chandy­Lamport Algorithm
+1.  When a process Pi initiates the state recording: Pi records its own state and
+    sends a marker on each outgoing channel connected to it.
+2.  When process Pj receives a marker over an incoming channel Chij : Process Pj
+    performs the following actions:
+    a. If Pj had not received any marker earlier, then
+        i.    Record its own state.
+        ii.   Record the state of channel Chij as empty.
+        iii.  Send a marker on each outgoing channel connected to it.
+    b.  Otherwise, record the state of   channel  Chij    as  the  set  of  messages
+        Receivedij - Recorded_recdij .
+    Rules of Algorithm 17.2 are executed atomically, i.e., as indivisible operations.
+Recording of the channel state by the algorithm can be explained as follows:
+Let a process Pi send messages mi1 , mi2 , . . . min on channel Chij before recording
+its own state and sending a marker on Chij. Let process Pj have two incoming
+channels Chij and Chkj . If the marker on channel Chij is the first marker Pj
+received, it would record its own state, which would show Recorded_recdij and
+Recorded_recdkj as the messages received by it. Pj would also record the state of
+Chij as empty. Because channels are FIFO, process Pj would have received the
+marker after receiving messages mi1, mi2, . . . , min on Chij , so it is correct to record
+the state of channel Chij as empty.
+    Let Pj receive two more messages mk1 and mk2 on Chkj before it received
+the marker. Hence Receivedkj = Recorded_recdkj  { mk1, mk2 } and the state of
+channel Chkj would be recorded as the set of messages Receivedkj - Recorded-
+_recdkj i.e., { mk1, mk2 }. It is correct because process Pk would have sent messages
+mk1 , mk2 before it recorded its own state and sent the marker on channel Chkj ,
+so if these messages were not received by Pi by the time it recorded its own state,
+they must have been in the channel.
+    Example 17.5 illustrates operation of the Chandy­Lamport algorithm.
+                                                                                                           ·
+Operation of the Chandy-Lamport Algorithm                                                   Example  17.5
+Figure 17.9(a) shows a distributed system at time 0. Process P1 has sent message
+m1 to P3. The message currently exists in Ch13. At time 1, process P3 sends
+message m2 to process P2. At time 2, P1 decides to record the state of the
+system, so it records its own state and sends markers on its outgoing channels.
+
+
+
+708  Part 5  Distributed Operating Systems
+                    P2        P3                       P2   m2    P3                 P2  m2 m3    P3
+                                            P3                                                        
+                              m1                                  m1
+                                                                                                
+                          P1                                P1                           P1
+                    (a)                                (b)                     (c)
+             Figure 17.9  Example of the Chandy­Lamport algorithm: system at times 0, 2+, and 5+.
+             Table 17.3       Recorded States of Processes and Channels in
+             Figure 17.9
+                Entity                      Description of recorded state
+                P1                          Message m1 has been sent. No messages have been
+                                            received.
+                P2                          No messages have been sent or received.
+                P3                          Messages m2 and m3 have been sent. Message m1 has     been
+                                            received.
+                Ch12                        Empty
+                Ch13                        Empty
+                Ch23                        Contains the messages m2 and m3
+             Figure 17.9(b) shows the situation at time 2+. Message m1 is still in channel
+             Ch13 and m2 is in Ch32. The bullets indicate markers. The symbol                   indicates
+             that the state of a process has been recorded.
+                    Process P2 receives the marker on Ch12 at time 3, records its own state and
+             records the state of Ch12 as empty. Process P3 sends message m3 to process
+             P2 at time 4 and receives the marker on Ch13 at time 5. It now records its
+             own state, records the state of Ch13 as empty, and sends a marker on Ch32.
+             Figure 17.9(c) shows the situation at time 5+. States of all processes have been
+             recorded. States of channels Ch12 and Ch13 have also been recorded; however,
+             the state of Ch32 is yet to be recorded.
+                    When the marker on Ch32 reaches process P2, P2 will record the state
+             of Ch32 according to step 2(b) of Algorithm 17.2. It is recorded as messages
+             {m2, m3} because these messages are in Received32 but not in Recorded_recd32.
+             Table 17.3 shows the state recording of the system.
+             ·
+             Properties of the Recorded State               Let tb and te be the time instants when the state
+             recording of system S begins and ends. Let RS be the recorded state of the system.
+             One would expect that system S would have been in the state RS at some time
+             instant ti such that tb < ti < te. However, this may not be so! That is, the recorded
+
+
+
+                                                                   Chapter 17    Theoretical Issues in Distributed Systems        709
+state RS may not match any global state of the system. Example 17.6 illustrates
+this fact.
+                                                                                                                                  ·
+Recorded State versus Global State                                                                              Example     17.6
+Figure 17.7 shows the timing diagram of the distributed system of Figure 17.6.
+Let  P4       initiate  state  recording             at  time      instant  t1.  The       timing  diagram  of
+Figure 17.10 shows how the markers are sent and received by processes during
+state recording. The markers are shown as dotted arrows.
+     Table 17.4 shows channel and process states recorded by the Chandy­
+Lamport algorithm. Only message m21 is recorded as sent by P2 and received
+by P1. No other messages are recorded as sent or received. However, because
+the timing diagram of Figure 17.7 is drawn to scale, it is clear that the system
+never existed in a state in which message m21 had been sent and received but no
+other messages had been sent--the message-send and message-receive events
+e23, e32, and e41 had occurred before event e12, the message-receive event for
+message m21. Thus any global state that recorded message m21 as received
+would have also recorded message m43 as sent and received, and message m23
+as sent.
+                                                                                                            ·
+    Even though the system may not have existed in the recorded state at any
+point in time, the recorded state is useful for applications that require only mutual
+              P1                                e11           e12       e13
+                                                m21
+              P2                                         e23                     e24  e25
+                                     e22
+                                                                   m23                m32
+              P3                                         e32
+                                                                   e33      e34
+                                                     m43                m42
+              P4                  4             e41                e42
+                               t  1
+Figure 17.10  State recording of     the system of Figures 17.6 and 17.7.
+Table 17.4    A Recorded State that Does Not Match Any Global State
+Entity                  Description of recorded state
+P1                      No messages have been sent. Message m21 has been received.
+P2                      Message m21 has been sent. No messages have been received.
+P3                      No messages have been sent or received.
+P4                      No messages have been sent or received.
+ States of all channels are recorded as empty.

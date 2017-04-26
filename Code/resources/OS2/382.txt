@@ -1,0 +1,79 @@
+PRINCIPLES OF I/O SOFTWARE
+Let us now turn away from the I/O hardware and look at the I/O software. First
+we will look at its goals and then at the different ways I/O can be done from the
+point of view of the operating system.
+5.2.1 Goals of the I/O Software
+A key concept in the design of I/O software is known as device independence.
+What it means is that we should be able to write programs that can access any I/O
+device without having to specify the device in advance. For example, a program
+that reads a file as input should be able to read a file on a hard disk, a DVD, or on a
+USB stick without having to be modified for each different device. Similarly, one
+should be able to type a command such as
+sort <input >output
+and have it work with input coming from any kind of disk or the keyboard and the
+output going to any kind of disk or the screen.  It is up to the operating system to
+take care of the problems caused by the fact that these devices really are different
+and require very different command sequences to read or write.
+Closely related to device independence is the goal of uniform naming.                    The
+name of a file or a device should simply be a string or an integer and not depend on
+the device in any way.  In UNIX, all disks can be integrated in the file-system hier-
+archy in arbitrary ways so the user need not be aware of which name corresponds
+to which device. For example, a USB stick can be mounted on top of the directory
+/usr/ast/backup so that copying a file to /usr/ast/backup/monday copies the file to
+the USB stick.  In this way, all files and devices are addressed the same way: by a
+path name.
+Another important issue for I/O software is error handling.             In general, errors
+should be handled as close to the hardware as possible.         If the controller discovers
+a read error, it should try to correct the error itself if it can.  If it cannot, then the
+device driver should handle it, perhaps by just trying to read the block again. Many
+errors are transient, such as read errors caused by specks of dust on the read head,
+and will frequently go away if the operation is repeated. Only if the lower layers
+
+
+
+352                                   INPUT/OUTPUT                          CHAP. 5
+are not able to deal with the problem should the upper layers be told about it.         In
+many cases, error recovery can be done transparently at a low level without the
+upper levels even knowing about the error.
+     Still another important issue is that of synchronous (blocking) vs.         asyn-
+chronous   (interrupt-driven)  transfers.   Most  physical  I/O  is   asynchronous--the
+CPU starts the transfer and goes off to do something else until the interrupt arrives.
+User programs are much easier to write if the I/O operations are blocking--after a
+read system call the program is automatically suspended until the data are avail-
+able in the buffer.  It is up to the operating system to make operations that are ac-
+tually interrupt-driven look blocking to the user programs.       However, some very
+high-performance applications need to control all the details of the I/O, so some
+operating systems make asynchronous I/O available to them.
+     Another issue for the I/O software is buffering. Often data that come off a de-
+vice cannot be stored directly in their final destination. For example, when a packet
+comes in off the network, the operating system does not know where to put it until
+it has stored the packet somewhere and examined it. Also, some devices have
+severe real-time constraints (for example, digital audio devices), so the data must
+be put into an output buffer in advance to decouple the rate at which the buffer is
+filled from the rate at which it is emptied, in order to avoid buffer underruns. Buff-
+ering involves considerable copying and often has a major impact on I/O per-
+formance.
+     The final concept that we will mention here is sharable vs. dedicated devices.
+Some I/O devices, such as disks, can be used by many users at the same time.            No
+problems are caused by multiple users having open files on the same disk at the
+same time. Other devices, such as printers, have to be dedicated to a single user
+until that user is finished. Then another user can have the printer.  Having two or
+more users writing characters intermixed at random to the same page will defi-
+nitely not work. Introducing dedicated (unshared) devices also introduces a variety
+of problems, such as deadlocks. Again, the operating system must be able to hanfle
+both shared and dedicated devices in a way that avoids problems.
+5.2.2 Programmed I/O
+     There are three fundamentally different ways that I/O can be performed.            In
+this section we will look at the first one (programmed I/O).         In the next two sec-
+tions we will examine the others (interrupt-driven I/O and I/O using DMA).              The
+simplest form of I/O is to have the CPU do all the work. This method is called pro-
+grammed I/O.
+     It is simplest to illustrate how programmed I/O works by means of an example.
+Consider a user process that wants to print the eight-character string ``ABCDE-
+FGH'' on the printer via a serial interface. Displays on small embedded systems
+sometimes work this way.       The software first assembles the string in a buffer in
+user space, as shown in Fig. 5-7(a).
+
+
+
+SEC. 5.2                 

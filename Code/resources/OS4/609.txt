@@ -1,0 +1,101 @@
+Disk and File Caches
+                   A generic technique of speeding up access to file data is to use a memory hierarchy
+                   consisting of a part of memory and files stored on a disk. Recall from the principles
+                   of memory hierarchies discussed in Section 2.2.3 that memory would contain
+                   some parts of the file data stored on the disk; other parts would be loaded in
+                   memory when required. In essence, memory would function as a cache between
+                   files on the disk and processes. Both physical IOCS and access methods use this
+
+
+
+                                                Chapter 14  Implementation of File Operations  589
+principle. The physical IOCS uses a disk cache, which treats all files stored on
+a disk uniformly and holds some data of some files in memory at any time. An
+access method, on the other hand, uses a file cache, which focuses on keeping
+some part of the data in a specific file in memory. The access method maintains
+a separate file cache for each file.
+   The unit of data kept in a disk or file cache is typically a few consecutive
+disk blocks; for simplicity we assume it to be a single disk block. We will call the
+memory area used to store a unit of data a buffer. The cache is thus a collection
+of buffers managed in the software. Each buffer has two parts--the header part
+indicates what data is contained in it, and the data part actually contains data.
+The header contains the following information:
+·  Address of the disk blocks from where data has been loaded in the buffer
+·  A dirty flag
+·  Information needed for performing replacement of data in the buffer, such as
+   the time of last reference made to it
+   When a process issues a read operation, it specifies the offset of the required
+data in the file. The IOCS determines the address of the disk block that contains
+the required data and searches the cache to check whether contents of that disk
+block are present in a buffer. If so, the required data is copied from the buffer into
+the address space of the process. Otherwise, an I/O operation is initiated to load
+the data from the disk block into a buffer in the cache and it is copied into the
+address space of the process when the I/O operation completes. When a process
+performs a write operation, the IOCS checks whether contents of the disk block
+that contains old values of the data are present in a buffer. If so, it copies the
+values to be written from address space of the process into the buffer and sets the
+dirty flag of the buffer to true. Otherwise, it copies the disk block address and
+values of the data to be written into a new buffer and sets its dirty flag to true. In
+either case, contents of the buffer would be written on the disk by the procedure
+described in the following.
+   To facilitate speedy search in the cache, the buffer headers are stored in an
+efficient data structure such as a hash table. For example, the hash-with-chaining
+organization used in the inverted page table of the virtual memory handler could
+be adapted for use in the cache (see Figure 12.10 in Section 12.2.3.1). In this orga-
+nization, the address of a disk block whose data is contained in a buffer is hashed
+to obtain an entry number in the hash table. All buffers that contain disk blocks
+whose addresses hash into the same entry of the hash table are entered into a linked
+list, called a chain, and the hash table entry is made to point to the chain. To check
+whether data from a disk block is present in the cache, the address of the disk
+block is hashed to obtain an entry number in the hash table, and the chain pointed
+to by this entry is searched to check whether a copy of the disk block is contained
+in one of the buffers. If it is not present in the cache, it is loaded in a free buffer in
+the cache and the buffer is added to the chain. If the cache is full, a policy such as
+LRU replacement is employed to decide which buffer should be used to load the
+required data. If the dirty flag of the buffer is true, its contents would be written in
+the disk block whose address is contained in its header before new data is loaded in
+
+
+
+590  Part 4  File Systems
+             the buffer. Such an arrangement used in the Unix buffer cache is described later in
+             Section 14.13.1.2.
+             Loading of whole disk blocks, which are a few KB in size, in the cache captures
+             spatial locality because data that adjoins previously accessed data would exist in
+             the cache. This effect is analogous to blocking of records discussed previously in
+             Section 14.9. Studies mentioned in Section 14.13.1.2 indicate that disk cache hit
+             ratios of 0.9 or more can be obtained by committing a small amount of memory
+             to the disk cache. A file cache can exploit temporal locality further by preloading
+             the next few disk blocks of a sequential-access file in the cache, which is analogous
+             to buffering of records discussed in Section 14.8.
+             Use of a cache has some drawbacks too. An I/O operation involves two copy
+             operations, one between the disk and the cache and the other between the cache
+             and the address space of the process that initiated the I/O operation. Use of a
+             cache also leads to poor reliability of the file system because modified data exists
+             in a buffer in the cache until it is written to the disk. This data will be lost in the
+             event of a crash.
+             File Cache           A file cache is implemented in an access method and aims to provide
+             efficient access to data stored in a file. As shown in Figure 14.23(a), the access
+             method invokes the cache manager, which checks whether the required data is
+             available in the file cache. It invokes the physical IOCS only if the file cache does
+             not already contain the required data. The key advantage of a file cache over a
+             disk cache is that the cache manager can employ file-level techniques to speed up
+             accesses to file data. Such a technique exploits properties of a file's organization
+             to speed up data accesses, e.g., it can perform prefetching of data for sequential-
+             access files. However, a key disadvantage is that a separate file cache has to be
+             implemented for each file, so the IOCS has to decide how much memory to
+             commit to each individual file cache.
+             Disk Cache           The disk cache is implemented in the physical IOCS or device driver
+             of a disk. Its purpose is to speed up accesses to data stored on the disk. As shown
+             in Figure 14.23(b), a request for an I/O operation is passed to the I/O scheduler
+             only if the required data is not present in the disk cache. The key advantage of a
+                           File                                       File
+                           system                                     system
+                           Access    Cache                   File     Access
+                           method    manager                 cache    method
+                                                                                Cache      Disk
+                           Physical                                   Physical  manager    cache
+                           IOCS                                       IOCS      I/O
+                                                                                scheduler
+                           (a)                                        (b)
+             Figure        14.23  (a) File cache; (b)  disk  caches.

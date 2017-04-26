@@ -1,0 +1,164 @@
+Kernel Memory Allocation
+             The kernel creates and destroys data structures at a high rate during its operation.
+             These are mostly control blocks that control the allocation and use of resources
+             in the system. Some familiar control blocks are the process control block (PCB)
+             created for every process and the event control block (ECB) created whenever the
+             occurrence of an event is anticipated. (In Chapters 13 and 14, we will introduce
+             two other frequently used control blocks: the I/O control block (IOCB) created
+             for an I/O operation and the file control block (FCB) created for every open
+             file.) The sizes of control blocks are known in the design stage of an OS. This
+             prior knowledge helps make kernel memory allocation simple and efficient--
+             memory that is released when one control block is destroyed can be reused when
+             a similar control block is created. To realize this benefit, a separate free list can
+             be maintained for each type of control block.
+                Kernels of modern operating systems use noncontiguous memory allocation
+             with paging to satisfy their own memory requirements, and make special efforts
+             to use each page effectively. Three of the leading memory allocators are:
+             ·  McKusick­Karels allocator
+             ·  Lazy buddy allocator
+             ·  Slab allocator
+                The McKusick­Karels and lazy buddy allocators allocate memory areas
+             that are powers of 2 in size within a page. Since the start address of each page
+             in memory is a larger power of 2, the start address of each allocated memory
+
+
+
+                                                                Chapter 11  Memory Management  401
+area of size 2n is a multiple of 2n. This characteristic, which is called boundary
+alignment on a power of 2, leads to a cache performance problem as follows:
+Some parts of an object are accessed more frequently than others. Because of
+boundary alignment on a power of 2, the frequently accessed parts of objects
+may be mapped into the same areas of a cache by the set-associative technique of
+cache lookup. Hence some parts of the cache face a lot of contention leading to
+poor cache performance of the kernel code. The slab allocator uses an interesting
+technique to avoid this cache performance problem.
+Descriptions of these three allocators follow. In interest of consistency, we use
+the same terminology we used in previous sections; it differs from the terminology
+used in the literature on these allocators. The bibliography at the end of the chapter
+indicates which modern operating systems use these allocators.
+McKusick--Karels Allocator  This is a modified power-of-2 allocator; it is used
+in Unix 4.4 BSD. The allocator has an integral number of pages at its disposal at
+any time, and asks the paging system for more pages when it runs out of memory
+to allocate. The basic operating principle of the allocator is to divide each page
+into blocks of equal size and record two items of information--the block size, and
+a free list pointer--under the logical address of the page. This way, the address
+of the page in which a block is located will be sufficient for finding the size of the
+block and the free list to which the block should be added when it is freed. Hence,
+it is not necessary to have a header containing this information in each allocated
+block as in a conventional power-of-2 allocator.
+With the elimination of the header element, the entire memory in a block can
+be used for the intended purpose. Consequently, the McKusick­Karels allocator
+is superior to the power-of-2 allocator when a memory request is for an area
+whose size is an exact power of 2. A block of identical size can be allocated to
+satisfy the request, whereas the conventional power-of-2 allocator would have
+allocated a block whose size is the next higher power of 2.
+The allocator seeks a free page among those in its possession when it does
+not find a block of the size it is looking for. It then divides this page into blocks
+of the desired size. It allocates one of these blocks to satisfy the current request,
+and enters the remaining blocks in the appropriate free list. If no free page is held
+by the allocator, it asks the paging system for a new page to be allocated to it.
+To ensure that it does not consume a larger number of pages than necessary, the
+allocator marks any page in its possession as free when all blocks in it become
+free. However, it lacks a feature to return free pages to the paging system. Thus,
+the total number of pages allocated to the allocator at any given moment is the
+largest number of pages it has held at any time. This burden may reduce the
+memory utilization factor.
+Lazy Buddy Allocator  The buddy system in its basic form may perform one or
+more splits at every allocation and one or more coalescing actions at every release.
+Some of these actions are wasteful because a coalesced block may need to be split
+again later. The basic design principle of the lazy buddy allocator is to delay
+coalescing actions if a data structure requiring the same amount of memory as
+
+
+
+402  Part 3  Memory Management
+             a released block is likely to be created. Under the correct set of conditions, this
+             principle avoids the overhead of both coalescing and splitting.
+             The lazy buddy allocator used in Unix 5.4 works as follows: Blocks with the
+             same size are considered to constitute a class of blocks. Coalescing decisions for
+             a class are made on the basis of the rates at which data structures of the class are
+             created and destroyed. Accordingly, the allocator characterizes the behavior of
+             the OS with respect to a class of blocks into three states called lazy, reclaiming,
+             and accelerated. For simplicity we refer to these as states of a class of blocks.
+             In the lazy state, allocations and releases of blocks of a class occur at matching
+             rates. Consequently, there is a steady and potentially wasteful cycle of splitting and
+             coalescing. As a remedy, excessive coalescing and splitting can both be avoided
+             by delaying coalescing. In the reclaiming state, releases occur at a faster rate than
+             allocations so it is a good idea to coalesce at every release. In the accelerated state,
+             releases occur much faster than allocations, and so it is desirable to coalesce at an
+             even faster rate; the allocator should attempt to coalesce a block being released,
+             and, additionally, it should also try to coalesce some other blocks that were
+             released but not coalesced in the past.
+             The lazy buddy allocator maintains the free list as a doubly linked list. This
+             way both the start and end of the list can be accessed equally easily. A bit map is
+             maintained to indicate the allocation status of blocks. In the lazy state, a block
+             being released is simply added to the head of the free list. No effort is made to
+             coalesce it with its buddy. It is also not marked free in the bit map. This way the
+             block will not be coalesced even if its buddy is released in future. Such a block
+             is said to be locally free. Being at the head of the list, this block will be allocated
+             before any other block in the list. Its allocation is efficient and fast because the
+             bit map does not need to be updated--it still says that the block is allocated.
+             In the reclaiming and accelerated states a block is both added to the free list
+             and marked free in the bit map. Such a block is said to be globally free. Globally
+             free blocks are added to the end of the free list. In the reclaiming state the allocator
+             tries to coalesce a new globally free block transitively with its buddy. Eventually
+             a block is added to some free list--either to a free list to which the block being
+             released would have belonged, or to a free list containing larger-size blocks. Note
+             that the block being added to a free list could be a locally free block or a globally
+             free block according to the state of that class of blocks. In the accelerated state
+             the allocator tries to coalesce the block being released, just as in the reclaiming
+             state, and additionally tries to coalesce one other locally free block--the block
+             found at the start of the free list--with its buddy.
+             The state of a class of blocks is characterized as follows: Let A, L, and G be the
+             number of allocated, locally free, and globally free blocks of a class, respectively.
+             The total number of blocks of a class is given by N = A + L + G. A parameter
+             called slack is computed as follows:
+                                slack = N - 2 × L - G
+             A class is said to be in the lazy, reclaiming, or accelerated state if the value of
+             slack is  2, 1, or 0, respectively. (The allocator ensures that slack is never < 0.)
+
+
+
+                                                                              Chapter 11  Memory Management  403
+The coalescing overhead is different in these three states. There is no overhead
+in the lazy state. Hence release and allocation of blocks is fast. In the reclaiming
+state the overhead would be comparable with that in the buddy system, whereas
+in the accelerated state the overhead would be heavier than in the buddy system.
+It has been shown that the average delays with the lazy buddy allocator are 10 to
+32 percent lower than average delays in the case of a buddy allocator.
+The implementation of the lazy buddy allocator in Unix 5.4 uses two kinds
+of blocks. Small blocks vary in size between 8 and 256 bytes. Large blocks vary
+in size between 512 and 16 KB. The allocator obtains memory from the paging
+system in 4 KB areas. In each area, it creates a pool of blocks and a bit map to
+keep track of the allocation status of the blocks. When all blocks in the pool are
+free, it returns the area to the paging system. This action overcomes the problem
+of nonreturnable blocks seen in the McKusick­Karels allocator.
+Slab Allocator  The slab allocator was first used in the Solaris 2.4 operating
+system; it has been used in Linux since version 2.2. A slab consists of many
+slots, where each slot can hold an active object that is a kernel data structure,
+or it may be empty. The allocator obtains standard-size memory areas from the
+paging system and organizes a slab in each memory area. It obtains an additional
+memory area from the paging system and constructs a slab in it when it runs out
+of memory to allocate, and it returns a memory area to the paging system when
+all slots in its slab are unused.
+All kernel objects of the same class form a pool. For small objects, a pool
+consists of many slabs and each slab contains many slots. (Large objects are
+not discussed here.) The slabs of a pool are entered in a doubly linked list to
+facilitate addition and deletion of slabs. A slab may be full, partially empty, or
+empty, depending on the number of active objects existing in it. To facilitate
+searches for an empty slab, the doubly linked list containing the slabs of a pool
+is sorted according to the slab's status--all full slabs are at the start of the list,
+partially empty slabs are in the middle, and empty slabs are at the end of the list.
+Each slab contains a free list from which free slots can be allocated. Each pool
+contains a pointer to the first slab that contains a free slot. This arrangement
+makes allocation very efficient.
+Figure 11.23 shows the format of a slab. When the allocator obtains a memory
+area from the paging system, it formats the memory area into a slab by creating
+an integral number of slots, a free list containing all slots, and a descriptor field
+                Coloring                                       Unused
+                area                                           area
+                                     Slot                                     Descriptor
+                Free              ×  Active  Free  Free        ×Aobcjteivcet
+                      slot           object  slot  slot
+                                           Free list pointers
+Figure  11.23  Format of a slab.

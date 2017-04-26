@@ -1,0 +1,272 @@
+Time, Clocks, and Event Precedences
+Let a global clock be an abstract clock that can be accessed from different sites of a
+distributed system with identical results. If processes in two nodes of a distributed
+system perform the system call "give current time" at the same time instant, they
+would obtain identical time values. If they perform these system calls  time
+units apart, they would obtain time values that differ by exactly  time units.
+A global clock cannot be implemented in practice because of communication
+delays. Requests for current time made in two different nodes at the same time
+instant would face different communication delays to reach the site where the
+clock is maintained. Consequently, they would be given different time values.
+Similarly, requests that are made  time units apart may get time values that do
+not differ by exactly  time units.
+Since a global clock cannot be implemented, we can explore an alternative
+arrangement that uses a clock in each process. Such a clock is called a local
+clock. The local clock of a process would be accessed whenever the process per-
+forms a "give current time" system call. To implement a practical timekeeping
+service using this idea, local clocks should be reasonably well synchronized.
+Section 17.3.2 discusses how clock synchronization can be achieved, using the
+notion of event precedence.
+
+
+
+696  Part 5  Distributed Operating Systems
+             17.3.1 Event Precedence
+             The notation e1  e2 is used to indicate that event e1 precedes event e2 in time;
+             i.e., event e1 occurred before event e2. Event ordering implies arranging a set of
+             events in a sequence such that each event in the sequence precedes the next one.
+             In essence, it implies determining the order in which events have occurred in a
+             system. A total order with respect to the precedes relation "" is said to exist if
+             all events that can occur in a system can be ordered. A partial order implies that
+             some events can be ordered but not all events can be ordered--to be precise, at
+             least two events exist that cannot be ordered.
+                Table 17.1 summarizes the fundamental rules used to order events. These
+             rules can be explained as follows: The OS can readily determine precedence
+             between events occurring within the same process. Events like execution of a
+             "send P3, <message mi>" event in a process P2 and a receive event in P3 that
+             receives message mi have a causal relationship, i.e., a cause-and-effect relation-
+             ship. Consequently, the send event in process P2, which is the cause, precedes the
+             receive event in process P3, which is its effect. The precedes relation is transitive
+             in nature, hence e1  e3 if e1  e2 and e2  e3. This property can be used to
+             determine precedences between some events that neither have a causal relation-
+             ship nor occur within the same process. For example, an event ei preceding the
+             send event for message mi in P2 precedes an event ej that follows the receive event
+             for message mi in P3, because ei precedes the send event, the send event precedes
+             the receive event, and the receive event precedes event ej.
+                Using the rules of Table 17.1, precedence between any two events ei and ej
+             can be classified as follows:
+             ·  ei precedes ej : If events ek and el exist such that ek  el , ei  ek or ei          ek,
+                and el  ej or el  ej .
+             ·  ei follows ej : If events eg and eh exist such that eg  eh, ej  eg or ej            eg,
+                and eh  ei or eh  ei.
+             ·  ei is concurrent with ej : If ei neither precedes nor follows ej .
+                A timing diagram is a plot of the activities of different processes against time--
+             processes are marked along the vertical axis in the plot, and time is marked along
+             Table 17.1  Rules for          Ordering of Events in a Distributed System
+             Category                       Description of rule
+             Events within a process        The OS performs event handling, so it knows the order
+                                            in which events occur within a process.
+             Events in different            In a causal relationship, i.e., a cause-and-effect
+             processes                      relationship, an event that corresponds to the cause
+                                            precedes an event in another process that corresponds
+                                            to the effect.
+             Transitive precedence          The precedes relation is transitive; i.e., e1  e2 and
+                                            e2  e3 implies e1  e3.
+
+
+
+                                                        Chapter 17  Theoretical Issues in Distributed Systems        697
+the horizontal axis. We use the notation ekn for event en in process Pk. Exam-
+ple 17.1 demonstrates use of a timing diagram in determining event precedences
+by using transitiveness of the precedes relation. It also illustrates why a total order
+over events does not exist in a distributed system.
+                                                                                                                     ·
+   Event Precedence                                                                             Example        17.1
+   Figure 17.2 shows activities in processes P1 and P2. Event e23 is a "send" event
+   while e12 is a "receive" event for message m1. Hence e23  e12. The transitive
+   nature of "" leads to the precedence relations e22  e12 and e21  e12.
+   Transitiveness also yields e22  e13 and e21  e13. Event e11 is concurrent
+   with events e21 and e22. It is also concurrent with events e23 and e24!
+                                                                                             ·
+17.3.2 Logical Clocks
+An OS needs a practical method of event ordering for purposes related to schedul-
+ing and resource allocation. The method should be efficient, so it should perform
+event ordering directly, instead of working through causal relationships and tran-
+sitivity. It should also provide a total order over events so that the OS can provide
+FCFS service to resource requests. Such an order can be obtained by
+·  Incorporating event precedences into the event order.
+·  Arbitrarily ordering events that are concurrent, e.g., the events e11 and e21 in
+   Figure 17.2.
+   Timestamping of events provides a direct method of event ordering. Each
+process has a local clock that is accessible only to itself. The timestamp of an
+event is its occurrence time according to the local clock of the process. Let ts(ei)
+represent the timestamp of event ei. Event ordering is performed in accordance
+with the timestamps of events, i.e., ei, ej        :  ei  ej if ts(ei) < ts(ej ) and ej  ei
+if ts(ei) > ts(ej). However, local clocks in different processes may show different
+times because of clock drift, which would affect reliability of timestamp-based
+event ordering. For example, if event ei occurred before event ej, ts(ei) should
+be < ts(ej); however, if the clock at the process where event ei occurred is run-
+ning faster than the clock at the process where ej occurred, ts(ei) may be >
+ts(ej). To avoid such situations, it is necessary to synchronize the clocks of all
+processes.
+                 P1                          e11        e12  e13
+                                                        m1
+                 P2    e21  e22                    e23       e24
+Figure 17.2  Event precedence via timing diagram.
+
+
+
+698  Part 5  Distributed Operating Systems
+                       Synchronization of local clocks is achieved by using the causal relationship
+                   found in interprocess message exchange. Consider a message m sent by pro-
+                   cess Pk to process Pl . Let timestamps of the send and receive events be tk and
+                   tl , respectively. The cause-and-effect relationship between the send and receive
+                   events implies that tk must be smaller than tl . If it is not, the situation can be cor-
+                   rected by increasing the time in the local clock of the receiver process to some
+                   value greater than tk before timestamping the receive event. Algorithm 17.1 is the
+                   complete clock synchronization algorithm.
+                   Algorithm 17.1 Clock Synchronization
+                   1.  When a process Pk wishes to send a message m to process Pl : Pk executes
+                       a command "send Pl , (ts(send(m)), m)," where ts(send(m)) is a timestamp
+                       obtained just prior to sending message m.
+                   2.  When process Pl receives a message: Process Pl performs the actions
+                           if local clock(Pl ) < ts(send(m)) then
+                           local clock(Pl ) := ts(send(m)) + ;
+                           timestamp the receive event.
+                       where local clock(Pl ) is the value in the local clock of process Pl and  is the
+                       average communication delay in the network.
+                       The clock synchronization achieved by Algorithm 17.1 is called loose syn-
+                   chronization because clocks of the two processes are mutually consistent at
+                   a message exchange, but can drift apart at other times (see Exercise 17.1).
+                   The quality of clock synchronization depends on the frequency of interprocess
+                   communication--a higher frequency of communication provides tighter synchro-
+                   nization. Synchronization can be improved by using special synchronization mes-
+                   sages that are exchanged at short intervals simply to keep the clocks synchronized.
+                       Note that clocks synchronized in this manner do not show "real" time. For
+                   example, if the clock at a sender process is fast, the clock at the receiver process
+                   would also be advanced. Once we accept that the local clocks do not show "real"
+                   time, there is no need to keep incrementing them all the time. A process may
+                   increment its local clock by 1 only when an event occurs in it, and synchronize
+                   the local clock, if necessary, when it receives a message. Such clocks are called
+                   logical clocks. We denote the logical clock of process Pk by LCk. Logical clocks
+                   are implemented according to the following rules:
+                       R1  A process Pk increments LCk by 1 whenever an event occurs in it.
+                       R2  When process Pk receives a message m containing ts(send(m)), Pk
+                           sets its clock by the rule LCk = max (LCk, ts(send(m))+1).
+                   The next example illustrates synchronization of logical clocks by these rules.
+·
+     Example 17.2  Synchronization of Logical Clocks
+                   Figure 17.3 contains the timing diagram for a system consisting of three pro-
+                   cesses. The pair of numbers appearing in parentheses below an event indicate
+                   values in the logical clock of the process before and after the event. The logical
+
+
+
+                                                           Chapter 17          Theoretical  Issues  in  Distributed  Systems  699
+                              e11                               e12       e13
+                     P1  (9, 10)                           (10, 27) (27, 28)
+                              m1            e22            m3             m4
+                     P2               (11, 12)
+                                   e21                               e23       e24
+                                   (3, 11)  m2                       (12, 13) (13, 29)
+                     P3                          e31       e32
+                                            (24, 25) (25, 26)
+    Figure 17.3  Synchronization of logical clocks.
+    clock in P1 contains 9 when P1 decides to send message m1 to P2. It is incre-
+    mented by rule R1 and the send event is timestamped, so m1 contains the
+    timestamp 10. When P2 receives the message, its clock reads 3. It first incre-
+    ments its clock to 4, using rule R1, and then synchronizes it, using rule R2.
+    The clock now reads 11.
+       When P2 decides to send message m2, its logical clock is incremented
+    to 12. m2 thus contains the timestamp 12. When m2 reaches P3, P3 applies
+    rules R1 and R2. Rule R2 has no effect since P3's logical clock value is much
+    larger than the timestamp in the message. When P3 sends m3 to P1, P1's clock
+    is synchronized to P3's clock. Similarly P2's clock gets synchronized to P1's
+    clock when P1 sends m4 to P2.
+                                                                                                        ·
+    Timestamps obtained by using logical clocks have the property that ts(ei)
+< ts(ej) if ei  ej. However, the converse is not guaranteed for events occur-
+ring in different processes; i.e., ei may not precede ej even if ts(ei) < ts(ej). Such
+a situation may arise if ei and ej occur in processes X and Y , respectively, of
+the system, and there has been no direct synchronization of the clocks of X
+and Y either due to lack of message traffic between them or because the clock
+at  process   Y  is  running  faster    than     that  at       process   X    (because     more        events
+occurred in process Y than in process X ). We see this situation in Figure 17.3,
+where  e32    occurs     "earlier  than"    event     e23  but       has  a    larger   timestamp       than
+that of e23.
+Obtaining Unique Timestamps             Events in different processes would obtain iden-
+tical timestamps if the logical clocks in their processes happen to have identical
+time values when they occurred. Consequently, these timestamps cannot be used
+to obtain a total order over events. This problem can be overcome by using a pair
+pts(ei) as the timestamp of an event ei, where
+                         pts(ei)  (local time, process id)
+
+
+
+700  Part 5  Distributed Operating Systems
+             This  way,     events      cannot    have  identical      timestamps.       Event  ordering       is  now
+             performed by defining event precedence as follows:
+                     ei   precedes ej        iff  (i) pts(ei).local    time <  pts(ej ).local   time,     or
+                                                  (ii) pts(ei).local   time = pts(ej).local time          and
+                                                      pts(ei).process id < pts(ej ).process id                 (17.1)
+             where pts(ei).local time and pts(ei).process id are the local time and process id in
+             pts(ei), respectively. Note that this notion of event precedence would provide an
+             identical ordering of events ei and ej as that obtained through logical clocks, if
+             processes had different local times when events ei and ej occurred in them.
+             17.3.3 Vector Clocks
+             A vector clock is a vector containing n elements, where n is the number of processes
+             in the distributed system. We denote the vector clock of process Pk by VCk, and
+             its lth element by VCk[l]. Elements of the vector clock VCk have the following
+             significance:
+                 VC k [k ]                  The logical clock of process Pk
+                 VCk[l], l = k              The highest value in the logical clock of process Pl which is
+                                            known to process Pk--that is, the highest value of VCl [l]
+                                            known to it
+                   The timestamp of an event ei occurring in a process Pk is the value of VCk
+             when ei occurred. Thus, the timestamp is a vector; we call it the vector timestamp.
+             We denote the vector timestamp of event ei by vts(ei), and the lth element of
+             vts(ei) by vts(ei)[l]. When process Pk sends a message m to process Pl , it includes
+             vts(send(m)) in the message. Vector clocks are implemented according to the
+             following rules:
+                 R3  A process Pk increments VCk[k] by 1 whenever an event occurs in it.
+                 R4  When process Pk receives a message m containing vts(send(m)), Pk
+                     sets its clock as follows:
+                                  For all l: VCk[l] = max (VCk[l], vts(send(m))[l]).
+             From these rules, VCk[k]  VCl [k] for all l. If ei, ej are two consecutive events
+             in  process    Pk ,  vts(ej )[k]     =   vts(ei )[k]   +  1  by  rule  R3.  If   ei, ej  were  send   and
+             receive events for a message in processes Pg and Pk, respectively, process Pk
+             would increment VCk[k] by rule R3 when ej occurs, and then update VCk by
+             rule R4 before timestamping ej. Consequently, vts(ei)[l]  vts(ej)[l], for all l and
+             vts(ei)[k] < vts(ej )[k]. We represent this condition as vts(ei) < vts(ej ).
+                   The precedence between events ei and ej is obtained as follows:
+             ·   ei precedes      ej :  For  all  l:  vts(ei )[l ]     vts(ej )[l], but  for  some    k:  vts(ei )[k]  =
+                 vts(ej )[k].
+
+
+
+                                                         Chapter 17          Theoretical Issues in Distributed Systems        701
+·  ei follows ej : For all l: vts(ei)[l]  vts(ej )[l], but for some k: vts(ei)[k]                       =
+   vts(ej )[k].
+·  ei, ej are concurrent: For some k, l: vts(ei)[k] < vts(ej )[k] and vts(ei)[l]                        >
+   vts(ej )[l].
+Timestamping through vector clocks has two important properties: Every event
+has a unique timestamp as a result of rules R3 and R4, and vts(ei) < vts(ej) if
+and only if ei  ej. The next example illustrates these properties.
+                                                                                                                              ·
+   Synchronization of Vector Clocks                                                                          Example    17.3
+   Figure    17.4  shows    synchronization          of  vector         clocks     for  the     system  of
+   Figure 17.3. The vector timestamp after the occurrence of an event is shown
+   below it. When message m1 is received, VC2[2] is incremented by 1 and
+   VC2[1] is updated to 10. Analogously, when message m2 is received by pro-
+   cess P3, VC3[3] is incremented by 1 and VC3[1] and VC3[2] are updated.
+   Events e32 and e23 are concurrent events because vts(e32)[2] < vts(e23)[2] and
+   vts(e32)[3] > vts(e23)[3].
+                                                                                                        ·
+   The property that vts(ei) < vts(ej ) if and only if ei  ej implies that vector
+clocks do not provide a total order over events. Total order can be obtained by
+using a pair pvts(ei)  (local time, process id) as the timestamp of an event ei and
+the following event ordering relation:
+   ei  precedes ej     iff  (i) pvts(ei).local       time <        pvts(ej).local time,      or
+                            (ii) ei, ej are concurrent events and
+                                      pvts(ei).process id < pvts(ej).process id                  (17.2)
+where pvts(ei).local time and pvts(ei).process                id   are  the  local      vector   time   and
+process id in pvts(ei), respectively.
+                            e11                               e12       e13
+                   P1       (10,0,0)                     (11,4,26) (12,4,26)
+                            m1             e22           m3             m4
+                   P2                 (10,4,0)
+                                      e21                          e23        e24
+                                 (10,3,0) m2                       (10,5,0)  (12,6,26)
+                   P3                           e31      e32
+                                           (10,4,25) (10,4,26)
+Figure 17.4  Synchronization of vector clocks.

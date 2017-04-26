@@ -1,0 +1,174 @@
+Case Studies
+             10.6.1 Mach
+             The Mach operating system, developed at Carnegie Mellon University, is an OS
+             for multiprocessor and distributed systems. The multiprocessor Mach uses an
+             SMP kernel structure. Figure 10.9 shows an overview of the scheduling arrange-
+             ment used in Mach. The processors of the multiprocessor system are divided into
+             processor sets. Each processor set is assigned a subset of threads for execution.
+             Threads can have priorities between 0 and 31, where 0 is the highest priority. Each
+             processor set has 32 ready queues to hold information about threads at each of the
+             priority levels. These queues are common to all processors in the processor set.
+             In addition, every processor has a local queue of threads. These are the threads
+             that must be executed only on this processor. These threads have a higher priority
+             than all threads in the thread queues. This feature provides for affinity scheduling.
+             A thread is preempted at the end of a time slice only if some other ready thread
+             exists in the thread queues, otherwise the thread is given another time slice. The
+             time slice is varied according to the number of ready threads--a smaller time slice
+             if many ready threads exist, and a larger time slice if few ready threads exist.
+             An    interesting       feature        in   the  Mach     operating  system        is  the  technique
+             of scheduling hints. A thread issues a hint to influence processor scheduling
+                                                0                                      0
+                                 Subset of      1   ...                                1   ...
+                                 threads
+                                                31                                     31
+                                 P1                                    P4
+                                 P2                      Local queues
+                                                         of threads    P5
+                                 P3
+                                 Processor set                         Processor  set
+             Figure 10.9  Scheduling in Mach.
+
+
+
+                       Chapter 10  Synchronization and Scheduling in Multiprocessor Operating  Systems  355
+decisions. It is presumed that a hint is based on the thread's knowledge of some
+execution characteristic of an application. A thread may issue a hint to ensure
+better scheduling when threads of an application require synchronization or com-
+munication. A discouragement hint reduces the priority of a thread. This type of
+hint can be issued by a thread that has to spin on a lock that has been set by some
+other process. A hands-off hint is given by a thread to indicate that it wishes to
+relinquish the processor to another thread: The thread can also indicate the iden-
+tity of the thread to which it wishes to hand over the processor. On receiving such
+a hint, the scheduler switches the processor to execution of the named thread
+irrespective of its priority. This feature can be used effectively when a thread
+spins on a lock while the holder of the lock is preempted. The spinning thread
+can hand-off its processor to the preempted thread. This action will lead to an
+early release of the lock. It can also be used to implement the priority inheritance
+protocol discussed in Chapter 7.
+10.6.2 Linux
+Multiprocessing    support  in     Linux  was  introduced  in  the  Linux  2.0  kernel.
+Coarse-grained locking was employed to prevent race conditions over kernel
+data structures. Granularity of locks was made finer in later releases; however,
+the kernel was still nonpreemptible. With Linux 2.6 kernel, the Linux kernel
+became preemptible (see Section 4.8.2). The Linux 2.6 kernel also employs very
+fine-grained locking.
+The Linux kernel provides spin locks for locking of data structures. It also
+provides a special reader­writer spin lock which permits any number of reader
+processes, that is, processes that do not modify any kernel data, to access protected
+data at the same time; however, it permits only one writer process to update the
+data at any time.
+The Linux kernel uses another lock called the sequence lock that incurs low
+overhead and is scalable. The sequence lock is actually an integer that is used
+as a sequence counter through an atomic, i.e., indivisible, increment instruction.
+Whenever a process wishes to use a kernel data structure, it simply increments the
+integer in the sequence lock associated with the data structure, notes its new value,
+and performs the operation. After completing the operation, it checks whether
+the value in the sequence lock has changed after it had executed its increment
+instruction. If the value has changed, the operation is deemed to have failed, so
+it annuls the operation it had just performed and attempts it all over again, and
+so on until the operation succeeds.
+Linux uses per-CPU data structures to reduce contention for locks on kernel
+data structures. As mentioned in Section 10.3, a per-CPU data structure of a
+CPU is accessed only when the kernel code is executed by that CPU; however,
+even this data structure needs to be locked because concurrent accesses may be
+made to it when an interrupt occurs while kernel code is being executed to service
+a system call and an interrupt servicing routine in the kernel is activated. Linux
+eliminates this lock by disabling preemption of this CPU due to interrupts while
+executing kernel code--the code executed by the CPU makes a system call to
+
+
+
+356  Part 2  Process Management
+             disable preemption when it is about to access the per-CPU data structures, and
+             makes another system call to enable preemption when it finishes accessing the
+             per-CPU data structures.
+             As described earlier in Section 7.6.3, Linux scheduling uses the ready queues
+             data structure of Figure 7.12. Scheduling for a multiprocessor incorporates con-
+             siderations of affinity--a user can specify a hard affinity for a process by indicating
+             a set of CPUs on which it must run, and a process has a soft affinity for the last
+             CPU on which it was run. Since scheduling is performed on a per-CPU basis, the
+             kernel performs load balancing to ensure that computational loads directed at
+             different CPUs are comparable. This task is performed by a CPU that finds that
+             its ready queues are empty; it is also performed periodically by the kernel--every
+             1 ms if the system is idle, and every 200 ms otherwise.
+             The function load_balance is invoked to perform load balancing with
+             the id of an underloaded CPU. load_balance finds a "busy CPU" that has
+             at least 25 percent more processes in its ready queues than the ready queues of
+             the underloaded CPU. It now locates some processes in its ready queues that do
+             not have a hard affinity to the busy CPU, and moves them to the ready queues of
+             the underloaded CPU. It proceeds as follows: It first moves the highest-priority
+             processes in the exhausted list of the busy CPU, because these processes are less
+             likely to have a residual address space in the cache of the busy CPU than those
+             in the active list. If more processes are needed to be moved, it moves the highest-
+             priority processes in the active list of the busy CPU, which would improve their
+             response times.
+             10.6.3 SMP Support in Windows
+             The Windows kernel provides a comprehensive support for multiprocessor and
+             NUMA systems, and for CPUs that provide hyperthreading--a hyperthreaded
+             CPU is considered to be a single physical processor that has several logical pro-
+             cessors. Spin locks are used to implement mutual exclusion over kernel data
+             structures. To guarantee that threads do not incur long waits for kernel data
+             structures, the Windows kernel never preempts a thread holding a spin lock if
+             some other thread is trying to acquire the same lock.
+             The Windows Server 2003 and Windows Vista use several free lists of mem-
+             ory areas as described in Section 11.5.4, which permits CPUs to perform memory
+             allocation in parallel. These kernels also use per-processor scheduling data struc-
+             tures as described in Section 10.3. However, CPUs may have to modify each
+             other's data structures during scheduling. To reduce the synchronization over-
+             head in this operation, the kernel provides a queued spinlock that follows the
+             schematic of Section 10.4.2--a processor spins over a lock in its local memory,
+             which avoids traffic over the network in NUMA systems and makes the lock
+             scalable.
+             The Windows process and thread objects have several scheduling-related
+             attributes. The default processor affinity of a process and thread processor affinity
+             of a thread together define an affinity set for a thread, which is a set of processors.
+             In a system with a NUMA architecture, a process can be confined to a single node
+
+
+
+             Chapter 10  Synchronization and Scheduling in Multiprocessor Operating Systems  357
+in the system by letting its affinity set be a subset of processors in the node. The
+kernel assigns an ideal processor for each thread such that different threads of a
+process have different ideal processors. This way many threads of a process could
+operate in parallel, which provides the benefits of coscheduling. The affinity set
+and the ideal processor together define a hard affinity for a thread. A processor is
+assumed to contain a part of the address space of a thread for 20 milliseconds after
+the thread ceases to operate on it. The thread has a soft affinity for the processor
+during this interval, so its identity is stored in the last processor attribute of
+the thread.
+   When scheduling is to be performed for, say, CPU C1, the kernel examines
+ready threads in the order of diminishing priority and selects the first ready thread
+that satisfies one of the following conditions:
+·  The thread has C1 as its last processor.
+·  The thread has C1 as its ideal processor.
+·  The thread has C1 in its affinity set, and has been ready for three clock ticks.
+The first criterion realizes soft affinity scheduling, while the other two criteria
+realize hard affinity scheduling. If the kernel cannot find a thread that satisfies
+one of these criteria, it simply schedules the first ready thread it can find. If no
+such thread exists, it schedules the idle thread (see Section 7.6.4).
+   When a thread becomes ready because of an interrupt, the CPU handling the
+interrupt chooses a CPU to execute this newly readied thread as follows: It checks
+whether there are idle CPUs in the system, and whether the ideal processor or the
+last processor of the newly readied thread is one of them. If so, it schedules the
+newly readied thread on this CPU by entering the thread's id in the scheduling
+data structure of the selected CPU. The selected idle CPU would be executing
+the idle thread, which would pick up the identity of the scheduled thread in the
+next iteration of its idle loop and switch to it. If the ideal processor or the last
+processor of the newly readied thread is not idle, the CPU handling the interrupt
+is itself idle, and it is included in the affinity set of the newly readied thread, it
+itself takes up the thread for execution. If this check fails and some CPUs in the
+affinity set of the thread are idle, it schedules the thread on the lowest numbered
+such CPU; otherwise, it schedules the thread on the lowest numbered idle CPU
+that is not included in the affinity set of the thread.
+   If no CPU is idle, the CPU handling the interrupt compares the priorities
+of the newly readied thread and the thread running on the ideal processor of
+the newly readied thread. If the newly readied thread has a higher priority, an
+interprocessor interrupt is sent to its ideal processor with a request to switch
+to the newly readied thread. If this is not the case, a similar check is made on
+the last processor of the newly readied thread. If that check also fails, the CPU
+handling the interrupt simply enters the newly readied thread in the ready queue
+structure. It would be scheduled sometime in future by an idle CPU. In this case,
+an anomalous situation may exist in the system because the priority of the newly
+readied thread may exceed the priority of some thread that is executing on some
+other CPU. However, correcting this anomaly may cause too much shuffling of
+threads between CPUs, so it is not attempted by the scheduling policy.

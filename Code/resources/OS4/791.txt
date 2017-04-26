@@ -1,0 +1,164 @@
+DFS Performance
+             Inherent efficiency of file access mechanisms determines peak performance of a
+             DFS measured as either average response time to client requests or throughput of
+             client requests. The DFS can achieve peak performance when all data accesses are
+             local to client nodes, i.e., when clients and file servers are located in the same node.
+             However, network latencies can completely overshadow the efficiency of access
+             mechanisms even when only a small fraction of file accesses cause network traffic.
+             This fact motivates measures to reduce network traffic caused by file processing
+             activities.
+             A DFS design is scalable if DFS performance does not degrade with an
+             increase in the size of a distributed system. Scalability is important for avoiding
+             a situation in which a DFS that used to perform well in a user's organization
+             becomes a bottleneck when the organization becomes large. Scalability is achieved
+             through special techniques that ensure that network traffic does not grow with
+             size of the distributed system.
+             Table 20.4 summarizes techniques used to achieve high DFS performance.
+             These techniques are discussed in the following sections.
+             20.5.1 Efficient File Access
+             Inherent efficiency of file access depends on how the operation of a file server is
+             structured. We discuss two server structures that provide efficient file access.
+             Multithreaded File Server        The file server has several threads; each thread is
+             capable of servicing one client request. Operation of several of these threads can
+             be overlapped because file processing is an I/O-bound activity. This arrangement
+             provides fast response to client requests and a high throughput. The number of
+             threads can be varied in accordance with the number of client requests that are
+             active at any time, and the availability of OS resources such as thread control
+             blocks.
+
+
+
+                                                  Chapter 20                          Distributed  File  Systems  771
+Table 20.4         Performance Techniques of Distributed File Systems
+Technique               Description
+Multithreaded file      Each thread in the file server handles one client request. File
+server design           processing is an I/O-bound activity, hence several threads can
+                        make progress in parallel, thereby contributing to higher
+                        throughput.
+Hint-based file         A hint is some information related to an ongoing file
+server design           processing activity that may be maintained by a file server.
+                        When a suitable hint is available, the file server behaves like a
+                        stateful file server so that it can perform a file operation
+                        efficiently; otherwise, it behaves like a stateless file server.
+File caching            Some part of a file located in a remote node is copied into the
+                        file cache in the client node. File caching reduces network
+                        traffic during file processing by converting data transfers over
+                        the network into data transfers that are local to a client node.
+Semi-independent        A cluster of nodes is a section of the distributed system that
+clusters of nodes       contains sufficient hardware and software resources such that
+                        processes operating in a cluster rarely need resources located
+                        elsewhere in the system.
+Hint-Based File Server  A hint-based file server is a hybrid design in that it has
+features of both a stateful and a stateless file server. In the interest of efficiency,
+it operates in a stateful manner whenever possible. At other times, it operates
+in a stateless manner. A hint is some information concerning an ongoing file
+processing activity, e.g., id of the next record in a sequential file that would to be
+accessed by a file processing activity (see Section 13.8). The file server maintains a
+collection of hints in its volatile storage. When a client requests a file operation, the
+file server checks for presence of a hint that would help in its processing. If a hint is
+available, the file server uses it to speed up the file operation; otherwise, it operates
+in a stateless manner--it opens the file and uses the record/byte id provided by
+the client to access the required record or byte. In either case, after completing
+the file operation, it inserts a part of the state of the file processing activity in its
+volatile storage as a hint and also returns it to the client as in a stateless file server.
+The overall efficiency of the file server depends on the number of file operations
+that are aided by the presence of hints.
+Operation of a hint-based file server is fault tolerant because it would not
+be disrupted even if all hints in the server's volatile storage are lost because of a
+crash. Users will notice only a degradation of response times until the file server
+recovers and builds up a useful set of hints.
+20.5.2 File Caching
+The technique of file caching speeds up operation of a DFS by reducing network
+traffic. It holds some data from a remote file in a buffer in a client node called
+
+
+
+772  Part 5  Distributed Operating Systems
+             the file cache. The file cache and the copy of the file on a disk in the server node
+             form a memory hierarchy (see Section 2.2.3), so operation of the file cache and
+             its benefits are analogous to those of a CPU cache. Chunks of file data are loaded
+             from the file server into the file cache. To benefit from spatial locality, each chunk
+             is large enough to service a few file accesses made by a client. Studies of file size
+             distributions indicate small average file size, so even an entire file can be copied
+             into the file cache, which is called whole-file caching. Studies by Tanenbaum and
+             others reported that 79 percent of files in their system were smaller than 4 KB in
+             size and 94 percent were smaller than 16 KB. In the Andrew file system, where
+             the chunk size was varied on a per-client basis, chunk size was frequently 8 KB
+             and contained an entire file, and file cache hit ratios exceeded 0.98. A DFS may
+             use a separate attributes cache to cache information about file attributes.
+                Figure 20.3 contains a schematic diagram of file caching. The cache manager
+             exists on the path between a client and a file server. It loads chunks of file data
+             into the file cache; supplies data from the cache to clients; maintains the file cache,
+             using a replacement algorithm for chunks; and writes modified chunks into the
+             file copy in the server node. Key issues in the design of a file cache are:
+             ·  Location of the file cache
+             ·  File updating policy
+             ·  Cache validation policy
+             ·  Chunk size
+                The file cache can be maintained in memory of a client node, or on a disk
+             attached to the client node. Organizing the file cache in memory would provide
+             faster access to file data; however, it would result in low reliability because a
+             crash of the client node would lead to loss of the file cache, including any mod-
+             ified file data that is yet to be written to the file copy in the server. Locating the
+             cache on the disk would slow down access to file data, but would provide relia-
+             bility as the file cache and the modified data contained in it would survive client
+                                            Server                F
+                                                     node
+                                                                  File
+                                                                  server         Data traffic and
+                                                                                 cache validation
+                                                                                 traffic
+                                            Cache                                Cache
+                          Client            manager        File           File   manager  Client
+                          node                             cache          cache           node
+                                            Client1                              Client2
+             Figure 20.3  A schematic of file caching.
+
+
+
+                                       Chapter 20                   Distributed           File  Systems  773
+node crashes. Redundancy-based techniques like disk mirroring could be used to
+further enhance reliability of the file cache organized on a disk.
+When a client performs a write operation on a disk, the modified file data
+would have to be written into the file copy in the server. The decision of whether
+to update the file copy immediately or at a later time involves a trade-off between
+delay in the client and reliability of the DFS. It is simplest to use the write-through
+policy, which updates the file cache in the client node and the file copy in the server
+node at the same time. This method is reliable, because the write-through could
+be implemented as a transaction to ensure that it completes; however, it delays
+the client that performed the write operation. To avoid delaying the client, the
+update of the file copy could be performed at a later time provided arrangements
+are made to ensure that the modified data would not be lost if the client node
+failed in the meanwhile. This policy is called the delayed write policy. Its varia-
+tions perform the write operation at different times--when the modified chunk is
+deleted from the file cache due to replacement, or when the client closes the file.
+When a file is processed by many clients in parallel, copies of its data would
+exist in several file caches at the same time. If one client performs a write operation,
+copies in other clients' caches become invalid, i.e., stale. The cache validation
+function identifies invalid data and deals with it in accordance with the file sharing
+semantics of the DFS. For example, when Unix semantics are used, file updates
+made by a client should be immediately visible to other clients of the file, so the
+cache validation function either refreshes invalid data or prevents its use by a
+client.
+Chunk size in the file cache should be large so that spatial locality of file data
+contributes to a high hit ratio in the file cache. However, use of a large chunk size
+implies a higher probability of data invalidation due to modifications performed
+by other clients, hence more delays and more cache validation overhead than
+when a small chunk size is used. So the chunk size used in a DFS is a trade-off
+between these two considerations. A fixed chunk size may not suit all clients of a
+DFS, so some distributed file systems, notably the Andrew file system, adapt the
+chunk size to each individual client.
+Cache Validation  A simple method to identify invalid data is through time-
+stamps. A timestamp is associated with each chunk in a file and with each of its
+cached chunks. The timestamp of a chunk indicates when it was last modified.
+When a chunk of the file is copied into a cache, its timestamp is also copied as
+the timestamp of the cached chunk. At any time, the cached chunk is invalid if
+its timestamp is smaller than the timestamp of the corresponding chunk in the
+file. This way a write operation in some chunk x of a file by one client invalidates
+all copies of x in other clients' caches. Data in such a chunk is refreshed, i.e.,
+reloaded, at its next reference.
+Two basic approaches to cache validation are client-initiated validation and
+server-initiated validation. Client-initiated validation is performed by the cache
+manager at a client node. At every file access by a client, it checks whether the
+required data is already in the cache. If so, it checks whether the data is valid.
+If the check succeeds, the cache manager provides the data from the cache to

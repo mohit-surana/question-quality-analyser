@@ -1,0 +1,229 @@
+Case Studies in Security and Protection
+             15.9.1 MULTICS
+             MULTICS        provides  64      protection  domains    that  are  organized    as  concen-
+             tric rings. The rings are numbered from the innermost to the outermost (see
+             Figure 15.14). The access privileges of a domain include access privileges of all
+             higher-numbered domains. In addition, the domain may have a few other access
+             privileges of its own. Each procedure of a program is assigned to a protection
+             domain and can be executed only by a process that is in the same protection
+             domain.
+             The code component of a process may consist of procedures in different
+             protection domains. An interrupt is raised when a process executing in protection
+             domain Di invokes a procedure that is assigned to a protection domain Dj, where
+             Dj = Di. To execute the procedure, the protection domain of the process should
+             be changed to Dj. The kernel checks whether this is permissible according to the
+             rule for change of protection domain. A simplified view of this rule is as follows:
+             Change of protection domain is permitted if a process running in some domain
+             Di invokes a procedure that exists in a higher-numbered domain. However, to
+             enter a lower-numbered domain a process must invoke a specially designated
+             procedure called a gate. An attempt to invoke any other procedure in a lower-
+             numbered layer fails and the process is aborted. If a procedure call satisfies this
+             rule, the protection domain of the process is temporarily changed to the domain
+             in which the invoked procedure exists. The invoked procedure executes in this
+             protection domain and accesses resources according to the access privileges of
+             the domain. At return, the protection domain of the process is reset to its earlier
+             value, i.e., to Di.
+             The      MULTICS         protection     structure  is   complex    and  incurs  substantial
+             execution overhead due to checks made at a procedure call. Because of the
+             requirement that access privileges of a protection domain should include access
+             privileges of all higher-numbered domains, it is not possible to use domains
+             whose access privileges are disjoint. For example, domains D1, D2, and D3 of
+             Figure 15.10 cannot be implemented in MULTICS since domain D3 is disjoint
+             with domains D1 and D2. This feature restricts users' freedom in specifying
+             protection requirements.
+                                              Gates                  Ring 63
+                                                          Ring  ...
+                                                          0
+             Figure  15.14  MULTICS protection rings.
+
+
+
+                                                             Chapter 15  Security and Protection  639
+15.9.2 Unix
+As mentioned in Section 15.5, Unix employs encryption for password security.
+Under an option, it uses a shadow passwords file that is accessible only to the
+root, which forces an intruder to use an exhaustive attack to crack passwords.
+Each Unix user has an unique id in the system. The system administrator creates
+nonoverlapping groups of users and assigns a unique group id to each group. The
+credential of a user is composed of his user id and group id. It is stored in the
+passwords table and becomes the authentication token of the user after the user
+is authenticated.
+Unix defines three user classes--file owner, user group, and other users--and
+provides only three access rights, r, w, and x, representing read, write, and execute,
+respectively. A 3-bit bit-encoded access descriptor is used for each user class and
+the access control list (ACL) contains access descriptors for three user classes in
+the sequence: file owner, user group, and other users. This way, the ACL requires
+only 9 bits; it is stored in the inode of a file (see Section 13.14.1). The identity of
+the file owner is stored in another field of the file's inode. Figure 15.15 shows the
+Unix ACLs as reported in a directory listing. The file sigma can be read by any
+user in the system, but can be written only by its owner. delta is a read-only file
+for all user classes, while phi has the read, write, and execute privileges only for
+its owner.
+The access privileges of a Unix process are determined by its uid. When the
+kernel creates a process, it sets the uid of the process to the id of the user who
+created it. Thus the process operates in a protection domain determined by the
+id of the user who created it. Unix changes the protection domain of a process
+under two conditions--when the process makes a system call, and when the setuid
+or setgid feature is used. A process has two distinct running states--user running
+and kernel running (see Section 5.4.1). While in the user-running state, a process
+has access to the memory space and other resources allocated to it, and to files
+in the file system according to its uid. The process makes a transition to the
+kernel-running state through a system call. In this state, it can access kernel data
+structures and also contents of the entire memory. It returns to the user-running
+state when it returns from the system call. Thus, a change of protection domain
+occurs implicitly when a process makes a system call and when it returns from a
+system call.
+The setuid feature can be used in two ways. A process can make a system call
+setuid <id> to change its uid to <id>, and another setuid system call with its
+own id to revert to its original uid. Alternatively, uid can be changed implicitly
+when a process performs an exec in order to execute a program. The latter usage
+                   rw-r--r--                          sigma
+                   r--r--r--                          delta
+                   rwx------                          phi
+                   file                  user  other
+                   owner group                 users
+Figure 15.15  Unix access control list.
+
+
+
+640  Part 4  File Systems and I/O Management
+             is realized as follows: Let a program P be stored in a file named P. If the owner
+             of P requests the kernel that P be executed under the setuid feature, the kernel
+             sets the setuid bit in the inode of file P. When P is exec'ed by some process that
+             has an execute permission for it, the kernel notices that the setuid bit of file P
+             is set, and temporarily changes the uid of the process executing P to the uid
+             of P's owner. This action effectively puts the process into a protection domain
+             whose access privileges are identical with the access privileges of P's owner. This
+             feature can be used to avoid the privacy violation discussed in Example 15.2 as
+             follows: User uj sets the setuid bit of the program invest. User ui provides
+             uj with a read access to the file finance before invoking invest. Now, the
+             program invest executes with the uid of uj. Thus, invest can access user
+             ui's file finance, but it cannot access any other files owned by ui. The setgid
+             feature analogously provides a method of temporarily changing the group id of
+             a process.
+             15.9.3 Linux
+             Linux authenticates a user at login time by adding a "salt" value to his pass-
+             word and encrypting the result through MD5. Under an option, it employs a
+             shadow passwords file that is accessible only to the root. Additionally, Linux pro-
+             vides pluggable authentication modules (PAMs), through which an application can
+             authenticate a user at any time through a dynamically loadable library of authenti-
+             cation modules. This arrangement provides flexibility because the authentication
+             scheme used in an application can be changed without having to recompile the
+             application. An application developer can use PAMs to enhance application secu-
+             rity in several ways--to employ a password encryption scheme of his own choice,
+             to set resource limits to users so that they cannot consume an excessive amount
+             of a resource to launch a denial-of-service attack, and to allow specific users to
+             log in only at specific times from specific locations.
+             The system administrator maintains a PAM configuration file for each appli-
+             cation that is authorized to employ PAM. Each PAM configuration file specifies
+             how authentication is to be performed and what actions, such as mounting
+             of home directories or logging of the authentication event, are to be taken
+             after a user is authenticated. The configuration file also names the mechanism
+             that is to be employed when a user wishes to change his password. PAM per-
+             mits several authentication modules to be "stacked"; these modules are invoked
+             one after another. An application can use this facility to authenticate a user
+             through several means such as passwords and biometric identification, to enhance
+             security.
+             Linux provides file access protection based on user id and group id of a
+             process. When a server such as the NFS accesses a file on behalf of a user, file
+             protection should be performed using the user id and group id of the user rather
+             than those of the server. To facilitate this, Linux provides the system calls fsuid
+             and fsgid through which a server can temporarily assume the identity of its
+             client.
+
+
+
+                                                              Chapter 15  Security and Protection  641
+As described in Section 4.8.2, the Linux kernel supports loadable kernel
+modules. This feature has been employed to provide enhanced access controls
+through loadable kernel modules called the Linux security modules (LSM). Use
+of LSMs permits many different security models to be supported. The basic
+schematic of LSM is simple: The kernel invokes an access validation function
+before accessing an object. An LSM provides this function, which may permit or
+deny the access to go through. The Security Enhanced Linux (SELinux) of the
+U.S. National Security Agency has built additional access control mechanisms
+through LSM, which provide mandatory access control.
+The Linux kernel provides the exec-shield patch, which enables protection
+against exploitation of buffer overflows and data structure overwriting to launch
+security attacks.
+15.9.4 Security and Protection in Windows
+The Windows security model has several elements of C2- and B2-class systems
+according to the TCSEC criteria (see Section 14.5.2). It provides discretionary
+access control, object reuse protection, auditing of security-related events, a secu-
+rity reference monitor (SRM) that enforces access control, and a trusted path
+for authentication that would defeat masquerading attacks launched through
+a Trojan horse. Among other notable features, it provides security for client­
+server computing through access tokens, which are analogous to capabilities (see
+Section 15.7).
+Windows security is based around the use of security identifiers (SIDs); a
+security identifier is assigned to a user, a host, or a domain, which is composed
+of several hosts. The important fields in an SID are a 48-bit identifier authority
+value, which identifies the host or domain that issued the SID, and a few 32-bit
+subauthority or relative identifier (RID) values that are used primarily to generate
+unique SIDs for entities created by the same host or domain.
+Each process and thread has an access token that identifies its security con-
+text. (Recall that we use the term process as being generic to both a process and a
+thread.) An access token is generated when a user logs on, and it is associated with
+the initial process created for the user. A process can create more access tokens
+through the LogonUser function. An access token contains a user account SID
+and a group account SID. These fields are used by the security reference monitor
+to decide whether the process holding the access token can perform certain oper-
+ations on an object. An access token also contains a privilege array indicating any
+special privileges held by the process, such as a privilege for creating backups of
+files, impersonating a client, and shutting down a host. It may also contain a few
+superprivileges for loading and unloading drivers, taking ownership of objects,
+and creating new access tokens.
+An object such as a file has a security descriptor, which contains the object
+owner's id, a discretionary access control list (DACL) and a system access control
+list (SACL). The DACL is used to specify which users can access the object
+in what manner, while the SACL is used to generate an audit log of operations
+performed on the object. Both DACL and SACL are lists of access control entries
+
+
+
+642  Part 4  File Systems and I/O Management
+             (ACEs); however, an ACE plays different roles in these lists. An ACE in a DACL
+             either indicates that the specified user is allowed to access the object, or indicates
+             that the user is forbidden access to the object. This arrangement permits medium-
+             grained protection and yet helps to make the DACL compact; however, the entire
+             DACL has to be processed to determine whether a specific user is allowed to access
+             the object in a specific manner. An object that can contain other objects, such
+             as a directory, is called a container object; we will call the objects contained in it
+             its "child objects". An ACE in the DACL of a container object contains flags to
+             indicate how the ACE is to apply to a child object--identically, not at all, or in
+             some other manner. An important option is that the ACE may be inherited by a
+             child object that is itself a container object, but it may not be further inherited by
+             objects that may be created within the child object. This feature helps to limit the
+             propagation of access control privileges. An ACE in the SACL indicates which
+             operation on the object by which users or groups of users should be audited. An
+             entry is made in the audit log when any of these operations is performed.
+                The impersonation feature in the Windows security model provides security in
+             client­server computing. When a server performs some operations on objects on
+             behalf of a client, these operations should be subject to the access privileges of the
+             client rather than those of the server; otherwise, the client may be able to realize
+             operations on these objects that exceed its own access privileges. Analogously, the
+             security audit log that is generated when the server accesses an object on behalf
+             of a client should contain the identity of the client rather than that of the server.
+             Both these requirements are satisfied by letting the server temporarily assume the
+             identity of the client through impersonation.
+                Impersonation is implemented as follows: When a client invokes a server, it
+             indicates the kind of impersonation it wishes the server to perform--the server
+             cannot perform impersonation without the client's consent. If impersonation is
+             enabled, an impersonation token is created from the client's token and given to
+             the server. The server presents the impersonation token, rather than its own
+             access token, while performing operations on objects. Effectively, the access token
+             and the impersonation token act like the capabilities discussed in Section 15.7.
+             Further, to ensure security, the server may create a restricted token from an imper-
+             sonation token. Such a token would contain a subset of the privileges contained in
+             the impersonation token--it is like a subset capability discussed in Section 15.7.
+                The following new security features were added in Windows Vista to make
+             it a more secure OS:
+             ·  Defeating buffer overflow attacks in Intel 80x86 architectures: Recall from
+                Section 15.2.2 that the stack grows downward in memory in processors with
+                these architectures. Vista places the return pointers and parameters of a func-
+                tion call higher in the stack than local data to prevent their corruption by an
+                overflow. Attempts at executing code smuggled in as data are defeated using
+                the no-execute (NX) feature of processors by flagging parts of memory used
+                to hold data as no-execute zones.
+             ·  Detecting heap corruption: An intruder can launch a buffer overflow attack
+                in the heap as well. To prevent it, metadata such as pointers in the heap are

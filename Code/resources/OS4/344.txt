@@ -1,0 +1,80 @@
+Mailboxes
+A mailbox is a repository for interprocess messages. It has a unique name. The
+owner of a mailbox is typically the process that created it. Only the owner process
+can receive messages from a mailbox. Any process that knows the name of a
+mailbox can send messages to it. Thus, sender and receiver processes use the name
+of a mailbox, rather than each other's names, in send and receive statements;
+it is an instance of indirect naming (see Section 9.1.1).
+     Figure 9.7 illustrates message passing using a mailbox named sample. Pro-
+cess Pi creates the mailbox, using the statement create_mailbox. Process
+Pj sends a message to the mailbox, using the mailbox name in its send state-
+ment. If Pi has not already executed a receive statement, the kernel would
+store the message in a buffer. The kernel may associate a fixed set of buffers with
+each mailbox, or it may allocate buffers from a common pool of buffers when
+a message is sent. Both create_mailbox and send statements return with
+condition codes.
+     The kernel may provide a fixed set of mailbox names, or it may permit user
+processes to assign mailbox names of their choice. In the former case, confidential-
+ity of communication between a pair of processes cannot be guaranteed because
+any process can use a mailbox. Confidentiality greatly improves when processes
+can assign mailbox names of their own choice.
+     To exercise control over creation and destruction of mailboxes, the kernel
+may require a process to explicitly "connect" to a mailbox before starting to use
+it, and to "disconnect" when it finishes using it. This way it can destroy a mailbox
+                      Process Pi                           Process Pj
+                          ···                              ···
+            create_mailbox        (sample);      send  (sample, `. . .');
+                          ···                              ···
+            receive   (sample, `. . .');                   ···
+                                                                Pj
+                                          sample
+            Owner of  Pi                                        Pk         Users of
+            sample                                                         sample
+                               buffers                          Pl
+Figure 9.7  Creation and use of mailbox sample.
+
+
+
+324  Part 2  Process Management
+                  if no process is connected to it. Alternatively, it may permit the owner of a mailbox
+                  to destroy it. In that case, it has the responsibility of informing all processes that
+                  have "connected" to the mailbox. The kernel may permit the owner of a mailbox
+                  to transfer the ownership to another process.
+                     Use of a mailbox has following advantages:
+                  ·  Anonymity of receiver: A process sending a message to request a service may
+                     have no interest in the identity of the receiver process, as long as the receiver
+                     process can perform the needed function. A mailbox relieves the sender pro-
+                     cess of the need to know the identity of the receiver. Additionally, if the OS
+                     permits the ownership of a mailbox to be changed dynamically, one process
+                     can readily take over the service of another.
+                  ·  Classification of messages: A process may create several mailboxes, and use
+                     each mailbox to receive messages of a specific kind. This arrangement permits
+                     easy classification of messages (see Example 9.1, below).
+                     Anonymity of a receiver process, as we just saw, can offer the opportunity to
+                  transfer a function from one process to another. Consider an OS whose kernel is
+                  structured in the form of multiple processes communicating through messages.
+                  Interrupts relevant to the process scheduling function can be modeled as messages
+                  sent to a mailbox named scheduling. If the OS wishes to use different process
+                  scheduling criteria during different periods of the day, it may implement several
+                  schedulers as processes and pass ownership of the scheduling mailbox among
+                  these processes. This way, the process scheduler that currently owns scheduling
+                  can receive all scheduling-related messages. Functionalities of OS servers can be
+                  similarly transferred. For example, all print requests can be directed to a laser
+                  printer instead of a dot matrix printer by simply changing the ownership of a
+                  print mailbox.
+                     Although a process can also remain anonymous when sending a message
+                  to a mailbox, the identity of the sender often has to be known. For example, a
+                  server may be programmed to return status information for each request. It can be
+                  achieved by passing the sender's id along with the text of the message. The sender
+                  of the message, on the other hand, might not know the identity of the server; then,
+                  it would have to receive the server's reply through an asymmetric receive. As an
+                  alternative, the compiler can implement the send call as a blocking call requiring
+                  a reply containing the status information; so, return of status information would
+                  be a kernel responsibility.
+·
+     Example 9.1  Use of Mailboxes
+                  An airline reservation system consists of a centralized data base and a set
+                  of booking processes; each process represents one booking agent. Figure 9.8
+                  shows a pseudocode for the reservation server. It uses three mailboxes named
+                  enquire, book, and cancel, and expects a booking process to send enquiry,
+                  booking, and cancellation messages to these mailboxes, respectively. Values

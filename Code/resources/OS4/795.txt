@@ -1,0 +1,293 @@
+Case Studies
+             20.6.1 Sun Network File System
+             The Sun network file system (NFS) provides sharing of file systems in nodes oper-
+             ating under the SunOS operating system, which is a version of Unix. Figure 20.4
+             shows a schematic diagram of the NFS. It uses a two-level architecture consist-
+             ing of the virtual file system (VFS) layer (see Section 13.13) and the NFS layer.
+             The VFS layer implements the mount protocol and creates a systemwide unique
+
+
+
+                                                                        Chapter 20   Distributed  File  Systems  775
+                            Client
+                            System calls
+                            interface
+                                                                             Server
+                      VFS interface                                     VFS interface
+                                                       NFS  layer
+        Other               Unix 4.2          NFS client    NFS server       Unix 4.2
+        file systems        file system                                      file system
+                                              RPC/XDR       RPC/XDR
+                                                          Network
+Figure  20.4  Architecture of the Sun network file system (NFS).
+designator for each file, called the vnode. If the file on which an operation is to
+be performed is located in one of the local file systems, the VFS invokes that
+file system; otherwise, it invokes the NFS layer. The NFS layer interacts with
+the remote node containing the file through the NFS protocol. This architecture
+permits a node to be both a client and a server at the same time.
+Mount Protocol        Each node in the system contains an export list that con-
+tains pairs of the form (<directory>, <list_of_nodes>). Each pair indicates that
+<directory>, which exists in one of the local file systems, can be remotely mounted
+only in the nodes contained in <list_of_nodes>. When the superuser of a node
+makes a request to mount a remote directory, the NFS checks the validity of the
+request, mounts the directory, and returns a file handle, which contains the iden-
+tifier of the file system that contained the remote directory, and the inode of the
+remote directory in that file system. Users in the node see a directory hierarchy
+constructed through such mount commands.
+NFS permits cascaded mounting of file systems, i.e., a file system could
+be mounted at a mount point in another file system, which is itself mounted
+inside  another       file  system,      and  so  on.  However,    the  NFS  design    carefully
+avoids transitivity of the mount mechanism. For example, consider the following
+situation:
+1. The superuser in node N1 of the system mounts the file system C of node N3
+at mount point y in the local file system B.
+2. The superuser in node N2 mounts the file system B of node N1 at mount
+point x in the local file system A.
+The NFS does not permit users in node N2 to access the file system C that was
+mounted over some part of file system B. This way, each host's view of the direc-
+tory hierarchy is the result of the mounts performed by its own superuser only,
+which enables the file server to operate in a stateless manner. If this restriction were
+
+
+
+776  Part 5  Distributed Operating Systems
+             not imposed, each file server would have to know about all mounts performed by
+             all clients over its file system, which would require the file server to be stateful.
+             NFS Protocol     The NFS protocol uses the remote service paradigm (i.e., remote
+             file processing--see Section 20.1.1) through a client­server model employing
+             remote procedure calls (RPC). A file server is stateless, so each RPC has param-
+             eters that identify the file, the directory containing the file, record id and the data
+             to be read or written. The NFS provides calls for looking up a file within a direc-
+             tory; reading directory entries; manipulating links and directories; accessing file
+             attributes, i.e., inode information; and performing a file read/write operation.
+             Since a file server is stateless, it performs an implicit open and close for every
+             file operation, and does not use the Unix buffer cache (see Section 14.13.1.2 for
+             a description of the Unix buffer cache). An NFS server does not provide locking
+             of files or records; users must use their own means for concurrency control.
+             Path Name Resolution           Let a user U1 located in node N1 use a path name
+             x/y/z/w where y is the root directory of a mounted file system. To start with,
+             host node N1 creates vnodex, the vnode for x. The NFS uses the mount table of
+             N1 while looking up the next component of the path name, so it knows that y is
+             a mounted directory. It creates vnodey from the information in the mount table.
+             Let vnodey be for a file in node N2, so the NFS makes a copy of directory y in
+             node N1. While looking for z in this copy y, the NFS again uses the mount table
+             of N1. This action would resolve z properly even if z were a file system that was
+             mounted by the superuser of node N1 over some point in the remote file system y.
+             The file server in node N2, which contains y, does not need to have any knowledge
+             of this mounting. Instead of using this procedure, if the path name y/z/w were
+             to be handed over to the file server in node N2, it would have to know about all
+             mounts performed by all clients over its file system. It would require the file server
+             to be stateful.
+             A directory names cache is used in each client node to speed up path name
+             resolution. It contains remote directory names and their vnodes. New entries
+             are added to the cache when a new path name prefix is resolved, and entries are
+             deleted when a lookup fails because of mismatch between attributes returned by
+             the file server and those of the cached vnodes.
+             File Operations and File Sharing Semantics       The NFS uses two caches to speed
+             up file operations. A file attributes cache caches inode information. This cache is
+             used because it was found that a large percentage of requests made to a file server
+             concerned file attributes. The cached attributes are discarded after 3 seconds for
+             files and after 30 seconds for directories.
+             The file blocks cache is the conventional file cache. It contains data blocks
+             from the file. The file server uses large (8 Kbytes) data blocks, and uses read-
+             ahead and delayed-write techniques (i.e. buffering techniques, see Section 14.8)
+             for improving file access performance. Cache validation is performed through
+             timestamps associated with each file, and with each cache block. Contents of
+             a cached block are assumed to be valid for a certain period of time. For any
+             access after this time, the cached block is used only if its timestamp is larger
+             than the timestamp of the file. A modified block is sent to the file server for
+
+
+
+                                            Chapter 20                Distributed     File  Systems  777
+writing into the file at an unspecified time during processing of a file, or when
+the file is closed. This policy is used even if clients concurrently access the same
+file block in conflicting modes. As a result of this policy and the cache validation
+scheme, visibility of a file modification made by one client to concurrent clients
+is unpredictable and the file sharing semantics are neither Unix semantics nor
+session semantics.
+20.6.2 Andrew and Coda File Systems
+Andrew, the distributed computing environment developed at the Carnegie
+Mellon University, is targeted at gigantic distributed systems containing 5000
+workstations. Each workstation has a local disk, which is used to organize the
+local name space. This name space contains system programs for booting and
+operation of the workstation, and temporary files which are accommodated there
+for performance reasons. All clients have an identical shared name space, which
+is location transparent in nature. It is implemented by dedicated servers which
+are collectively called Vice.
+Scalable performance is obtained as follows: Clusters localize file processing
+activities as much as possible so that file accesses do not cause traffic on the
+system backbone network. Traffic within a cluster is reduced by caching an entire
+file on the local disk of a workstation when it is opened for processing. These two
+techniques ensure that network traffic in the system does not grow as system size
+grows.
+Shared Name Space   Andrew uses the concept of a volume. A volume typically
+contains files of a single user. Many volumes may exist on a disk. Andrew treats
+a volume in much the same way Unix treats a disk partition, though a volume
+can be substantially smaller than a disk partition. A volume can be mounted.
+This fact provides a much finer granularity for mounting than in Unix. The file
+identifier used by Vice contains volume number of the volume which contains a
+file, and an index into the array of inodes contained in the volume.
+A volume location database (VLDB) contains information about each vol-
+ume in the system. This database is replicated on every server. Volumes are
+migrated from one disk to another in order to balance the utilization of disks
+in the system. The server that previously contained a migrated volume main-
+tains some forwarding information until all servers update their volume location
+databases. This arrangement simplifies volume migration by eliminating the need
+to update all volume location databases at the same time. Actual migration of a
+volume is performed with minimum disruption of file processing activities by the
+following procedure: A copy of a volume is made at the new server. While this
+operation is in progress, its original server continues to service requests. Once
+the copying is completed, the volume is made off-line, recent updates performed
+after the copy operation was initiated are made on the copy at the new server,
+and the new copy is made operational.
+File Operations and File Sharing Semantics  When a client opens a file, Andrew
+caches the file on the local disk of the client's workstation using 64 KB chunks.
+
+
+
+778  Part 5  Distributed Operating Systems
+             However, it adapts the chunk size on a per-client basis to suit the client's file
+             access pattern. As mentioned earlier in Section 20.5.2, studies conducted in the
+             mid-1990s have reported that chunks of 8 KB were widely used, and the hit ratio
+             in the file cache typically exceeded 0.98. File open/close calls are directed to a user-
+             level process called Venus. Venus caches a file when a client opens it, and updates
+             the server's copy when the client closes the file. File read and write operations are
+             performed on the cached copy without involving Venus. Consequently, changes
+             made to a file are not immediately reflected on the server's copy and they are
+             not visible to other clients accessing the file. These file sharing semantics have
+             some features of session semantics; however, Andrew does not maintain multiple
+             versions of a file.
+             The file copy cached by the Venus process in a node is considered to be valid
+             unless the Venus process is told otherwise. This way, a cached copy of a file may
+             persist across the close operation on the file and the next open operation on it in
+             the same workstation. Cache validation is performed in a server-initiated manner
+             using a mechanism called callback. When some file F is cached at client node N1
+             because of an open, the server notes this fact in its table. As long as this entry
+             remains in the table, node N1 is said to have a callback on F. When the copy of
+             F in the server is updated because some client closed F, the server removes N1's
+             entry from its table and notifies the Venus process in node N1 that its callback on
+             F has been broken. If some client in N1 tried to open F in the future, Venus would
+             know that N1 does not have a callback on F, so it would cache file F once again.
+             Venus maintains two caches--a data cache and a status cache. The status cache
+             is used to service system calls that query file status information. Both caches are
+             managed on an LRU basis.
+             Path name resolution is performed on a component-by-component basis.
+             Venus maintains a mapping cache, which contains information concerning vol-
+             umes which have been accessed recently. Since volumes may be migrated, Venus
+             treats this information as a hint and discards it if it turns out to be wrong. During
+             path name resolution, Venus also copies each directory involved in the path name
+             in its cache. Presence of these cached copies may speed up path name resolution
+             in the future.
+             File servers are multithreaded to prevent them from becoming a bottleneck.
+             A lightweight process package is used to spawn new lightweight processes to
+             handle file requests. Client­server communication is organized by using RPCs.
+             Features of Coda     Coda, which is a successor of the Andrew file system version 2,
+             added two complementary features to achieve high availability--replication and
+             disconnected operation. Coda supports replication of volumes. The collection of
+             servers that have a copy of a volume is known as the volume storage group (VSG).
+             Coda controls use of replicated files through the read one, write all policy--only
+             one of the copies needs to be available for reading; however, all copies must be
+             updated at the same time. A multicasting RPC called multiRPC is used for this
+             purpose.
+             A node enters the disconnected mode of operation when the subset of
+             VSG accessible to it is null. Andrew already supported whole-file caching in
+
+
+
+                                                                            Chapter 20  Distributed  File  Systems  779
+a client's node, so a client in the disconnected mode of operation could operate
+on a file in isolation. The file updates made by this client would be reflected in
+the file when the client's node is able to connect to the server. Any conflicts
+with file versions created by other file processing activities in the meanwhile
+would have to be resolved at this time. This step can be automated in an
+application-specific manner; however, it may require human intervention in some
+cases.
+Having a single file in cache may not be adequate for disconnected opera-
+tion, so Coda provides hoarding of files. A user can provide a hoarding database,
+which contains path names of important files, to Coda. During a session initi-
+ated by the user, Coda uses a prioritized cache management policy to hold some
+recently accessed files and files named in the hoarding database in the cache of
+the user's node. This set of files is refined by recomputing their priorities period-
+ically. This way, the cache in the node may contain an adequate set of files when
+the node becomes disconnected, which would enable meaningful disconnected
+operation.
+20.6.3 GPFS
+The general parallel file system is a high-performance shared-disk file system
+for large computing clusters operating under Linux. GPFS uses data striping
+(see Section 14.3.5) across all disks available in a cluster. Thus, data of a file is
+written on several disks, which can be read from or written to in parallel. A large-
+size block, i.e., strip, is used to minimize seek overhead during a file read/write;
+however, a large disk block may not provide high data transfer rates for small files
+that would occupy only a small number of strips, so a smaller subblock, which
+could   be  as  small  as  1   of  a  block,  is  used  for  small  files.
+                           32
+Locking is used to maintain consistency of file data when processes in several
+nodes of the cluster access a common file. High parallelism in accessing a common
+file requires fine-grained locking, whereas low locking overhead requires coarse-
+grained locking. So GPFS uses a composite approach that works as follows:
+The first process that performs a write operation on a file is given a lock whose
+byte range covers the entire file. If no other process accesses the same file, this
+process does not have to set and reset locks while processing the file. If another
+process wishes to write into the same file, that process is given a lock with a
+byte range that covers the bytes it wishes to write, and the byte range in the lock
+already held by the first process is reduced to exclude those bytes. This way the
+lock granularity is as coarse as possible, but as fine as necessary, subject to the
+restriction that the byte range in a lock cannot be smaller than a data block on
+a disk. Whenever the byte range in a lock is narrowed, updates made on the
+bytes that are not covered by the new byte range in the lock are flushed to the
+file. This way, a process acquiring a lock for these bytes would see their latest
+values.
+The locking scheme of GPFS involves a centralized lock manager and a few
+distributed lock managers, and employs the notion of lock tokens to reduce the
+latency and overhead of locking. The first time some process in a node accesses
+
+
+
+780  Part 5  Distributed Operating Systems
+             a file, the centralized lock manager issues a lock token to that node. This token
+             authorizes the node to locally issue locks on the file to other processes in that
+             node, until the lock token is taken away from it. This arrangement avoids repeated
+             traffic between a node and the centralized lock manager for acquiring locks on
+             a file. When a process in some other node wishes to access the same file, the
+             centralized lock manager takes away the lock token from the first node and gives
+             it to the second node. Now, this node can issue locks on that file locally. The data
+             bytes covered by byte ranges in the locks issued by a node can be cached locally
+             at that node; no cache coherence traffic would be generated when these bytes are
+             accessed or updated because no process in another node is permitted to access
+             these bytes.
+             Race conditions may arise over the metadata of a file, such as the index
+             blocks in the FMT, when several nodes update the metadata concurrently. For
+             example, when two nodes add a pointer each to the same index block in the FMT,
+             one client's update of the block would be lost when another client updates it. To
+             prevent inconsistencies due to race conditions, one of the nodes is designated as
+             the metanode for the file, and all accesses and updates to the file's metadata are
+             made only by the metanode. Other nodes that update the file send their metadata
+             to the metanode and the metanode commits them to the disk.
+             The list of free disk space can become a performance bottleneck when file
+             processing activities in many nodes need more disk space. The central allocation
+             manager avoids it by partitioning the free space map and giving one partition of
+             the map to each node. A node makes all disk space allocations, using its partition
+             of the map. When the free space in that partition is exhausted, it requests the
+             allocation manager for another partition.
+             Each node writes a separate journal for recovery. This journal is located in
+             the file system to which the file being processed belongs. When a node fails, other
+             nodes can access its journal and carry out the pending updates. Consistency of
+             the data bytes updated in this manner is implicit because the failed node would
+             have locked the data bytes; these locks are released only after the journal of the
+             failed node is processed.
+             Communication failures may partition the system. However, file process-
+             ing activities in individual nodes may not be affected because nodes may be
+             able to access some of the disks. Such operation of the file system can lead to
+             inconsistencies in the metadata. To prevent such inconsistencies, only nodes in
+             one partition should continue file processing and all other nodes must cease
+             file processing. GPFS achieves it as follows: Only nodes in the majority par-
+             tition, i.e., the partition that contains a majority of the nodes, are allowed to
+             perform file processing at any time. GPFS contains a group services layer that
+             uses heartbeat messages to detect node failures; it notifies a node when the node
+             has fallen out of the majority partition or has become a part of the majority
+             partition once again. However, this notification may itself be delayed indef-
+             initely because of communication failures, so GPFS uses features in the I/O
+             subsystem to prevent those nodes that are not included in the majority partition
+             from accessing any disks. GPFS uses a replication policy to protect against disk
+             failures.

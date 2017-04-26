@@ -1,0 +1,1646 @@
+Deadlocks
+
+
+                                                    Chapte                              r  8
+Deadlocks
+I n real life, a deadlock arises when two persons wait for phone calls from one
+     another, or when persons walking a narrow staircase in opposite directions
+     meet face to face. A deadlock is characterized by the fact that persons wait
+indefinitely for one another to perform specific actions; these actions cannot
+occur.
+     Deadlocks in an operating system are analogous--processes wait for one
+another's actions indefinitely. Deadlocks arise in process synchronization when
+processes wait for each other's signals, or in resource sharing when they wait for
+other processes to release resources that they need. Deadlocked processes remain
+blocked indefinitely, which adversely affects user service, throughput and resource
+efficiency.
+     Deadlocks arise in resource sharing when a set of conditions concerning
+resource requests and resource allocations hold simultaneously. Operating sys-
+tems use several approaches to handle deadlocks. In the deadlock detection and
+resolution approach, the kernel checks whether the conditions contributing to a
+deadlock hold simultaneously, and eliminates a deadlock by judiciously aborting
+some processes so that the remaining processes are no longer in a deadlock. In
+the deadlock prevention approach, the kernel employs resource allocation poli-
+cies that ensure that the conditions for deadlocks do not hold simultaneously; it
+makes deadlocks impossible. In the deadlock avoidance approach, the kernel does
+not make resource allocations that may lead to deadlocks, so deadlocks do not
+arise.
+     We discuss these deadlock handling approaches and the practical resource
+allocation policies employed in operating systems.
+8.1     WHAT IS A DEADLOCK?                                                          ·
+A deadlock is a situation concerning a set of processes in which each process in
+the set waits for an event that must be caused by another process in the set. Each
+process is then waiting for an event that cannot occur. Example 8.1 illustrates
+how a deadlock could arise when two processes try to share resources.
+                                                                                              277
+
+
+
+278  Part 2  Process Management
+·
+     Example 8.1  Two-Process Deadlock
+                  A system contains one tape drive and         one  printer.  Two   processes  Pi       and
+                  Pj  make   use  of  the    tape  drive  and  the  printer   through  the  following
+                  programs:
+                                      Process Pi                    Process Pj
+                             Request tape drive;               Request printer;
+                             Request printer;                  Request tape drive;
+                             Use tape drive and printer;       Use tape drive and printer;
+                             Release printer;                  Release tape drive;
+                             Release tape drive;               Release printer;
+                  As the two processes execute, resource requests take place in the following
+                  order:
+                     1. Process Pi requests the tape drive
+                     2. Process Pj requests the printer
+                     3. Process Pi requests the printer
+                     4. Process Pj requests the tape drive
+                  The first two resource requests are granted right away because the system
+                  includes both a tape drive and a printer. Now, Pi holds the tape drive and Pj
+                  holds the printer. When Pi asks for the printer, it is blocked until Pj releases the
+                  printer. Similarly, Pj is blocked until Pi releases the tape drive. Both processes
+                  are blocked indefinitely because they wait for each other.
+                  ·
+                      The deadlock illustrated in Example 8.1 is called a resource deadlock. Other
+                  kinds of deadlock can also arise in an OS. A synchronization deadlock occurs when
+                  the awaited events take the form of signals between processes. For example, if a
+                  process Pi decides to perform an action ai only after process Pj performs action
+                  aj , and process Pj decides to perform action aj only after Pi performs ai, both
+                  processes get blocked until the other process sends it a signal (see Section 6.4).
+                  Analogously, a communication deadlock occurs for a set of processes if each pro-
+                  cess sends a message only after it receives a message from some other process in
+                  the set (see Chapter 9). An OS is primarily concerned with resource deadlocks
+                  because allocation of resources is an OS responsibility. The other two forms of
+                  deadlock are seldom handled by an OS; it expects user processes to handle such
+                  deadlocks themselves.
+                      Formally, we say that a deadlock arises if the conditions in the following
+                  definition are satisfied.
+
+
+
+                                                                                     Chapter 8  Deadlocks  279
+Definition 8.1 Deadlock  A situation involving a set of processes D in which
+each process Pi in D satisfies two conditions:
+1. Process Pi is blocked on some event ej .
+2. Event ej can be caused only by actions of other process(es) in D.
+     In a deadlock, every process capable of causing the event ej awaited by process
+Pi itself belongs to D. This property makes it impossible for event ej to occur.
+Hence every process Pi in D waits indefinitely.
+8.2  DEADLOCKS IN RESOURCE ALLOCATION                                                                      ·
+Processes use hardware resources, like memory and I/O devices, and software
+resources, such as files. An OS may contain several resources of a kind, e.g., several
+disks, tape drives, or printers. We use the term resource unit to refer to a resource
+of a specific kind, and use the term resource class to refer to the collection of
+all resource units of a kind; thus, a resource class contains one or more resource
+units; e.g., the printer class may contain two printers. We use the notation Ri
+for a resource class, and rj for a resource unit in a resource class. Recall from
+Section 1.3.2 that the kernel maintains a resource table to keep track of the
+allocation state of a resource.
+     Resource allocation in a system entails three kinds of events--request for the
+resource, actual allocation of the resource, and release of the resource. Table 8.1
+describes these events. A request event occurs when some process Pi makes a
+request for a resource rl . Process Pi will be blocked on an allocation event for rl
+if rl is currently allocated to some process Pk. In effect, Pi is waiting for Pk to
+release rl . A release event by Pk frees resource rl , and the kernel may decide to
+allocate resource rl to Pi. Thus, a release event by Pk may cause the allocation
+event for which Pi is waiting, in which case Pi will become the holder of the
+resource and enter the ready state. However, as we saw in Example 8.1, process
+Pi will face an indefinite wait if Pk's release of rl is indefinitely delayed.
+Table 8.1   Events Related to Resource Allocation
+Event       Description
+Request     A process requests a resource through a system call. If the resource is
+            free, the kernel allocates it to the process immediately; otherwise, it
+            changes the state of the process to blocked.
+Allocation  The process becomes the holder of the resource allocated to it. The
+            resource state information is updated and the state of the process is
+            changed to ready.
+Release     A process releases a resource through a system call. If some processes
+            are blocked on the allocation event for the resource, the kernel uses some
+            tie-breaking rule, e.g., FCFS allocation, to decide which process should
+            be allocated the resource.
+
+
+
+280  Part 2  Process Management
+             8.2.1 Conditions for a Resource Deadlock
+             By slightly rewording parts 1 and 2 of Definition 8.1, we can obtain the conditions
+             under which resource deadlocks occur: (1) Each process Pi in D is blocked for
+             an allocation event to occur and (2) the allocation event can be caused only
+             by actions of some other process Pj in D. Since Pj is in D, parts 1 and 2 of
+             Definition 8.1 apply to Pj as well. In other words, the resource requested by
+             process Pi is currently allocated to Pj, which itself waits for some other resource
+             to be allocated to it. This condition of each process, taken by itself, is called the
+             hold-and-wait condition.
+             But parts 1 and 2 of Definition 8.1 also imply that processes in D must wait
+             for each other. This condition is called the circular wait condition. A circular wait
+             may be direct, that is, Pi waits for Pj and Pj waits for Pi, or it may be through
+             one or more other processes included in D, for example Pi waits for Pj, Pj waits
+             for Pk, and Pk waits for Pi.
+             Two other conditions must hold for a resource deadlock to occur. If process
+             Pi needs a resource that is currently allocated to Pj, Pi must not be able to either
+             (1) share the resource with Pj or (2) preempt it from Pj for its own use.
+             Table 8.2 summarizes the conditions that must be satisfied for a resource
+             deadlock to exist. All these conditions must hold simultaneously: A circular wait
+             is essential for a deadlock, a hold-and-wait condition is essential for a circular
+             wait, and nonshareability and nonpreemptibility of resources are essential for a
+             hold-and-wait condition.
+             Besides the conditions listed in Table 8.2, another condition is also essential
+             for deadlocks:
+             · No withdrawal of resource requests: A process blocked on a resource request
+             cannot withdraw its request.
+             This condition is essential because waits may not be indefinite if a blocked process
+             is permitted to withdraw a resource request and continue its operation. However,
+             it is not stated explicitly in the literature, because many operating systems typically
+             impose the no-withdrawal condition on resource requests.
+             Table 8.2           Conditions for Resource Deadlock
+             Condition                     Explanation
+             Nonshareable resources        Resources cannot be shared; a process needs exclusive
+                                           access to a resource.
+             No preemption                 A resource cannot be preempted from one process and
+                                           allocated to another process.
+             Hold-and-wait                 A process continues to hold the resources allocated to it
+                                           while waiting for other resources.
+             Circular waits                A circular chain of hold-and-wait conditions exists in the
+                                           system; e.g., process Pi waits for Pj , Pj waits for Pk, and
+                                           Pk waits for Pi.
+
+
+
+                                                                              Chapter 8   Deadlocks       281
+8.2.2 Modeling the Resource Allocation State
+Example 8.1 indicated that we must analyze information about resources allo-
+cated to processes and about pending resource requests to determine whether
+a set of processes is deadlocked, All this information constitutes the resource
+allocation state of a system, which we simply call the allocation state of a
+system.
+Two kinds of models are used to represent the allocation state of a system.
+A graph model can depict the allocation state of a restricted class of systems in
+which a process can request and use exactly one resource unit of each resource
+class. It permits use of a simple graph algorithm to determine whether the circular
+wait condition is satisfied by processes. A matrix model has the advantage of
+generality. It can model allocation state in systems that permit a process to request
+any number of units of a resource class.
+8.2.2.1 Graph Models
+A resource request and allocation graph (RRAG) contains two kinds of nodes--
+process  nodes,  and  resource  nodes.    A  process  node  is  depicted  by  a  circle.
+A resource node is depicted by a rectangle and represents one class of resources.
+The number of bullet symbols in a resource node indicates how many units of
+that resource class exist in the system. Two kinds of edges can exist between a
+process node and a resource node of an RRAG. An allocation edge is directed
+from a resource node to a process node. It indicates that one unit of the resource
+class is allocated to the process. A request edge is directed from a process node
+to a resource node. It indicates that the process is blocked on a request for one
+unit of the resource class. An allocation edge (Rk, Pj) is deleted when process
+Pj releases a resource unit of resource class Rk allocated to it. When a pending
+request of process Pi for a unit of resource class Rk is granted, the request edge
+(Pi, Rk) is deleted and an allocation edge (Rk, Pi) is added.
+A wait-for graph (WFG) can represent the allocation state more concisely
+than an RRAG when every resource class in the system contains only one resource
+unit. The WFG contains nodes of only one kind, namely, process nodes. An edge
+(Pi, Pj) in the WFG represents the fact that process Pi is blocked on a request
+for a resource that is currently allocated to process Pj; i.e., process Pi is waiting
+for process Pj to release a resource. Hence the name wait-for graph. Representing
+the same information in an RRAG would have required two edges.
+The next example illustrates and compares use of an RRAG and a WFG.
+                                                                                                          ·
+RRAG and WFG                                                                              Example    8.2
+Figure 8.1(a) shows an RRAG. The printer class contains only one resource
+unit, which is allocated to process P1. Requests for a printer made by processes
+P2 and P3 are currently pending. The tape class contains two tape drives, which
+are allocated to processes P2 and P3. A request by process P4 for one tape drive
+is currently pending.
+
+
+
+282  Part 2  Process Management
+                                          P2                                P6                   P6
+                         P1      printer        tape  P4        P5    R3
+                                                                            P5
+                                          P3                                P7                   P7
+                                          RRAG                        RRAG            WFG
+             Figure 8.1  (a) Resource request and allocation graph (RRAG); (b) Equivalence of RRAG
+             and wait-for graph (WFG) when each resource class contains only one resource unit.
+                  Figure 8.1(b) shows both an RRAG and a WFG for a system that
+             has  a  resource    class    R3    that  contains  only  one   resource  unit  and      three
+             processes P5, P6, and P7. The edges (P6, R3) and (R3,P5) in the RRAG
+             together indicate that process P6 is waiting for the resource currently allo-
+             cated to P5. Hence we have an edge (P6, P5) in the WFG. Edge (P7, P5)
+             similarly indicates that process P7 is waiting for the resource currently allocated
+             to P5.
+             ·
+             Paths in an RRAG and a WFG               We can deduce the presence of deadlocks from
+             the nature of paths in an RRAG and a WFG. We define the following notation
+             for this purpose:
+                  Blocked_P      set of blocked processes
+                  WFi            The wait-for set of Pi, i.e., the set of processes that hold
+                                 resources required by process Pi.
+                  With this notation, Parts 1 and 2 of Definition 8.1 can be restated as follows:
+                                                          D  Blocked_P                               (8.1)
+                                                For all Pi  D, W F i  D.                             (8.2)
+                  Consider a system in which each resource class contains only one resource
+             unit. Let the system contain a single path P1 - R1 - P2 - R2 . . . Pn-1 - Rn-1 - Pn
+             in its RRAG. Thus, process Pn is not blocked on any resource and no resource is
+             currently allocated to P1. The WFG of this system would contain the single path
+             P1 - P2 - . . . - Pn.
+                  We can establish the absence of a deadlock in this system by showing that
+             conditions (8.1) and (8.2) are not satisfied by any set of processes in the system.
+             Blocked_P is {P1, . . . , Pn-1}. First, consider the set of processes {P1, . . . , Pn}.
+             This set is not a subset of Blocked_P, which violates condition (8.1), and so this
+             set of processes is not deadlocked. Now, consider the set {P1, . . . , Pn-1}. Here,
+             WF n-1 = {Pn} violates condition (8.2). Any other subset of {P1, . . . , Pn} can
+             similarly be shown to violate condition (8.2) for some process. Hence there is no
+             deadlock in the system.
+
+
+
+                                                                                   Chapter 8     Deadlocks       283
+   Now, if the unit of resource class Rn-1 were to be allocated to P1 instead of
+Pn, the path in the RRAG would be P1 - R1 - P2 - R2 . . . Pn-1 - Rn-1 - P1. This
+is a cyclic path, also called a cycle, because it ends on the same node on which it
+begins, i.e., node P1. The WFG also contains a cycle, which is P1 - P2 . . . - P1.
+Blocked_P is {P1, . . . , Pn-1}, same as before. A deadlock exists because the set
+{P1, . . . , Pn-1} satisfies both condition (8.1) and (8.2) since
+·  {P1, . . . , Pn-1}  Blocked_P
+·  For all Pi        {P1, . . . , Pn-1}, W F i   contains  a  single  process  Pl  such    that
+   Pl  {P1, . . . , Pn-1}.
+   From this analysis we can conclude that condition (8.2), which implies exis-
+tence of mutual wait-for relationships between processes of D, can be satisfied
+only by cyclic paths. Hence a deadlock cannot exist unless an RRAG, or a WFG,
+contains a cycle.
+                                                                                                                 ·
+RRAG Showing a Deadlock                                                                          Example    8.3
+Figure 8.2 shows the RRAG for Example 8.1. The RRAG contains a cyclic
+path  Pi-printer-Pj -tape-Pi.        Here        WF i  =   {Pj }  and  WF j    =   {Pi }.  D  =
+{P1, P2} satisfies both condition (8.1) and (8.2). Hence processes Pi and Pj
+are deadlocked.
+                                                                                              ·
+   Does presence of a cycle in an RRAG or a WFG imply a deadlock? In the
+system discussed so far, each resource class contained a single resource unit, so
+a cycle in the RRAG or WFG implied a deadlock. However, it may not be so in
+all systems. Consider a path P1 - R1 . . . Pi - Ri - Pi+1 - . . . Pn in a system in
+which a resource class Ri contains many resource units. A WFG cannot be used
+to depict the allocation state of this system; hence, we will discuss the RRAG for
+the system. If some process Pk not included in the path holds one unit of resource
+class Ri, that unit may be allocated to Pi when Pk released it. The edge (Pi, Ri)
+could thus vanish even without Pi+1 releasing the unit of Ri held by it.
+   Thus, a cyclic path in an RRAG may be broken when some process not
+included in the cycle releases a unit of the resource. Therefore the presence of
+a cycle in an RRAG does not necessarily imply existence of a deadlock if a
+resource class contains more than one resource unit. (We draw on this knowledge
+                                                 Pi
+                            printer                    tape
+                                                 Pj
+Figure 8.2  RRAG for the system of Example 8.1.
+
+
+
+284  Part 2  Process Management
+                  in  Section  8.7  when  we       develop  a   formal  characterization  for  deadlocks.)
+                  Example 8.4 illustrates such a situation.
+·
+     Example 8.4  A Cycle in RRAG Does Not Imply a Deadlock
+                  A system has one printer and two tape drives and three processes Pi, Pj, and Pk.
+                  The nature of processes Pi and Pj is the same as depicted in Example 8.1--each
+                  of them requires a tape drive and a printer. Process Pk requires only a tape
+                  drive for its operation. Let process Pk request for a tape drive before requests
+                  1­4 are made as in Example 8.1.
+                      Figure 8.3 shows the RRAG after all requests have been made. The graph
+                  has a cycle involving Pi and Pj. This cycle would be broken when process Pk
+                  completes because the tape drive released by it would be allocated to Pj. Hence
+                  there is no deadlock. We come to the same conclusion when we analyze the
+                  set of processes {Pi, Pj } according to Definition 8.1 because WF j = {Pi, Pk}
+                  and Pk  {Pi, Pj } violates condition (8.2).
+                  ·
+                  8.2.2.2 Matrix Model
+                  In the matrix model, the allocation state of a system is primarily represented by
+                  two matrices. The matrix Allocated_resources indicates how many resource units
+                  of each resource class are allocated to each process in the system. The matrix
+                  Requested_resources represents pending requests. It indicates how many resource
+                  units of each resource class have been requested by each process in the system.
+                  If a system contains n processes and r resource classes, each of these matrices
+                  is an n × r matrix. The allocation state with respect to a resource class Rk indi-
+                  cates the number of units of Rk allocated to each process, and the number of
+                  units of Rk requested by each process. These are represented as n-tuples (Allo-
+                  cated_resources1,k, . . . , Allocated_resourcesn,k) and (Requested_resources1,k, . . . ,
+                  Requested_resourcesn,k), respectively.
+                      Some auxiliary matrices may be used to represent additional information
+                  required for a specific purpose. Two such auxiliary matrices are Total_resources
+                  and Free_resources, which indicate the total number of resource units in each
+                  resource class and the number of resource units of each resource class that are
+                  free, respectively. Each of these matrices is a column matrix that has r elements
+                  in it. Example 8.5 is an example of a matrix model.
+                                                            Pi
+                                          printer               tape
+                                                            Pj                  Pk
+                  Figure 8.3  RRAG after all requests of Example 8.4 are made.
+
+
+
+                                                                              Chapter 8  Deadlocks    285
+                                                                                                      ·
+Matrix Model of Allocation State                                                         Example 8.5
+Using the matrix model, the allocation state of the system of Figure 8.3 is
+represented as follows:
+         Printer Tape        Printer Tape                Printer Tape
+     Pi     0  1         Pi  1           0    Total             1  2
+     Pj     1  0         Pj  0           1  resources
+     Pk     0  1         Pk  0           0    Free              0  0
+                                            resources
+            Allocated        Requested
+            resources        resources
+                                                                                     ·
+     The wait-for relationships in the system are not represented by the matrix
+model; they have to be deduced by an algorithm. Algorithms 8.1 and 8.2 discussed
+in later sections use the matrix model.
+8.3  HANDLING DEADLOCKS                                                                               ·
+Table 8.3 describes the three fundamental approaches to deadlock handling. Each
+approach has different consequences in terms of possible delays in resource allo-
+cation, the kind of resource requests that user processes are allowed to make, and
+the OS overhead.
+     Under the deadlock detection and resolution approach, the kernel aborts some
+processes when it detects a deadlock on analyzing the allocation state. This action
+frees the resources held by the aborted process, which are now allocated to other
+processes that had requested them. The aborted processes have to be reexecuted.
+Thus, the cost of this approach includes the cost of deadlock detection and the
+cost of reexecuting the aborted processes. In the system of Example 8.1, the
+Table 8.3      Deadlock  Handling Approaches
+Approach                     Description
+Deadlock detection and   The kernel analyzes the resource state to check whether
+resolution               a deadlock exists. If so, it aborts some process(es) and
+                         allocates the resources held by them to other processes
+                         so that the deadlock ceases to exist.
+Deadlock prevention      The kernel uses a resource allocation policy that ensures
+                         that the four conditions for resource deadlocks
+                         mentioned in Table 8.2 do not arise simultaneously.
+                         It makes deadlocks impossible.
+Deadlock avoidance       The kernel analyzes the allocation state to determine
+                         whether granting a resource request can lead to a
+                         deadlock in the future. Only requests that cannot lead to
+                         a deadlock are granted, others are kept pending until
+                         they can be granted. Thus, deadlocks do not arise.
+
+
+
+286  Part 2  Process Management
+             kernel would detect a deadlock sometime after processing the fourth request.
+             This deadlock can be resolved by aborting either Pi or Pj and allocating the
+             resource held by it to the other process.
+                  In deadlock prevention, the kernel uses a resource allocation policy that makes
+             deadlocks impossible and processes have to abide by any restrictions that the
+             policy may impose. For example, a simple deadlock prevention policy would be
+             to allocate all resources required by a process at the same time. This policy would
+             require a process to make all its resource requests together. In Example 8.1,
+             both processes would request both a printer and a tape drive at the same time.
+             A deadlock would not arise because one of the processes would get both the
+             resources it needed; however, the policy may force a process to obtain a resource
+             long before it was actually needed.
+                  Under the deadlock avoidance approach, the kernel grants a resource request
+             only if it finds that granting the request will not lead to deadlocks later; otherwise,
+             it keeps the request pending until it can be granted. Hence a process may face
+             long delays in obtaining a resource. In Example 8.1, the kernel would realize the
+             possibility of a future deadlock while processing the second request. Hence it
+             would not grant the printer to process Pj until process Pi completed.
+             8.4  DEADLOCK DETECTION AND RESOLUTION                                                   ·
+             Consider a system that contains a process Pi, which holds a printer; and a process
+             Pj that is blocked on its request for a printer. If process Pi is not in the blocked
+             state, there is a possibility that it might complete its operation without requesting
+             any more resources; on completion, it would release the printer allocated to it,
+             which could then be allocated to process Pj. Thus, if Pi is not in the blocked state,
+             Pj's wait for the printer is not indefinite because of the following sequence of
+             events: process Pi completes­releases printer­printer is allocated to Pj. If some
+             other process Pl waits for some other resource allocated to Pj, its wait is also not
+             indefinite. Hence processes Pi, Pj, and Pl are not involved in a deadlock at the
+             current moment.
+                  From this observation, we can formulate the following rule for deadlock
+             detection: A process in the blocked state is not involved in a deadlock at the
+             current moment if the request on which it is blocked can be satisfied through a
+             sequence of process completion, resource release, and resource allocation events.
+             If each resource class in the system contains a single resource unit, this check can
+             be made by checking for the presence of a cycle in an RRAG or WFG. However,
+             more complex graph-based algorithms have to be used if resource classes may
+             contain more than one resource unit (see Section 8.7), so we instead discuss a
+             deadlock detection approach using the matrix model.
+                  We check for the presence of a deadlock in a system by actually trying to
+             construct fictitious but feasible sequences of events whereby all blocked processes
+             can get the resources they have requested. Success in constructing such a sequence
+             implies the absence of a deadlock at the current moment, and a failure to construct
+             it implies presence of a deadlock. When we apply this rule to Examples 8.3 and 8.4,
+
+
+
+                                                                Chapter 8                 Deadlocks       287
+it correctly deduces that processes Pi and Pj of Example 8.3 are in a deadlock,
+whereas a deadlock does not exist in Example 8.4.
+We perform the above check by simulating the operation of a system starting
+with its current state. We refer to any process that is not blocked on a resource
+request as a running process, i.e., we do not differentiate between the ready and
+running states of Chapter 5. In the simulation we consider only two events--
+completion of a process that is not blocked on a resource request, and allocation
+of resource(s) to a process that is blocked on a resource request. It is assumed that
+a running process would complete without making additional resource requests,
+and that some of the resources freed on its completion would be allocated to a
+blocked process only if the allocation would put that process in the running state.
+The simulation ends when all running processes complete. The processes that are
+in the blocked state at the end of the simulation are those that could not obtain
+the requested resources when other processes completed, hence these processes
+are deadlocked in the current state. There is no deadlock in the current state if
+no blocked processes exist when the simulation ends. Example 8.6 illustrates this
+approach.
+                                                                                                          ·
+Deadlock Detection                                                                        Example    8.6
+The allocation state of a system containing 10 units of a resource class R1 and
+three processes P1­P3 is as follows:
+                    R1             R1              Total    R1
+                P1  4          P1     6       resources     10
+                P2  4          P2     2            Free
+                P3  2          P3     0       resources     0
+                    Allocated  Requested
+                    resources      resources
+Process P3 is in the running state because it is not blocked on a resource request.
+All processes in the system can complete as follows: Process P3 completes and
+releases 2 units of the resource allocated to it. These units can be allocated to
+P2. When it completes, 6 units of the resource can be allocated to P1. Thus no
+blocked processes exist when the simulation ends, so a deadlock does not exist
+in the system.
+If the requests by processes P1 and P2 were for 6 and 3 units, respectively,
+none of them could complete even after process P3 released 2 resource units.
+These processes would be in the blocked state when the simulation ended, and
+so they are deadlocked in the current state of the system.
+                                                                                       ·
+In our simulation, we assumed that a running process completes its exe-
+cution without making further resource requests. This assumption has two
+consequences. First, our conclusions regarding existence of a deadlock are not
+sensitive to the order in which blocked processes are assumed to become running
+or the order in which running processes are assumed to complete. Second, even
+
+
+
+288  Part 2  Process Management
+             if a system is deadlock-free at the current moment, a deadlock could arise in the
+             future. In Example 8.6, this could happen if P3 makes a request for one more
+             unit of R1. As a consequence, deadlock detection has to be performed repeat-
+             edly during operation of the OS. It can be achieved by devoting a system process
+             exclusively to deadlock detection, and activating it at fixed intervals. Alternatively,
+             deadlock detection can be performed every time a process becomes blocked on a
+             resource request. The overhead of deadlock detection would depend on several
+             factors like the number of processes and resource classes in the system and how
+             often deadlock detection is performed.
+             8.4.1 A Deadlock Detection Algorithm
+             Algorithm 8.1 performs deadlock detection. The inputs to the algorithm are
+             two sets of processes Blocked and Running, and a matrix model of the alloca-
+             tion state comprising the matrices Allocated_resources, Requested_resources, and
+             Free_resources.
+             The algorithm simulates completion of a running process Pi by transferring
+             it from the set Running to the set Finished [Steps 1(a), 1(b)]. Resources allocated
+             to Pi are added to Free_resources [Step 1(c)]. The algorithm now selects a blocked
+             process whose resource request can be satisfied from the free resources [Step 1(d)],
+             and transfers it from the set Blocked to the set Running. Sometime later the
+             algorithm simulates its completion and transfers it from Running to Finished.
+             The algorithm terminates when no processes are left in the Running set. Processes
+             remaining in the set Blocked, if any, are deadlocked.
+             The complexity of the algorithm can be analyzed as follows: The sets Running
+             and Blocked can contain up to n processes, where n is the total number of processes
+             in the system. The loop of Step 1 iterates  n times and Step 1(d) performs an
+             order of n × r work in each iteration. Hence the algorithm requires an order of
+             n2 × r work. Example 8.7 illustrates the working of this algorithm.
+             Algorithm 8.1 Deadlock Detection
+             Inputs
+                     n                    :  Number of processes;
+                     r                    :  Number of resource classes;
+                     Blocked              :  set of processes;
+                     Running              :  set of processes;
+                     Free_resources       :  array [1..r] of integer;
+                     Allocated_resources  :  array [1..n, 1..r] of integer;
+                     Requested_resources  :  array [1..n, 1..r] of integer;
+             Data structures
+                     Finished             :  set of processes;
+             1. repeat until set Running is empty
+                     a. Select a process Pi from set Running;
+                     b. Delete Pi from set Running and add it to set Finished;
+
+
+
+                                                                                    Chapter 8  Deadlocks       289
+    c. for k = 1..r
+        Free_resources[k] := Free_resources[k] + Allocated_resources[i,k];
+    d. while set Blocked contains a process Pl such that
+        for k = 1..r, Requested_resources[l,k]  Free_resources[k]
+        i. for k = 1, r
+        Free_resources[k] := Free_resources[k] - Requested_resources[l, k];
+        Allocated_resources[l, k] := Allocated_resources[l, k]
+                                                  + Requested_resources[l, k];
+        ii. Delete Pl from set Blocked and add it to set Running;
+2.  if set Blocked is not empty then
+        declare processes in set Blocked to be deadlocked.
+                                                                                                               ·
+Operation of a Deadlock Detection Algorithm                                                    Example    8.7
+A system has four processes P1­P4, and 5, 7, and 5 units of resource classes
+R1, R2, and R3, respectively. It is in the following state just before process P3
+makes a request for 1 unit of resource class R1:
+                     R1 R2 R3          R1 R2 R3          Total      R1 R2 R3
+               P1    2   1   0  P1     2  1   3          resources      5  7  5
+               P2    1   3   1  P2     1  4   0                     R1 R2 R3
+               P3    0   1   1  P3                       Free           1  0  1
+               P4    1   2   2  P4     1  0   2          resources
+                     Allocated         Requested
+                     resources         resources
+One  resource  unit      of  resource  class     R1  is  allocated  to     process  P3  and
+Algorithm 8.1 is invoked to check whether the system is in a deadlock.
+Figure 8.4 shows steps in operation of the algorithm. Inputs to it are the
+sets Blocked and Running initialized to {P1, P2, P4} and {P3}, respectively,
+and matrices Allocated_resources, Requested_resources, and Free_resources as
+shown in Figure 8.4(a). The algorithm transfers process P3 to the set Fin-
+ished and frees the resources allocated to it. The number of free units of the
+resource classes is now 1, 1 and 2, respectively. The algorithm finds that pro-
+cess P4's pending request can now be satisfied, so it allocates the resources
+requested by P4 and transfers P4 to the set Running [see Figure 8.4(b)]. Since
+P4 is the only process in Running, it is transferred to the set Finished. After
+freeing P4's resources, the algorithm finds that P1's resource request can be
+satisfied [see Figure 8.4(c)] and, after P1 completes, P2's resource request can
+be satisfied [see Figure 8.4(d)]. The set Running is now empty so the algorithm
+completes. A deadlock does not exist in the system because the set Blocked is
+empty.
+                                                                                        ·
+
+
+
+290  Part 2  Process Management
+                         Initial state
+                                               R1 R2 R3       R1 R2 R3                     R1 R2 R3
+                                           P1  2  1  0    P1  2  1  3           Free       0       0  1
+                                           P2  1  3  1    P2  1  4  0           resources
+                                           P3  1  1  1    P3
+                                           P4  1  2  2    P4  1  0  2
+                                               Allocated      Requested
+                                               resources      resources
+                         After simulating  allocation of  resources to P4 when  process P3 completes
+                                           P1  2  1  0    P1  2  1  3           Free       0       1  0
+                                           P2  1  3  1    P2  1  4  0           resources
+                                           P3  0  0  0    P3
+                                           P4  2  2  4    P4
+                                               Allocated      Requested
+                                               resources      resources
+                         After simulating  allocation of  resources to P1 when  process P4 completes
+                                           P1  4  2  3    P1                    Free       0       2  1
+                                           P2  1  3  1    P2  1  4  0           resources
+                                           P3  0  0  0    P3
+                                           P4  0  0  0    P4
+                                               Allocated      Requested
+                                               resources      resources
+                         After simulating allocation of resources to P2 when process P1 completes
+                                           P1  0  0  0    P1                    Free       3       0  4
+                                           P2  2  7  1    P2                    resources
+                                           P3  0  0  0    P3
+                                           P4  0  0  0    P4
+                                               Allocated      Requested
+                                               resources      resources
+             Figure 8.4  Operation of Algorithm 8.1, the deadlock detection algorithm.
+             8.4.2 Deadlock Resolution
+             Given a set of deadlocked processes D, deadlock resolution implies breaking the
+             deadlock to ensure progress for some processes in D, that is, for processes in some
+             set D   D. It can be achieved by aborting one or more processes in set D, and
+             allocating their resources to some processes in D . Each aborted process is called
+             a victim of deadlock resolution.
+                Thus,    deadlock       resolution   can  be  seen     as  the  act  of    splitting     a  set  of
+             deadlocked processes D into two sets such that D = D  Dv, where
+             ·  Each process in Dv is a victim of deadlock resolution, and
+             ·  The set of processes D is deadlock-free after the deadlock resolution actions
+                are complete. That is, each process in D can complete its operation through
+                a sequence of process completion, resource release and resource allocation
+                events.
+
+
+
+                                                                          Chapter 8                     Deadlocks       291
+                         R1                           R1
+             P2                      P3                           P3
+             R3                      R2        R3                 R2
+                         P4                           P4
+             P1                                P1
+Figure 8.5   Deadlock resolution. (a) a deadlock; (b) resource allocation state after deadlock
+resolution.
+The choice of the victim process(es) is made using criteria such as the priority
+of a process, resources already consumed by it, etc. The next example illustrates
+deadlock resolution.
+                                                                                                                        ·
+Deadlock Resolution                                                                                     Example    8.8
+The RRAG of Figure 8.5(a) shows a deadlock situation involving processes
+P1, P2, P3 and P4. This deadlock is resolved by choosing process P2 as the
+victim. Part (b) of the figure shows the RRAG after aborting process P2 and
+allocating resource R3 previously held by it to process P1. Process P4, which
+waited for the victim before deadlock resolution, now waits for P1, the new
+holder of the resource. This fact is important for detection of future deadlocks.
+If the allocation state is represented by the matrix model, it is sufficient to delete
+the rows corresponding to P2 in Allocated_resources and Requested_resources,
+modify the rows of process P1, and modify Free_resources accordingly.
+                                                                                                ·
+8.5   DEADLOCK PREVENTION                                                                                               ·
+The four conditions described in Table 8.2 must hold simultaneously for a resource
+deadlock to arise in a system. To prevent deadlocks, the kernel must use a resource
+allocation policy that ensures that one of these conditions cannot arise. In this
+section, we first discuss different approaches to deadlock prevention and then
+present some resource allocation policies that employ these approaches.
+Nonshareable Resources   Wait-for relations will not exist in the system if all
+resources could be made shareable. This way paths in an RRAG would con-
+tain  only   allocation  edges,  so  circular  waits  could  not  arise.  Figure                8.6(a)
+illustrates the effect of employing this approach: the request edge (Pi, Rl ) would
+be replaced by an allocation edge (Rl , Pi) because the resource unit of class Rl is
+shareable.
+
+
+
+292  Part 2  Process  Management
+                                  Approach                           Illustration
+                                                      Without  this  approach       In  this approach
+                      Make resources shareable                 Rl                       Rl
+                          No waits
+                      Process Pi does not get
+                      blocked on resource Rl.
+                                                      Pi             Pj             Pi      Pj
+                      Make resources preemptible      Rk             Rl             Rk      Rl
+                          No circular paths
+                      Resource Rl is preempted
+                      and allocated to Pi.                     Pi                       Pi
+                                                      Rk             Rl             Rk      Rl
+                      Prevent Hold-and-wait                                    (1)
+                          No paths in RRAG
+                         with > 1 process
+                      Process Pi is either (1)                 Pi                       Pi
+                      not permitted to block on
+                      resource Rl, or (2) not                                       Rk      Rl
+                      allowed to hold Rk while
+                      requesting Rl.                                           (2)
+                                                                                        Pi
+                      Prevent circular waits                   Pj                       Pj
+                      Process Pj is not permitted to  Rk             Rl             Rk      Rl
+                      request resource Rl.
+                                                               Pi                       Pi
+             Figure 8.6  Approaches to deadlock prevention.
+                      However, some resources such as printers are inherently nonshareable, so
+             how can they be made shareable? OSs use some innovative techniques to solve
+             this problem. An example is found in the THE multiprogramming system of
+             the 1960s. It contained only one printer, so it buffered the output produced by
+             different processes, formatted it to produce "page images," and used the printer
+             to print one page image at a time. This arrangement mixed up the printed pages
+             produced by different processes, and so the output of different processes had
+             to be separated manually. (Interestingly, the reason the THE system performed
+             page formatting was not to prevent deadlocks, but to improve printer utilization.
+             In fact, the THE system made no provisions for handling resource deadlocks.)
+             The nonshareability of a device can also be circumvented by creating virtual
+             devices (see Section 1.3.2); e.g., virtual printers can be created and allocated
+             to processes. However, this approach cannot work for software resources like
+
+
+
+                                                                               Chapter 8    Deadlocks  293
+shared files, which should be modified in a mutually exclusive manner to avoid
+race conditions.
+Preemption of Resources    If resources are made preemptible, the kernel can
+ensure that some processes have all the resources they need, which would pre-
+vent circular paths in RRAG. For example, in Figure 8.6(b), resource Rl can be
+preempted from its current holder and allocated to process Pi. However, nonpre-
+emptibility of resources can be circumvented only selectively. The page formatting
+approach of the THE system can be used to make printers preemptible, but, in
+general, sequential I/O devices cannot be preempted.
+Hold-and-Wait      To prevent the hold-and-wait condition, either a process that
+holds resources should not be permitted to make resource requests, or a process
+that gets blocked on a resource request should not be permitted to hold any
+resources. Thus, in Figure 8.6(c), either edge (Pi, Rl ) would not arise, or edge
+(Rk, Pl ) would not exist if (Pi, Rl ) arises. In either case, RRAG paths involving
+more than one process could not arise, and so circular paths could not exist.
+A simple policy for implementing this approach is to allow a process to make
+only one resource request in its lifetime in which it asks for all the resources it
+needs. We discuss this policy in Section 8.5.1.
+Circular Wait      A circular wait can result from the hold-and-wait condition, which
+is a consequence of the non-shareability and non-preemptibility conditions, so it
+does not arise if either of these conditions does not arise. Circular waits can be
+separately prevented by not allowing some processes to wait for some resources;
+e.g., process Pj in Figure 8.6(d) may not be allowed to wait for resource Rl .
+It can be achieved by applying a validity constraint to each resource request.
+The validity constraint is a boolean function of the allocation state. It takes
+the value false if the request may lead to a circular wait in the system, so such
+a request is rejected right away. If the validity constraint has the value true, the
+resource is allocated if it is available; otherwise, the process is blocked for the
+resource. In Section 8.5.2 we discuss a deadlock prevention policy taking this
+approach.
+8.5.1 All Resources Together
+This is the simplest of all deadlock prevention policies. A process must ask
+for all resources it needs in a single request; the kernel allocates all of them
+together.  This    way  a  blocked  process  does  not  hold  any  resources,  so      the
+hold-and-wait condition is never satisfied. Consequently, circular waits and dead-
+locks cannot arise. Under this policy, both processes of Example 8.1 must
+request a tape drive and a printer together. Now a process will either hold
+both resources or hold none of them, and the hold-and-wait condition will
+not be satisfied.
+
+
+
+294  Part 2  Process Management
+                     Simplicity of implementation makes "all resources together" an attractive
+                  policy for small operating systems. However, it has one practical drawback--it
+                  adversely influences resource efficiency. For example, if a process Pi requires a
+                  tape drive at the start of its execution and a printer only toward the end of its
+                  execution, it will be forced to request both a tape drive and a printer at the start.
+                  The printer will remain idle until the latter part of Pi's execution and any process
+                  requiring a printer will be delayed until Pi completes its execution. This situation
+                  also reduces the effective degree of multiprogramming and, therefore, reduces
+                  CPU efficiency.
+                  8.5.2 Resource Ranking
+                  Under this deadlock prevention policy, a unique number called a resource rank
+                  is associated with each resource class. When a process Pi makes a request for a
+                  resource, the kernel applies a validity constraint to decide whether the request
+                  should be considered. The validity constraint takes the value true only if the
+                  rank of the requested resource is larger than the rank of the highest ranked
+                  resource currently allocated to Pi. In this case, the resource is allocated to Pi if
+                  it is available; otherwise, Pi is blocked for the resource. If the validity constraint
+                  is false, the request is rejected and process Pi, which made the request, would be
+                  aborted.
+                     Absence of circular wait-for relationships in a system using resource ranking
+                  can be explained as follows: Let rankk denote the rank assigned to resource class
+                  Rk, and let process Pi hold some units of resource class Rk. Pi can get blocked on a
+                  request for a unit of some resource class Rl only if rankk < rankl . Now consider
+                  a process Pj that holds some units of resource class Rl . Process Pj cannot request
+                  a unit of resource class Rk since rankk > rankl . Thus, if Pi can wait for Pj , Pj
+                  cannot wait for Pi! Hence two processes cannot get into a circular wait condition.
+                  An analogous argument holds for the absence of a circular wait involving a larger
+                  number of processes.
+                     Example 8.9 illustrates operation of the resource ranking policy.
+·
+     Example 8.9  Resource Ranking
+                  In Example 8.1, let rankprinter > ranktape. Request 1 leads to allocation of
+                  the tape drive to Pi and request 2 leads to allocation of the printer to Pj.
+                  Request 3, which is Pi's request for the printer, satisfies the validity constraint
+                  because rankprinter > ranktape, but it remains pending because the printer is
+                  not available. Request 4 will be rejected since it violates the validity constraint
+                  and process Pj will be aborted. This action will release the printer, which will
+                  then be allocated to Pi.
+                  ·
+                     The resource ranking policy works best when all processes require their
+                  resources in the order of increasing resource rank. However, difficulties arise
+
+
+
+                                                             Chapter 8                  Deadlocks  295
+when a process requires a resource having a lower rank. The only way it can get
+this resource is by first releasing the higher ranked resource. Thus, in Example 8.9,
+process Pj can get the tape by first releasing the printer, getting the tape allocated
+and then once again requesting the printer. However, it is difficult in practice
+since most resources are nonpreemptible. Processes may tend to circumvent such
+difficulties by acquiring lower ranked resources much before they are actually
+needed. For example, process Pj of Example 8.1 could acquire the tape drive
+before acquiring the printer. In the worst case, this policy may degenerate into
+the "all resources together" policy of resource allocation.
+     Despite these drawbacks, the resource ranking policy is attractive because of
+its simplicity. A kernel can use this policy for its own resource requirements when
+it needs the resources in a fixed order. We shall discuss this aspect in Section 8.8.
+8.6  DEADLOCK AVOIDANCE                                                                            ·
+A deadlock avoidance policy grants a resource request only if it can establish
+that granting the request cannot lead to a deadlock either immediately or in the
+future. But it raises an obvious question: Algorithm 8.1 described in Section 8.4
+can be used to check whether granting a resource request results in a deadlock
+immediately, but how would the kernel know whether a deadlock can arise in the
+future?
+     The kernel lacks detailed knowledge about future behavior of processes, so it
+cannot accurately predict deadlocks. To facilitate deadlock avoidance under these
+conditions, it uses the following conservative approach: Each process declares the
+maximum number of resource units of each class that it may require. The kernel
+permits a process to request these resource units in stages--that is, a few resource
+units at a time--subject to the maximum number declared by it, and uses a worst-
+case analysis technique to check for the possibility of future deadlocks. A request
+is granted only if there is no possibility of deadlocks; otherwise, it remains pending
+until it can be granted. This approach is conservative because a process may
+complete its operation without requiring the maximum number of units declared
+by it. Thus, the kernel may defer granting of some resource requests that it would
+have granted immediately had it known about future behavior of processes. This
+effect and the overhead of making this check at every resource request constitute
+the cost of deadlock avoidance. We discuss a well-known algorithm called the
+banker's algorithm that uses this approach.
+     Table 8.4 describes notation of the banker's algorithm. Max_needj,k indicates
+the maximum number of resource units of resource class Rk that a process Pj may
+require. The kernel admits process Pj only if Max_needj,k  Total_resourcesk for
+all k. The kernel may admit any number of processes satisfying this admission cri-
+terion. Thus  j Max_needj,k may exceed Total_resourcesk. Allocated_resourcesj,k
+indicates the actual number of resource units of resource class Rk that are allo-
+cated to Pj, and Total_allock indicates how many units of resource class Rk are
+allocated to processes at present. The banker's algorithm avoids deadlocks by
+
+
+
+296  Part 2  Process Management
+             Table 8.4           Notation  Used in the Banker's Algorithm
+             Notation                      Explanation
+             Requested_resourcesj,k        Number of units of resource class Rk currently requested     by
+                                           process Pj
+             Max_need j ,k                 Maximum number of units of resource class Rk that may        be
+                                           needed by process Pj
+             Allocated_resourcesj,k        Number of units of resource class Rk allocated to process    Pj
+             Total_allock                  Total number of allocated units of resource class Rk, i.e.,
+                                           j Allocated_resourcesj,k
+             Total_resourcesk              Total number of units of resource class Rk existing in the
+                                           system
+             ensuring that at every moment the system is in such an allocation state that
+             all processes can complete their operation without the possibility of deadlocks.
+             It is called the banker's algorithm because bankers need a similar algorithm--
+             they admit loans that collectively exceed the bank's funds and then release each
+             borrower's loan in installments.
+                 The banker's algorithm uses the notion of a safe allocation state to ensure
+             that granting of a resource request cannot lead to a deadlock either immediately
+             or in future.
+             Definition 8.2 Safe Allocation State       An allocation state in which it is possible
+             to construct a sequence of process completion, resource release, and resource
+             allocation events through which each process Pj in the system can obtain
+             Max_needj,k resources for each resource class Rk and complete its operation.
+                 Deadlock avoidance is implemented by taking the system from one safe
+             allocation state to another safe allocation state as follows:
+             1.  When a process makes a request, compute the new allocation state the system
+                 would be in if the request is granted. We will call this state the projected
+                 allocation state.
+             2.  If the projected allocation state is a safe allocation state, grant the request
+                 by updating the arrays Allocated_resources and Total_alloc; otherwise, keep
+                 the request pending.
+             3.  When a process releases any resource(s) or completes its operation, examine
+                 all pending requests and allocate those that would put the system in a new
+                 safe allocation state.
+                 The banker's algorithm determines the safety of a resource allocation state
+             by trying to construct a sequence of process completion, resource release, and
+             resource allocation events through which all processes can complete. It can be per-
+             formed through simulation as in Section 8.4, except for one change: To complete,
+             a process Pl , whether in the running or blocked state, may require (Max_needl,k -
+             Allocated_resourcesl,k) more resource units of each resource class Rk, so the
+
+
+
+                                                                                        Chapter 8  Deadlocks        297
+algorithm checks whether
+            For all Rk : T otal_resourcesk - T otal_allock                              (8.3)
+                          M ax_needl,k - Allocated_resourcesl,k
+When this condition is satisfied, it simulates completion of process Pl and release
+of all resources allocated to it by updating Total_allock for each Rk. It then checks
+whether any other process can satisfy Eq. (8.3), and so on. The next example
+illustrates this method in a system having a single class of resources. Note that,
+as in deadlock detection, the determination of safety of an allocation state is not
+sensitive to the order in which processes are assumed to complete their operation.
+                                                                                                                    ·
+Banker's Algorithm for a Single Resource Class                                                     Example    8.10
+A system contains 10 units of resource class Rk. The maximum resource
+requirements of three processes P1, P2, and P3 are 8, 7, and 5 resource units,
+respectively, and their current allocations are 3, 1, and 3 resource units, respec-
+tively. Figure 8.7 depicts the current allocation state of the system. Process P1
+now makes a request for one resource unit. In the projected allocation state,
+Total_alloc = 8, and so there will be two free units of resource class Rk in the
+system.
+The safety of the projected state is determined as follows: P3 satisfies
+condition (8.3) since it is exactly two units short of its maximum requirements.
+Hence the two available resource units can be allocated to P3 if it requests
+them in the future, and it can complete. That will make five resource units
+available for allocation, so P1's balance requirement of four resource units can
+be allocated to it and it can complete. Now all resource units in the system are
+available to P2, so it, too, can complete. Thus the projected allocation state is
+safe. Hence the algorithm will grant the request by P1.
+The new allocation for the processes is 4, 1, and 3 resource units and
+Total_allock = 8. Now consider the following requests:
+1. P1 makes a request for 2 resource units.
+2. P2 makes a request for 2 resource units.
+3. P3 makes a request for 2 resource units.
+The requests by P1 and P2 do not put the system in safe allocation states
+because condition (8.3) is not satisfied by any process, so these requests will
+not be granted. However, the request by P3 will be granted.
+                                                                                        ·
+            P1  8         P1  3      P1  1      Total        7
+            P2  7         P2  1      P2  0      alloc
+            P3  5         P3  3      P3  0      Total        10
+                                                resources
+                Max       Allocated  Requested
+                need      resources  resources
+Figure 8.7  An allocation state in the banker's algorithm for a single resource class.
+
+
+
+298  Part 2  Process Management
+             Algorithm 8.2 is the banker's algorithm. When a new request is made by
+             a process, its request is entered in the matrix Requested_resources, which stores
+             pending requests of all processes, and the algorithm is invoked with the id of
+             the requesting process. When a process releases some resources allocated to it or
+             completes its operation, the algorithm is invoked once for each process whose
+             request is pending. The algorithm can be outlined as follows: After some initial-
+             izations in Step 1, the algorithm simulates granting of the request in Step 2 by
+             computing the projected allocation state. Step 3 checks whether the projected
+             allocation state is feasible, i.e., whether sufficient free resources exist to permit
+             granting of the request.
+             Step 4 is the core of the algorithm; it is executed only if the projected allo-
+             cation state is feasible. To check whether the projected allocation state is a safe
+             allocation state, it checks whether the maximum need of any active process, i.e.,
+             any process in the sets Running or Blocked, can be satisfied by allocating some
+             of the free resources. If such a process exists, this step simulates its completion
+             by deleting it from the set Active and releasing the resources allocated to it. This
+             action is performed repeatedly until no more processes can be deleted from the
+             set Active. If the set Active is empty at the end of this step, the projected state
+             is a safe allocation state, so Step 5 deletes the request from the list of pending
+             requests and allocates the requested resources. This action is not performed if
+             the projected allocation state is either not feasible or not safe, so the request
+             remains pending.
+             Note    the         similarity  of  Step   4  to     the  deadlock         detection  algorithm
+             (Algorithm 8.1). Accordingly, the algorithm requires an order of n2 × r work.
+             Algorithm 8.2 Banker's Algorithm
+             Inputs
+                     n                           :      Number of processes;
+                     r                           :      Number of resource classes;
+                     Blocked                     :      set of processes;
+                     Running                     :      set of processes;
+                     Prequesting_process         :      Process making the new resource  request;
+                     Max_need                    :      array [1..n, 1..r] of integer;
+                     Allocated_resources         :      array [1..n, 1..r] of integer;
+                     Requested_resources         :      array [1..n, 1..r] of integer;
+                     Total_alloc                 :      array [1..r] of integer;
+                     Total_resources             :      array [1..r] of integer;
+             Data structures
+                     Active                      :      set of processes;
+                     feasible                    :      boolean;
+                     New_request                 :      array [1..r] of integer;
+                     Simulated_allocation        :      array [1..n, 1..r] of integer;
+                     Simulated_total_alloc       :      array [1..r] of integer;
+             1. Active := Running            Blocked ;
+             for k = 1..r
+                     New_request[k] := Requested_resources[requesting_ process, k];
+
+
+
+                                                                            Chapter 8   Deadlocks        299
+2.  Simulated_allocation := Allocated_resources;
+    for k = 1..r        /* Compute projected allocation state */
+    Simulated_allocation[requesting_ process, k] :=
+          Simulated_allocation[requesting_ process, k] + New_request[k];
+    Simulated_total_alloc[k] := Total_alloc[k] + New_request[k];
+3.  feasible := true;
+    for k = 1..r        /* Check whether projected allocation state is feasible */
+    if Total_resources[k] < Simulated_total_alloc[k] then feasible := false;
+4.  if feasible = true
+    then  /* Check whether projected allocation state is a safe allocation state */
+    while set Active contains a process Pl such that
+                  For all k, Total_resources[k] - Simulated_total_alloc[k]
+                         Max_need[l, k] - Simulated_allocation[l, k]
+          Delete Pl from Active;
+          for k = 1..r
+          Simulated_total_alloc[k] :=
+                  Simulated_total_alloc[k] - Simulated_allocation[l, k];
+5.  if set Active is empty
+    then  /* Projected allocation state is a safe allocation state */
+    for k = 1..r            /* Delete the request from pending requests */
+          Requested_resources[requesting_ process, k] := 0;
+          for k = 1..r      /* Grant the request */
+          Allocated_resources[requesting_ process, k] :=
+                  Allocated_resources[requesting_ process, k] + New_request[k];
+          Total_alloc[k] := Total_alloc[k] + New_request[k];
+                                                                                                         ·
+Banker's Algorithm for Multiple Resource Classes                                        Example    8.11
+Figure 8.8 illustrates operation of the banker's algorithm in a system con-
+taining four processes P1, . . . , P4. Four resource classes contain 6, 4, 8, and 5
+resource units, of which 5, 3, 5, and 4 resource units are currently allocated.
+Process P2 has made a request (0, 1, 1, 0), which is about to be processed. The
+algorithm simulates the granting of this request in Step 2, and checks the safety
+of the projected allocation state in Step 4. Figure 8.8(b) shows the data struc-
+tures of the Banker's algorithm at the start of this check. In this state, 1, 0,
+2, and 1 resource units are available, so only process P1 can complete. Hence
+the algorithm simulates its completion. Figure 8.8(c) shows the data structures
+after P1 has completed. Resources allocated to P1 have been freed so they are
+deducted from Simulated_alloc, and P1 is deleted from set Active. Process P4
+needs 0, 1, 3, and 4 resource units to fulfill its maximum resource need, so
+it can be allocated these resources now, and it can complete. The remaining
+processes can complete in the order P2, P3. Hence the request made by process
+P2 is granted.
+                                                                                     ·
+
+
+
+300  Part 2  Process Management
+     (a)     State after Step 1
+                 R1 R2 R3           R4              R1 R2 R3 R4            R1 R2 R3 R4
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0                R1 R2 R3 R4
+             P2  2  4            3  2         P2    2  0  1        0  P2   0  1  1    0   Total        5  3  5      4
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0   alloc
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Allocated           Requested      Active       {P1, P2, P3, P4}
+                    need                               resources           resources
+     (b)     State before while     loop  of  Step  4
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  5  4  6      4
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active       {P1, P2, P3, P4}
+                    need                               allocation          resources
+     (c) State after simulating completion of Process P1
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  4  3  5      3
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active       {P2, P3, P4}
+                    need                               allocation          resources
+     (d) State after simulating completion of Process P4
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  4  1  4      2
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active          {P2, P3}
+                    need                               allocation          resources
+     (e) State after simulating completion of Process P2
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  2  0  2      2
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active          {P3}
+                    need                               allocation          resources
+     Figure 8.8  Operation of the banker's algorithm                  for  Example 8.11.
+
+
+
+                                                                         Chapter 8     Deadlocks  301
+8.7  CHARACTERIZATION OF RESOURCE
+     DEADLOCKS BY GRAPH MODELS                                                                    ·
+A deadlock characterization is a statement of the essential features of a deadlock.
+In Section 8.4, we presented a deadlock detection algorithm using the matrix
+model of the allocation state of a system. Following that algorithm, we can char-
+acterize a deadlock as a situation in which we cannot construct a sequence of
+process completion, resource release, and resource allocation events whereby all
+processes in the system can complete.
+     In this section, we discuss characterization of deadlocks using graph mod-
+els of allocation state and elements of graph theory. As we saw in Section 8.2.1,
+a circular wait-for relationship among processes is a necessary condition for a
+deadlock. It is manifest in a cycle in an RRAG or WFG. A cycle is a sufficient
+condition for a deadlock in some systems (see Example 8.3), but not in others
+(see Example 8.4). This difference is caused by the nature of resource classes
+and resource requests in the system, hence we first classify systems according
+to the resource classes and resource requests used in them and develop sepa-
+rate deadlock characterizations for different classes of systems. Later we point at
+a deadlock characterization that is applicable to all systems. We use an RRAG
+to depict the allocation state of a system all through this discussion.
+Resource Class and Resource Request Models   A resource class Ri may contain
+a single instance of its resource, or it may contain many instances. We refer to the
+two kinds of classes as single instance (SI) resource classes and multiple instance
+(MI) resource classes, respectively. We define two kinds of resource requests. In a
+single request (SR), a process is permitted to request one unit of only one resource
+class. In a multiple request (MR), a process is permitted to request one unit each
+of several resource classes. The kernel never partially allocates a multiple request;
+i.e., it either allocates all resources requested in a multiple request or does not
+allocate any of them. In the latter case, the process making the request is blocked
+until all resources can be allocated to it.
+     Using the resource class and resource request models, we can define four
+kinds of systems as shown in Figure 8.9. We name these systems by combining
+the name of the resource class model and the resource request model used by
+them. Accordingly, the SISR system is one that contains SI resource classes and
+SR requests.
+8.7.1 Single-Instance, Single-Request (SISR) Systems
+In an SISR system, each resource class contains a single instance of the resource
+and each request is a single request. As discussed in Section 8.2.2, existence of a
+cycle in an RRAG implies a mutual wait-for relationship for a set of processes.
+Since each resource class contains a single resource unit, each blocked process
+Pi in the cycle waits for exactly one other process, say Pk, to release the required
+resource. Hence a cycle that involves process Pi also involves process Pk. This fact
+
+
+
+302  Part 2  Process Management
+                                                    Resource request models
+                                                    Single request (SR)  Multiple request (MR)
+                                                    model                           model
+                                     Multiple       Multiple-instance,   Multiple-instance,
+                                   instance (MI)    single-request       multiple-request
+                         Resource    model          (MISR)               (MIMR)
+                         instance
+                         models      Single         Single-instance,     Single-instance,
+                                   instance (SI)    single-request       multiple-request
+                                     model          (SISR)               (SIMR)
+             Figure 8.9  Classification of systems  according to resource class and resource request
+             models.
+             satisfies condition (8.2) for all processes in the cycle. A cycle is thus a necessary
+             as well as a sufficient condition to conclude that a deadlock exists in the system.
+             8.7.2 Multiple-Instance, Single-Request (MISR) Systems
+             A cycle is not a sufficient condition for a deadlock in MISR systems because
+             resource classes may contain several resource units. The system of Example 8.4
+             in Section 8.2.2.1 illustrated this property, so we analyze it to understand what
+             conditions should hold for a deadlock to exist in an MISR system. The RRAG
+             of the system contained a cycle involving processes Pi and Pj, with Pj requiring
+             a tape drive and Pi holding a tape drive (see Figure 8.3). However, process Pk,
+             which did not belong to the cycle, also held a unit of tape drive, so the mutual
+             wait-for relation between Pi and Pj ceased to exist when Pk released a tape drive.
+             Process Pi would have been in deadlock only if processes Pj and Pk had both
+             faced indefinite waits. Thus, for a process to be in deadlock, it is essential that
+             all processes that hold units of a resource required by it are also in deadlock. We
+             use concepts from graph theory to incorporate this aspect in a characterization
+             of deadlocks in MISR systems.
+                A graph G is an ordered pair G  (N, E) where N is a set of nodes and E
+             is a set of edges. A graph G          (N , E ) is a subgraph of a graph G        (N, E) if
+             N   N and E            E, i.e., if all nodes and edges contained in G  are also contained
+             in G. G     is a nontrivial subgraph of G if E  = , i.e., if it contains at least one
+             edge. We now define a knot to characterize a deadlock in MISR systems.
+             Definition 8.3 Knot     A nontrivial subgraph G              (N , E ) of an RRAG in
+             which every node ni  N          satisfies the following conditions:
+                1.  For every edge of the form (ni, nj ) in E: (ni, nj ) is included in E       and nj  is
+                    included in N .
+                2. If a path ni - . . . - nj exists in G , a path nj - . . . - ni also exists in G .
+                Part 1 of Definition 8.3 ensures that if a node is included in a knot, all
+             its out-edges, i.e., all edges emanating from it, are also included in the knot.
+
+
+
+                                                                         Chapter 8          Deadlocks        303
+Part 2 of Definition 8.3 ensures that each out-edge of each node is included in a
+cycle. This fact ensures that each process in the knot is necessarily in the blocked
+state. Parts 1 and 2 together imply that all processes that can release a resource
+needed by some process in the knot are themselves included in the knot, which
+satisfies condition (8.2). Thus one can conclude that the presence of a knot in an
+RRAG is a necessary and sufficient condition for the existence of a deadlock in
+an MISR system.
+                                                                                                             ·
+Deadlock in an MISR System                                                                  Example    8.12
+The RRAG of Figure 8.3 depicts the allocation state in Example 8.4 after
+requests 1­5 are made. It does not contain a knot since the path Pi, . . . , Pk
+exists in it but a path Pk, . . . , Pi does not exist in it. Now consider the situation
+after the following request is made:
+6. Pk requests a printer.
+        Process Pk now blocks on the sixth request. The resulting RRAG is shown
+in Figure 8.10. The complete RRAG is a knot because Part 1 of Definition 8.3
+is trivially satisfied, and every out-edge of every node is involved in a cycle,
+which satisfies Part 2 of Definition 8.3. It is easy to verify that processes
+{Pi, Pj , Pk} are in a deadlock since Blocked_P = {Pi, Pj , Pk}, WF i = {Pj },
+WF j = {Pi, Pk}, and WF k = {Pj } satisfies conditions (8.1) and (8.2).
+                                                                                         ·
+8.7.3 Single-Instance, Multiple-Request (SIMR) Systems
+Each resource class in the SIMR system contains only one resource unit, and so
+it has exactly one out-edge in an RRAG. A process may make a multiple request,
+in which case it has more than one out-edge. Such a process remains blocked if
+even one of the resources requested by it is unavailable. This condition is satisfied
+when the process is involved in a cycle, so a cycle is a necessary and sufficient
+condition for a deadlock in an SIMR system. This property is illustrated by the
+system of Figure 8.11. The process node Pi has an out-edge (Pi, R1) that is a
+part of a cycle, and an out-edge (Pi, R3) that is not a part of any cycle. Process
+                           Pi
+                 printer              tape
+                 ·                    ··
+                           Pj               Pk
+Figure  8.10  A knot in the RRAG of an MISR system implies a deadlock.
+
+
+
+304  Part 2  Process Management
+                                                            Pi
+                                                 R1  ·           R2  ·             ·          R3
+                                                            Pj                 Pk
+                   Figure 8.11   A cycle  is  a  necessary  and  a sufficient  condition for  a deadlock  in  an  SIMR
+                   system.
+                   Pi remains blocked until a resource unit of R1 can be allocated to it. Since the
+                   out-edge (Pi, R1) is involved in a cycle, Pi faces an indefinite wait. Pj also faces
+                   an indefinite wait. Hence {Pi, Pj} are involved in a deadlock.
+                   8.7.4 Multiple-Instance, Multiple-Request (MIMR) Systems
+                   In the MIMR model, resource classes contain several resource units and pro-
+                   cesses may make multiple requests, hence both process and resource nodes of an
+                   RRAG can have multiple out-edges. If none of the resource nodes involved in a
+                   cycle in the RRAG has multiple out-edges, the cycle is similar to a cycle in the
+                   RRAG of an SIMR system, and so it is a sufficient condition for the existence
+                   of a deadlock. However, if a resource node in a cycle has multiple out-edges,
+                   a cycle is a necessary condition but not a sufficient condition for a deadlock.
+                   In such cases every out-edge of the resource node must be involved in a cycle;
+                   this requirement is similar to that in the MISR systems. Example 8.13 illustrates
+                   this aspect.
+·
+     Example 8.13  Deadlock in an MIMR System
+                   The RRAG of Figure 8.12 contains the cycle R1 - Pi - R2 - Pj - R1. Resource
+                   node R1 contains an out-edge (R1, Pk) that is not included in a cycle, hence pro-
+                   cess Pk may obtain resource R3 and eventually release an instance of resource
+                   class R1, which could be allocated to process Pj. It will break the cycle in the
+                   RRAG, hence there is no deadlock in the system. If the allocation edge of R3
+                   were to be (R3, Pi), both out-edges of R1 would be involved in cycles. Process
+                   Pj's request for R1 would now face an indefinite wait, and so we would have
+                   a deadlock situation. Note that out-edge (Pi, R4) of Pi is not involved in a
+                   cycle; however, a deadlock exists because Pi has made a multiple request and
+                   its request for resource class R2 causes an indefinite wait for it.
+                   ·
+                      From the above discussion and Example 8.13 it is clear that we must differen-
+                   tiate between process and resource nodes in the RRAG of an MIMR system--all
+                   out-edges of a resource node must be involved in cycles for a deadlock to arise,
+                   whereas a process node needs to have only one out-edge involved in a cycle.
+
+
+
+                                                                                Chapter 8  Deadlocks        305
+                                       Pi
+                        R3             R1      R2                  R4
+                            Pk             Pj              Pl
+Figure 8.12  RRAG for an MIMR system.
+We define a resource knot to incorporate this requirement, where a resource knot
+differs from a knot only in that Part 1 of Definition 8.4 applies only to resource
+nodes.
+Definition 8.4 Resource Knot           A nontrivial subgraph G      (N , E ) of an
+RRAG in which every node ni  N             satisfies the following conditions:
+1. If ni is a resource node, for every edge of the form (ni, nj ) in E: (ni, nj ) is
+included in E  and nj is included in N .
+2. If a path ni - . . . - nj exists in G , a path nj - . . . - ni also exists in G .
+                                                                                                            ·
+Resource Knot                                                                              Example    8.14
+Nodes Pi, Pj , Pk, R1, R2, and R3 of Figure 8.12 would be involved in a resource
+knot if the allocation edge of resource class R3 is (R3, Pi). Note that out-edge
+(Pi, R4) of process Pi is not included in the resource knot.
+                                                                                      ·
+Clearly, a resource knot is a necessary and sufficient condition for the exis-
+tence of a deadlock in an MIMR system. In fact, we state here without proof that
+a resource knot is a necessary and sufficient condition for deadlock in all classes
+of systems discussed in this section (see Exercise 8.17).
+8.7.5 Processes in Deadlock
+D, the set of processes in deadlock, contains processes represented by process
+nodes in resource knots. It also contains some other processes that face indefinite
+waits. We use the following notation to identify all processes in D.
+RRi          The set of resource classes requested by process Pi.
+HSk          The holder set of resource class Rk, i.e., set of processes to which
+             units of resource class Rk are allocated.
+KS           The set of process nodes in resource knot(s) (we call it the knot-set
+             of RRAG).
+AS           An auxiliary set of process nodes in RRAG that face indefinite
+             waits. These nodes are not included in a resource knot.
+
+
+
+306  Part 2  Process Management
+                                               P8                       R3
+                                                                             P3
+                                                                   P3             R3
+                                  P6  R7           P4     R5            R1
+                                                                             P2                P11
+                                                                                       R10
+                   Figure  8.13   Processes in deadlock.
+                        KS is the set of process nodes included in resource knots. Now a process Pi 
+                   KS faces an indefinite wait if all holders of some resource class Rk requested by
+                   it are included in KS. Resource classes whose holders are included in {Pi}  KS
+                   similarly cause indefinite waits for their requesters. Therefore we can identify D,
+                   the set of deadlocked processes, as follows:
+                                 AS = { Pi | RRi contains Rk such that H Sk  (K S  AS)}                   (8.4)
+                                  D = K S  AS                                                             (8.5)
+·
+     Example 8.15  Processes in Deadlock
+                   Figure 8.13 shows an RRAG of an MIMR system. The cycle P1 - R1 - P2 -
+                   R2 - P3 - R3 - P1 in the RRAG forms a resource knot because none of R1,
+                   R2, or R3 have an out-edge leaving the cycle. Hence a deadlock exists in the
+                   system. We identify the processes in D as follows:
+                        KS     =     {P1, P2, P3}
+                        AS     =     {P4} since RR4       = {R5}, HS5   = {P1} and {P1}  {P1, P2, P3}
+                         D     =     KS  AS    =   {P1, P2, P3, P4}.
+                        Process P6 is not included in AS since RR6 = {R7}, H S7 = {P4, P8}, and
+                   HS7  (KS  AS).
+                   ·
+                   8.8     DEADLOCK HANDLING IN PRACTICE                                                  ·
+                   An    operating    system   manages        numerous  and  diverse   resources--hardware
+                   resources such as memory and I/O devices, software resources such as files
+                   containing programs or data and interprocess messages, and kernel resources
+                   such    as  data   structures   and    control  blocks   used  by   the  kernel.  The  over-
+                   head of deadlock detection-and-resolution and deadlock avoidance make them
+                   unattractive      deadlock  handling       policies  in  practice.  Hence,  an    OS   either
+
+
+
+                                                                                Chapter 8   Deadlocks  307
+uses the deadlock prevention approach, creates a situation in which explicit
+deadlock     handling  actions  are    unnecessary,  or  simply  does  not  care  about
+possibility  of  deadlocks.  Further,    since  deadlock   prevention     constrains   the
+order in which processes request their resources, operating systems tend to
+handle  deadlock  issues     separately  for  each   kind  of  resources  like  memory,
+I/O devices, files, and kernel resources. We discuss these approaches in the
+following.
+Memory       Memory is a preemptible resource, so its use by processes cannot cause
+a deadlock. Explicit deadlock handling is therefore unnecessary. The memory
+allocated to a process is freed by swapping out the process whenever the memory
+is needed for another process.
+I/O Devices      Among deadlock prevention policies, the "all resources together"
+policy requires processes to make one multiple request for all their resource
+requirements. This policy incurs the least CPU overhead, but it has the draw-
+back mentioned in Section 8.5.1--it leads to underutilization of I/O devices that
+are allocated much before a process actually needs them. Resource ranking, on
+the other hand, is not a feasible policy to control use of I/O devices because
+any assignment of resource ranks causes inconvenience to some group of users.
+This difficulty is compounded by the fact that I/O devices are generally nonpre-
+emptible. Operating systems overcome this difficulty by creating virtual devices.
+For example, the system creates a virtual printer by using some disk area to store
+a file that is to be printed. Actual printing takes place when a printer becomes
+available. Since virtual devices are created whenever needed, it is not necessary to
+preallocate them as in the "all resources together" policy unless the system faces
+a shortage of disk space.
+Files and Interprocess Messages          A file is a user-created resource. An OS con-
+tains a large number of files. Deadlock prevention policies such as resource
+ranking could cause high overhead and inconvenience to users. Hence operat-
+ing systems do not extend deadlock handling actions to files; processes accessing
+a common set of files are expected to make their own arrangements to avoid dead-
+locks. For similar reasons, operating systems do not handle deadlocks caused by
+interprocess messages.
+Control Blocks    The kernel allocates control blocks such as process control
+blocks (PCBs) and event control blocks (ECBs) to processes in a specific order--a
+PCB is allocated when a process is created, and an ECB is allocated when the
+process becomes blocked on an event. Hence resource ranking can be a solution
+here. If a simpler policy is desired, all control blocks for a job or process can be
+allocated together at its initiation.
+8.8.1 Deadlock Handling in Unix
+Most operating systems simply ignore the possibility of deadlocks involving user
+processes, and Unix is no exception. However, Unix addresses deadlocks due to
+sharing of kernel data structures by user processes. Recall from Section 5.4.1 that a
+
+
+
+308  Part 2  Process Management
+             Unix process that was running on the CPU executes kernel code when an interrupt
+             or system call occurs, hence user processes could concurrently execute kernel code.
+             The kernel employs the resource ranking approach to deadlock prevention (see
+             Section 8.5.2) by requiring processes to set locks on kernel data structures in
+             a standard order; however, there are exceptions to this rule, and so deadlocks
+             could arise. We present simplified views of two arrangements used to prevent
+             deadlocks.
+             The Unix kernel uses a buffer cache (see Section 14.13.1.2) to speed up
+             accesses to frequently used disk blocks. It consists of a pool of buffers in memory
+             and a hashed data structure to check whether a specific disk block is present in a
+             buffer. To facilitate reuse of buffers, a list of buffers is maintained in least recently
+             used (LRU) order--the first buffer in the list is the least recently used buffer and
+             the last buffer is the most recently used buffer. The normal order of accessing a
+             disk block is to use the hashed data structure to locate a disk block if it exists
+             in a buffer, put a lock on the buffer containing the disk block, and then put a
+             lock on the list of buffers to update the LRU status of the buffer. However, if a
+             process merely wants to obtain a buffer for loading a new disk block, it directly
+             accesses the list of buffers and takes off the first buffer that is not in use at the
+             moment. To perform this action, the process puts a lock on the list. Then it tries
+             to set the lock on the first buffer in the list. Deadlocks are possible because this
+             order of locking the list and a buffer is different from the standard order of setting
+             these locks.
+             Unix uses an innovative approach to avoid such deadlocks. It provides a
+             special operation that tries to set a lock, but returns with a failure condition code
+             if the lock is already set. The process looking for a free buffer uses this operation
+             to check whether a buffer is free. If a failure condition code is returned, it simply
+             tries to set the lock on the next buffer, and so on until it finds a buffer that it can
+             use. This approach avoids deadlocks by avoiding circular waits.
+             Another situation in which locks cannot be set in a standard order is in the
+             file system function that establishes a link (see Section 13.4.2). A link command
+             provides path names for a file and a directory that is to contain the link to the file.
+             This command can be implemented by locking the directories containing the file
+             and the link. However, a standard order cannot be defined for locking these
+             directories. Consequently, two processes concurrently trying to lock the same
+             directories may become deadlocked. To avoid such deadlocks, the file system
+             function does not try to acquire both locks at the same time. It first locks one
+             directory, updates it in the desired manner, and releases the lock. It then locks the
+             other directory and updates it. Thus it requires only one lock at any time. This
+             approach prevents deadlocks because the hold-and-wait condition is not satisfied
+             by these processes.
+             8.8.2 Deadlock Handling in Windows
+             Windows     Vista   provides  a  feature  called  wait  chain  traversal  (WCT),  which
+             assists applications and debuggers in detecting deadlocks. A wait chain starts
+
+
+
+                                                                        Chapter 8  Deadlocks     309
+on a thread and is analogous to a path in the resource request and allocation
+graph (RRAG). Thus, a thread points to an object or lock for which it is wait-
+ing, and the object or lock points to the thread that holds it. A debugger can
+investigate the cause of a hang-up or freeze in an application by invoking the
+function getthreadwaitchain with the id of a thread to retrieve a chain start-
+ing on that thread. The function returns an array containing the ids of threads
+found on a wait chain starting on the designated thread, and a boolean value
+which indicates whether any subset of the threads found on the wait chain form
+a cycle.
+8.9  SUMMARY                                                                                                 ·
+A deadlock is a situation in which a set of pro-       process currently blocked on a resource request
+cesses wait indefinitely for events because each of    can be allocated the required resource through a
+the events can be caused only by other processes       sequence of process completion, resource release,
+in the set. A deadlock adversely affects user ser-     and resource allocation events. Deadlock detec-
+vice, throughput and resource efficiency. In this      tion incurs a high overhead as a result of this
+chapter, we discussed OS techniques for handling       check, so approaches that ensure the absence of
+deadlocks.                                             deadlocks have been studied. In the deadlock pre-
+     A resource deadlock arises when four con-         vention approach, the resource allocation policy
+ditions hold simultaneously: Resources are non-        imposes some constraints on resource requests so
+shareable   and  nonpreemptible,  a  process  holds    that the four conditions for deadlock would not
+some resources while it waits for resources that       be satisfied simultaneously. In the deadlock avoid-
+are in use by other processes, which is called the     ance approach, the resource allocator knows a
+hold-and-wait condition; and circular waits exist      process's maximum need for resources. At every
+among processes. An OS can discover a dead-            resource request, it checks whether a sequence of
+lock by analyzing the allocation state of a system,    process completion, resource release, and resource
+which consists of information concerning allocated     allocation events can be found through which all
+resources and resource requests on which processes     processes could satisfy their maximum need and
+are blocked. A graph model of allocation state can     complete their operation. It grants the resource
+be used in systems where a process cannot request      request only if this check is satisfied.
+more than one resource unit of a resource class.       When a graph model of allocation state is used,
+A resource request and allocation graph (RRAG)         deadlocks can be characterized in terms of paths in
+depicts resource allocation and pending resource       the graph. However, the characterization becomes
+requests in the OS, whereas a wait-for graph (WFG)     complex when a resource class can contain many
+depicts wait-for relationships between processes. In   resource units.
+both models, a circular wait condition is reflected    For reasons of convenience and efficiency, an
+in a circular path in the graph. A matrix model        OS may use different deadlock handling policies
+represents the allocation state in a set of matrices.  for different kinds of resources. Typically, an OS
+     When a process completes its operation, it        uses deadlock prevention approaches for kernel
+releases its resources and the kernel can allocate     resources, and creates virtual resources to avoid
+them to other processes that had requested them.       deadlocks over I/O devices; however, it does not
+When a matrix model of allocation state is used, a     handle deadlocks involving user resources like files
+deadlock can be detected by finding whether every      and interprocess messages.
+
+
+
+310   Part 2        Process Management
+TEST  YOUR CONCEPTS                                                                                                    ·
+8.1   Classify each of the following statements as true             5 resources, the system contains at least 15
+      or false:                                                     resource units.
+      a. A cycle in the resource request and allocation          i. An  OS     employing        a         multiple-resource
+      graph (RRAG) is a necessary and sufficient                    banker's algorithm has been in operation for
+      condition for a deadlock if each resource class               some time with four processes. A new pro-
+      contains only one resource unit.                              cess arrives in the system. It is initially not
+      b. Deadlock resolution guarantees that dead-                  allocated any resources. Is the new allocation
+      locks will not occur in future.                               state of the system safe?
+      c. The "all resources together" policy of dead-            j. If every resource class in a system has a single
+      lock       prevention  ensures   that  the   circu-           resource unit, every cycle in the RRAG of the
+      lar     wait  condition  will  never   hold  in  the          system is also a resource knot.
+      system.                                               8.2  An OS contains n resource units of a resource
+      d. The     resource  ranking   policy  of  deadlock        class. Three processes use this resource class, and
+      prevention    ensures    that   the    hold-and-wait       each of them has a maximum need of 3 resource
+      condition will never hold in the system.                   units. The manner and the order in which the
+      e. If a set of processes D is deadlocked, the set          processes request units of the resource class are
+      Blocked of Algorithm 8.1 will contain some                 not known. What is the smallest value of n for
+      of these processes when execution of the algo-             operation of the system to be free of deadlocks?
+      rithm completes; however, Blocked may not                         a. 3, b. 7, c. 6, d. 9
+      contain all of them.                                  8.3  An OS employs the banker's algorithm to con-
+      f. If a process Pi requests r units of a resource          trol allocation of 7 tape drives. Maximum need
+      class Rj and  r units of Rj are free, then                 of three processes P1, P2, and P3 are 7, 3, and
+      the banker's algorithm will definitely allocate            5 drives, respectively. How many drives can the
+      r units to Pi.                                             OS allocate safely to process P1, if the current
+      g. The banker's algorithm does not guarantee               allocation state is as follows:
+      that deadlocks will not occur in future.                   a. 2, 1, and 1 tape drives are allocated to pro-
+      h. An OS has a single resource class that is con-             cesses P1, P2, and P3, respectively.
+      trolled by the banker's algorithm. 12 units of                          i. 0, ii. 1, iii. 2, iv. 3
+      the resource have been currently allocated to              b. 1, 2, and 1 tape drives are allocated to pro-
+      processes, of which process Pi has been allo-                 cesses P1, P2, and P3, respectively.
+      cated 2 resources. If Pi has a max need of                              i. 0, ii. 1, iii. 2, iv. 3
+EXERCISES                                                                                                              ·
+8.1   Clearly justify why deadlocks cannot arise in a            a  resource   requested  by    some      process  Pi  is
+      bounded buffer producers­consumers system.                 unavailable,
+8.2   When resource ranking is used as a deadlock pre-           a. The resource is preempted from one of its
+      vention policy, a process is permitted to request a           holder processes Pj if Pj is younger than Pi.
+      unit of resource class Rk only if rankk > ranki for           The resource is now allocated to Pi. It is
+      every resource class Ri whose resources are allo-             allocated back to Pj when Pi completes. (A
+      cated to it. Explain whether deadlocks can arise              process is considered to be younger if it was
+      if the condition is changed to rankk  ranki.                  initiated later.)
+8.3   A system containing preemptible resources uses             b. If condition (a) is not satisfied, Pi is blocked
+      the following resource allocation policy: When                for the resource.
+
+
+
+                                                                                                       Chapter 8     Deadlocks            311
+     A released resource is always allocated to its old-                              b. Would the following requests be granted in
+     est requester. Show that deadlocks cannot arise                                      the current state by the banker's algorithm?
+     in this system. Also show that starvation does                                         i. Process P1 requests (1, 1, 0)
+     not occur.                                                                           ii. Process P3 requests (0, 1, 0)
+8.4  Develop a matrix model for the allocation state                                      iii. Process P2 requests (0, 1, 0)
+     of  the  system        of     Figure      8.13.  Apply         Algo-       8.10  Three processes P1, P2, and P3 use a resource
+     rithm    8.1   to  find       the  processes     involved         in             controlled through the banker's algorithm. Two
+     deadlock.                                                                        unallocated resource units exist in the current
+8.5  The system of Figure 8.13 is changed such that                                   allocation state. When P1 and P2 request for
+     process  P6       has   made       a  multiple   request          for            one resource unit each, they become blocked on
+     resources R7 and R1. What are the processes                                      their requests; however, when P3 requests for
+     involved in a deadlock? Process P1 is aborted                                    two resource units, its request is granted right
+     and process P3 makes a request for resource R5.                                  away. Explain why it may be so.
+     Is the system in a deadlock now?                                           8.11  A   system    using    the    banker's   algorithm       for
+8.6  A   system        uses     a  deadlock           detection-and-                  resource allocation contains n1 and n2 resource
+     resolution policy. The cost of aborting one pro-                                 units of resource classes R1 and R2 and three
+     cess is considered to be one unit. Discuss how                                   processes     P1, P2,    and     P3.  The     unallocated
+     to identify victim process(es) so as to minimize                                 resources with the system are (1,1). The fol-
+     the cost of deadlock resolution in each of the fol-                              lowing    observations      are   made   regarding       the
+     lowing systems: (a) SISR systems, (b) SIMR sys-                                  operation of the system:
+     tems, (c) MISR systems, and (d) MIMR systems.                                    a. If process P1 makes a (1,0) request followed
+8.7  Is  the  allocation        state   in     which  6,     1,  and   2                  by a (0,1) request, the (1,0) request will be
+     resource units are allocated to processes P1, P2,                                    granted   but   the    (0,1)     request  will  not  be
+     and P3 in the system of Example 8.10 safe?                                           granted.
+     Would the allocation state in which 3, 2, and 3                                  b. If, instead of making the resource requests in
+     resource units are allocated be safe?                                                part (a), process P1 makes a (0,1) request, it
+8.8  Would the following requests be granted in the                                       will be granted.
+     current state by the banker's algorithm?                                         Find a possible set of values for the current
+              R1R2                 R1R2                      R1R2                     allocations   and      maximum        resource      require-
+         P1   2     5        P1    1    3             Total      3  4                 ments of the processes such that decisions using
+         P2   3     2        P2    2    1             alloc                           the banker's algorithm will match the above
+                                                      Total      4  5                 observations.
+              Max               Allocated             exist                     8.12  Show    that     when    the   banker's       algorithm  is
+              need              resources                                             applied to a finite set of processes, each having a
+     a. Process P2 requests (1, 0)                                                    finite execution time, each resource request will
+     b. Process P2 requests (0, 1)                                                    be granted eventually.
+     c. Process P2 requests (1, 1)                                              8.13  Processes    in  a  particular       OS  make       multiple
+     d. Process P1 requests (1, 0)                                                    requests.   This    OS   uses     a  banker's     algorithm
+     e. Process P1 requests (0, 1)                                                    designed for a single resource class to implement
+8.9  In the following system:                                                         deadlock avoidance as follows: When a process
+                                                                                      requests   resource     units     of  some     n    resource
+         R1R2R3                    R1R2R3                           R1R2R3            classes, the request is viewed as a set of n single
+     P1  3    6     8        P1    2    2   3         Total         5  4    10        requests; e.g., a multiple request (2, 1, 3) would
+     P2  4    3     3        P2    2    0   3         alloc                           be  viewed    as    three   single    requests      (2, 0, 0),
+     P3  3    4     4        P3    1    2   4         Total         7  7    10        (0, 1, 0), and (0, 0, 3). The multiple request is
+                                                      exist                           granted only if each single request would have
+              Max                  Allocated                                          been granted in the current allocation state of
+              need                 resources
+                                                                                      the system. Is this a sound approach to deadlock
+     a. Is the current allocation state safe?                                         avoidance? Justify your answer, either by giving
+
+
+
+312           Part 2    Process Management
+      an argument about its correctness, or by giving                               b. Can the system make a transition to a safe
+      an example where it will fail.                                                    allocation state? If so, give an example show-
+8.14  A   single-resource          system     contains       Total_                     ing such a transition.
+      resourcess units of resource class Rs. If the sys-                8.17        Show    that     a  resource       knot  in   an    RRAG       is
+      tem contains n processes, show that a deadlock                                a necessary and sufficient condition for dead-
+      cannot arise if any one of the following con-                                 locks   in  SISR,         MISR,        SIMR,  and         MIMR
+      ditions    is     satisfied  (see  the  notation    used    in                systems.
+      Algorithm 8.2):                                                   8.18        A   WFG     is   used     to   represent      the   allocation
+      a. For all i : Max_needi,s  Total_resourcess/n                                state   of  a   system    in    which    resource         classes
+      b.      i Max_needi,s  Total_resourcess                                       may contain multiple units and processes can
+      c.      i  Max_need i,s          Total_resourcess      +n   -                 make multiple resource requests (an MIMR sys-
+          1 and for all i, 1                  M ax_needi,s                          tem). Develop a deadlock characterization using
+          T otal_resourcess                                                         the WFG. (Hint: A node in the WFG would
+8.15  In a single-resource system containing Total_                                 have more than one out-edge under two con-
+      resourcess units of resource class Rs, set PA is                              ditions:    When       a  process      requests    a   resource
+      defined as follows:                                                           unit of a multiple-instance resource class, and
+                                                                                    when a process makes a multiple request. These
+      PA         = {Pi | Pi has been allocated some                                 are called OR out-edges and AND out-edges,
+                        resources but all its resource                              respectively. To differentiate between the two
+                        requirements have not been met }                            kinds of out-edges, the AND out-edges of a pro-
+                                                                                    cess are joined by a straight line as shown in
+      Which of the following statements are true (see                               Figure 8.14(b). Figure 8.14(a) shows the out-
+      the notation used in Algorithm 8.2)? Justify your                             edges for the RRAG of Figure 8.10, whereas
+      answer.                                                                       Figure      8.14(b)    shows    the      out-edges        for  the
+      a. "Processes     in         PA  will   definitely     become                 RRAG of Figure 8.11. These out-edges have
+          deadlocked      if       i   Max_need i,s       >  Total-                 different implications for deadlock detection!)
+          _resourcess ."                                                8.19        An OS uses a simple policy to deal with dead-
+      b. "Processes in PA may be deadlocked only                                    lock   situations.        When     it  finds  that     a  set  of
+          if     there  exists     some  integer  k  such         that              processes is deadlocked, it aborts all of them
+          num_ proc(k)      >      Total_resourcess /k ,     where                  and restarts them immediately. What are the
+          num_ proc(k) is the number of processes in PA                             conditions under which the deadlock will not
+          whose maximum requirement for the units of                                recur?
+          resource class Rs exceeds k."                                 8.20        An     OS   has     a  single   disk,    which     it  uses    (a)
+8.16  The new allocation state of a system after grant-                             to create user files and (b) to create a virtual
+      ing of a resource request is not a safe allocation                            printer for every process. Space is allocated for
+      state according to the banker's algorithm.                                    both uses on a demand basis, and a process
+      a. Does it imply that a deadlock will definitely                              is blocked if its disk space requirement cannot
+          arise in future?                                                          be granted. Print requests directed at a virtual
+                                                                        Pi                                         Pi
+                                                             Pj                             Pj
+                                                                        Pk                                         Pk
+                                                             (a)                           (b)
+                            Figure 8.14       WFGs with multiple        out-edges:  (a)  OR edges;      (b)   AND  edges.
+
+
+
+                                                                                      Chapter 8     Deadlocks          313
+        printer are sent to a real printer when a process          8.23  It is proposed to use a deadlock prevention
+        finishes. Is there a possibility of deadlocks in this            approach for the dining philosophers problem
+        system? If so, under what conditions? Suggest a                  (see Section 6.7.3) as follows: Seats at the dinner
+        solution to the deadlock problem.                                table are numbered from 1 to n, and forks are also
+8.21    A phantom deadlock is a situation wherein a                      numbered from 1 to n, such that the left fork for
+        deadlock handling algorithm declares a dead-                     seat i has the fork number i. Philosophers are
+        lock     but  a  deadlock  does     not  actually  exist.        required to obey the following rule: A philoso-
+        If  processes    are  permitted     to   withdraw  their         pher must first pick up the lower-numbered fork,
+        resource requests, show that Algorithm 8.1 may                   then pick up the higher-numbered fork. Show
+        detect   phantom      deadlocks.    Can   detection    of        that deadlocks cannot arise in this system.
+        phantom deadlocks be prevented?                            8.24  A set of processes D is in deadlock. It is observed
+8.22    A road crosses a set of railway tracks at two                    that
+        points. Gates are constructed on the road at each                a.  If a process Pj        D is aborted, a   set     of
+        crossing to stop road traffic when a train is about                  processes D   D is still in deadlock.
+        to pass. Train traffic is stopped if a car blocks a              b. If a process Pi  D is aborted, no deadlock
+        track. Two way traffic of cars is permitted on                       exists in the system.
+        the road and two-way train traffic is permitted                  State some possible reasons for this difference
+        on the railway tracks.                                           and explain with the help of an example. [Hint:
+          a. Discuss whether deadlocks can arise in the                  Refer to Eqs. (8.4) and (8.5).]
+            road-and-train    traffic.  Would     there    be  no  8.25  After Algorithm 8.1 has determined that a set of
+            deadlocks if both road and train traffic are                 processes D is in deadlock, one of the processes
+            only one-way?                                                in D is aborted. What is the most efficient way to
+          b. Design a set of simple rules to avoid dead-                 determine whether a deadlock exists in the new
+            locks in the road-and-train traffic.                         state?
+BIBLIOGRAPHY                                                                                                                  ·
+Dijkstra    (1965),   Havender     (1968),   and  Habermann        2.  Coffman, E. G., M. S. Elphick, and A. Shoshani
+(1969) are early works on deadlock handling. Dijkstra                  (1971): "System deadlocks," Computing Surveys,
+(1965) and Habermann (1969) discuss the banker's algo-                 3 (2), 67­78.
+rithm. Coffman et al. (1971) discusses the deadlock                3.  Dijkstra, E. W. (1965) : "Cooperating sequential
+detection algorithm for a system containing multiple-                  processes," Technical report EWD­123,
+instance resources. Holt (1972) provided a graph theo-                 Technlogical University, Eindhoven.
+retic characterization for deadlocks. Isloor and Mars-             4.  Habermann, A. N. (1969): "Prevention of System
+land (1980) is a good survey paper on this topic. Zobel                deadlocks," Communications of the ACM, 12 (7),
+(1983)  is  an   extensive    bibliography.     Howard     (1973)      373­377.
+discusses   the  practical    deadlock    handling  approach       5.  Habermann, A. N. (1973): "A new approach to
+described in Section 8.8. Tay and Loke (1995) and Levine               avoidance of system deadlocks," in Lecture notes
+(2003) discuss characterization of deadlocks.                          in Computer Science, Vol. 16, Springer-Verlag.
+    Bach (1986) describes deadlock handling in Unix.               6.  Havender, J. W. (1968): "Avoiding deadlock in
+                                                                       multitasking systems," IBM Systems Journal,
+                                                                       7 (2), 74­84.
+1.  Bach, M. J. (1986): The Design of the Unix                     7.  Holt, R. C. (1972): "Some deadlock properties of
+    Operating System, Prentice Hall, Englewood                         computer systems," Computing Surveys, 4 (3),
+    Cliffs, N. J.                                                      179­196.
+
+
+
+314  Part 2           Process Management
+8.   Howard, J. H. (1973): "Mixed solutions to the          resources," IEEE Transactions on Software
+     deadlock problem," Communications of the ACM,          Engineering, 5 (5), 465­471.
+     6 (3), 427­430.                                   12.  Tay, Y. C., and W. T. Loke (1995): "On Deadlocks
+9.   Isloor, S. S., and T. A. Marsland (1980): "The         of exclusive AND-requests for resources,"
+     deadlock problem--an overview," Computer,              Distributed Computing, Springer Verlag, 9, 2,
+     13 (9), 58­70.                                         77­94.
+10.  Levine, G. (2003): "Defining deadlock,"           13.  Zobel, D. (1983): "The deadlock problem--a
+     Operating Systems Review, 37, 1.                       classifying bibliography," Operating Systems
+11.  Rypka, D. J., and A. P. Lucido (1979): "Deadlock       Review, 17 (4), 6­15.
+     detection and avoidance for shared logical

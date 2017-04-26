@@ -1,0 +1,143 @@
+Race Conditions
+             In Section 5.2.5, we mentioned that uncoordinated accesses to shared data may
+             affect consistency of data. To see this problem, consider processes Pi and Pj that
+             update the value of a shared data item ds through operations ai and aj, respectively.
+                                   Operation ai :      ds := ds + 10;
+                                   Operation aj :      ds := ds + 5;
+
+
+
+                                                                                   Chapter 6        Process Synchronization  167
+             ·   The control structure Parbegin <list of statements> Parend encloses
+                 code that is to be executed in parallel. (Parbegin stands for parallel-begin,
+                 and Parend for parallel-end.) If <list of statements> contains n
+                 statements, execution of the Parbegin­Parend control structure
+                 spawns n processes, each process consisting of the execution of one
+                 statement in <list of statements>. For example, Parbegin S1, S2, S3, S4
+                 Parend initiates four processes that execute S1, S2, S3 and S4, respectively.
+                 The statement grouping facilities of a language such as begin­end,
+                 can be used if a process is to consist of a block of code instead of a
+                 single statement. For visual convenience, we depict concurrent
+                 processes created in a Parbegin­Parend control structure as follows:
+                 Parbegin  S11            S21               ...              Sn1
+                           ...            ...                                ...
+                           S1m            S2m               ...              Snm
+                 Parend
+                           Process P1     Process P2             Process Pn
+                 where statements S11 . . . S1m form the code of process P1, etc.
+             ·   Declarations of shared variables are placed before a Parbegin.
+             ·   Declarations of local variables are placed at the start of a process.
+             ·   Comments are enclosed within braces "{}".
+             ·   Indentation is used to show nesting of control structures.
+Figure 6.1   Pseudocode conventions for concurrent programs.
+Let (ds)initial be the initial value of ds, and let process Pi be the first one to per-
+form its operation. The value of ds after operation ai will be (ds)initial + 10.
+If  process  Pj  performs  operation  aj  now,  the         resulting              value        of  ds  will  be
+(ds)new = ((ds)initial + 10) + 5, i.e., (ds)initial + 15. If the processes perform their
+operations in the reverse order, the new value of ds would be identical.
+    If processes Pi and Pj perform their operations concurrently, we would expect
+the result to be (ds)initial +15; however, it is not guaranteed to be so. This situation
+is called a race condition. This term is borrowed from electronics, where it refers
+to the principle that an attempt to examine a value, or make measurements on a
+waveform, while it is changing can lead to wrong results.
+    The race condition can be explained as follows: Operation ai is typically
+implemented by using three machine instructions. The first instruction loads the
+value of ds in a data register, say, register r1, the second instruction adds 10 to
+the contents of r1, and the third instruction stores the contents of r1 back into the
+location assigned to ds. We call this sequence of instructions the load-add-store
+sequence. Operation aj is similarly implemented by a load-add-store sequence.
+The result of performing operations ai and aj would be wrong if both ai and aj
+operated on the old value of ds. This could happen if one process were engaged in
+performing the load-add-store sequence, but the other process was performing a
+load instruction before this sequence was completed. In such a case the value of
+ds at the end of both the operations would be either (ds)initial + 5 or (ds)initial + 10,
+depending on which of the operations completed later.
+
+
+
+168  Part 2  Process Management
+                     We define a race condition formally as follows: Let function fi(ds) represent
+                  the operation ai on ds, i.e., for a given value of ds, fi(ds) indicates the value ds
+                  would have after executing operation ai. Function fj(ds) analogously represents
+                  the operation aj on ds. Let process Pi be the first one to perform its operation. The
+                  value of ds after the operation would be fi(ds). If process Pj performs operation
+                  aj now, operation aj will operate on fi(ds), so the resulting value of ds will be
+                  fj( fi(ds)). If the processes perform their operations in the reverse order, the new
+                  value of ds will be fi( fj (ds)).
+                     Definition 6.2 Race Condition   A condition in which the value of a shared data
+                     item ds resulting from execution of operations ai and aj on ds in interacting
+                     processes may be different from both fi( fj (ds)) and fj ( fi(ds)).
+                     The  next     example   illustrates  a  race  condition   in  an     airline  reservation
+                  application and its consequences.
+·
+     Example 6.1  Race Condition in an Airline Reservation Application
+                  The left column in the upper half of Figure 6.2 shows the code used by processes
+                  in an airline reservation application. The processes use identical code, hence ai
+                  and aj, the operations performed by processes Pi and Pj, are identical. Each of
+                  these operations examines the value of nextseatno and updates it by 1 if a seat
+                  is available. The right column of Figure 6.2 shows the machine instructions
+                  corresponding to the code. Statement S3 corresponds to three instructions
+                  S3.1, S3.2 and S3.3 that form a load-add-store sequence of instructions for
+                  updating the value of nextseatno.
+                     The lower half of Figure 6.2 is a timing diagram for the applications. It
+                  shows three possible sequences in which processes Pi and Pj could execute their
+                  instructions when nextseatno = 200 and capacity = 200. In case 1, process Pi
+                  executes the if statement that compares values of nextseatno with capacity and
+                  proceeds to execute instructions S2.1, S3.1, S3.2 and S3.3 that allocate a seat
+                  and increment nextseatno. When process Pj executes the if statement, it finds
+                  that no seats are available so it does not allocate a seat.
+                     In case 2, process Pi executes the if statement and finds that a seat can be
+                  allocated. However, it gets preempted before it can execute instruction S2.1.
+                  Process Pj now executes the if statement and finds that a seat is available. It
+                  allocates a seat by executing instructions S2.1, S3.1, S3.2 and S3.3 and exits.
+                  nextseatno is now 201. When process Pi is resumed, it proceeds to execute
+                  instruction S2.1, which allocates a seat. Thus, seats are allocated to both
+                  requests. This is a race condition because when nextseatno = 200, only one
+                  seat should be allocated.
+                     In case 3, process Pi gets preempted after it loads 200 in regj through
+                  instruction S3.1. Now, again both Pi and Pj allocate a seat each, which is a
+                  race condition.
+                  ·
+
+
+
+                                                                                           Chapter 6        Process       Synchronization  169
+            Code of processes                                  Corresponding machine instructions
+S1          if nextseatno  capacity                     S 1.1  Load nextseatno in regk
+                                                        S 1.2  If regk > capacity goto S4.1
+            then
+S2               allotedno:=nextseatno;                 S 2.1  Move nextseatno to allotedno
+S3               nextseatno:=nextseatno+1;              S 3.1  Load nextseatno in regj
+                                                        S 3.2  Add 1 to regj
+                                                        S 3.3  Store regj in nextseatno
+                                                        S 3.4  Go to S5.1
+            else
+S4               display "sorry, no seats               S 4.1  Display "sorry, . . . "
+                  available"
+S5          ...                                         S 5.1  ...
+Some  execution cases
+            Pi    S 1.1  S 1.2  S   2 .1  S 3.1  S 3.2  S 3.3  S 3.4
+Case 1      Pj                                                        S 1.1  S 1.2  S 4.1
+            Pi    S 1.1  S 1.2                                                      S 2.1  S  3  .1  S 3.2  S 3.3  S 3.4
+Case 2      Pj                  S   1 .1  S 1.2  S 2.1  S 3.1  S 3.2  S 3.3  S 3.4
+            Pi    S 1.1  S 1.2  S   2 .1  S 3.1                                                      S 3.2  S 3.3  S 3.4
+Case 3      Pj                                   S 1.1  S 1.2  S 2.1  S 3.1  S 3.2  S 3.3  S  3  .4
+                                                 Execution of instructions by processes                     Time   
+Figure 6.2  Data sharing        by  processes of a reservation application.
+A program containing a race condition may produce correct or incorrect
+results depending on the order in which instructions of its processes are executed.
+This feature complicates both testing and debugging of concurrent programs, so
+race conditions should be prevented.
+Data Access Synchronization                      Race conditions are prevented if we ensure that
+operations ai and aj of Definition 6.2 do not execute concurrently--that is, only
+one of the operations can access shared data ds at any time. This requirement
+is called mutual exclusion. When mutual exclusion is ensured, we can be sure
+that the result of executing operations ai and aj would be either fi( fj (ds)) or
+fj( fi(ds)). Data access synchronization is coordination of processes to implement
+mutual exclusion over shared data. A technique of data access synchronization
+is used to delay a process that wishes to access ds if another process is cur-
+rently accessing ds, and to resume its operation when the other process finishes
+using ds.
+To prevent race conditions, we first check if the logic of processes in an
+application causes a race condition. We use the following notation for this
+purpose:

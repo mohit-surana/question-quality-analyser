@@ -1,0 +1,129 @@
+Disk Scheduling
+             The seek time of a disk block depends on its position relative to the current posi-
+             tion of the disk heads. Consequently, the total seek time involved in performing a
+             set of I/O operations depends on the order in which the operations are performed.
+             The throughput of a disk defined as the number of I/O operations performed per
+             second, also depends on the order in which I/O operations are performed. Hence
+             the physical IOCS and device drivers for disks employ a disk scheduling policy
+             to perform disk I/O operations in a suitable order. We shall discuss the following
+             disk scheduling policies before describing disk scheduling in modern systems:
+             ·  First-come, first-served (FCFS) scheduling: Select the I/O operation that was
+                requested earliest.
+             ·  Shortest seek time first (SSTF) scheduling: Select the I/O operation whose
+                seek time from the current position of disk heads is the shortest.
+             ·  SCAN scheduling: This policy moves the disk heads from one end of the
+                platter to the other, servicing I/O operations for blocks on each track or
+                cylinder before moving on to the next one. It is called a scan. When the
+                disk heads reach the other end of the platter, they are moved in the reverse
+                direction and newly arrived requests are processed in a reverse scan. A variant
+                called look scheduling reverses the direction of disk heads when no more I/O
+                operations can be serviced in the current direction. It is also called the elevator
+                algorithm.
+             ·  Circular SCAN or CSCAN scheduling: This policy performs a scan as in
+                SCAN scheduling. However, it never performs a reverse scan; instead, it
+                moves the heads back to that end of the platter from where they started
+                and initiates another scan. The circular look variant (we will call it C-look
+                scheduling) moves the heads only as far as needed to service the last I/O
+                operation in a scan before starting another scan.
+             The FCFS disk scheduling policy is easy to implement but does not guarantee
+             good disk throughput. To implement the shortest seek time first (SSTF) policy,
+             the physical IOCS uses a model of the disk to compute the seek time of the
+             disk block involved in an I/O operation given the current position of the disk
+             heads. However, the SSTF policy is analogous to the shortest request next (SRN)
+             scheduling policy, so while it achieves good disk throughput, it may starve some
+             I/O requests. SSTF and the various scan policies can be efficiently implemented
+             if the IOQs are maintained in sorted order by track number.
+                Example 14.3 describes the operation of various disk scheduling policies for
+             a set of five I/O operations. The look policy completes all I/O operations of this
+
+
+
+                                Chapter 14            Implementation of File            Operations        577
+example in the shortest amount of time. However, none of these policies is a clear
+winner in practice because the pattern of disk accesses cannot be predicted.
+                                                                                                          ·
+Disk Scheduling Policies                                                                Example     14.3
+Figure 14.16 summarizes the performance of the FCFS, SSTF, Look, and C-
+Look disk scheduling policies for five I/O operations on a hypothetical disk
+having 200 tracks. The requests are made at different instants of time. It is
+assumed that the previous I/O operation completes when the system clock
+reads 160 ms. The time required for the disk heads to move from track1
+to track2 is assumed to be a linear function of the difference between their
+positions:
+            thm = tconst + | track1 - track2 | × tpt
+where tconst is a constant, tpt is the per-track head movement time and thm
+is the total head movement time. We assume the rotational latency and data
+transfer times to be negligible, tconst = 0 ms and tpt = 1 ms. A practical value
+of tconst is 2 ms. Also, the formula for thm is not linear in practice.
+Figure 14.16 shows the following details for each decision: time at which
+the decision is made, pending requests and head position at that time, the
+scheduled I/O operation, and its seek time. The last column shows the total
+seek time for each policy. The plots in the lower half of the figure show the
+disk head movement for each policy. Note that the total seek times in different
+scheduling policies vary greatly. SSTF is better than FCFS; however look has
+the smallest total seek time in this example. It is better than C-Look because
+it can reverse the direction of disk-head traversal after completing the I/O
+operation on track 100, and service the operations on tracks 75, 40, and 12,
+whereas C-Look starts a new scan with the operation on track 12.
+                                                                                     ·
+Scheduling in the disk itself can surpass scheduling in the physical IOCS
+because the disk uses a more precise model that considers the seek time as well
+as the rotational latency of a disk block. Hence it can make fine distinctions
+between two I/O commands that would appear equivalent to the physical IOCS.
+As an example, consider I/O commands that concern disk blocks that are +n
+and -n tracks away from the current position of the disk heads. Both commands
+have equal seek times; the physical IOCS would have to make a random choice
+between them. However, given the current rotational position of the platters and
+the position of the required disk block or sector, the disk may find that the block
+that is +n tracks away may already be passing under the heads by the time the
+heads are positioned on that track. It would mean that the disk block can be read
+only in the next revolution of the disk. The disk block that is -n tracks away, on
+the other hand, might pass under the heads sometime after the heads have been
+positioned on that track. Hence its rotational latency would be smaller than that
+of the disk block that is +n tracks away. Such finer distinctions can contribute to
+higher throughput of the disk.
+
+
+
+578  Part 4  File  Systems
+                                   tconst and tpt                      =      0 ms and 1 ms, respectively
+                                   Current head position               =      Track 65
+                                   Direction of last movement          =      Toward higher numbered tracks
+                                   Current clock time                  =      160 ms
+                   Requested I/O operations:
+                                                Serial number          1      2       3          4     5
+                                                Track number           12     85      40     100    75
+                                                Time of arrival        65     80   110       120    175
+                   Scheduling details:
+                                                                           Scheduling decisions                               Seek
+                   Policy              Details               1             2              3         4          5          time
+                   FCFS        Time of decision              160           213          286         331        391
+                               Pending requests         1, 2, 3, 4     2, 3, 4, 5     3, 4, 5       4, 5           5
+                               Head position                 65            12             85        40         100
+                               Selected request                 1             2              3         4           5
+                               Seek time                     53            73             45        60         25         256
+                   SSTF        Time of decision              160           180          190         215        275
+                               Pending requests         1, 2, 3, 4     1, 3, 4, 5     1, 3, 4       1, 3           1
+                               Head position                 65            85             75        100        40
+                               Selected request                 2             5              4         3           1
+                               Seek time                     20            10             25        60         28         143
+                   Look        Time of decision              160           180          195         220        255
+                               Pending requests         1, 2, 3, 4     1, 3, 4, 5     1, 3, 5       1, 3           1
+                               Head position                 65            85           100         75         40
+                               Selected request                 2             4              5         3           1
+                               Seek time                     20            15             25        35         28         123
+                   C-Look      Time of decision              160           180          195         283        311
+                               Pending requests         1, 2, 3, 4     1, 3, 4, 5     1, 3, 5       3, 5           5
+                               Head position                 65            85           100         12         40
+                               Selected request                 2             4              1         3           5
+                               Seek time                     20            15             88        28         35         186
+                                           100          100                        100                        100
+                                   85                  85                     85                          85
+                                           75          75                               75                                75
+                        65                         65                         65                          65
+                   Track                                        40                           40                           40
+                   no.                 40
+                               12                                  12                           12                    12
+                   Time   160              416     160          303              160      283             160             346
+                                   FCFS                         SSTF                         Look                     C-Look
+                   Figure 14.16    Disk    scheduling summary using        the FCFS, SSTF, Look,          and C-Look policies.

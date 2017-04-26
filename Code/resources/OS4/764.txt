@@ -1,0 +1,134 @@
+Faults, Failures, and Recovery
+A fault like a power outage or a memory read error may damage the state of
+a system. For reliable operation, the system should be restored to a consistent
+state, and its operation should be resumed. Recovery is the generic name for all
+approaches used for this purpose.
+                                                                                           743
+
+
+
+744  Part 5  Distributed Operating Systems
+                                                                 System         Behavior
+                                                                 State
+                                 Before                                         Expected
+                                 fault                                          behavior
+                                                                         Fault
+                                            error
+                                                                 State
+                                 After                                          Unexpected
+                                 fault                                          behavior;
+                                                                                i.e., failure
+                   Figure  19.1  Fault, error, and  failure  in  a system.
+                      A fault like a power outage is noticed readily, whereas a fault like a damaged
+                   disk block becomes noticeable only when the resulting loss of data causes an
+                   unexpected behavior of the system or an unusual situation in it. Such unexpected
+                   behavior or situation is called a failure. Figure 19.1 illustrates how a failure arises.
+                   A fault causes an error, which is a part of the system state that is erroneous. An
+                   error causes unexpected behavior of the system, which is a failure. Example 19.1
+                   discusses a fault, an error and a failure in a banking system.
+·
+     Example 19.1  Fault, Error, and Failure
+                   Bank accounts A and B contain $1000 and $250, respectively. A banking
+                   application transfers $100 from account A to account B. A power outage
+                   occurs after it deducts $100 from the balance in account A, but before it adds
+                   $100 to the balance in account B. The power outage is a fault. The error is that
+                   $100 has been deducted from account A but has not been added to account B.
+                   The failure is that $100 has vanished!
+                   ·
+                      A recovery is performed when a failure is noticed. Figure 19.2 illustrates the
+                   state of a system during normal operation, after a fault, and after recovery. The
+                   system is initiated in state S0 at time 0. A fault occurs at time t1. The consequent
+                   failure is detected at ti. The system would have been in state Si at time ti if the fault
+                   had not occurred; however, it is actually in state Si . A recovery procedure applies
+                   a correction  S to the state and makes the system ready to resume its operation.
+                   The resulting state would depend on the recovery procedure employed. Let the
+                   resulting state be called Snew. It would be ideal if Snew = Si; however, the nature
+                   of a fault, the failure caused by it, and the recovery approach would determine
+                   whether it could be so.
+
+
+
+                                                                Chapter 19  Recovery and Fault Tolerance  745
+                                          A failure
+                  A fault                 is noticed  Si
+                  occurs                                           Recovery
+                                                          S        actions change
+                                                          Snew     the state
+              S0  S1                                  Si
+              0   t1                                  ti     Time
+Figure  19.2     Recovery after a fault.
+19.1.1 Classes of Faults
+A fault may affect a computer system, affect only a process in the system, or
+affect hardware components such as memory and the communication hardware.
+Accordingly, faults are classified into system, process, storage, and communica-
+tion faults. Within a class of faults, a fault model describes those properties of
+a fault that determine the kinds of errors and failures that might result from a
+fault.
+A system fault is a system crash caused by a power outage or by compo-
+nent faults. System faults are classified into amnesia and partial amnesia faults,
+depending on how much state information is lost when a fault occurs. In an
+amnesia fault, the system completely "forgets" the state it was in when the fault
+occurred. In a partial amnesia fault, the system "forgets" some components of its
+state when the fault occured. File servers typically suffer partial amnesia faults
+because they lose the data or metadata that was stored in memory or on a disk
+that failed. A fail-stop system fault is one that brings a system to a halt. This
+characteristic is convenient in practice because it permits an external observer,
+whether a person or a computer system, to know when a fault has occurred. It
+also provides an opportunity to recover or repair the system state before putting
+the system back into operation.
+A process that suffers a Byzantine fault may perform malicious or arbi-
+trary actions. It is not possible to undo such actions when a failure is noticed.
+Hence Byzantine faults are handled by using redundant processes and agreement
+protocols. In this approach, several processes are created to perform the same
+computation. If their results do not match, the system uses an agreement proto-
+col to decide which of them is the correct result. Processes producing incorrect
+results are identified and aborted before they perform any data updates; others
+are permitted to perform updates and continue their operation.
+A typical storage fault occurs because of a bad block on a storage medium.
+It makes some data unreadable. The occurrence of a storage fault may be detected
+by error checking techniques (see Section 14.3), or it may be noticed when data is
+accessed. Storage faults are basically partial amnesia faults, however they could
+be made nonamnesia faults by using software techniques such as disk mirroring.
+
+
+
+746  Part 5  Distributed Operating Systems
+             Communication faults are caused by link or transmission faults. These faults are
+             nonamnesia faults because the networking software includes sufficient buffering
+             and error handling capability to ensure that messages are not lost.
+             In Section 19.2, we discuss how Byzantine faults are handled in practice.
+             The rest of this chapter assumes faults to be non-Byzantine.
+             19.1.2 Overview of Recovery Techniques
+             For non-Byzantine faults, recovery involves restoring a system or an application
+             to a consistent state. It involves reexecuting some actions that were performed
+             before the fault occurred. Recovery techniques can be classified into data recovery,
+             process recovery, fault tolerance, and resiliency. These techniques have differ-
+             ent implications for reliability, response times to computations, and the cost of
+             recovery. Table 19.1 summarizes their features.
+             Data recovery techniques guard against loss of data in a file through backups.
+             Backups are created periodically during normal operation. When a fault occurs,
+             a file is restored to the state found in its latest backup (see Section 13.11). Data
+             recovery techniques incur substantial reexecution overhead if backups are created
+             at large intervals and high overhead during normal operation if they are created
+             frequently. So deciding the frequency of backups involves a trade-off.
+             Process recovery techniques employ checkpoints to record the state of a pro-
+             cess and its file processing activities. This operation is called checkpointing. When
+             a fault occurs, the recovery procedure sets the state of a process to that found in
+             a checkpoint. This operation is called a rollback of the process. It incurs the cost
+             of reexecuting the actions that were performed after the checkpoint was taken.
+             The tradeoff between the cost of a rollback and the overhead of checkpointing
+             during normal operation is analogous to that in data recovery techniques.
+             Table 19.1        Recovery Techniques
+             Technique                      Description
+             Data recovery                  A backup is a recording of the state of a file. When a fault
+                                            occurs, the state of the file is set to that found in its latest
+                                            backup (see Section 13.11).
+             Process recovery               A checkpoint is a recording of the state of a process and its file
+                                            processing activities. A process is recovered by setting its state to
+                                            that found in a checkpoint that was taken before a fault
+                                            occurred. This action is called a rollback.
+             Fault tolerance                The error in state caused by a fault is corrected without
+                                            interrupting the system's operation.
+             Resiliency                     Special techniques are employed to reduce the cost of fault
+                                            tolerance--fewer results that were produced in a computation
+                                            before a fault occurred are recomputed after the fault.

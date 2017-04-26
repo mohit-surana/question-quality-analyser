@@ -1,0 +1,1135 @@
+The OS, the Computer, and User Programs
+
+
+                                                         Chapte                         r  2
+The OS, the Computer,
+and User Programs
+A s we saw in Chapter 1, the operating system performs many tasks like
+     program initiation and resource allocation repetitively. We call each of
+     these tasks a control function. Since the operating system is a collection
+of routines, and not a hardware unit, it performs control functions by executing
+instructions on the CPU. Thus, the CPU services both user programs and the
+operating system. A key aspect of understanding how an operating system works
+is knowing how it interacts with the computer system and with user programs--
+what the arrangement is by which it gets control of the CPU when it needs to
+perform a control function, and how it passes control to a user program.
+     We use the term switching of the CPU for an action that forces the CPU to stop
+executing one program and start executing another program. When the kernel
+needs to perform a control function, the CPU must be switched to execution of the
+kernel. After completing the control function, the CPU is switched to execution
+of a user program.
+     We begin this chapter with an overview of relevant features of a computer,
+particularly how an interrupt switches the CPU to execution of the kernel when
+the kernel needs to perform a control function. In a later section we discuss how
+interrupt servicing and the operating system concept of system calls facilitate
+interaction of the operating system with user programs.
+2.1  FUNDAMENTAL PRINCIPLES OF OS OPERATION                                          ·
+Before we discuss features of operating systems in Chapter 3, and their design in
+later chapters, it is important to have a functional understanding of the operation
+of an OS--what features of a modern computer system are important from the
+OS viewpoint, how the OS uses these features during its operation to control user
+programs and resources and implement security and protection, and how user
+programs obtain services from the OS.
+     As discussed in Section 1.1, the kernel of the operating system is the collec-
+tion of routines that form the core of the operating system. It controls operation
+of the computer by implementing the tasks discussed in Section 1.3, hence we
+                                                                                              25
+
+
+
+26  Part 1  Overview
+            call each of these tasks a control function. It also offers a set of services to user
+            programs. The kernel exists in memory during operation of the OS, and executes
+            instructions on the CPU to implement its control functions and services. Thus,
+            the CPU is used by both user programs and the kernel.
+                      For efficient use of a computer, the CPU should be executing user programs
+            most of the time. However, it has to be diverted to execution of the kernel code
+            whenever a situation requiring the kernel's attention arises in the system, e.g.,
+            when an I/O operation ends or a timer interrupt occurs, or when a program
+            requires some service of the kernel. In Section 1.4, we used the term event for such
+            a situation. Accordingly, we need to grasp the following details to understand how
+            the OS operates:
+            · How the kernel controls operation of the computer.
+            · How the CPU is diverted to execution of kernel code when an event occurs.
+            · How a user program uses services offered by the kernel.
+            · How the kernel ensures an absence of mutual interference among user
+                      programs and between a user program and the OS.
+                      In this chapter we discuss elements of computer system architecture and
+            describe how the kernel uses features of computer architecture to control oper-
+            ation of a computer. We then discuss how the notion of an interrupt is used to
+            divert the CPU to execution of the kernel code, and describe how a special kind
+            of interrupt called a software interrupt is used by programs to communicate their
+            requests to the kernel.
+                      The absence of mutual interference among user programs and between a
+            user program and the OS is ensured by having two modes of operation of the
+            CPU. When the CPU is in the kernel mode, it can execute all instructions of the
+            computer. The kernel operates with the CPU in this mode so that it can control
+            operations of the computer. When the CPU is in the user mode, it cannot execute
+            those instructions that have the potential to interfere with other programs or
+            with the OS if used indiscriminately. The CPU is put in this mode to execute user
+            programs. A key issue in understanding how an OS operates is knowing how the
+            CPU is put in the kernel mode to execute kernel code, and how it is put in the
+            user mode to execute user programs.
+            2.2       THE COMPUTER                                                                 ·
+            Figure 2.1 is a schematic of a computer showing the functional units that are
+            relevant from the viewpoint of an operating system. The CPU and memory are
+            directly connected to the bus, while the I/O devices are connected to the bus
+            through device controllers and the DMA. If the CPU and I/O devices try to
+            access the memory at the same time, the bus permits only one of them to proceed.
+            The other accesses are delayed until this access completes. We describe impor-
+            tant details of the functional units in the next few sections. In a later section,
+            we discuss how the OS uses features of a computer to control the operation of
+
+
+
+                                               Chapter 2      The OS, the Computer,      and  User  Programs  27
+                                               Interrupts
+                                               Protection     I/O
+                               Bus                       ...
+             Memory                                           PSW
+                                          MMU  L1 cache
+             L3 cache                                                    CPU
+             RAM                                              Registers
+                                                              DMA
+                                                                         Device
+                                                                   controllers
+                                               I/O devices
+                                                                         Data path
+                                                                         Control path
+                                                                         Interrupt path
+Figure  2.1  Schematic  of  a  computer.
+the computer and execution of user programs on it. Discussions in this chapter
+are restricted to computers with a single CPU; features of multiprocessor and
+distributed computer systems are described in later chapters.
+2.2.1 The CPU
+General-Purpose Registers (GPRs) and the Program Status Word (PSW)                       Two
+features of the CPU are visible to user programs or the operating system. The
+first is those registers that are used to hold data, addresses, index values, or the
+stack pointer during execution of a program. These registers are variously called
+general-purpose registers (GPRs) or program-accessible registers; we prefer to call
+them GPRs. The other feature is a set of control registers, which contain infor-
+mation that controls or influences operation of the CPU. For simplicity, we will
+call the collection of control registers the program status word (PSW), and refer
+to an individual control register as a field of the PSW.
+Figure 2.2 describes the fields of the PSW. Two fields of the PSW are com-
+monly known to programmers: The program counter (PC) contains the address
+of the next instruction to be executed by the CPU. The condition code (CC) con-
+tains a code describing some characteristics of the last arithmetic or logical result
+computed by the CPU (e.g., whether the result of an arithmetic operation is 0, or
+the result of a comparison is "not equal"). These characteristics are often stored
+in a set of discrete flags; however, we will view them collectively as the condition
+code field or a field called flags. Contents and uses of other control registers are
+described later in this section.
+
+
+
+28  Part 1  Overview
+                        Program          Condition    Mode    Memory protection            Interrupt       Interrupt
+                             counter     code         (M)     information                  mask              code
+                               (PC)      (CC)                 (MPI)                        (IM)              (IC)
+                      Field              Description
+                      Program counter    Contains address of the next instruction to be executed.
+                      Condition code     Indicates some characteristics of the result of the last arithmetic or
+                      (flags)            logical instruction, e.g., whether the result of an arithmetic instruction
+                                         was  0,  0, or  0. This code is used in execution of a conditional
+                                         branch instruction.
+                      Mode               Indicates whether the CPU is executing in kernel mode or user mode.
+                                         We assume a single-bit field with the value 0 to indicate that the
+                                         CPU is in kernel mode and 1 to indicate that it is in user mode.
+                      Memory protection  Memory protection information for the currently executing program.
+                      information        This field consists of subfields that contain the base register and size
+                                         register.
+                      Interrupt mask     Indicates which interrupts are enabled (that is, which interrupts can
+                                         occur at present) and which ones are masked off.
+                      Interrupt code     Describes the condition or event that caused the last interrupt. This
+                                         code is used by an interrupt servicing routine.
+            Figure 2.2         Important fields of the program status word (PSW).
+            Kernel and User Modes of CPU Operation            The CPU can operate in two modes,
+            called user mode and kernel mode. The CPU can execute certain instructions only
+            when it is in the kernel mode. These instructions, called privileged instructions,
+            implement special operations whose execution by user programs would inter-
+            fere with the functioning of the OS or activities of other user programs; e.g., an
+            instruction that changes contents of the memory protection information (MPI)
+            field of the PSW could be used to undermine memory protection in the system
+            (Section 2.2.3 contains an example). The OS puts the CPU in kernel mode when
+            it is executing instructions in the kernel, so that the kernel can execute special
+            operations, and puts it in user mode when a user program is in execution, so that
+            the user program cannot interfere with the OS or other user programs. We assume
+            the mode (M) field of the PSW to be a single-bit field that contains a 0 when the
+            CPU is in kernel mode and a 1 when it is in user mode.
+            State of the CPU           The general-purpose registers and the PSW together contain
+            all the information needed to know what the CPU is doing; we say that this
+            information constitutes the state of the CPU. As discussed in Section 1.3.1, the
+            kernel may preempt the program that is currently using the CPU (see Figure 1.3).
+            To ensure that the program can resume its execution correctly when scheduled in
+            future, the kernel saves the state of the CPU when it takes away the CPU from the
+            program, and simply reloads the saved CPU state into the GPRs and the PSW
+            when execution of the program is to be resumed. Example 2.1 illustrates how
+            saving and restoring the state of the CPU suffices to correctly resume execution
+            of a program.
+
+
+
+                                                 Chapter 2  The OS, the Computer, and User Programs                   29
+                                                                                                                      ·
+State of the CPU                                                                                        Example  2.1
+Figure 2.3(a) shows an assembly language program for a hypothetical com-
+puter whose CPU has two data registers A and B, an index register X, and the
+stack pointer register SP. Each assembly language instruction in this program
+corresponds to either an instruction in the CPU or a directive to the assembler;
+e.g., the last statement declares ALPHA to be a memory location that contains
+the value 1. The first instruction moves the value of ALPHA into register A.
+The second instruction compares the value in register A with the value 1; this
+comparison sets an appropriate value in the condition code field (also called
+the flags field). The third instruction, which has the operation code BEQ, is a
+conditional branch instruction that transfers control to the instruction with
+label NEXT if the result of the comparison is "equal." We assume that the
+result of the COMPARE instruction was "equal," and that condition code 00
+corresponds to this result.
+        If the kernel decides to take away the CPU from the program after the
+program has executed the COMPARE instruction, it saves the state of the CPU,
+which is shown in Figure 2.3(b). The state consists of the contents of the
+PSW, and the registers A, B, X, and SP. The PC contains 150, which is the
+address of the next instruction to be executed. The condition code field con-
+tains 00 to indicate that the values that were compared were equal. The MPI
+field contains memory protection information for the program, which we shall
+discuss in Section 2.2.3. If this CPU state is loaded back into the CPU, the
+program will resume its execution at the BEQ instruction that exists in the
+memory location with the address 150. Since the condition code field con-
+tains 00, implying "equal," the BEQ instruction will transfer control to the
+instruction labeled NEXT. Thus, the program would execute correctly when
+resumed.
+                                                                                                     ·
+                                                                                    PC    CC M
+Address                      Instruction                    PSW                     0150     00   1
+0142                MOVE                  A,  ALPHA                                 MPI   IM     IC
+0146                COMPARE               A,  1                                           1   A
+0150                BEQ                   NEXT
+                    ...                                     Registers                         B
+0192         NEXT                                                                             X
+                    ...
+0210         ALPHA  DCL_CONST             1                                                   SP
+(a)                                                         (b)
+Figure  2.3  (a) Listing of an assembly language program showing address assigned to each
+instruction or data; (b) state of the CPU after executing the COMPARE instruction.
+
+
+
+30  Part 1  Overview
+            2.2.2 Memory Management Unit (MMU)
+            As mentioned in Section 1.3.2, virtual memory is an illusion of a memory that
+            may be larger that the real memory of a computer. As described in Section 1.4.3,
+            an OS implements virtual memory by using noncontiguous memory allocation
+            and the MMU (Figure 1.8). The OS allocates a set of memory areas to a program,
+            and stores information concerning these areas in a table of memory allocation
+            information. During the execution of the program, the CPU passes the address
+            of a data or instruction used in the current instruction to the MMU. This address
+            is called a logical address. The MMU uses the memory allocation information
+            to find the address in memory where the required data or instruction actually
+            resides. This address is called the physical address, and the process of obtaining
+            it from a logical address is called address translation. In the interest of simplic-
+            ity, we do not describe details of address translation here; they are described in
+            Chapter 12.
+            2.2.3 Memory Hierarchy
+            A computer system should ideally contain a large enough and fast enough mem-
+            ory, so that memory accessing will not slow down the CPU. However, fast memory
+            is expensive, so something that can provide the same service as a large and fast
+            memory but at a lower cost is desirable. The solution is a memory hierarchy
+            containing a number of memory units with differing speeds. The fastest memory
+            in the hierarchy is the smallest in size; slower memories are larger in size. The
+            CPU accesses only the fastest memory. If the data (or instruction) needed by it
+            is present in the fastest memory, it is used straightaway; otherwise the required
+            data is copied into the fastest memory from a slower memory, and then used. The
+            data remains in the fastest memory until it is removed to make place for other
+            data. This arrangement helps to speed up accesses to repeatedly used data. Other
+            levels in the memory hierarchy are used analogously--if data is not present in a
+            faster memory, it is copied there from a slower memory, and so on. The effective
+            memory access time depends on how frequently this situation arises in a faster
+            memory.
+                      Figure 2.4 shows a schematic of a simple memory hierarchy. The hierarchy
+            contains three memory units. The cache memory is fast and small. Main memory,
+            which is also called random access memory (RAM), is slow and large; we will
+            simply call it memory. The disk is the slowest and largest unit in the hierarchy. We
+            discuss operation of this memory hierarchy before discussing memory hierarchies
+            in modern computers.
+            Cache Memory  The cache memory holds some instructions and data values that
+            were recently accessed by the CPU. To enhance cache performance, the memory
+            hardware does not transfer a single byte from memory into the cache; it always
+            loads a block of memory with a standard size into an area of the cache called
+            a cache block or cache line. This way, access to a byte in close proximity of a
+            recently accessed byte can be implemented without accessing memory. When the
+            CPU writes a new value into a byte, the changed byte is written into the cache.
+
+
+
+                                               Chapter 2             The OS, the Computer, and User  Programs  31
+                 CPU
+                                               Requests contents of byte
+                                                     with logical address al
+                 MMU
+                                               Sends a physical
+                                                     address ap
+                                                                     Byte with
+Fastest memory,                                Cache block           address ap
+smallest size    Cache
+                         Transfer of                 Transfer of
+                         cache blocks                      bytes or
+                                                     cache blocks
+                                               Page                  Byte with
+                 Memory                                              address ap
+                                                                                 Memory
+                                                                                 hierarchy
+                                               Transfer of pages
+Slowest memory,                                Disk block
+largest size     Disk
+Figure  2.4  Operation of a memory hierarchy.
+Sooner or later it also has to be written into the memory. Different schemes
+have been used for writing a byte into memory; a simple one is to write the byte
+into the cache and the memory at the same time. It is called the write-through
+scheme.
+For every data or instruction required during execution of a program, the
+CPU performs a cache lookup by comparing addresses of the required bytes with
+addresses of bytes in memory blocks that are present in the cache. A hit is scored if
+the required bytes are present in memory, in which case the bytes can be accessed
+straightaway; otherwise, a miss is scored and the bytes have to be loaded into the
+
+
+
+32  Part 1  Overview
+            cache from memory. The hit ratio (h) of the cache is the fraction of bytes accessed
+            by the CPU that score a hit in the cache. High hit ratios are obtained in practice as
+            a result of an empirical law called locality--programs tend to access bytes located
+            in close proximity of recently accessed bytes, which is called spatial locality, and
+            access some data and instructions repeatedly, which is called temporal locality.
+            Effective memory access time of a memory hierarchy consisting of a cache and
+            memory is given by the formula
+                              tema = h × tcache + (1 - h) × (ttra + tcache)
+                              = tcache + (1 - h) × ttra                                   (2.1)
+            where tema      = effective memory access time,
+                      tcache = access time of cache, and
+                      ttra  = time taken to transfer a cache block from memory to cache.
+                      Larger cache blocks are needed to ensure a high hit ratio through spa-
+            tial locality. However, a large cache block would increase ttra, hence advanced
+            memory organizations are used to reduce ttra, and the cache block size that
+            provides the best combination of the hit ratio and ttra is chosen. The Intel
+            Pentium processor uses a cache block size of 128 bytes and a memory organiza-
+            tion that makes ttra only about 10 times the memory access time. If we consider
+            tcache = 10 ns, and a memory that is 10 times slower than the cache, we have
+            ttra = 10 × (10 × 10) ns = 1000 ns. With a cache hit ratio of 0.97, this organi-
+            zation provides tema = 40ns, which is 40 percent of the access time of memory.
+            Note that the hit ratio in a cache is poor at the start of execution of a program
+            because few of its instructions or data have been transferred to the cache. The hit
+            ratio is higher when the program has been in execution for some time.
+                      Memory  hierarchies  in  modern     computers  differ  from  that  shown     in
+            Figure 2.4 in the number of cache memories and the placement of the MMU.
+            Because of the large mismatch in the speeds of memory and the cache, a hierarchy
+            of cache memories is used to reduce the effective memory access time instead of
+            the single cache shown in Figure 2.4. As shown in Figure 2.1, an L1 cache--that
+            is, a level 1 cache--is incorporated into the CPU chip itself. The CPU chip may
+            also contain another cache called the level 2 or L2 cache which is slower but larger
+            than the L1 cache. A much larger and slower L3 cache is typically external to the
+            CPU. We show it to be associated with memory as in Figure 2.1. All these cache
+            levels help to improve the effective memory access time. To determine how much,
+            just substitute the transfer time of a block from the lower cache level in place of
+            ttra in Eq. (2.1), and use the equation analogously to account for a cache miss in
+            the lower cache level during the transfer (see Exercise 2.9). Another difference is
+            that the MMU is replaced by a parallel configuration of the MMU and the L1
+            cache. This way, a logical address is sent to the L1 cache, rather than a physical
+            address. It eliminates the need for address translation before looking up the L1
+            cache, which speeds up access to the data if a hit is scored in the L1 cache. It also
+            permits address translation performed by the MMU to overlap with lookup in
+            the L1 cache, which saves time if a cache miss occurs in the L1 cache.
+
+
+
+                                          Chapter 2  The OS, the Computer, and User        Programs       33
+Memory  As a part of the memory hierarchy, operation of memory is analogous
+to operation of a cache. The similarities are in transferring a block of bytes--
+typically called a page--from the disk to memory when a program refers to some
+byte in the block, and transferring it from memory to the disk to make place
+for other blocks that are needed in memory. The difference lies in the fact that
+the management of memory and transfer of blocks between memory and the
+disk are performed by the software, unlike in the cache, where it is performed by
+the hardware. The memory hierarchy comprising the memory management unit
+(MMU), memory, and the disk is called the virtual memory. Virtual memory is
+discussed in Chapter 12; elsewhere in the book, for simplicity, we ignore the role
+of the MMU and disks.
+Memory Protection  Many programs coexist in a computer's memory, so it is
+necessary to prevent one program from reading or destroying the contents of
+memory used by another program. This requirement is called memory protection;
+it is implemented by checking whether a memory address used by a program lies
+outside the memory area allocated to it.
+Two control registers are used to implement memory protection. The base
+register contains the start address of the memory area allocated to a program,
+while the size register (also called the limit register) contains the size of memory
+allocated to the program. Accordingly, the last byte of memory allocated to a
+program has the address
+        Address of last byte = <base> + <size> - 1
+where <base> and <size> indicate contents of the base register and size register,
+respectively. Before making any memory access, say access to a memory location
+with address aaa, the memory protection hardware checks whether aaa lies out-
+side the range of addresses defined by contents of the base and size registers. If so,
+the hardware generates an interrupt to signal a memory protection violation and
+abandons the memory access. As described in a later section, the kernel aborts the
+erring program in response to the interrupt. The memory protection information
+(MPI) field of the PSW (see Figure 2.2) contains the base and size registers. This
+way the memory protection information also becomes a part of the CPU state and
+gets saved or restored when the program is preempted or resumed, respectively.
+                                                                                                          ·
+Fundamentals of Memory Protection                                                          Example   2.2
+Program P1 is allocated the 5000-byte memory area 20000 to 24999 by the
+kernel. Figure 2.5 illustrates memory protection for this program using the
+base and size registers. The start address of the allocated area (i.e., 20000)
+is loaded in the base register, while the number 5000 is loaded in the size
+register. A memory protection violation interrupt would be generated if the
+instruction being executed by the CPU uses an address that lies outside the
+range 20000­24999, say, the address 28252.
+                                                                                        ·
+
+
+
+34  Part 1  Overview
+                                              Memory                     $Address
+                            CPU       0                                                         No
+                                              Kernel                     <base>?
+                                      20000
+                      Base  20000                   28252
+                                              Load            P1         Yes
+                      Size  5000
+                                      25000                              ,Address
+                                                              P2         1<base>                No
+                                                                                        <size>
+                                                                                     ?
+                           Byte with                          P3         Yes
+                            address
+                            28252                                        Normal                 Protection
+                                                                         memory                 violation
+                                                                         access                 interrupt
+            Figure    2.5  Memory protection  using the base  and  size  registers.
+                      A program could undermine the memory protection scheme by loading infor-
+            mation of its choice in the base and size registers. For example, program P1 could
+            load the address 0 in the base register and the size of the computer's memory in
+            the size register and thereby get itself a capability of modifying contents of any
+            part of memory, which would enable it to interfere with the OS or other user pro-
+            grams. To prevent this, instructions to load values into the base and size registers
+            are made privileged instructions. Since the CPU is in the user mode while execut-
+            ing a user program, this arrangement prevents a user program from undermining
+            the memory protection scheme.
+                      Memory protection in a cache memory is more complex. Recall from the
+            earlier discussion that the L1 cache is accessed by using logical addresses. A
+            program of size n bytes typically uses logical addresses 0, . . . , n - 1. Thus, many
+            programs may use the same logical addresses, so a check based on a logical
+            address cannot be used to decide whether a program may access a value that
+            exists in the cache memory. A simple approach to memory protection would be
+            to flush the cache, i.e., to erase contents of the entire cache, whenever execution
+            of a program is initiated or resumed. This way, the cache would not hold contents
+            of memory areas allocated to other programs. However, any parts of the program
+            that were loaded in the cache during its execution in the past would also be erased.
+            Hence, execution performance of the program would suffer initially because of
+            a poor cache hit ratio. In an alternative scheme, the id of the program whose
+            instructions or data are loaded in a cache block is remembered, and only that
+            program is permitted to access contents of the cache block. It is implemented as
+            follows: When a program generates a logical address that is covered by contents
+            of a cache block, a cache hit occurs only if the program's id matches the id of the
+            program whose instructions or data are loaded in the cache block. This scheme
+            is preferred because it does not require flushing of the cache and does not affect
+            execution performance of programs.
+            2.2.4 Input/Output
+            An I/O operation requires participation of the CPU, memory, and an I/O device.
+            The manner in which the data transfer between memory and the I/O device
+
+
+
+                                                   Chapter 2  The OS, the Computer, and  User  Programs  35
+Table 2.1      Modes  of Performing I/O Operations
+I/O mode                   Description
+Programmed I/O             Data transfer between the I/O device and memory takes
+                           place through the CPU. The CPU cannot execute any
+                           other instructions while an I/O operation is in progress.
+Interrupt I/O              The CPU is free to execute other instructions after
+                           executing the I/O instruction. However, an interrupt is
+                           raised when a data byte is to be transferred between the
+                           I/O device and memory, and the CPU executes an
+                           interrupt servicing routine, which performs transfer of the
+                           byte. This sequence of operations is repeated until all
+                           bytes get transferred.
+Direct memory access       Data transfer between the I/O device and memory takes
+(DMA)-based I/O            place directly over the bus. The CPU is not involved in
+                           data transfer. The DMA controller raises an interrupt
+                           when transfer of all bytes is complete.
+is implemented determines the data transfer rates and the extent of the CPU's
+involvement in the I/O operation. The I/O organization we find in modern
+computers has evolved through a sequence of steps directed at reducing the
+involvement of the CPU in an I/O operation. Apart from providing higher data
+transfer rates, it also frees the CPU to perform other activities while an I/O
+operation is in progress.
+We assume that operands of an I/O instruction indicate the address of
+an I/O device and details of I/O operations to be performed. Execution of
+the I/O instruction by the CPU initiates the I/O operation on the indicated
+device. The I/O operation is performed in one of the three modes described
+in Table 2.1. In the programmed I/O mode, data transfer is performed through
+the CPU. Hence data transfer is slow and the CPU is fully occupied with it.
+Consequently, only one I/O operation can be performed at a time. The inter-
+rupt mode is also slow as it performs a byte-by-byte transfer of data with the
+CPU's assistance. However, it frees the CPU between byte transfers. The direct
+memory access (DMA) mode can transfer a block of data between memory and
+an I/O device without involving the CPU, hence it achieves high data transfer
+rates and supports concurrent operation of the CPU and I/O devices. The inter-
+rupt and DMA modes permit I/O operations on several devices to be performed
+simultaneously.
+DMA operations are actually performed by the DMA controller, which is a
+special-purpose processor dedicated to performing I/O operations; however, for
+simplicity we will not maintain this distinction in this chapter, and refer to both
+simply as DMA. In Figure 2.1, the I/O organization employs a DMA. Several
+I/O devices of the same class are connected to a device controller; a few device
+controllers are connected to the DMA. When an I/O instruction is executed, say
+a read instruction on device d, the CPU transfers details of the I/O operation to
+the DMA. The CPU is not involved in the I/O operation beyond this point; it
+
+
+
+36  Part 1  Overview
+            is free to execute instructions while the I/O operation is in progress. The DMA
+            passes on details of the I/O operation to the device controller, which initiates the
+            read operation on device d. The device transfers the data to the device controller;
+            transfer of data between the device controller and memory is organized by the
+            DMA. Thus the CPU and the I/O subsystem can operate concurrently. At the
+            end of the data transfer, the DMA generates an I/O interrupt. As described in
+            the next section, the CPU switches to execution of the kernel when it notices the
+            interrupt. The kernel analyzes the cause of the interrupt and realizes that the I/O
+            operation is complete.
+            2.2.5 Interrupts
+            An event is any situation that requires the operating system's attention. The com-
+            puter designer associates an interrupt with each event, whose sole purpose is to
+            report the occurrence of the event to the operating system and enable it to per-
+            form appropriate event handling actions. It is implemented using the following
+            arrangement: In the instruction execution cycle of the CPU, it performs four steps
+            repeatedly--fetching the instruction whose address is contained in the program
+            counter (PC), decoding it, executing it, and checking whether an interrupt has
+            occurred during its execution. If an interrupt has occurred, the CPU performs
+            an interrupt action that saves the CPU state, that is, contents of the PSW and the
+            GPRs, and loads new contents into the PSW and the GPRs, so that the CPU starts
+            executing instructions of an interrupt servicing routine, often called ISR, in the
+            kernel. Sometime in the future, the kernel can resume execution of the interrupted
+            program simply by loading back the saved CPU state into the PSW and GPRs
+            (see Example 2.1). The computer designer associates a numeric priority with each
+            interrupt. If several interrupts occur at the same time, the CPU selects the highest-
+            priority interrupt for servicing. Other interrupts remain pending until they are
+            selected.
+            Classes of Interrupts   Table 2.2 describes three classes of interrupts that are
+            important during normal operation of an OS. An I/O interrupt indicates the
+            end of an I/O operation, or occurrence of exceptional conditions during the I/O
+            operation. A timer interrupt is provided to implement a timekeeping arrangement
+            in an operating system. It is used as follows: A clock tick is defined as a specific
+            fraction of a second. Now, an interrupt can be raised either periodically, i.e., after
+            a predefined number of ticks, or after a programmable interval of time, i.e., after
+            occurrence of the number of ticks specified in a special timer register, which can
+            be loaded through a privileged instruction.
+                      A program interrupt, also called a trap or an exception, is provided for two
+            purposes. The computer hardware uses the program interrupt to indicate occur-
+            rence of an exceptional condition during the execution of an instruction, e.g., an
+            overflow during arithmetic, or a memory protection violation (see Section 2.2.3).
+            User programs use the program interrupt to make requests to the kernel for
+            resources or services that they are not allowed to provide for themselves. They
+            achieve it by using a special instruction provided in the computer whose sole
+
+
+
+                                               Chapter 2  The OS, the Computer, and User  Programs  37
+Table 2.2       Classes of Interrupts
+Class              Description
+I/O interrupt      Caused by conditions like I/O completion and malfunctioning
+                   of I/O devices.
+Timer interrupt    Raised at fixed intervals or when a specified interval of time
+                   elapses.
+Program            (1) Caused by exceptional conditions that arise during the
+interrupt          execution of an instruction, e.g., arithmetic exceptions like
+                   overflow, addressing exceptions, and memory protection
+                   violations.
+                   (2) Caused by execution of a special instruction called the
+                   software interrupt instruction, whose sole purpose is to cause an
+                   interrupt.
+purpose is to raise a program interrupt so that control gets transferred to the ker-
+nel. The operation code of this instruction machine-specific, e.g., it is called int
+in the Intel Pentium, trap in Motorola 68000, and syscall in MIPS R3000.
+Generically, we assume that a computer provides an instruction called a software
+interrupt instruction with the operation code SI, and call the interrupt raised by
+it a software interrupt.
+Interrupt Code   When an interrupt of some class occurs, the hardware sets an
+interrupt code in the interrupt code (IC) field of the PSW to indicate which specific
+interrupt within that class of interrupts has occurred. This information is useful
+for knowing the cause of the interrupt. For example, if a program interrupt occurs,
+the interrupt code would help to decide whether it was caused by an overflow
+condition during arithmetic or by a memory protection violation.
+Interrupt codes are machine-specific. For an I/O interrupt, the interrupt code
+is typically the address of the I/O device that caused the interrupt. For a program
+interrupt, a computer assigns distinct codes for exceptional conditions such as
+overflow and memory protection violation, and reserves a set of interrupt codes
+for software interrupts. Typically, the software interrupt instruction (SI instruc-
+tion) has a small integer as an operand; it is treated as the interrupt code when
+the interrupt occurs. If a computer does not provide an operand in the SI instruc-
+tion, an operating system has to evolve its own arrangement, e.g., it may require
+a program to push a software interrupt number on the stack before executing the
+SI instruction to cause a software interrupt.
+Interrupt Masking  The interrupt mask (IM) field of the PSW indicates which
+interrupts are permitted to occur at the present moment of time. The IM field
+may contain an integer m to indicate that only interrupts with priority  m are
+permitted to occur. Alternatively, it may contain a bit-encoded value, where each
+bit in the value indicates whether a specific kind of interrupt is permitted to occur.
+Interrupts that are permitted to occur are said to be enabled, and others are said
+
+
+
+38  Part 1  Overview
+                                                                                  ...      Interrupt
+                                                CPU               3          PC        M   vectors
+                                                PSW                          IM            area
+                                                ddd                               ...
+                                                     IC
+                                                                                  ...
+                                                                  2          ddd           Saved PSW
+                            1                                                          IC  information
+                                                                                  ...      area
+                      Step                           Description
+                      1. Set interrupt code          The interrupt hardware forms a code describing the cause
+                                                     of the interrupt. This code is stored in the interrupt code
+                                                     (IC) field of the PSW.
+                      2. Save the PSW                The PSW is copied into the saved PSW information area. In
+                                                     some computers, this action also saves the general-purpose
+                                                     registers.
+                      3. Load interrupt vector       The interrupt vector corresponding to the interrupt class is
+                                                     accessed. Information from the interrupt vector is loaded
+                                                     into the corresponding fields of the PSW. This action
+                                                     switches the CPU to the appropriate interrupt servicing
+                                                     routine of the kernel.
+            Figure 2.6      The interrupt action.
+            to be masked or masked off . If an event corresponding to a masked interrupt
+            occurs, the interrupt caused by it is not lost; it remains pending until it is enabled
+            and can occur.
+            Interrupt Action           After executing every instruction, the CPU checks for occur-
+            rence of an interrupt. If an interrupt has occurred, the CPU performs the interrupt
+            action, which saves the state of the CPU in memory and switches the CPU to an
+            interrupt servicing routine in the kernel.
+                      As shown in the schematic of Figure 2.6, the interrupt action consists of
+            three steps. Step 1 sets the interrupt code in the interrupt code (IC) field of the
+            PSW according to the cause of the interrupt. Step 2 of the interrupt action saves
+            contents of the PSW in memory so that the kernel can form the CPU state of
+            the interrupted program (see Figure 2.3), which it can use to resume execution
+            of the program at a later time. The saved PSW information area, where the PSW
+            of the interrupted program is stored, is either a reserved area in memory or an
+            area on the stack. Step 3 of the interrupt action switches the CPU to execution of
+            the appropriate interrupt servicing routine in the kernel as follows: The interrupt
+            vectors area contains several interrupt vectors; each interrupt vector is used to
+            control interrupt servicing for one class of interrupts. Depending on which class
+            an interrupt belongs to, the interrupt action chooses the correct interrupt vector
+
+
+
+                                                 Chapter 2  The OS, the Computer, and User  Programs  39
+and loads its contents into PSW fields. An interrupt vector contains the following
+information:
+1.   Address of an interrupt servicing routine.
+2.   An interrupt mask indicating which other interrupts can occur while this
+     interrupt is being processed.
+3.   A 0 or 1 to indicate whether the CPU should be in kernel or user mode,
+     respectively, while executing the interrupt servicing routine. Typically 0 is
+     chosen so that the interrupt servicing routine, which is a part of the kernel,
+     can use privileged instructions.
+For simplicity, we assume that an interrupt vector has the same format as a PSW
+and contains these three items of information in the program counter (PC), inter-
+rupt mask (IM), and mode (M) fields, respectively. Thus, Step 3 of the interrupt
+action loads information from the relevant interrupt vector into the program
+counter, interrupt mask and mode fields of the PSW, which puts the CPU in the
+kernel mode and switches it to the interrupt servicing routine.
+2.3  OS INTERACTION WITH THE COMPUTER
+     AND USER PROGRAMS                                                                                ·
+To respond readily to events, an OS uses an arrangement in which every event
+causes an interrupt. In this section, we discuss how the OS interacts with the
+computer to ensure that the state of an interrupted program is saved, so that its
+execution can be resumed at a later time, and how an interrupt servicing routine
+obtains information concerning the event that had caused an interrupt, so that
+it can perform appropriate actions. We also discuss how a program invokes the
+services of the OS through a software interrupt. A system call is the term used
+for this method of invoking OS services.
+2.3.1 Controlling Execution of Programs
+To control execution of user programs, the OS has to ensure that various fields of
+the PSW contain appropriate information at all times when user programs are in
+execution, which includes the time when a new program's execution is initiated,
+and also times when its execution is resumed after an interruption. From the
+discussion in Section 2.2, the key points in this function are:
+1. At the start of execution of a user program, the PSW should contain the
+     following information:
+     a. The program counter field (PC field) should contain the address of the first
+     instruction in the program.
+     b. The mode field (M field) should contain a 1 such that the CPU is in the
+     user mode.
+
+
+
+40  Part 1  Overview
+                      c. The memory protection information field (MPI field) should contain infor-
+                      mation about the start address and size of the memory area allocated to
+                      the program.
+                      d. The interrupt mask field (IM field) should be set so as to enable all
+                      interrupts.
+            2.        When a user program's execution is interrupted, the CPU state--which con-
+                      sists of the contents of the PSW and the general-purpose registers--should
+                      be saved.
+            3.        When execution of an interrupted program is to be resumed, the saved CPU
+                      state should be loaded into the PSW and the general-purpose registers.
+                      The OS maintains a table to contain information relevant to this function.
+            For now, we will use the generic name program table for it--in later chapters
+            we will discuss specific methods of organizing this information such as the pro-
+            cess control block (PCB). Each entry in the table contains information pertaining
+            to one user program. One field in this entry is used to store information about
+            the CPU state. The kernel puts information mentioned in item 1 into this field
+            when the program's execution is to be initiated, and saves the CPU state into this
+            field when the program's execution is interrupted--it achieves this by copying
+            information from the saved PSW information area when the program is inter-
+            rupted. Information stored in this field is used while resuming operation of the
+            program. Effectively, relevant fields of the PSW would contain the information
+            mentioned in items 1(b)­1(d) whenever the CPU is executing instructions of the
+            program.
+            2.3.2 Interrupt Servicing
+            As mentioned in Section 2.2.5, for simplicity, we assume that an interrupt vec-
+            tor has the same format as the PSW. The kernel forms the interrupt vectors for
+            various classes of interrupts when the operating system is booted. Each inter-
+            rupt vector contains the following information: a 0 in the mode (M) field to
+            indicate that the CPU should be put in the kernel mode, the address of the
+            first instruction of the interrupt servicing routine in the program counter (PC)
+            field, a 0 and the size of memory in the memory protection information (MPI)
+            field--so that the interrupt servicing routine would have access to the entire
+            memory--and an interrupt mask in the interrupt mask (IM) field that either
+            disables other interrupts from occurring or enables only higher-priority inter-
+            rupts to occur, in accordance with the philosophy of nested interrupt servicing
+            employed in the operating system (we discuss details of this philosophy later in this
+            section).
+                      Figure 2.7 contains a schematic of operation of the kernel--it gets control
+            only when an interrupt occurs, so its operation is said to be interrupt-driven. The
+            interrupt action actually transfers control to an appropriate interrupt servicing
+            routine, also called an ISR, which perform the actions shown in the dashed box.
+            It first saves information about the interrupted program in the program table, for
+            use when the program is scheduled again. This information consists of the PSW
+
+
+
+                                                        Chapter 2  The OS, the Computer, and User  Programs  41
+                                Occurrence of
+                                an interrupt
+                                Context
+                                save
+                                                        Interrupt
+                                                        servicing
+                                Event
+                                handling
+                                Scheduling
+                                Exit from
+                                kernel
+Figure  2.7  Interrupt-driven operation of the kernel.
+Table 2.3    Event Handling     Actions of the Kernel
+Interrupt                       Event handling action
+Arithmetic exception            Abort the program.
+Memory protection violation     Abort the program.
+Software interrupt              Satisfy the program's request if possible; otherwise,
+                                note it for future action.
+End of I/O operation            Find which program had initiated the I/O
+                                operation and note that it can now be considered
+                                for scheduling on the CPU. Initiate a pending I/O
+                                operation, if any, on the device.
+Timer interrupt                 (1) Update the time of the day. (2) Take appropriate
+                                action if a specified time interval has elapsed.
+saved by the interrupt action, contents of GPRs, and information concerning
+memory and resources used by the program. It is called the execution context,
+or simply context, of a program; the action that saves it is called the context save
+action. The interrupt servicing routine now takes actions appropriate to the event
+that had caused the interrupt. As mentioned in Section 2.2.5, the interrupt code
+field of the saved PSW provides useful information for this purpose. Table 2.3
+summarizes these actions, which we call the event handling actions of the kernel.
+The scheduling routine selects a program and switches the CPU to its exe-
+cution by loading the saved PSW and GPRs of the program into the CPU.
+Depending on the event that caused the interrupt and the state of other programs,
+it may be the same program that was executing when the interrupt occurred, or
+it may be a different program.
+
+
+
+42  Part 1  Overview
+                      Example 2.3 illustrates interrupt servicing and scheduling when an interrupt
+                 occurs signaling the end of an I/O operation.
+·
+    Example 2.3  Interrupt Servicing in a Hypothetical Kernel
+                 Figure 2.8(a) shows the arrangement of interrupt vectors and interrupt ser-
+                 vicing routines in memory, while Figure 2.8(b) shows contents of the PSW at
+                 various times during servicing of an I/O interrupt. The interrupt vectors are
+                 formed by the OS boot procedure. Each interrupt vector contains the address
+                 of an interrupt servicing routine, an interrupt mask and a 0 in the mode field.
+                 A user program is about to execute the instruction that exists at the address
+                 ddd in memory when an interrupt occurs signaling the end of an I/O operation
+                 on device d1. The leftmost part of Figure 2.8(b) shows the PSW contents at
+                 this time.
+                      Step 1 of the interrupt action puts d1 in the IC field of the PSW and saves
+                 the PSW in the saved PSW information area. The saved PSW contains a 1
+                 in the mode field, ddd in the PC field, and d1 in the IC field. The contents
+                 of the interrupt vector for the I/O completion interrupt are loaded into the
+                 PSW. Effectively, the CPU is put in the kernel mode of operation, and control
+                 is transferred to the routine that has the start address bbb, which is the I/O
+                 interrupt servicing routine (see the arrow marked Aiin Figure 2.8(a), and the
+                 PSW contents shown in Figure 2.8(b)).
+                      The I/O interrupt servicing routine saves the PSW and contents of the
+                 GPRs in the program table. It now examines the IC field of the saved PSW,
+                 finds that device d1 has completed its I/O operation, and notes that the program
+                 that had initiated the I/O operation can be considered for scheduling. It now
+                 transfers control to the scheduler (see the arrow marked Biin Figure 2.8(a)).
+                 The scheduler happens to select the interrupted program itself for execution, so
+                 the kernel switches the CPU to execution of the program by loading back the
+                 saved contents of the PSW and GPRs (see arrow marked Ciin Figure 2.8(a)).
+                 The Program would resume execution at the instruction with the address ddd
+                 (see the PSW contents in the rightmost part of Figure 2.8(b)).
+                 ·
+                 Nested Interrupt Servicing  Figure 2.9(a) diagrams the interrupt servicing ac-
+                 tions of Example 2.3 in the simplest form: interrupt servicing routine "a" handles
+                 the interrupt and the scheduler selects the interrupted program itself for execu-
+                 tion. If another interrupt occurs, however, while interrupt servicing routine "a"
+                 is servicing the first interrupt, it will lead to identical actions in the hardware and
+                 software. This time, execution of interrupt servicing routine "a" is the "program"
+                 that will be interrupted; the CPU will be switched to execution of another inter-
+                 rupt servicing routine, say, interrupt servicing routine "b" (see Figure 2.9(b)). This
+                 situation delays servicing of the first interrupt, and it also requires careful coding
+
+
+
+                                                    Chapter 2           The OS, the Computer, and     User  Programs  43
+                                                         Memory
+                          aaa:                      bbb:                         ccc:
+                          Save PSW                  Save PSW               B
+                          and GPRs                  and GPRs                     {Select a
+                                                                                 program}
+                          {Handle the               {Handle the
+                          event}                         event}                  Load GPRs
+                                                                                 Transfer to
+                          Branch ccc                Branch ccc                   user program
+                          Program interrupt         I/O interrupt
+                          servicing                      servicing            C  Scheduler
+                                routine                   routine
+                                            I/O          PC         M            PC            M
+                                         interrupt       bbb        0            ddd           1
+                  A                         vector                                             d1
+Interrupt action                                              IM                               IC
+switches the CPU                                         PC         M
+        when an                          Program         aaa        0
+I/O interrupt                            interrupt
+        occurs                              vector            IM
+                                                    Interrupt vectors            Saved PSW
+                          Kernel                              area               information area
+                                                                                 Kernel switches
+                                    <previous instruction>                       the CPU
+                                                                                 to return
+                          ddd: <next instruction>                                from interrupt
+                                                                                 servicing
+                          User program
+(a) Interrupt vectors and interrupt servicing routines.
+             PC   M       PC             M               PC         M            PC            M
+             ddd  1       bbb            0               ccc        0            ddd           1
+                                    d1                              d1                         d1
+                  IC                IC                              IC                         IC
+        Before interrupt  After action      A       After action        B        After action      C
+(b) PSW contents at various times.
+Figure  2.8  Servicing of an I/O interrupt and return to the same user     program.
+of the kernel to avoid a mix-up if the same kind of interrupt were to arise again
+(also see Exercise 2.6). However, it enables the kernel to respond to high-priority
+interrupts readily.
+Operating systems have used two approaches to nested interrupt servicing.
+Some operating systems use the interrupt mask (IM) field in the interrupt vector
+
+
+
+44  Part 1  Overview
+                        User     Interrupt    User                Interrupt   Interrupt
+                        program  routine "a"  program            routine "a"  routine "b"
+                        (a)                   (b)
+            Figure 2.9  Simple and nested interrupt servicing.
+            to mask off all interrupts while an interrupt servicing routine is executing (see
+            Figure 2.8). This approach makes the kernel noninterruptible, which simplifies
+            its design because the kernel would be engaged in servicing only one interrupt
+            at any time. However, noninterruptibility of the kernel may delay servicing of
+            high-priority interrupts. In an alternative approach, the kernel sets the interrupt
+            mask in each interrupt vector to mask off less critical interrupts; it services more
+            critical interrupts in a nested manner. Such a kernel is called an interruptible kernel
+            or a preemptible kernel. Data consistency problems would arise if two or more
+            interrupt servicing routines activated in a nested manner update the same kernel
+            data, so the kernel must use a locking scheme to ensure that only one interrupt
+            processing routine can access such data at any time.
+            User Program Preemption  In the scheme of Figure 2.7, preemption of a user
+            program occurs implicitly when an interrupt arises during its execution and the
+            kernel decides to switch the CPU to some other program's execution. Recall from
+            Example 2.3 that the interrupted program's context is stored in the program table,
+            so there is no difficulty in resuming execution of a preempted program when it is
+            scheduled again.
+            2.3.3 System Calls
+            A program needs to use computer resources like I/O devices during its execution.
+            However, resources are shared among user programs, so it is necessary to prevent
+            mutual interference in their use. To facilitate it, the instructions that allocate or
+            access critical resources are made privileged instructions in a computer's archi-
+            tecture. This way, these instructions cannot be executed unless the CPU is in the
+            kernel mode, so user programs cannot access resources directly; they must make
+            requests to the kernel, and the kernel must access resources on their behalf. The
+            kernel provides a set of services for this purpose.
+                      In a programmer view, a program uses a computer's resources through state-
+            ments of a programming language. The compiler of a programming language
+            implements the programmer view as follows: While compiling a program, it
+
+
+
+                                                      Chapter  2  The OS, the Computer,  and  User  Programs  45
+                                                                  Memory
+                                                                  Kernel              4
+                                                                                      2
+                                                      call     1_open(info);          1
+                                    Compiled code                                     3
+                                    of the program    call     1_read(info)..;
+open      (info);                   Library function           system call ...
+                                    to open file
+read      (info)   ...;             Library function           system call ...
+                                    to read data
+(a)                                 (b)
+Figure 2.10 A schematic of  system  calls: (a) a program and   (b) an execution time
+arrangement.
+replaces statements concerning use of computer resources by calls on library
+functions that implement use of the resources. These library functions are then
+linked with the user program. During execution, the user program calls a library
+function and the library function actually uses the resource through a kernel ser-
+vice. We still need a method by which a library function can invoke the kernel
+to utilize one of its services. We will use system call as a generic term for such
+methods.
+Figure 2.10 shows a schematic of this arrangement. The program shown
+in Figure 2.10(a) opens file info and reads some data from it. The compiled
+program has the form shown in Figure 2.10(b). It calls a library function to open
+                                                      1i. The library function invokes
+the file; this call is shown by the arrow marked
+the kernel service for opening a file through a system call (see the arrow marked
+2i). The kernel service returns to the library function after opening the file, which
+returns to the user program. The program reads the file analogously through a
+                                                                                              3i
+call on a library function, which leads to a system call (see arrows marked
+and 4i).
+A system call is actually implemented through the interrupt action described
+earlier, hence we define it as follows:
+Definition 2.1 System Call          A request that a program makes to the kernel
+through a software interrupt.
+We assume that the software interrupt instruction mentioned in Section 2.2.5
+has the format
+                                    SI   <int_code>
+
+
+
+46  Part 1  Overview
+                 where the value of <int_code>, which is typically an integer in the range 0­255,
+                 indicates which service of the kernel is being requested. A program interrupt
+                 occurs when a program executes this instruction, and Step 1 of the interrupt
+                 action as shown in Figure 2.6 copies <int_code> into the interrupt code (IC) field
+                 of the PSW. The interrupt servicing routine for program interrupts analyzes the
+                 interrupt code field in the saved PSW information area to know the request made
+                 by the program.
+                      A system call may take parameters that provide relevant information for the
+                 invoked kernel service, e.g., the system call to open a file in Figure 2.10 would take
+                 the filename info as a parameter, and the system call to read data would take
+                 parameters that indicate the filename, number of bytes of data to be read, and the
+                 address in memory where data is to be delivered, etc. Several different methods
+                 can be used to pass parameters--parameters can be loaded into registers before
+                 the system call is made, they can be pushed on the stack, or they can be stored
+                 in an area of memory and the start address of the memory area can be passed
+                 through a register or the stack.
+                      The next example describes execution of a system call to obtain the current
+                 time of day.
+·
+    Example 2.4  System Call in a Hypothetical OS
+                 A hypothetical OS provides a system call for obtaining the current time. Let
+                 the code for this time-of-day service be 78. When a program wishes to know
+                 the time, it executes the instruction SI  78, which causes a software interrupt.
+                 78 is entered in the interrupt code field of the PSW before the PSW is saved
+                 in the saved PSW information area. Thus the value d1 in the IC field of the
+                 saved PSW in Figure 2.8 would be 78. As shown in Figure 2.8, the interrupt
+                 vector for program interrupts contains aaa in its PC field. Hence the CPU is
+                 switched to execution of the routine with the start address aaa. It finds that the
+                 interrupt code is 78 and realizes that the program wishes to know the time of
+                 the day. According to the conventions defined in the OS, the time information
+                 is to be returned to the program in a standard location, typically in a data
+                 register. Hence the kernel stores this value in the entry of the program table
+                 where the contents of the data register were saved when the interrupt occurred.
+                 This value would be loaded into the data register when the CPU is switched
+                 back to execution of the interrupted program.
+                 ·
+                      In accordance with the schematic of Figure 2.10, we will assume that a pro-
+                 gram written in a programming language like C, C++, or Java calls a library
+                 function when it needs a service from the OS, and that the library function actu-
+                 ally makes a system call to request the service. We will use the convention that
+                 the name of the library function is also the name of the system call. For example,
+                 in Example 2.4, a C program would call a library function gettimeofday to
+                 obtain the time of day, and this function would make the system call gettimeofday
+                 through the instruction SI  78 as described in Example 2.4.
+
+
+
+                                      Chapter 2        The OS, the Computer, and    User  Programs           47
+Table 2.4    Some Linux System Calls
+Call number  Call name       Description
+     1       exit            Terminate execution of this program
+     3       read            Read data from a file
+     4       write           Write data into a file
+     5       open            Open a file
+     6       close           Close a file
+     7       waitpid         Wait for a program's execution to terminate
+     11      execve          Execute a program
+     12      chdir           Change working directory
+     14      chmod           Change file permissions
+     39      mkdir           Make a new directory
+     74      sethostname     Set hostname of the computer system
+     78      gettimeofday    Get time of day
+     79      settimeofday    Set time of day
+     An operating system provides system calls for various purposes like initia-
+tion and termination of programs, program synchronization, file operations, and
+obtaining information about the system. The Linux operating system provides
+close to 200 system calls; some of these calls are listed in Table 2.4. These sys-
+tem calls can also be invoked in a C or C++ program through the call names
+mentioned in Table 2.4; an assembly language program can invoke them directly
+through the SI instruction.
+2.4  SUMMARY                                                                                                 ·
+As mentioned in the first chapter, a modern OS can     instructions in user programs at other times. It
+service several user programs simultaneously. The      is achieved by sending a special signal, called an
+OS achieves it by interacting with the computer        interrupt, to the CPU. Interrupts are sent at the
+and user programs to perform several control func-     occurrence of a situation such as completion of an
+tions. In this chapter we described relevant features  I/O operation, or a failure of some sort. A software
+of a computer and discussed how they are used by       interrupt known as a system call is sent when a
+the OS and user programs.                              program wishes to use a kernel service such as
+     The operating system is a collection of rou-      allocation of a resource or opening of a file.
+tines. The instructions in its routines must be exe-   The CPU contains a set of control registers
+cuted on the CPU to realize its control functions.     whose contents govern its functioning. The pro-
+Thus the CPU should execute instructions in the        gram status word (PSW) is the collection of control
+OS when a situation that requires the operating sys-   registers of the CPU; we refer to each control
+tem's attention occurs, whereas it should execute      register as a field of the PSW. A program whose
+
+
+
+48           Part 1       Overview
+execution was interrupted should be resumed at a                     larger random access memory (RAM)--which we
+later time. To facilitate this, the kernel saves the                 will simply call memory--and a disk. The CPU
+CPU state when an interrupt occurs. The CPU                          accesses only the cache. However, the cache con-
+state consists of the PSW and program-accessible                     tains only some parts of a program's instructions
+registers, which we call general-purpose registers                   and data. The other parts reside in memory; the
+(GPRs). Operation of the interrupted program is                      hardware associated with the cache loads them into
+resumed by loading back the saved CPU state into                     the cache whenever the CPU tries to access them.
+the PSW and GPRs.                                                    The effective memory access time depends on what
+    The CPU has two modes of operation con-                          fraction of instructions and data accessed by the
+trolled by the mode (M) field of the PSW. When                       CPU was found in the cache; this fraction is called
+the CPU is in the user mode, it cannot execute                       the hit ratio.
+sensitive instructions like those that load informa-                 The input-output system is the slowest unit
+tion into PSW fields like the mode field, whereas                    of a computer; the CPU can execute millions of
+it can execute all instructions when it is in the                    instructions in the amount of time required to
+kernel mode. The OS puts the CPU in the user                         perform an I/O operation. Some methods of per-
+mode while it is executing a user program, and                       forming an I/O operation require participation of
+puts the CPU in the kernel mode while it is execut-                  the CPU, which wastes valuable CPU time. Hence
+ing instructions in the kernel. This arrangement                     the input-output system of a computer uses direct
+prevents a program from executing instructions                       memory access (DMA) technology to permit the
+that might interfere with other programs in the                      CPU and the I/O system to operate independently.
+system.                                                              The operating system exploits this feature to let the
+    The memory hierarchy of a computer pro-                          CPU execute instructions in a program while I/O
+vides the same effect as a fast and large memory,                    operations of the same or different programs are
+though   at  a       low  cost.  It   contains       a  very  fast   in progress. This technique reduces CPU idle time
+and small memory called a cache, a slower and                        and improves system performance.
+TEST     YOUR CONCEPTS                                                                                                      ·
+    2.1  Classify each of the following statements as true                f. A memory protection violation leads to a
+         or false:                                                        program interrupt.
+         a.  The     condition   code  (i.e.,  flags)   set  by  an       g. The kernel becomes aware that an I/O opera-
+             instruction   is    not   a  part  of      the   CPU         tion has completed when a program makes a
+             state.                                                       system call to inform it that the I/O operation
+         b. The state of the CPU changes when a pro-                      has ended.
+             gram executes a no-op (i.e., no operation)              2.2  Which of the following should be privileged in-
+             instruction.                                                 structions? Explain why.
+         c. The      software    interrupt     (SI)     instruction       a. Put the CPU in kernel mode
+             changes the mode of the CPU to kernel mode.                  b. Load the size register
+         d. Branch instructions in a program may lead                     c. Load a value in a general-purpose register
+             to low spatial locality, but may provide high                d. Mask off some interrupts
+             temporal locality.                                           e. Forcibly terminate an I/O operation
+         e. When a DMA is used, the CPU is involved in
+             data transfers to an I/O device during an I/O
+             operation.
+
+
+
+                                                          Chapter 2  The OS, the Computer, and User Programs                  49
+EXERCISES                                                                                                                         ·
+     2.1  What use does the kernel make of the interrupt             2.9      A computer has two levels of cache memories,
+          code field in the PSW?                                              which provide access times that are 0.01 and
+     2.2  The CPU should be in the kernel mode while                          0.1 times the access time of memory. If the hit
+          executing the kernel code and in the user mode                      ratio in each cache is 0.9, the memory has an
+          while executing a user program. Explain how it                      access time of 10 microseconds, and the time
+          is achieved during operation of an OS.                              required to load a cache block is 5 times the
+     2.3  The kernel of an OS masks off all interrupts dur-                   access time of the slower memory, calculate the
+          ing interrupt servicing. Discuss the advantages                     effective memory access time.
+          and disadvantages of such masking.                         2.10     A computer has a CPU that can execute 10 mil-
+     2.4  A  computer     system    has  the   clock-tick-based               lion instructions per second and a memory that
+          timer arrangement described in Section 2.2.5.                       has a transfer rate of 100 million bytes/second.
+          Explain how this arrangement can be used to                         When interrupt I/O is performed, the interrupt
+          maintain the time of day. What are the limita-                      routine has to execute 50 instructions to trans-
+          tions of this approach?                                             fer 1 byte between memory and an I/O device.
+     2.5  An OS supports a system call sleep, which puts                      What is the maximum data transfer rate during
+          the program making the call to sleep for the                        I/O operations implemented by using the follow-
+          number of seconds indicated in the argument                         ing I/O modes: (a) interrupt I/O and (b) DMA-
+          of the sleep call. Explain how this system call                     based I/O.
+          is implemented.                                            2.11     Several units of an I/O device that has a peak
+     2.6  A computer system organizes the saved PSW                           data transfer rate of 10 thousand bytes/second
+          information     area  as  a  stack.  It  pushes  con-               and operates in the interrupt I/O mode are con-
+          tents of the PSW onto this stack during Step 2                      nected to the computer in Exercise 2.10. How
+          of the interrupt action (see Figure 2.6). Ex-                       many of these units can operate at full speed at
+          plain the advantages of a stack for interrupt                       the same time?
+          servicing.                                                 2.12     A hypothetical OS supports two system calls
+     2.7  If the request made by a program through a                          for performing I/O operations. The system call
+          system call cannot be satisfied straightaway, the                   init_io initiates an I/O operation, and the sys-
+          kernel informs the scheduling component that                        tem call await_io ensures that the program would
+          the program should not be selected for execu-                       execute further only after the I/O operation has
+          tion until its request is met. Give examples of                     completed. Explain all actions that take place
+          such requests.                                                      when the program makes these two system calls.
+     2.8  A hypothetical OS provides a system call for                        (Hint: When none of the programs in the OS can
+          requesting   allocation   of   memory.   An     experi-             execute on the CPU, the OS can put the CPU
+          enced programmer offers the following advice:                       into an infinite loop in which it does nothing. It
+          "If your program contains many requests for                         would come out of the loop when an interrupt
+          memory, you can speed up its execution by com-                      occurs.)
+          bining all these requests and making a single
+          system call." Explain why this is so.
+BIBLIOGRAPHY                                                                                                                      ·
+Smith (1982) and Handy (1998) describe cache mem-                    computer  architecture   and  organization,  e.g.,  Hayes
+ory  organizations.    Przybylski      (1990)  discusses   cache     (1997), Patterson and Hennessy (2005), Hennessy and
+and memory hierarchy design. Memory hierarchy and                    Patterson (2002), Hamacher et al. (2002), and Stallings
+I/O organization are also covered in most books on                   (2003).
+
+
+
+50        Part 1  Overview
+    Most books on operating systems discuss the sys-       8.   Hennessy, J., and D. Patterson (2002): Computer
+tem calls interface. Bach (1986) contains a useful syn-         Architecture: A Quantitative Approach, 3rd ed.,
+opsis of Unix system calls. O'Gorman (2003) describes           Morgan Kaufmann, San Mateo, Calif.
+interrupt processing in Linux. Beck et al. (2002), Bovet   9.   Love, R. (2005): Linux Kernel Development,
+and Cesati (2005), and Love (2005) contain extensive dis-       2nd ed., Novell Press.
+cussions of Linux system calls. Mauro and McDougall        10.  Mauro, J., and R. McDougall (2006): Solaris
+(2006) describes system calls in Solaris, while Russi-          Internals, 2nd ed., Prentice Hall, Englewood
+novich and Solomon (2005) describes system calls in             Cliffs, N.J.
+Windows.                                                   11.  Patterson, D., and J. Hennessy (2005): Computer
+1.  Bach, M. J. (1986): The Design of the Unix                  Organization and Design: The Hardware/Software
+    Operating System, Prentice-Hall, Englewood                  Interface, 3rd ed., Morgan Kaufman, San Mateo,
+    Cliffs, N.J.                                                Calif.
+2.  Beck, M., H. Bohme, M. Dziadzka, U. Kunitz,            12.  Przybylski, A. (1990): Cache and Memory
+    R. Magnus, C. Schroter, and D. Verworner                    Hierarchy Design: A Performance-Directed
+    (2002): Linux Kernel Programming, 3rd ed.,                  Approach, Morgan Kaufmann, San Mateo,
+    Pearson Education, New York.                                Calif.
+3.  Bovet, D. P., and M. Cesati (2005): Understanding      13.  Russinovich, M. E., and D. A. Solomon (2005):
+    the Linux Kernel, 3rd ed., O'Reilly, Sebastopol.            Microsoft Windows Internals, 4th ed., Microsoft
+4.  O'Gorman, J. (2003): Linux Process Manager:                 Press, Redmond, Wash.
+    The internals of Scheduling, Interrupts and            14.  Smith, A. J. (1982): "Cache memories," ACM
+    Signals, John Wiley, New York.                              Computing Surveys, 14, 473­530.
+5.  Hamacher, C., Z. Vranesic, and S. Zaky (2002):         15.  Stallings, W. (2003): Computer Organization and
+    Computer Organization, 5th ed., McGraw-Hill,                Architecture, 6th ed., Prentice Hall, Upper Saddle
+    New York.                                                   River, N.J.
+6.  Handy, J. (1998): The Cache Memory Book,               16.  Tanenbaum, A. (1998): Structured Computer
+    2nd ed., Academic Press, New York.                          Organization, 4th ed., Prentice Hall, Englewood
+7.  Hayes, J. (1997): Computer Architecture and                 Cliffs, N.J.
+    Organization, 3rd ed., McGraw-Hill, New York.

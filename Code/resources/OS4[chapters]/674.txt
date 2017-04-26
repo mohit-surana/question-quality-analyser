@@ -1,0 +1,1755 @@
+Distributed Operating Systems
+
+
+                                       Chapte                                            r  16
+Distributed Operating
+Systems
+A distributed system consists of many computer systems, each having its
+      own clock and memory, connected to a network and operating under a
+      distributed operating system. Its key benefits are sharing of resources
+located in different computers, reliability of operation through redundancy
+of CPUs and resources across the computer systems, and speedup of a user
+application achieved by operating its processes in different computers. Fea-
+tures of four hardware and software components are important for realizing
+these benefits--computer systems in the distributed system, the network connect-
+ing them, distributed computations performed in the system, and the distributed
+operating system.
+The role of these four components can be described as follows: A computer
+system forms a node of a distributed system. Its architecture influences its ability
+to contribute to computation speedup and reliability of operation. The operat-
+ing system integrates the operation of nodes of a distributed system to provide
+resource sharing, computation speedup, and reliability. To exploit the OS fea-
+tures for access to nonlocal resources and computation speedup, a user employs
+a distributed computation, whose actions are performed in several nodes of the
+system. Such a computation uses interprocess communication protocols to reli-
+ably transfer messages containing data and computations between nodes. These
+messages are actually sent over the network through network protocols.
+In this chapter, we discuss important features of these four components of a
+distributed system to create the background for a study of distributed operating
+systems. We then identify design issues that arise in a distributed OS because of
+the distributed nature of its computing environment. We identify five such design
+issues. These issues are discussed in detail in subsequent chapters.
+16.1  FEATURES OF DISTRIBUTED SYSTEMS                                                 ·
+A distributed system can consist of two or more computer systems, each with
+its own clock and memory, some networking hardware, and a capability of
+                                                                                            653
+
+
+
+654  Part 5  Distributed Operating Systems
+             Table 16.1       Benefits           of  a Distributed System
+             Feature                                 Description
+             Resource sharing                        An application may use resources located in different
+                                                     computer systems.
+             Reliability                             A distributed system provides availability, i.e.,
+                                                     continuity of services, despite occurrence of faults. It is
+                                                     achieved through redundancies in the network and
+                                                     resources, and in OS services.
+             Computation speedup                     Parts of a computation can be executed in parallel in
+                                                     different computer systems, thus reducing duration of
+                                                     an application, i.e., its running time.
+             Communication                           Users or their subcomputations located at different
+                                                     nodes can communicate reliably by using OS services.
+             Incremental growth                      Open system standards permit new subsystems to be
+                                                     added to a distributed system without having to replace
+                                                     or upgrade existing subsystems. This way, the cost of
+                                                     enhancing a capability of a distributed system is
+                                                     proportional to the additional capability desired.
+             performing some of the control functions of the OS (see Definition 3.8). Benefits
+             of a distributed system were discussed earlier in Section 3.8; these are summarized
+             here in Table 16.1.
+                Use of distributed systems spread rapidly in 1990s when computer hardware
+             prices  dropped   and          use  of  the  open    system    standard  facilitated       incremen-
+             tal growth of a system. An open system has well-defined and nonproprietary
+             interfaces with its own components and with other systems. These interfaces
+             are typically developed or approved by a standards body, so they have ready
+             acceptance within the computer industry. Their use enables addition of new com-
+             ponents and subsystems to a computer system, thereby facilitating incremental
+             growth. The LAN is an excellent example of an open system. Computer systems
+             ranging from supercomputers to cheap PCs can be connected to it because they
+             all use a standard interface. When a distributed system is implemented by using
+             a LAN, its computing capability can be enhanced incrementally by connecting
+             new computer systems to the LAN.
+                The benefits of distributed systems listed in Table 16.1 are realized using the
+             following hardware and software components:
+             ·  Hardware components: Individual computer systems and networking hard-
+                ware such as cables, links, and routers.
+             ·  Software components: Operating system components that handle creation
+                and scheduling of distributed computations and use of distant resources,
+                OS    and  programming               language     features  that     support  writing     of      dis-
+                tributed   computations,             and  networking    software,    which    ensures     reliable
+                communication.
+
+
+
+                                                                 Chapter 16    Distributed Operating Systems  655
+Several terms are used for a computer system that is a part of a distributed
+system. We use the following convention: a host is a computer system in a physical
+sense, a node is a computer system in a logical sense, and a site is a location
+in a distributed system that contains one host. Entities, such as processes and
+resources, in the same site are said to be local entities and those in different sites
+are said to be distant entities.
+16.2    NODES OF DISTRIBUTED SYSTEMS                                                                          ·
+A distributed system can contain different types of nodes. A minicomputer node
+has a single CPU that is shared to service applications of several users. A work-
+station node has a single CPU but services one or more applications initiated by
+a single user. A node that is a multiprocessor system is called a processor pool
+node. It contains several CPUs, and the number of CPUs may exceed the number
+of users whose applications are serviced in parallel.
+A cluster is a group of hosts that work together in an integrated manner.
+A cluster constitutes a single node of a distributed system; each individual host
+is a node within the cluster. Figure 16.1 is a schematic diagram of a cluster. The
+cluster is shown to have two nodes; however, more nodes may be added to provide
+incremental growth. Each node is a computer system having its own memory
+and I/O devices. The nodes share disk storage, such as a multihost RAID, which
+offers both high transfer rate and high reliability (see Section 14.3.5), or a storage
+area network, which offers incremental growth (see Section 14.3.4). Each node
+is connected to two networks--a private LAN to which only the nodes in the
+cluster are connected, and a public network through which it can communicate
+with other nodes in the distributed system.
+Cluster software controls operation of all nodes in a cluster. It can pro-
+vide computation speedup by scheduling subtasks in an application on different
+nodes within the cluster, and reliability by exploiting redundancy of CPUs
+and resources within the cluster. Section 16.3 describes how these features are
+implemented in the Windows cluster server and the Sun Cluster.
+                                                           RAID
+        Node  P     CU         CU                                CU  CU     P  Node
+                 M                                                       M
+                                           Private LAN
+                                           Public network
+Figure  16.1  Architecture of  a cluster.
+
+
+
+656  Part 5  Distributed Operating Systems
+             16.3    INTEGRATING OPERATION OF NODES
+                     OF A DISTRIBUTED SYSTEM                                                         ·
+             To realize the benefits of resource sharing, reliability, and computation speedup
+             summarized in Table 16.1, processes of an application should be scattered across
+             various nodes in the system (1) whenever possible, to achieve computation
+             speedup and efficiency of resources, and (2) whenever necessary to provide reli-
+             ability. It is achieved by integrating the operation of various nodes in the system
+             through interactions of their kernels. In this section, we sample features of a few
+             systems to illustrate different ways in which operation of nodes is integrated. In
+             Section 16.8, we discuss design issues in distributed operating systems.
+             Network Operating Systems         A network operating system is the earliest form
+             of operating system for distributed architectures. Its goal is to provide resource
+             sharing among two or more computer systems that operate under their own OSs.
+             As shown in the schematic of Figure 16.2, the network OS exists as a layer between
+             the kernel of the local OS and user processes. If a process requests access to a
+             local resource, the network OS layer simply passes the request to the kernel of the
+             local OS. However, if the request is for access to a nonlocal resource, the network
+             OS layer contacts the network OS layer of the node that contains the resource
+             and implements access to the resource with its help. Many network operating
+             systems have been developed on top of the Unix operating system. The Newcastle
+             connection, also called Unix United, is a well-known network OS developed at the
+             University of Newcastle upon Tyne. It provided access to remote files by using
+             system calls that are identical with those used for local files.
+             A network OS is easier to implement than a full-fledged distributed OS. How-
+             ever, local operating systems retain their identities and operate independently, so
+             their functioning is not integrated and their identities are visible to users. In some
+             network OSs, a user had to log into a remote operating system before he could
+             utilize its resources. This arrangement implies that a user must know where a
+             resource is located in order to use it. A network OS cannot balance or optimize
+             utilization of resources. Thus, some resources in a node may be heavily loaded
+             while identical resources in other nodes may be lightly loaded or free. The net-
+             work OS also cannot provide fault tolerance--a computation explicitly uses a
+             resource id while accessing a resource, so it has to be aborted if the resource fails.
+                               User processes           User processes
+                               Network OS               Network OS
+                     Computer  layer                    layer                  Computer
+                     system 1  Kernel of                Kernel of              system 2
+                               local OS                 local OS
+             Figure  16.2  A network operating system.
+
+
+
+                                  Chapter 16  Distributed Operating                   Systems  657
+Windows and Sun Cluster Software  Cluster software is not a distributed oper-
+ating system; however, it contains several features found in distributed operating
+systems--it provides availability through redundancy of resources such as CPUs
+and I/O devices and computation speedup by exploiting presence of several CPUs
+within the cluster.
+The Windows cluster server provides fault tolerance support in clusters con-
+taining two or more server nodes. An application has to use a special application
+program interface (API) to access cluster services. Basic fault tolerance is pro-
+vided through RAIDs of level 0, 1, or 5 (see Section 14.3.5) that are shared by all
+server nodes. In addition, when a fault or a shutdown occurs in one server, the
+cluster server moves its functions to another server without causing a disruption
+in its services.
+A cluster is managed by distributed control algorithms, which are implemented
+through actions performed in all nodes (see Chapter 18). These algorithms require
+that all nodes must have a consistent view of the cluster, i.e., they must possess
+identical lists of nodes within the cluster. The following arrangement is used to
+satisfy this requirement: Each node has a node manager, which maintains the
+list of nodes in a cluster. The node manager periodically sends messages called
+heartbeats to other node managers to detect node faults. The node manager that
+detects a fault broadcasts a message containing details of the fault on the private
+LAN. On receiving this message, each node corrects its list of nodes. This event
+is called a regroup event.
+A resource in the cluster server can be a physical resource, a logical resource,
+or a service. A resource is implemented as a dynamic link library (DLL), so it is
+specified by providing a DLL interface. A resource belongs to a group. A group
+is owned by one node in the cluster at any time; however, it can be moved to
+another node in the event of a fault. The resource manager in a node is respon-
+sible for starting and stopping a group. If a resource fails, the resource manager
+informs the failover manager and hands over the group containing the resource
+so that it can be restarted at another node. When a node fault is detected, all
+groups located in that node are "pulled" to other nodes so that resources in
+them can be accessed. Use of a shared disk facilitates this arrangement. When a
+node is restored after a failure, the failover manager decides which groups can
+be handed over to it. This action is called a failback; it safeguards resource effi-
+ciency in the system. The handover and failback actions can also be performed
+manually.
+The network load balancing feature distributes the incoming network traf-
+fic among the server nodes in a cluster. It is achieved as follows: A single IP
+address is assigned to the cluster; however, incoming messages go to all server
+nodes in the cluster. On the basis of the current load distribution arrangement,
+exactly one of the servers accepts the message and responds to it. When a node
+fails, its load is distributed among other nodes, and when a new node joins, the
+load distribution is reconfigured to direct some of the incoming traffic to the
+new node.
+The Sun cluster framework integrates a cluster of two or more Sun systems
+operating under the Solaris OS to provide availability and scalability of services.
+
+
+
+658  Part 5  Distributed Operating Systems
+             Availability is provided through failover, whereby the services that were running
+             at a failed node are relocated to another node. Scalability is provided by sharing
+             the load across servers. Three key components of the Sun Cluster are global
+             process management, distributed file system, and networking. Global process
+             management provides globally unique process ids. This feature is useful in process
+             migration, wherein a process is transferred from one node to another to balance
+             the computational loads in different nodes, or to achieve computation speedup.
+             A migrated process should be able to continue using the same path names to
+             access files from a new node. Use of a distributed file system provides this feature.
+             Amoeba  Amoeba is a distributed operating system developed at the Vrije Uni-
+             versiteit in the Netherlands during the 1980s. The primary goal of the Amoeba
+             project is to build a transparent distributed operating system that would have the
+             look and feel of a standard time-sharing OS like Unix. Another goal is to provide
+             a testbed for distributed and parallel programming.
+             The Amoeba system architecture has three main components--X terminals,
+             a processor pool, and servers such as file and print servers. The X terminal is a user
+             station consisting of a keyboard, a mouse and a bit-mapped terminal connected
+             to a computer. The processor pool has the features described in Section 16.2.
+             The Amoeba microkernel runs on all servers, pool processors and terminals, and
+             performs the following four functions:
+             1. Managing processes and threads
+             2. Providing low-level memory management support
+             3. Supporting communication
+             4. Handling low-level I/O
+             Amoeba provides kernel-level threads and two communication protocols. One
+             protocol supports the client­server communication model through remote proce-
+             dure calls (RPCs), while the other protocol provides group communication. For
+             actual message transmission, both these protocols use an underlying Internet
+             protocol called the fast local Internet protocol (FLIP), which is a network layer
+             protocol in the ISO protocol stack (see Section 16.6.6).
+             Many functions performed by traditional kernels are implemented through
+             servers that run on top of a microkernel. Thus actions like booting, process
+             creation, and process scheduling are performed by servers. The file system is also
+             implemented as a file server. This approach reduces the size of the microkernel
+             and makes it suitable for a wide range of computer systems from servers to pool
+             processors. The concept of objects is central to Amoeba. Objects are managed
+             by servers and they are protected by using capabilities (see Section 15.7).
+             When a user logs in, a shell is initiated in some host in the system. As the user
+             issues commands, processes are created in some other hosts to execute the com-
+             mands. Thus a user's computation is spread across the hosts in the system; there is
+             no notion of a home machine for a user. This disregard for machine boundaries
+             shows how tightly all resources in the system are integrated. Amoeba uses the
+             processor pool model of nodes in the system. When a user issues a command,
+             the OS allocates a few pool processors to the execution of the command. Where
+             necessary, pool processors are shared across users.
+
+
+
+                                                         Chapter 16  Distributed Operating  Systems  659
+16.4  RELIABLE INTERPROCESS COMMUNICATION                                                            ·
+In a conventional OS, processes that wish to communicate through messages
+exist in the same host, and have unique ids assigned by its kernel. However, in a
+distributed system, processes existing in different nodes may wish to communicate
+with one another, hence the distributed OS assigns globally unique names to
+processes. It also provides an arrangement through which a process with a given
+name can be located in the system, so that other processes can communicate with
+it. We discuss both these features in Section 16.4.1.
+Once the location of a destination process is determined, a message meant
+for it can be sent to it over the network. However, message delivery may fail
+because of faults in communication links or nodes located in network path(s)
+to the destination process, hence processes must make their own arrangement
+to ensure reliable delivery of messages. This arrangement is in the form of an
+interprocess communication protocol (IPC protocol), which is a set of rules and
+conventions aimed at handling transient faults during message transmission. The
+sender and destination processes invoke protocol routines when they execute the
+send and receive statements. These routines perform necessary actions to
+ensure reliable delivery of messages.
+Table      16.2  summarizes  three        key  provisions  in     IPC         protocols--
+acknowledgments, time-outs, and retransmissions. An acknowledgment informs
+the sender process that its message has been delivered to the destination process.
+A time-out is said to have occurred if the sender process does not receive an
+acknowledgment in an expected interval of time. The message is now retransmit-
+ted. These steps are repeated until the sender process receives an acknowledgment.
+The protocol is implemented as follows: When a process sends a message, the
+protocol routine invoked by it makes a system call to request an interrupt at the
+end of a specific time interval. This interrupt is called a time-out interrupt. When
+the message is delivered to the destination process, the protocol routine invoked
+by the destination process sends an acknowledgment to the sender process to
+inform it that its message has been delivered. If the time-out interrupt occurs
+Table 16.2       Provisions  for Reliability in an IPC Protocol
+Provision                    Description
+Acknowledgment               When a process receives a message, the protocol
+                             routine invoked by it sends an acknowledgment to
+                             the sender of the message.
+Time-out                     The protocol specifies an interval of time within
+                             which it expects a sender process to receive an
+                             acknowledgment. A time-out is said to have occurred if
+                             the acknowledgment is not received within this interval.
+Retransmission of a          If a time-out interrupt occurs before the sender receives
+message                      an acknowledgment, the protocol routine invoked by
+                             the sender retransmits the message.
+
+
+
+660  Part 5  Distributed Operating Systems
+             in the sender's site before an acknowledgment is received, the protocol routine
+             retransmits the message and makes a system call to request another time-out
+             interrupt. These actions are repeated until the sender receives an acknowledg-
+             ment. A similar arrangement may be used to ensure that a reply, if any, sent by
+             the destination process reaches the sender process. We discuss IPC protocols in
+             Sections 16.4.2­16.4.3.
+             16.4.1 Naming of Processes
+             All entities in a distributed system, whether processes or resources, are assigned
+             unique names as follows: Each host in a system is assigned a systemwide unique
+             name, which can be either numeric or symbolic, and each process or resource
+             in  a  host  is  assigned      an  id  that  is  unique  in  the  host.  This  way,  the  pair
+             (<host_name>, <process_id>) is unique for each process and can be used as
+             its name. A process that wishes to send a message to another process uses a
+             pair like (human_resources, Pj) as the name of the destination process, where
+             human_resources is the name of a host. This name should be translated into
+             a network address for sending the message.
+                 To easily locate a host in the Internet, the Internet is partitioned into a set of
+             domains that have unique names, each domain is partitioned into smaller domains
+             that have unique names in the domain, and so on. A host has a unique name in the
+             immediately containing domain, but its name may not be unique in the Internet,
+             so a unique name for a host is formed by adding names of all the domains that
+             contain it, separated by periods, starting with the smallest domain and ending
+             with the largest domain. For example, the host name Everest.cse.iitb.ac.in refers
+             to the server Everest in the Computer Science and Engineering Department of
+             IIT Bombay, which is in the academic domain in India.
+                 The domain name space is hierarchically organized; the top level in the hier-
+             archy is occupied by an unnamed root domain. This domain contains a small
+             number of top-level domains that represent either organizations of a specific kind,
+             or organizations within a country. In the host name Everest.cse.iitb.ac.in, "in"
+             is the top-level domain representing India and "ac" is the name of a domain
+             containing academic organizations. Hence "ac.in" contains academic organiza-
+             tions in India. "ac" is called a second-level domain because its name contains
+             two domain names.
+                 Each host connected to the Internet has a unique address known as the Inter-
+             net protocol address (IP address). The domain name system (DNS) is a distributed
+             Internet directory service that provides the IP address of a host with a given name.
+             It has a name server in every domain, which contains a directory giving the IP
+             address of each host in the domain. When a process operating in a host hi wishes
+             to send a message to another process with the name (<host_name>, <process_
+             id>), host hi performs name resolution to determine the IP address of <host
+             name>. Host hi is called the resolver. Name resolution proceeds as follows: The
+             resolver knows the address of a name server for the root domain. To resolve the
+             name <host_name>, the resolver sends it to the name server of the root domain.
+             This name server responds by returning the IP address of a name server for the
+
+
+
+                                      Chapter 16                    Distributed Operating  Systems  661
+top-level domain in <host_name>. The resolver now sends <host_name> to this
+name server, which returns the address of a name server for the second-level
+domain, and so on, until a name server returns the address of the required host.
+Name resolution using name servers can be slow, so each resolver can cache
+some name server data. This technique speeds up repeated name resolution the
+same way a directory cache speeds up repeated references to the directory entry
+of a file (see Section 13.15). An IP address can be kept in the cache for the amount
+of time specified as the time to live, which is 1 hour. The name server of a domain
+is replicated to enhance its availability and to avoid contention.
+16.4.2 IPC Semantics
+IPC semantics is the set of properties of an IPC protocol. IPC semantics depend
+on the arrangement of acknowledgments and retransmissions used in an IPC
+protocol. Table 16.3 summarizes three commonly used IPC semantics.
+At-most-once semantics result when a protocol does not use acknowledg-
+ments or retransmission. These semantics are used if a lost message does not
+pose a serious threat to correctness of an application, or if the application knows
+how to recover from such situations. For example, an application that receives
+periodic reports from other processes knows when a message is not received as
+expected, so it may itself communicate with a sender whose message is lost and ask
+it to resend the message. These semantics provide high communication efficiency
+because acknowledgments and retransmissions are not used.
+At-least-once semantics result when a protocol uses acknowledgments and
+retransmission, because a destination process may receive a message more than
+Table 16.3  IPC Semantics
+Semantics                Description
+At-most-once semantics   A destination process either receives a message once, or
+                         does not receive it. These semantics are obtained when
+                         a process receiving a message does not send an
+                         acknowledgment and a sender process does not
+                         perform retransmission of messages.
+At-least-once semantics  A destination process is guaranteed to receive a
+                         message; however, it may receive several copies of the
+                         message. These semantics are obtained when a process
+                         receiving a message sends an acknowledgment, and a
+                         sender process retransmits a message if it does not
+                         receive an acknowledgment before a time-out occurs.
+Exactly-once semantics   A destination process receives a message exactly once.
+                         These semantics are obtained when sending of
+                         acknowledgments and retransmissions are performed
+                         as in at-least-once semantics; however, the IPC protocol
+                         recognizes duplicate messages and discards them so
+                         that the receiver process receives the message only once.
+
+
+
+662  Part 5  Distributed Operating Systems
+             once if an acknowledgment is lost or delayed because of congestion in the net-
+             work. A message received for the second or subsequent time is called a duplicate
+             message. An application can use at-least-once semantics only if processing of
+             duplicate messages does not pose any correctness problems such as updating of
+             data many times instead of only once.
+             Exactly-once semantics result when a protocol uses acknowledgments and
+             retransmission, but discards duplicate messages. These semantics hide transient
+             faults from both sender and receiver processes; however, the IPC protocol incurs
+             high communication overhead due to handling of faults and duplicate messages.
+             16.4.3 IPC Protocols
+             An IPC protocol specifies what actions should be performed at the sites of sender
+             and destination processes so that a message is delivered to a destination process
+             and its reply is delivered to the sender process. We describe how IPC protocols
+             are classified and present a couple of examples.
+             Reliable and Unreliable Protocols   A reliable protocol guarantees that a message,
+             or its reply, is not lost. It achieves this through at-least-once or exactly-once
+             semantics for both messages and their replies. An unreliable protocol does not
+             guarantee that a message or its reply would not be lost--it provides at-most-
+             once semantics either for messages or for their replies. As commented in the last
+             section, a reliable protocol incurs substantial overhead due to acknowledgments
+             and retransmission of messages and replies, whereas an unreliable protocol does
+             not incur these overheads.
+             Blocking and Nonblocking Protocols     As discussed in Chapter 9, it is common to
+             block a process that executes a receive system call if no messages have been sent
+             to it. There are no intrinsic reasons to block a process that executes a send system
+             call; however, blocking of a sender process may simplify a protocol, reduce its
+             overhead, and also add some desirable features to its semantics. For example, if a
+             sender process is blocked until its message is delivered to a destination process, the
+             message would never have to be retransmitted after the sender is activated, so the
+             message need not be buffered by the protocol after the sender is activated. Also,
+             blocking of the sender helps to provide semantics similar to the conventional
+             procedure call.
+             A protocol is a blocking protocol if a sender process is blocked until it receives
+             a reply to its message; otherwise, it is a nonblocking protocol. We assume that if
+             a protocol does not block a sender process, interrupt(s) will be generated to
+             notify the process of the arrival of a reply or an acknowledgment so that it can
+             take appropriate actions. Blocking and nonblocking protocols are also called
+             process-synchronous and asynchronous protocols, respectively.
+             16.4.3.1 The Request-Reply-Acknowledgment Protocol
+             The request-reply-acknowledgment (RRA) protocol is a reliable protocol for use
+             by processes that exchange requests and replies. Receipt of the reply implies that
+             the destination process has received the request, so a separate acknowledgment
+
+
+
+                                                          Chapter 16     Distributed Operating Systems  663
+             Request                    1
+             buffer                     2    Header       Reply
+                                        3                        Reply
+                                        4                        buffer
+                                        5
+                          Sender             Destination
+                          site                      site
+Figure 16.3  Operation of a blocking version of the request-reply-acknowledgment (RRA)
+protocol.
+of the request is not needed. The sender, however, sends an an explicit acknowl-
+edgment of the reply. A blocking version of the RRA protocol is presented as
+Algorithm 16.1. Figure 16.3 depicts its operation.
+Algorithm 16.1 A Blocking Version of the RRA Protocol
+1.  When a process makes a request: The request is copied in a buffer called the
+    request buffer in its site and also sent to the destination process in the form of
+    a message. A system call is made to request a time-out interrupt. The sender
+    process is blocked until a reply is received from the destination process.
+2.  When a destination process receives a message: The destination process ana-
+    lyzes the request contained in the message and prepares a reply. The reply is
+    copied in a buffer called the reply buffer in the destination site and also sent
+    to the sender process. A system call is made to request a time-out interrupt.
+3.  When a time-out occurs in the sender process: The copy of the request stored
+    in the request buffer is retransmitted.
+4.  When the sender process receives a reply: The sender process sends an
+    acknowledgment to the destination process. It also releases the request buffer,
+    if not already done.
+5.  When a time-out occurs in the destination process: The copy of the reply stored
+    in the reply buffer is retransmitted.
+6.  When the destination process receives an acknowledgment: The destination
+    process releases the reply buffer.
+    The sender process is blocked until it receives a reply, so a single request buffer
+in the sender site suffices irrespective of the number of messages a process sends
+out, or the number of processes it sends them to. The destination process is not
+blocked on an acknowledgment, so it could handle requests from other processes
+while it waits for an acknowledgment. Accordingly, the destination site needs
+one reply buffer for each sender process. The number of messages can be reduced
+through piggybacking, which is the technique of including the acknowledgment of
+a reply in the next request to the same destination process. Since a sender process is
+blocked until it receives a reply, an acknowledgment of a reply is actually implicit
+in the next request it makes. Hence only the reply to the last request would require
+an explicit acknowledgment message.
+
+
+
+664  Part 5  Distributed Operating Systems
+                 The RRA protocol has the at-least-once semantics because messages and
+             replies cannot be lost; however, they might be delivered more than once. As
+             mentioned in Table 16.3, duplicate requests would have to be discarded in the
+             destination site to provide exactly-once semantics. It can be achieved as follows:
+             A sender assigns ascending sequence numbers to its requests and includes them in
+             its request messages. The sequence number of a message is copied into its reply and
+             acknowledgment, and into the header field of the reply buffer in the destination
+             site. The destination process also separately preserves the sequence number of the
+             last request received from the sender process. If the sequence number in a request is
+             not greater than the preserved sequence number, the request is a duplicate request
+             so the destination process simply retransmits the reply if its copy is present in the
+             reply buffer. Otherwise, either the copy of the reply in the reply buffer would have
+             been discarded after receiving its acknowledgment, in which case the request is an
+             outdated retransmission, or the destination process is still processing the request
+             and would send its reply sometime in future. In either of these cases, the duplicate
+             request is simply discarded.
+             16.4.3.2 The Request-Reply Protocol
+             The request-reply (RR) protocol simply performs retransmission of a request
+             when a time-out occurs. A nonblocking version of the RR protocol that provides
+             the exactly-once semantics is presented as Algorithm 16.4.3. Figure 16.4 depicts
+             its operation.
+             Algorithm 16.2 A Nonblocking Version of the RR Protocol
+             1.  When a process makes a request: The request is copied in a request buffer
+                 in the sender site and also sent to the destination process in the form of a
+                 message. A system call is made to request a time-out interrupt. The sender
+                 process proceeds with its computation.
+             2.  When the destination process receives a message: If the message is not a dupli-
+                 cate request, the destination process analyzes the request contained in the
+                 message and prepares a reply, copies it in a reply buffer and also sends it to
+                 the sender process. Otherwise, it simply locates the reply of the message in a
+                 reply buffer and sends it to the sender process.
+                             Request                1
+                                            buffer  2    Header    Reply
+                                                    3                     Reply
+                                                                          buffers
+                                            Sender       Destination
+                                            site         site
+             Figure  16.4  Operation of a nonblocking version of the request-reply (RR) protocol.
+
+
+
+                                          Chapter 16                   Distributed Operating  Systems  665
+3. When a time-out occurs in the sender site: The copy of the request stored in
+   the request buffer is retransmitted.
+4. When a reply is received at the sender site: An interrupt is raised to notify
+   the sender process of the arrival of a reply. The sender process releases the
+   request buffer.
+   A sender does not explicitly acknowledge a reply. Also, unlike the RRA
+protocol of the previous section, an acknowledgment is not implicit in the
+sender's next request because the sender could have made the next request before
+receiving the reply to its previous request. Consequently, the destination pro-
+cess has to buffer its replies indefinitely, which leads to a very high buffer space
+requirement.
+   If requests made by a sender are delivered to the destination process in the
+same order, the duplicate recognition and discarding arrangement of the RRA
+protocol can be used with minor changes: A destination process preserves the
+sequence numbers and replies of all requests in a pool of buffers. When it recog-
+nizes a duplicate request through a comparison of sequence numbers, it searches
+for the reply of the request in the buffer pool using the sequence number, and
+retransmits the reply if found in a buffer; otherwise, it simply ignores the request,
+as a reply would be sent after processing the request. Exercise 16.5 addresses a
+refinement of this approach that is needed if the requests may be received out of
+order at the destination site.
+   This protocol can be simplified for use in applications involving idempotent
+computations. An idempotent computation has the property that it produces the
+same result if executed again. For example, the computation i := 5 is idempotent,
+whereas the computation i := i+1 is not. If the handling of a request involves only
+idempotent computations, data consistency would not be affected if a request is
+processed more than once, so it is possible to omit the arrangement for buffering of
+replies and discarding of duplicate requests. Read and write operations performed
+in a file are idempotent, so it is possible to employ the simplified RR protocol in
+using a remote file server. It has the additional advantage that the file server need
+not maintain information about which requests it has already processed, which
+helps to make it stateless and more reliable (see Section 20.4.3).
+16.5  DISTRIBUTED COMPUTATION PARADIGMS                                                                ·
+Data used in an application may be stored in different sites of a distributed system
+because of the following considerations:
+·  Data replication: Several copies of a data D may be kept in different sites of
+   a distributed system to provide availability and efficient access.
+·  Data distribution: Parts of a data D may be kept in different sites of a system
+   either because the data D is voluminous, or because its parts originate in
+   different sites or are frequently used in different sites.
+
+
+
+666  Part 5  Distributed Operating Systems
+             Table 16.4      Modes          of  Accessing Data in a Distributed System
+             Mode of access                     Description
+             Remote data access                 A computation accesses data over the network. This
+                                                mode of access does not interfere with organization or
+                                                access of data and does not require restructuring of a
+                                                computation. However, computations are slowed down
+                                                by communication delays.
+             Data migration                     The data is moved to the site where a computation is
+                                                located. Data migration provides efficient data access;
+                                                however, it may interfere with replication and
+                                                distribution of data.
+             Computation migration              A computation (or a part of it) is moved to the site
+                                                where its data is located. It provides efficient data access
+                                                without interfering with organization or access of data.
+             When data D is neither replicated nor distributed, the OS may position it such
+             that the total network traffic generated by accesses to D by various applications
+             is minimal.
+             Table 16.4 summarizes three modes of accessing data in a distributed system.
+             In remote data access, the data is accessed in situ, i.e., where it exists. This mode
+             of using data does not interfere with decisions concerning placement of the data;
+             however, it is slow because of network latencies. Data migration involves moving
+             data to the site of the computation that uses it. This mode faces difficulties if
+             data is used by many computations or if it has been replicated to provide high
+             availability. In the worst case, it may force the data to be used strictly by one
+             computation at a time. Computation migration moves a computation to the site
+             where its data is located. It does not interfere with replication or distribution
+             of data.
+             Operating systems provide some support for each data access mode summa-
+             rized in Table 16.4. As described in Section 16.3, a network OS supports remote
+             data access. The File Transfer Protocol (FTP) is a facility for data migration; it
+             performs transfer of files in an offline manner rather than during execution of a
+             computation. Process migration is a feature for migrating a computation, or a part
+             of it, while the computation is in progress. It is described later in Section 18.8.2.
+             A distributed computation is one whose parts can be executed in different
+             sites for reasons of data access efficiency, computation speedup, or reliability.
+             A distributed computation paradigm is a model of useful practices for designing
+             distributed computations. The primary issues addressed by a distributed compu-
+             tation paradigm are manipulation of data and initiation of subcomputations
+             in different sites of a distributed system. Table 16.5 summarizes three dis-
+             tributed computation paradigms. The client­server computing paradigm focuses
+             on remote data access and manipulation, while the remote procedure call and
+             remote evaluation paradigms provide different ways of performing computation
+             migration.
+
+
+
+                                                    Chapter 16   Distributed Operating   Systems  667
+Table 16.5  Distributed Computation Paradigms
+Paradigm                 Description
+Client­server computing  A server process provides a specific service to its clients.
+                         A client process invokes its service by sending a
+                         message to it, and the server returns its results in
+                         another message. Applications use the client­server
+                         paradigm extensively to perform remote data access or
+                         remote data manipulation.
+Remote procedure         A remote procedure resembles a conventional
+call (RPC)               procedure except that it executes in a different node of
+                         the system. A remote procedure is installed in a node
+                         by a system administrator and it is registered with a
+                         name server. The remote procedure call has been used
+                         extensively for computation migration.
+Remote evaluation        If a program uses the statement at <node> eval
+                         <code_segment>, the compiler of the language in
+                         which the program is written makes a provision to
+                         transfer <code_segment> to the node designated by
+                         <node>, execute it there and return its results. There is
+                         no need to install the code segment in the remote node.
+                         Java provides a facility for remote evaluation.
+16.5.1 Client--Server Computing
+A server is a process in a distributed system that provides a specific service to its
+clients. Typically, the name of a server and a specification of its service are widely
+advertised in a system. Any process can send a message to a server and become its
+client. A service may have a physical connotation like accessing or printing a file, or
+it may have a computational connotation like evaluating mathematical functions
+in a math server. Accordingly, the server's role ranges from mere data access to
+data manipulation; in the latter case the server may even play a computational
+role in a distributed computation.
+A server may become a bottleneck if the rate at which clients make requests
+exceeds the rate at which the server can service them. Figure 16.5 depicts three
+methods of addressing this problem. Figure 16.5(a) shows many identical servers,
+each with its own request queue. The clients are partitioned in some way such
+that each client knows which server it should use. This arrangement inherits the
+drawbacks of partitioning--some servers may be heavily loaded while others
+are idle. In Figure 16.5(b) many servers dynamically share the same queue. This
+arrangement is more flexible than partitioning the clients to use different servers.
+Figure 16.5(c) shows a multithreaded server. A new thread is created to handle
+each request. The threads compete with one another for CPU and other resources.
+If the server function is I/O-bound, this arrangement can overlap servicing of
+several requests. Another way to eliminate the server bottleneck is to push most
+of the computational burden into a client process. Now the server can provide
+
+
+
+668  Part 5  Distributed Operating Systems
+                       S            S                S  S        S                              S
+                           Clients                      Clients                        Clients
+                  (a)                           (b)                           (c)
+             Figure  16.5  Servers with (a) independent and (b) shared queues; (c) a multithreaded server.
+             better response times to clients. Design methodologies have been evolved to design
+             such client­server arrangements.
+                  Client­server computing is a poor paradigm for distributed computing
+             because methodologies for structuring a distributed computation in the form of
+             a client­server configuration have not been evolved. The primary difficulty is that
+             a distributed computation involves many entities with a symmetric relationship.
+             This relationship is hard to model with the client­server paradigm. In practice,
+             the client­server paradigm is used extensively for noncomputational roles in a
+             LAN environment, such as accessing files, or handling simple database queries.
+             To make its implementation efficient, simple protocols like the RR protocol are
+             preferred over multilayered protocols like the ISO protocol, which is discussed in
+             a later section.
+             16.5.2 Remote Procedure Calls
+             A remote procedure call (RPC) is a programming language feature designed
+             for  distributed       computing.  As  discussed    earlier  in  Section  9.4.2,  its  syntax
+             and semantics resemble those of a conventional procedure call. In the remote
+             procedure call
+                                            call <proc_id> (<message>);
+             <proc_id> is the id of a remote procedure, and <message> is a list of parameters.
+             The call is implemented by using a blocking protocol. The result of the call may be
+             passed back through one of the parameters, or through an explicit return value.
+             We can view the caller­callee relationship as a client­server relationship. Thus,
+             the remote procedure is the server and a process calling it is a client.
+                  The schematic diagram of Figure 16.6 depicts the arrangement used to per-
+             form name resolution, parameter passing, and return of results during a remote
+             procedure call. The domain name system (DNS) described in Section 16.4.1 is
+             used to obtain the IP address of the called process. The functions of the client and
+             server stubs are as described earlier in Section 9.4.2--the client stub converts the
+             parameters into a machine-independent form and the server stub converts them
+             into the machine-specific representation suitable for the server's host, whereas
+             they play the converse roles for the results of the called procedure. The circled
+
+
+
+                                                                  Chapter 16      Distributed Operating  Systems  669
+                                      Name
+                                      server
+                                 3
+             Client           Client             Server                   Server
+             process          stub               stub                   procedure
+                      1                       4                   6
+                              2  9                             5
+                      10                      8                   7
+                      Client                                      Server
+                      site                                        site
+Figure 16.6  Implementation of a remote procedure call (RPC).
+numbers in Figure 16.6 denote the steps in implementing the remote procedure
+call. Details of these steps are as follows:
+1. The client process calls the client stub with parameters. This call is a con-
+ventional procedure call. Hence execution of the client process is suspended
+until the call is completed.
+2. The client stub marshals the parameters and converts them into a machine-
+independent format. It now prepares a message containing this representa-
+tion of parameters.
+3. The client stub interacts with the name server to find the identity of the site
+at which the remote procedure exists.
+4. The client stub sends the message prepared in Step 2 to the site where the
+remote procedure exists, using a blocking protocol. This send operation
+blocks the client stub until a reply to its message arrives.
+5. The server stub receives the message sent by the client stub. It converts the
+parameters to the machine-specific format suitable for the server site.
+6. The server stub now executes a call on the server procedure with these param-
+eters. This is a conventional procedure call, hence execution of the server stub
+is suspended until the procedure call is completed.
+7. The server procedure returns its results to the server stub. The server stub
+converts them into a machine-independent format and prepares a message
+containing the results.
+8. The message containing the results is sent to the client site.
+9. The client stub converts the results into the format suitable for the client site.
+10. The client stub returns the results to the client process.
+Step 10 completes execution of the remote procedure call. The client process is
+now free to continue its execution.
+In Step 3, the client stub need not perform name resolution every time the
+RPC is executed. It can do so the first time, and save the information concerning
+site of the remote procedure in a name server cache for future use. Name resolution
+can even be performed statically, i.e., before operation of the client process begins.
+
+
+
+670  Part 5  Distributed Operating Systems
+             Faults may occur during a remote procedure call--either in the communica-
+             tion link, in the server site, or in the client itself. If the client site crashes, the call
+             becomes an orphan because its result is not going to be of any use. We discuss
+             orphans and their handling later in Section 19.3. Communication and server
+             faults can be handled using an arrangement involving acknowledgments and
+             retransmissions (see Section 16.4). Ideally, RPCs should possess the exactly-once
+             semantics; however, it is expensive to implement these semantics. At-least-once
+             semantics are cheaper to implement; however, they require that either the actions
+             of the remote procedure should be idempotent or that it must discard duplicate
+             requests.
+             The remote procedure call feature can be used as a building block for dis-
+             tributed computations. Its advantages over the client­server paradigm are due
+             to two factors. First, it may be possible to set up a remote procedure by simply
+             intimating its name and location to the name server. It is much easier than setting
+             up a server. Second, only those processes that know of the existence of a remote
+             procedure can invoke it. So, use of remote procedures provides more privacy, and
+             hence more security, than use of the client­server paradigm. Its primary disad-
+             vantage is a lack of flexibility--the remote procedure has to be registered with a
+             name server, so its location cannot be changed easily.
+             16.5.3 Remote Evaluation
+             The remote evaluation paradigm was proposed by Stamos and Gifford (1990).
+             The paradigm is implemented through the statement
+                                            at <node> eval <code_segment>
+             where <node> is an expression that evaluates to the identity of some node in the
+             distributed system and <code_segment> is a segment of code, possibly a sequence
+             of statements. When the at statement is encountered during operation of a pro-
+             cess, <node> is evaluated to obtain the identity of a node, <code_segment> is
+             executed in that node, and its results, if any, are returned to the process.
+             This paradigm has several advantages over the client­server and RPC
+             paradigms. It requires minimal support from the OS. Most of the work is done
+             by the compiler of the language in which the program is written. With the help
+             of the OS, the compiler makes a provision to transfer <code_segment> to the
+             target node and to execute it there. The OS of the target node creates a process to
+             execute the code and to return its results. Prior installation of <code_segment>
+             or an elaborate setup of stub procedures is not needed.
+             The issues of naming and binding are also much simpler than in an RPC
+             environment. The decision about which node should be used to execute the code
+             segment is taken dynamically. This decision could use information concerning
+             computational loads at various nodes. <code_segment> can be any arbitrary
+             section of code that can be executed remotely; it need not have the syntactic
+             shape of a procedure. The remote evaluation paradigm can be used along with the
+             client­server or RPC paradigms, i.e., the code segment could invoke procedures
+             during its execution or it could itself be a procedure.
+
+
+
+                                           Chapter 16  Distributed Operating Systems   671
+The remote evaluation paradigm can be used for computation speedup or
+for improving efficiency of a computation. For example, if a subcomputation
+involves considerable manipulation of data located at some specific node Si, the
+subcomputation can itself be executed at Si. It would reduce the amount of
+network traffic involved in remote data access. Similarly, if a user wishes to send
+an email to a number of persons at Si, the mail sending command can itself be
+executed at Si.
+16.5.4 Case Studies
+SUN RPC   Sun RPC was designed for client­server communication in NFS,
+the Sun network file system. NFS models file processing actions as idempo-
+tent actions, so Sun RPC provides the at-least-once semantics. This feature
+makes the RPC efficient; however, it requires applications using RPC to make
+their own arrangements for duplicate suppression if exactly-once semantics are
+desired.
+Sun RPC provides an interface language called XDR and an interface com-
+piler called rpcgen. To use a remote procedure, a user has to write an interface
+definition for it in XDR, which contains a specification of the remote procedure
+and its parameters. The interface definition is compiled using rpcgen, which
+produces the following: a client stub, the server procedure and a server stub, a
+header file for use in the client and server programs, and two parameter han-
+dling procedures that are invoked by the client and server stubs, respectively. The
+client program is compiled with the header file and the client stub, while the server
+program is compiled with the header file and the server stub. The parameter han-
+dling procedure invoked by the client stub marshals parameters and converts
+them into a machine-independent format called the external data representation
+(XDR). The procedure invoked by the server stub converts parameters from the
+XDR format into the machine representation suitable for the called procedure.
+The Sun RPC schematic has some limitations. The remote procedure can
+accept only one parameter. This limitation is overcome by defining a structure
+containing many data members and passing the structure as the parameter. The
+RPC implementation also does not use the services of a name server. Instead,
+each site contains a port mapper that is like a local name server. It contains
+names of procedures and their port ids. A procedure that is to be invoked as a
+remote procedure is assigned a port and this information is registered with the
+port mapper. The client first makes a request to the port mapper of the remote
+site to find which port is used by the required remote procedure. It then calls the
+procedure at that port. A weakness of this arrangement is that a caller must know
+the site where a remote procedure exists.
+Java Remote Method Invocation (RMI)        A server application running on a host
+creates a special type of object called a remote object, whose methods may be
+invoked by clients operating in other hosts. The server selects a name for the
+service that is to be offered by a method of the remote object, and registers
+it with a name server called the rmiregistry, which runs on the server's
+
+
+
+672  Part 5  Distributed Operating Systems
+             host. The rmiregistry typically listens on a standard port for registration and
+             invocation requests. The prospective clients of the service know the IP address
+             of the server's host. A client consults the rmiregistry in the server's host to
+             locate the service with a given name. The rmiregistry returns an object handle
+             for the remote object providing the service, and the client uses this object handle to
+             invoke the method that provides the service. The syntax of this invocation resem-
+             bles a similar operation on a local object. The invocation of the remote service
+             resembles the familiar schematic described in section 16.5.2; the javac compiler
+             is used to compile the source files containing the server and client programs, and
+             the rmic compiler is used to generate client and server stubs.
+             A client can pass special types of objects called serializable objects as param-
+             eters of the remote method. The Java RMI passes the code and data of such
+             objects to the invoked remote method. This code is loaded in the server's host
+             while unmarshaling the parameters; it may be invoked by the object offering the
+             remote service. This feature can be used to achieve an effect analogous to remote
+             evaluation described in Section 16.5.3 as follows: A server registers a remote ser-
+             vice r_eval that takes a serializable object alpha as a parameter and simply
+             invokes the method alpha.gamma(). When a client creates a serializable object
+             and passes it as a parameter in an invocation of r_eval, r_eval would load
+             the code of the object and invoke its method gamma. In effect, the client would
+             have achieved execution of some of its own code at the server's site. Different
+             clients can use the same service r_eval to get different codes executed at the
+             server's site.
+             16.6  NETWORKING                                                                        ·
+             The term networking includes both network hardware and network software.
+             Thus, it includes networking technology and design of computer networks, as also
+             software aspects of implementing communication between a pair of processes.
+             The basic issues in networking are summarized in Table 16.6. Network type,
+             network topology, and networking technology concern the design of networks.
+             All other issues concern message communication between processes--finding
+             the IP address of the node where a destination process is located, deciding which
+             route a message would follow to that node, and ensuring that the message is
+             delivered efficiently and reliably. We discussed the domain name system (DNS)
+             that determines the IP address of a host in Section 16.4.1. All other issues in
+             networking are discussed in this section.
+             16.6.1 Types of Networks
+             A wide area network (WAN) connects resources and users that are geographically
+             distant. When expensive mainframe computers were in use, it made good sense to
+             make them accessible to a large number of users from different organizations and
+             different locations. A WAN made this possible. The other motivation for WANs
+             was to enable communication and data sharing between users.
+
+
+
+                                                             Chapter 16   Distributed Operating  Systems  673
+Table 16.6        Issues  in  Networking
+Issue                         Description
+Network type                  The type of a network is determined by the
+                              geographical distribution of users and resources in the
+                              system. Two main types of networks are wide area
+                              networks (WANs) and local area networks (LANs).
+Network topology              Network topology is the arrangement of nodes and
+                              communication links in a network. It influences the
+                              speed and reliability of communication, and the cost of
+                              network hardware.
+Networking technology         Networking technology is concerned with transmission
+                              of data over a network. It influences network
+                              bandwidth and latency.
+Naming of processes           Using the domain name system (DNS), the pair (<host_
+                              name>, <process_id>) for a destination process is
+                              translated into the pair (IP address, <process_id>).
+Connection strategy           A connection strategy decides how to set up data paths
+                              between communicating processes. It influences
+                              throughput of communication links and efficiency of
+                              communication between processes.
+Routing strategy              A routing strategy decides the route along which a
+                              message would travel through the system. It influences
+                              communication delays suffered by a message.
+Network protocols             A network protocol is a set of rules and conventions
+                              that ensure effective communication over a network.
+                              A hierarchy of network protocols is used to obtain a
+                              separation of various concerns involved in data
+                              transmission and reliability.
+Network bandwidth             The bandwidth of a network is the rate at which data is
+and latency                   transferred over the network. Latency is the elapsed
+                              time before data is delivered at the destination site.
+When inexpensive personal computers became available, many organiza-
+tions installed a large number of PCs within offices. Data used by PC users and
+resources like good-quality laser printers became critical resources, so local area
+networks (LANs) were set up to connect users and resources located within the
+same office or same building. Since all resources and users in a LAN belonged
+to the same organization, there was little motivation for sharing the data and
+resources with outsiders. Hence few LANs were connected to WANs, though
+the technology for making such connections existed. Advent of the Internet
+changed the scenario and most LANs and WANs are today connected to the
+Internet.
+Figure 16.7 illustrates WANs and LANs. The LAN consists of PCs, printers,
+and a file server. It is connected to a WAN through a gateway, which is a computer
+that is connected to two (or more) networks and transfers messages between them.
+
+
+
+674  Part 5  Distributed Operating Systems
+                                                                             Workstations
+                                                                             Local area
+                                                         Host                network (LAN)
+                           Wide     area             CP
+                           network  (WAN)                           Gateway  File              Printer
+                                                                             server
+                                    CP                          CP
+                                               Host                 Host
+             Figure  16.7 Types     of networks.
+                                          ...
+                                    Bus                             Star     Ring
+                                               Fully connected            Partially connected
+             Figure  16.8  Network topologies.
+             Special-purpose processors called communication processors (CPs) are used in the
+             WAN to facilitate communication of messages between distant hosts. LANs use
+             expensive high-speed cables like Category 5 or fiber-optic cables to provide high
+             data transfer rates. WANs often use public lines for data transfer because of cost
+             considerations, so it is generally not possible to support high transfer rates.
+             16.6.2 Network Topology
+             Figure 16.8 illustrates five network topologies. These topologies differ in the cost
+             of network hardware, speed of communication, and reliability. The bus topology
+
+
+
+                                                   Chapter 16  Distributed Operating     Systems  675
+is similar to the bus in a PC. All hosts are connected directly to the bus, so the cost
+of network hardware is low. Only one pair of hosts can communicate over the
+bus at any time. High transfer rates are achieved except when contention exists
+for the bus. The bus topology is used in Ethernet-based LANs.
+In the star topology, each host is connected only to the host in the central site
+of the system. This topology is useful when the distributed system contains one
+server, and nodes contain processes that use this server. Reliability of a star net-
+work depends on reliability of the central host. Communication delays between
+a host and the central host, or between two hosts, depend on contention at the
+central host. Fast Ethernet uses a star topology.
+In a ring network, each host has two neighbors. When a host wishes to
+communicate with another host, a message is passed along the ring until it reaches
+the destination host. Consequently, the communication load on a host is high
+even when none of its processes is communicating. In a unidirectional ring, a link
+carries messages in only one direction whereas in a bidirectional ring a link can
+carry messages in both directions. Naturally unidirectional and bidirectional rings
+have different reliability characteristics--a bidirectional ring network is immune
+to single host or link faults, whereas a unidirectional ring network is not.
+In a fully connected network, a link exists between every pair of hosts. Con-
+sequently, communication between a pair of hosts is immune to crashes of other
+hosts, or faults in up to (n - 2) links, where n is the number of hosts in the net-
+work. One or more hosts may become isolated if the number of faults exceeds
+n - 2. This situation is called network partitioning. A partially connected network
+contains fewer links than a fully connected network. It has a lower cost than a
+fully connected network; however, it may get partitioned with fewer host or link
+crashes than a fully connected network.
+16.6.3 Networking Technologies
+We discuss three networking technologies. The Ethernet and token ring tech-
+nologies are used for local area networks and the Asynchronous Transfer Mode
+(ATM) technology is used for ISDN networks.
+Ethernet  Ethernet is a bus-like network (simple or branching bus) using a circuit
+that consists of cables linked by repeaters. Several entities, called stations, are
+connected to the same cable. Data is transmitted in units called frames. Each
+frame contains addresses of its source and destination, and a data field. Each
+station listens on the bus at all times. It copies a frame in a buffer if the frame
+is meant for it; otherwise, it ignores the frame. The original Ethernet operated
+at a transmission rate of 10 Mbits per second. Fast Ethernet, which operates at
+100 Mbits per second, Gigabit Ethernet, and 10 Gigabit Ethernet are prevalent
+variants of Ethernet. A bridge is used to connect Ethernet LANs. It is a computer
+that receives frames on one Ethernet and, depending on the destination addresses,
+reproduces them on another Ethernet to which it is connected.
+Since the basic Ethernet topology is that of a bus, only one conversation
+can be in progress at any time. The "carrier sense multiple access with collision
+
+
+
+676  Part 5  Distributed Operating Systems
+             detection" (CSMA/CD) technology ensures it as follows: A station that wishes to
+             send a message listens to the traffic on the cable to check whether a signal is being
+             transmitted. This check is called carrier sensing. The station starts transmitting
+             its frame if it does not detect a signal. However, if many stations find no signal
+             on the cable and transmit at the same time, their frames would interfere with
+             one another, causing abnormal voltage on the cable. This situation is called a
+             collision. A station that detects a collision emits a special 32-bit jam signal. On
+             receiving the jam signal, any transmitting station that had not so far detected a
+             collision becomes aware of a collision. All the transmitting stations now back off
+             by abandoning their transmissions and waiting for a random period of time before
+             retransmitting their frames. This procedure of recovering from a collision does
+             not guarantee that the frames will not collide again; however, it helps in ensuring
+             that eventually all frames will be transmitted and received without collisions. The
+             frame size must exceed a minimum that facilitates collision detection. This size is
+             512 bits for the 10 Mbps and 100 Mbps Ethernets, where Mbps is an abbrevation
+             of 220 bits per second, and 4096 bits for the Gigabit Ethernet.
+             Token Ring    A token ring is a network with a ring topology that uses the notion
+             of a token to decide which station may transmit a message at any time. The token
+             is a special message circulating over the network. It has a status bit, which can be
+             either free or busy. The status bit value busy indicates that a message is currently
+             being transmitted over the network, whereas the value free indicates that the
+             network is currently idle. Any station that wishes to transmit a message waits
+             until it sees the token with the status bit free. It now changes the status to busy
+             and starts transmitting its message. Thus a message follows a busy token, so only
+             one message can be in transit at any time. A message can be of any length. It need
+             not be split into frames of a standard size.
+             Every station that sees a message checks whether the message is intended
+             for it; only the destination station copies the message. When the station that
+             transmitted a message sees the busy token over the network, it resets its status bit
+             to free. This action releases the network for another message transmission. When
+             early token release is supported, the destination station resets the status bit of
+             the token to free. Operation of the token ring comes to a halt if the token is lost
+             because of communication errors. One of the stations is responsible for recovering
+             from this situation--it listens continuously to the traffic on the network to check
+             for the presence of a token, and creates a new token if the token has been lost.
+             Asynchronous  Transfer         Mode  (ATM)  Technology  ATM      is  a  virtual-circuit­
+             oriented packet-switching technology (see Sections 16.6.4 and 16.6.5). The virtual
+             circuit is called a virtual path in ATM terminology, and a packet is called a cell.
+             ATM implements a virtual path between sites by reserving specific bandwidth in
+             physical links situated in a network path between the sites, that is, by reserving a
+             specific portion of the capacity of each physical link for the virtual path. When
+             a physical link is common to many virtual paths, it multiplexes the traffic of the
+             various virtual paths on a statistical basis such that each virtual path receives
+             the specified portion of the bandwidth of the physical link. This way, cells to be
+
+
+
+                                                         Chapter 16  Distributed Operating Systems  677
+transmitted on a virtual path do not face delays due to traffic on other virtual
+paths.
+The principle of reserving bandwidth is carried one step further by hosts in
+an ATM network. A virtual path may be set up between two hosts, say, hosts X
+and Y. When a process Pi in host X wishes to communicate with a process Pj
+in host Y, the hosts may set up a virtual channel between Pi and Pj by reserving
+some bandwidth of the virtual path between X and Y. This two-tier arrangement
+ensures that message traffic between a pair of processes does not incur delays due
+to message traffic between other pairs of processes.
+The ATM technology aims to provide real-time transport capabilities for
+multimedia applications incorporating diverse traffics such as voice, video, and
+high-speed data. ATM uses a cell size of 53 bytes. This size is a compromise
+between a small cell size that is desired in voice communication to ensure small
+delays and a largish cell size desired in data communication to reduce the overhead
+of forming packets for a message and assembling them back to form a message.
+Each cell contains a header of 5 bytes and a data field of 48 bytes. The header
+contains two items of information: a virtual path id (VPI) and a virtual channel id
+(VCI).
+Figure 16.9 is a schematic diagram illustrating functioning of an ATM switch.
+The switch contains a routing table, which has an entry for each virtual path
+defined in the switch. The entry contains two fields--the VPI field and the port
+field. In Figure 16.9, the virtual path identifier of the incoming cell is n, and the
+nth entry in the routing table contains m and p. The switch copies m in the VPI
+field of the cell and sends out the modified cell on port p. This simple arrangement
+ensures that the ids assigned to virtual paths need not be unique in the system;
+they only need to be unique in the switch. The switching actions are performed in
+the hardware of the switch; they provide extremely fast switching, of the order of
+low double digits of microseconds, which makes it possible to provide LAN-like
+transmission speeds over wide area networks.
+While creating a new virtual path, an application specifies the desired band-
+width. The OS sets up a virtual path by reserving the bandwidth in individual
+links, choosing a unique virtual path identifier in each switch and updating its
+routing table. While managing the traffic in virtual channels of the same vir-
+tual path, hosts use statistical multiplexing to provide appropriate bandwidth to
+                                VPI         Port
+VPI     VCI                                           p  VPI         VCI
+n                           #n  m           p            m
+Header       Data                                        Header           Data
+                                Routing
+                                     table
+                                ATM switch
+Figure 16.9 An ATM switch.
+
+
+
+678  Part 5  Distributed Operating Systems
+                                                       Applications
+                                                Voice       Video             Data
+                                                       Adaptation layer
+                                                       ATM layer
+                                                       Physical layer
+             Figure  16.10   ATM protocol reference model.
+                                                            m1                           pc1(m1)
+                         m3  m2  m1                             m2
+                     Pi                     Pj  Pi                        Pj        Pi   pc3(m1)           Pj
+                                                            m3                           pc2(m1)
+                         Circuit switching             Message switching                 Packet switching
+             (a)                                (b)                                 (c)
+             Figure  16.11   Connection strategies: circuit, message, and     packet switching.
+             individual applications. Thus different applications can simultaneously transmit
+             messages at different speeds over their virtual paths.
+             An ATM network has a mesh-star architecture. ATM switches are connected
+             to one another in a mesh form. Hosts are connected to the ATM switches as
+             in a star network. This strategy provides a path between every pair of nodes.
+             Figure 16.10 shows the protocol layers in the ATM protocol reference model.
+             The physical layer performs transfer of cells across the network. The ATM layer
+             performs transmission of messages between ATM entities. It performs multiplex-
+             ing and demultiplexing of virtual channels into virtual paths, cell scheduling, and
+             cell routing. The ATM adaptation layer provides different kinds of services to dif-
+             ferent kinds of traffic such as voice, video, and data communication. It provides
+             separate protocols for each kind of traffic.
+             16.6.4 Connection Strategies
+             A connection is a data path between communicating processes. A connection strat-
+             egy, also called a switching technique, determines when a connection should be set
+             up between a pair of processes, and for how long it should be maintained. Choice
+             of the switching technique influences efficiency of communication between a pair
+             of processes and throughput of communication links. Figure 16.11 illustrates
+             three connection strategies. We use the notation mi for a message and pcj(mi) for
+             the jth packet of message mi, where a packet has the meaning defined later in this
+             section.
+
+
+
+                                                             Chapter 16  Distributed Operating  Systems  679
+Circuit  Switching      A  circuit  is  a  connection  that  is  used    exclusively  by  a
+pair of communicating processes and carries all messages between them [see
+Figure 16.11(a)]. A circuit is set up when processes decide to communicate, i.e.,
+before the first message is transmitted, and is destroyed sometime after the last
+message has been transmitted. Circuit set up actions involve deciding the actual
+network path that messages will follow and reserving communication resources
+accordingly. Each circuit is given a unique id, and processes specify the circuit id
+while sending and receiving messages.
+The advantage of circuit switching is that messages do not face delays once a
+circuit has been set up. However, a circuit ties up a set of communication resources
+and incurs set up overhead and delays, so use of circuit switching is justified only
+if the overall message density in the system is low but medium-to-heavy traffic is
+expected between a pair of processes.
+Message Switching          A connection is established for every message exchanged
+between a pair of processes. Thus messages between the same pair of processes
+may travel over different paths in the system [see Figure 16.11(b)]. Message switch-
+ing incurs repetitive overhead and may cause delays due to the set up time of the
+connection, so its use is justified if light message traffic exists between a pair of
+processes. It does not tie up communication resources, so other processes can use
+the same connection, or some links in the connection, for their communication.
+Traffic in the network should be heavy enough to exploit this possibility.
+Packet Switching    In packet switching, a message is split into parts of a standard
+size, called packets. A connection is set up for each packet individually, so packets
+of a message may travel along different paths [see Figure 16.11(c)] and arrive out
+of sequence at a destination site. Use of packet switching incurs two kinds of
+overhead: A packet has to carry some identification information in its header--
+id of the message to which it belongs, sequence number within the message, and
+ids of the sender and destination processes--and packets have to be assembled
+into messages in the destination site. However, use of fixed-size packets reduces
+the cost of retransmission when an error arises. Also, links are not monopolized
+by specific pairs of processes, hence all pairs of communicating processes receive
+fair and unbiased service. These features make packet switching attractive for
+interactive processes.
+Because of the cost of setting up connections, connectionless protocols are
+often used in practice for sending messages and packets. In such a protocol,
+the originating node simply selects one of its neighboring nodes and sends the
+message to it. If that node is not the destination node, it saves the message in
+its memory and decides which of the neighbors to send it to, and so on until
+the message reaches the destination node. This method is called the store-and-
+forward method of transmitting a message. A packet is transmitted similarly.
+Connectionless transmission can adapt better to traffic densities in communica-
+tion links than message or packet switching, because a node can make the choice
+of the link when it is ready to send out a message or packet. It is typically imple-
+mented by exchanging traffic information among nodes and maintaining a table
+in each node that indicates which neighbor to send to in order to reach a specific
+
+
+
+680  Part 5  Distributed Operating Systems
+             destination node. However, each node should have a large memory for buffering
+             messages and packets when its outgoing links are congested.
+             16.6.5 Routing
+             The routing function is invoked whenever a connection is to be set up. It decides
+             which network path would be used by the connection. Choice of the routing
+             strategy influences ability to adapt to changing traffic patterns in the system.
+             Figure 16.12 illustrates three routing strategies.
+             Fixed Routing           A path is permanently specified for communication between a
+             pair of nodes [see Figure 16.12(a)]. When processes located in these nodes wish
+             to communicate, a connection is set up over this path. Fixed routing is simple
+             and efficient to implement--each node merely contains a table showing paths to
+             all other nodes in the system; however, it lacks flexibility to deal with fluctuations
+             in traffic densities and node or link faults. Hence its use can result in delays or
+             low throughputs.
+             Virtual Circuit         A path is selected at the start of a session between a pair of pro-
+             cesses. It is used for all messages sent during the session [see Figure 16.12(b)].
+             Information concerning traffic densities and communication delays along differ-
+             ent links in the system is used to decide the best path for a session. Hence this
+             strategy can adapt to changing traffic patterns and node or link faults, and it
+             ensures good network throughput and response times.
+             Dynamic Routing         A path is selected whenever a message or a packet is to be
+             sent, so different messages between a pair of processes and different packets of
+             a message may use different paths [see Figure 16.12(c)]. This feature enables the
+             routing strategy to respond more effectively to changes in traffic patterns and
+             faults in nodes or links, and achieve better throughput and response times than
+             when virtual circuits are used. In the Arpanet, which was the progenitor of the
+             Internet, information about traffic density and communication delay along every
+             link was constantly exchanged between nodes. This information was used to
+             determine the current best path to a given destination node.
+                  Pk                 Pl                Pk                    Pl                  Pk  m2               Pl
+                                                           m3  m2  m1                                         m1
+                  Pi                 Pj                Pi                    Pj                  Pi                   Pj
+                  N1                 N2                N1                    N2                  N1  m3               N2
+                      Fixed routing                        Virtual circuit                           Dynamic routing
+             (a)                                  (b)                                       (c)
+             Figure   16.12  Routing strategies:  fixed    routing, virtual  circuit,  and  dynamic routing.
+
+
+
+                                                              Chapter 16  Distributed Operating  Systems  681
+16.6.6 Network Protocols
+A network protocol is a set of rules and conventions used to implement communi-
+cation over a network. Several concerns need to be addressed while implementing
+communication, such as ensuring confidentiality of data, achieving communica-
+tion efficiency, and handling data transmission errors. Therefore, a hierarchy of
+network protocols is used in practice to provide a separation of concerns. Each
+protocol addresses one or more concerns and provides an interface to the proto-
+cols above and below it in the hierarchy. The protocol layers are like the layers of
+abstraction in a model (see Section 1.1). They provide the same benefits--an entity
+using a protocol in a higher layer need not be aware of details at a lower layer.
+Accordingly, lower-level protocols deal with data-transmission-related aspects
+such as detection of data transmission errors, middle-level protocols deal with
+formation of packets and routing, and higher-level protocols deal with semantic
+issues that concern applications, e.g., atomicity of actions and confidentiality of
+data.
+ISO Procotol      The International Organization for Standardization (ISO) devel-
+oped an Open Systems Interconnection reference model (OSI model) for com-
+munication between entities in an open system. This model consists of seven
+protocol layers described in Table 16.7. It is variously called the ISO protocol, the
+ISO protocol stack, or the OSI model.
+Figure 16.13 illustrates operation of the OSI model when a message is
+exchanged by two application processes. The message originates in an appli-
+cation, which presents it to the application layer. The application layer adds
+some control information to it in the form of a header field. The message
+now passes through the presentation and session layers, which add their own
+headers. The presentation layer performs change of data representation and
+Table 16.7         Layers  of  the ISO Protocol Stack
+Layer                          Function
+1. Physical layer              Provides electrical mechanisms for bit transmission
+                               over a physical link.
+2. Data link layer             Organizes received bits into frames. Performs error
+                               detection on frames. Performs flow control.
+3. Network layer               Performs switching and routing.
+4. Transport layer             Forms outgoing packets. Assembles incoming packets.
+                               Performs error detection and retransmission and flow
+                               control.
+5. Session layer               Establishes and terminates sessions. Provides for restart
+                               and recovery in applications.
+6. Presentation layer          Implements data semantics by performing change of
+                               representation, compression, and encryption/
+                               decryption where necessary.
+7. Application layer           Provides network interface for applications.
+
+
+
+682  Part 5  Distributed Operating Systems
+                          Application
+                                   process
+                          Application layer
+                          Presentation layer
+                          Session layer
+                          Transport layer
+                          Network layer
+                          Data link layer
+                          Physical layer
+                                                     Sender                       Receiver
+             Figure 16.13 Operation of the      ISO  protocol  stack.
+             encryption/decryption. The session layer establishes a connection between the
+             sender and destination processes. The transport layer splits the message into
+             packets and hands over the packets to the network layer. The network layer
+             determines the link on which each packet is to be sent and hands over a link
+             id and a packet to the data link layer. The data link layer views the packet
+             as a string of bits, adds error detection and correction information to it, and
+             hands it over to the physical layer for actual transmission. When the message
+             is received, the data link layer performs error detection and forms frames, the
+             transport layer forms messages, and the presentation layer puts the data in the rep-
+             resentation desired by the application. The protocol layers are discussed in the
+             following.
+             The physical layer is responsible for the mechanical, electrical, functional, and
+             procedural aspects of transmitting bit streams over the network. It is implemented
+             in the hardware of a networking device. RS-232C and EIA-232D are the common
+             physical layer standards.
+             The data link layer provides error detection, error correction, and flow control
+             facilities. It splits the bit stream to be sent into fixed-size blocks called frames,
+             and adds a CRC to each frame (see Section 14.3). It provides flow control by
+             sending frames at a rate that the receiver can handle. HDLC (high-level data
+             link control) is a common protocol of this layer. Bridges and switches operate in
+             this layer.
+             The          network  layer    is  responsible    for     providing  connections  and  routes
+             between two sites in a system; it also collects information for routing. Popu-
+             lar protocols of this layer are the X.25 protocol, which is a connection-oriented
+             protocol using virtual circuits, and the Internet protocol (IP), which is a con-
+             nectionless protocol. Thus, routing is the primary function of this layer, and
+             connection is an optional one. Routers operate in this layer. The network layer is
+             mostly redundant in LANs and in systems with point-to-point connections.
+             The transport layer provides error-free transmission of messages between
+             sites. It splits a message into packets, and hands them over to the network
+             layer. It handles communication errors like nondelivery of packets due to node
+             or link faults. This feature resembles the reliability feature of IPC protocols,
+             hence it is implemented analogously through time-outs and retransmissions
+
+
+
+                                                                 Chapter 16      Distributed Operating  Systems  683
+(see Section 16.4). The transport layer also performs flow control so that data is
+transferred at a rate that the receiver can handle. The effective rate depends on
+the buffer space available in the receiver and the rate at which it can copy data
+out of the buffer. ISO has five classes of transport layer protocols, named TP0
+through TP4. Other common transport layer protocols are the Transport Con-
+trol Protocol (TCP), which is a connection-oriented reliable protocol, and User
+Datagram Protocol (UDP), which is a connectionless unreliable protocol.
+The session layer provides means to control the dialog between two enti-
+ties that use a connection-oriented protocol. It provides authentication, different
+types of dialogs (one-way, two-way alternate, or two-way simultaneous) and
+checkpoint­recovery facilities. It provides dialog control to ensure that mes-
+sages exchanged using nonblocking send primitives arrive in the correct order
+(see Section 16.4). It also provides a quarantine service whereby messages are
+buffered at a receiver site until explicitly released by a sender. This facility is use-
+ful in performing atomic actions in a file (see Section 13.11.2) and in implementing
+atomic transactions (see Section 19.4).
+The presentation layer supports services that change the representation of
+a message to address hardware differences between the sender and destination
+sites, to preserve confidentiality of data through encryption, and to reduce data
+volumes through compression.
+The application layer supports application-specific services like file transfer,
+e-mail, and remote log in. Some popular protocols of this layer are FTP (File
+Transfer Protocol), X.400 (e-mail), and rlogin (remote log-in).
+TCP/IP  The Transmission Control Protocol / Internet Protocol (TCP/IP) is a pop-
+ular protocol for communication over the Internet. It has fewer layers than
+the ISO protocol, so it is both more efficient and more complex to implement.
+Figure 16.14 shows details of its layers. The lowest layer is occupied by a data
+link protocol. The Internet Protocol (IP) is a network layer protocol in the ISO
+protocol stack; it can run on top of any data link protocol. The IP performs data
+transmission over the Internet using the 32-bit IP address of a destination host.
+It is a connectionless unreliable protocol; it does not guarantee that packets of
+a message will be delivered without error, only once, and in the correct order.
+These properties are provided by the protocols occupying higher levels in the
+hierarchy.
+               ISO layers 5­7  File Transfer Protocol (FTP), e-mail, remote
+                               log-in, or an application-specific protocol
+                               Transmission Control              User Datagram
+               ISO layer 4     Protocol (TCP)                    Protocol (UDP)
+               ISO layer 3               Internet Protocol (IP)
+               ISO layer 2               Data Link Protocol
+Figure  16.14  The Transmission Control Protocol/Internet Protocol (TCP/IP) stack.
+
+
+
+684  Part 5  Distributed Operating Systems
+             Protocols      in  the         next  higher  layers  provide  communication  between
+             processes--each host assigns unique 16-bit port numbers to processes, and a
+             sender process uses a destination process address that is a pair (IP address, port
+             number). Use of port numbers permits many processes within a host to send and
+             receive messages concurrently. Some well-known services such as FTP, telnet,
+             SMTP, and HTTP have been assigned standard port numbers by the Internet
+             Assigned Numbers Authority (IANA); other port numbers are assigned by the
+             OS in a host.
+             As shown in Figure 16.14, two protocols can be used in the layer above the
+             IP, which corresponds to the transport layer, i.e., layer 4, in the ISO protocol
+             stack. The Transmission Control Protocol (TCP) is a connection-oriented reliable
+             protocol, It employs a virtual circuit between two processes and provides reliabil-
+             ity by retransmitting a message that is not received in an expected time interval
+             (see Section 16.4 for a discussion of acknowledgments and time-outs used to
+             ensure reliable delivery of messages). The overhead of ensuring reliability is high
+             if the speeds of a sender and a receiver mismatch, or if the network is overloaded;
+             hence, the TCP performs flow control to ensure that a sender does not send pack-
+             ets faster than the rate at which a receiver can accept them, and congestion control
+             to ensure that traffic is regulated so that a network is not overloaded.
+             The User Datagram Protocol (UDP) is a connectionless, unreliable protocol
+             that neither guarantees delivery of a packet nor ensures that packets of a message
+             will be delivered in the correct order. It incurs low overhead compared to the
+             TCP because it does not have to set up and maintain a virtual circuit or ensure
+             reliable delivery. The UDP is employed in multimedia applications and in video
+             conferencing because the occasional loss of packets is not a correctness issue in
+             these applications--it only leads to poor picture quality. These applications use
+             their own flow and congestion control mechanisms such as reducing the resolu-
+             tion of pictures--and, consequently, lowering the picture quality--if a sender, a
+             receiver, or the network is overloaded.
+             The top layer in the TCP/IP stack is occupied by an application layer protocol
+             like the file transfer protocol, an e-mail protocol such as the SMTP, or a remote
+             log-in protocol. This layer corresponds to layers 5­7 in the ISO protocol. When
+             the UDP is used in the lower layer, the top layer can be occupied by an application-
+             specific protocol implemented in an application process itself.
+             16.6.7 Network Bandwidth and Latency
+             When data is to be exchanged between two nodes, network hardware and network
+             protocols participate in data transfer over a link, and communication processors
+             (CPs) store and forward the data until it reaches the destination node. Two aspects
+             of network performance are the rate at which data can be delivered and how soon
+             data can reach the destination node.
+             Network bandwidth is the rate at which data is transferred over a network. It is
+             subject to various factors such as capacities of network links, error rates and delays
+             at routers, bridges, and gateways. Peak bandwidth is the theoretical maximum rate
+             at which data can be transferred between two nodes. Effective bandwidth may be
+
+
+
+                                                           Chapter 16  Distributed Operating Systems  685
+lower than the peak bandwidth because of data transmission errors, which lead
+to time-outs and retransmissions. Latency is the elapsed time between sending
+of a byte of data by a source node and its receipt at the destination node. It is
+typically computed for the first byte of data to be transferred. The processing
+time in the layers of a network protocol and delays due to network congestion
+contribute to latency.
+16.7   MODEL OF A DISTRIBUTED SYSTEM                                                                  ·
+A system model is employed to determine useful properties of a distributed
+system, such as the impact of faults on its functioning and the latency and
+cost of message communication. A distributed system is typically modeled as a
+graph
+                                   S = (N, E)
+where N and E are sets of nodes and edges, respectively. Each node may represent
+a host, i.e., a computer system, and each edge may represent a communication
+link connecting two nodes; however, as discussed later, nodes and edges may also
+have other connotations. The degree of a node is the number of edges connected
+to it. Each node is assumed to have an import list describing nonlocal resources
+and services that the node can utilize, and an export list describing local resources
+of the node that are accessible to other nodes. For simplicity, we do not include
+the name server (see Section 16.4.1) in the system model.
+Two kinds of graph models of a distributed system are useful in practice. A
+physical model is used to represent the arrangement of physical entities in a dis-
+tributed system. In this model, nodes and edges have the implications described
+earlier, i.e., a node is a computer system and an edge is a communication link.
+A logical model is an abstraction. Nodes in a logical model represent logical
+entities like processes and edges represent relationships between entities. A log-
+ical model may use undirected or directed edges. An undirected edge represents
+a symmetric relationship like two-way interprocess communication. A directed
+edge represents an asymmetric relationship like the parent­child relationship
+between processes or one-way interprocess communication. Note that nodes and
+edges in a logical model may not have a one-to-one correspondence with physical
+entities in a distributed system.
+A system model is analyzed to determine useful properties of a system such
+as the ones described in Table 16.8. One important property is the resiliency of
+a system, which is its ability to withstand faults without facing disruption. A
+k-resilient system can withstand any combination of up to k  faults. If n  is the
+smallest degree of a node, at least n faults must occur for a node to get isolated;
+however, fewer faults may be able to partition a system (see Exercise 16.7). As
+illustrated in Example 16.1, analysis of the system model can be used as a network
+design technique as well.
+
+
+
+686  Part 5  Distributed Operating Systems
+                   Table 16.8           System  Properties Determined by Analyzing
+                   a System Model
+                      Property                   Description
+                      Impact of faults           Faults can isolate a node from the rest of the system or
+                                                 partition a system, i.e., split it into two or more parts
+                                                 such that a node in one part cannot be reached from a
+                                                 node in another part.
+                      Resiliency                 A system is said to be k-resilient, where k is a constant,
+                                                 if k is the largest number of faults that the system can
+                                                 withstand without disruption.
+                      Latency between two        The minimum latency of a communication path
+                      nodes                      depends on the minimum latency of each
+                                                 communication link in it. The minimum latency
+                                                 between two nodes is the smallest of the minimum
+                                                 latencies across all paths between the nodes.
+                      Cost of sending            The cost of this operation depends on topology of the
+                      information to every       system and the algorithm used for sending the
+                      node                       information. In a fully connected system containing n
+                                                 nodes, the cost can be as low as n - 1 messages. The
+                                                 cost may be more if the system is not fully connected.
+·
+     Example 16.1  Resiliency of a System
+                   If it is expected that only one or two sites in a system may suffer faults simul-
+                   taneously, and faults never occur in communication links, availability of a
+                   resource is guaranteed if three units of the resource exist in three different sites
+                   in the system. If communication links can also suffer faults but the total num-
+                   ber of faults does not exceed two, three units of each resource must exist and
+                   each site must have at least three communication links connected to it. In such
+                   a system, a resource becomes unavailable only if three or more faults occur.
+                   ·
+                      When a node wishes to send some information to all other nodes in the
+                   system, it can send the information to each of its neighbors in the form of a
+                   message and each neighbor receiving such a message for the first time can send
+                   similar messages to its neighbors, and so on. In this method, a node would receive
+                   the information as many times as the number of edges connected to it, so a
+                   total of e messages are required, where e is the number of edges in the system.
+                   However, because a node needs to receive a message only once, it is possible to use
+                   knowledge of the system's topology to manage with fewer messages. For example,
+                   if the system is fully connected, it is possible to use a simpler protocol in which
+                   only the originator node sends messages to its neighbors. This operation would
+                   require only n - 1 messages.
+
+
+
+                                        Chapter 16  Distributed Operating Systems     687
+Both physical and logical models are used to determine useful properties.
+The latency between two nodes is determined by analyzing a physical model.
+Analyses on logical models are typically used to determine complexity of control
+algorithms used in a distributed OS. We shall see such usage in Chapter 18.
+16.8  DESIGN ISSUES IN DISTRIBUTED OPERATING SYSTEMS                                  ·
+The user of a distributed system expects its operating system to provide the look
+and feel of a conventional OS and also provide the benefits of a distributed
+system summarized in Table 16.1. To meet these expectations, the OS must fully
+exploit the capabilities of all nodes by distributing data, resources, users, and
+their computations effectively among the nodes of the system. It gives rise to the
+following design issues.
+Transparency of Resources and Services  Transparency implies that names of
+resources and services do not depend on their locations in the system. It enables
+an application to access local and nonlocal resources identically. It also permits
+an OS to change the location of a resource freely because a change in location
+does not affect the name of the resource and hence does not affect the appli-
+cations that use the resource. The OS can exploit transparency to perform data
+migration to speed up applications, reduce network traffic, or optimize use of
+disks. Transparency also facilitates computation migration because the compu-
+tation can continue to access resources as it did before it was migrated. We discuss
+transparency in detail in Chapter 20.
+Distribution of Control Functions  A control function is a function performed by
+the kernel to control resources and processes in the system, e.g., resource alloca-
+tion, deadlock handling, and scheduling. Centralized control functions face two
+problems in a distributed system: Because of network latency, it is not possible to
+obtain consistent information about the current state of processes and resources
+in all nodes of the system, so the centralized function may not be able to arrive
+at correct decisions. A centralized function is also a potential performance bot-
+tleneck and a single point of failure in the system. To handle these problems,
+a distributed OS performs a control function through a distributed control algo-
+rithm, whose actions are performed in several nodes of the system in a coordinated
+manner. We discuss distributed algorithms for performing control functions such
+as deadlock detection, scheduling, and mutual exclusion in Chapter 18.
+System Performance        In addition to techniques of conventional OSs, a dis-
+tributed OS uses two new techniques to provide good system performance--data
+migration and computation migration. Data migration is employed to reduce
+network latencies and improve response times of processes. Computation migra-
+tion is employed to ensure that nearly equal amounts of computational load are
+directed at all CPUs in the system. This technique is called load balancing.
+A distributed system typically grows in size over time through addition of
+nodes and users. As the size of a system grows, process response times may degrade
+
+
+
+688  Part 5  Distributed Operating Systems
+                   because of increased loading of resources and services of the OS, and increased
+                   overhead of OS control functions. Such degradation obstructs growth of a system,
+                   so the performance of a distributed system should be scalable; i.e., the delays and
+                   response times should not degrade with growth in system size, and the throughput
+                   should increase with growth in system size. An important scalability technique
+                   is to use self-sufficient clusters of hosts (see Section 16.3), so that network traffic
+                   does not grow as more clusters are added to the system. In Chapter 20, we discuss
+                   how the technique of file caching used in distributed file systems helps satisfy this
+                   requirement.
+                   Reliability     Fault tolerance techniques provide availability of resources and con-
+                   tinuity of system operation when faults occur. Link and node faults are tolerated
+                   by providing redundancy of resources and communication links. If a fault occurs
+                   in a network path to a resource or in the resource itself, an application can use
+                   another network path to the resource or use another resource. This way, a resource
+                   is unavailable only when unforeseen faults occur.
+                          Consistency of data becomes an issue when data is distributed or replicated.
+                   When several parts of distributed data are to be modified, a fault should not put
+                   the system in a state in which some parts of the data have been updated but others
+                   have not been. A distributed OS employs a technique called two-phase commit
+                   protocol to ensure that it does not happen (see Section 19.4.3).
+                          Parts of a computation may be performed in different nodes of a system. If
+                   a node or link fault occurs during execution of such a computation, the system
+                   should assess the damage caused by the fault and judiciously restore some of the
+                   subcomputations to previous states recorded in backups. This approach is called
+                   recovery. The system must also deal with uncertainties about the cause of a fault.
+                   Example 16.2 illustrates these uncertainties.
+·
+     Example 16.2  Uncertainties about Faults
+                   A   distributed       computation  consists    of  two  subcomputations      represented
+                   by     processes  Pi  and  Pj ,  executing   in  nodes  N1  and  N2,   respectively     (see
+                   Figure 16.15). Process Pi sends a request to Pj and waits for a response. How-
+                   ever, a time-out occurs before it receives a reply. The time-out could have been
+                   caused by any one of the following situations:
+                      1.  Process Pj never received the request, so never started processing it.
+                      2.  The  processing   is    taking  longer  than  expected;  i.e.,  process  Pj  is  still
+                          processing the request.
+                      3.  Process    Pj  started  processing   the  request  but   suffered  a  fault  before
+                          completing it.
+                      4.  Process Pj completed the processing of the request but its reply to process
+                          Pi was lost.
+                   ·
+
+
+
+                                                        Chapter 16  Distributed Operating Systems  689
+                        Pi                 request      Pj
+                        Node N1                         Node N2
+Figure 16.15  Recovery issues in a remote request.
+In Example 16.2, the OS has to resolve the uncertainty and handle the
+situation that actually caused the time-out. If node N2 had crashed, the subcom-
+putation Pj would have to be repeated, possibly at some other node in the system.
+In other cases, the subcomputation Pj may have been completed, so reexecuting
+it elsewhere in the system may affect consistency of data (e.g., an update may
+be performed twice!) or waste CPU time. We discuss special recovery techniques
+designed for handling uncertainties in Chapter 19.
+Security  Security acquires a new dimension in a distributed system because
+interprocess messages may pass through a computer system called a communica-
+tion processor, which may operate independently under its own OS. An intruder
+may gain control of such a computer system and either tamper with messages
+passing through it, or misuse them to perform masquerading. Special techniques
+for message security and authentication are used to prevent such attacks; we
+discuss them in Chapter 21.
+16.9      SUMMARY                                                                                           ·
+Resource      sharing,  reliability,  and  computation  and computation speedup. Such a computation
+speedup are the key benefits of distributed sys-        may use data located in a distant node in three
+tems. A distributed OS realizes these benefits by       ways: Remote data access uses the data over the
+integrating operation of individual computer sys-       network, data migration moves the data to the
+tems, ensuring reliable network communication,          node where the computation exists, and computa-
+and effectively supporting operation of distributed     tion migration moves a part of the computation to
+computations. In this chapter we studied the rele-      the node where the data is located. A distributed
+vant techniques of a distributed OS.                    computation paradigm is a model of distributed
+A distributed system consists of nodes con-             computation that provides features for remote data
+nected to a network, where a node could be an           access, data migration, or computation migration.
+individual computer system, or a cluster, which         The client­server paradigm provides remote data
+is a group of computers that share resources and        access, while the remote procedure call (RPC) and
+operate in an integrated manner. A cluster can pro-     remote evaluation paradigms provide computation
+vide computation speedup and reliability within         migration.
+a node.                                                 Processes located in different nodes of a dis-
+Parts of a distributed computation can be exe-          tributed system communicate by using an interpro-
+cuted in different nodes to achieve resource sharing    cess communication protocol (IPC protocol), which
+
+
+
+690             Part 5  Distributed Operating Systems
+is a set of rules for ensuring effective communica-            the network and transmitting data at an appro-
+tion. The protocol uses the domain name system                 priate rate. Effective network communication is
+(DNS) to find the location of a destination pro-               implemented by a hierarchy of protocols called a
+cess. IPC semantics describe the properties of an              protocol stack, in which each individual protocol
+IPC protocol. A reliable protocol guarantees that a            addresses a different concern in network communi-
+message would be delivered to the destination pro-             cation. The ISO protocol stack uses seven network
+cess in spite of faults in nodes and communication             protocols. The TCP and IP protocol stacks use
+links. Reliability is achieved as follows: A process           fewer    protocols.    Network         performance    is   mea-
+that receives a message returns an acknowledgment              sured either as effective bandwidth, which is the rate
+to the sender of the message. The sender pro-                  at which data can be transferred over the network,
+cess retransmits the message if an acknowledgment              or as latency, which is the delay involved in the
+is  not   received      within  the    expected  time  inter-  transfer of data.
+val. In this protocol, a message may be received                    A distributed system is modeled by a graph.
+by the destination process more than once, hence               In a physical model, nodes and edges of the graph
+it  is  called  an      at-least-once  protocol.   A   proto-  are  nodes      and  links   of     the  distributed  system,
+col would be called an exactly-once protocol if                respectively;   in     a  logical   model,  they      are  pro-
+it  arranges    to   recognize  and    discard     duplicate   cesses and relationships between processes, respec-
+messages.                                                      tively.  Graph       models  of     a    system  are  used     to
+     Network communication has to deal with tran-              determine       reliability  properties  of      a  system     or
+sient faults in links and nodes of the system, and             as   a   basis  for  design     of  algorithms      used   by  a
+network traffic densities in different parts of the            distributed OS.
+network. Hence apart from IPC semantics, the net-                   New design issues are faced by OS designers in
+work software has to ensure reliability by detecting           providing resource sharing, reliability, and perfor-
+and tolerating faults, and ensure performance by               mance in the distributed environment. These issues
+finding an appropriate route for a message through             are discussed in the next few chapters.
+TEST      YOUR CONCEPTS                                                                                                       ·
+    16.1  Classify each of the following statements as true             f.  The sequence number in a message plays a
+          or false:                                                         role in implementing semantics of interpro-
+          a. Failure of a single node partitions a ring                     cess communication.
+           network.                                                     g.  In a reliable, nonblocking interprocess com-
+          b. When message switching is used, all messages                   munication protocol, a receiver process may
+           between a pair of processes travel over the                      maintain only one reply buffer per sender
+           same path in the network.                                        process.
+          c. Dynamic routing can adapt to link and node                 h.  A remote procedure call is useful for perform-
+           failures in a network.                                           ing data migration.
+          d. A message sent using a virtual path in an                  i.  Transferring    n   bytes   between    two    nodes
+           ATM network might face a delay in a link                         requires only 50 percent of the time required
+           due to high traffic density.                                     to transfer 2 × n bytes.
+          e. The at-least-once semantics are implemented
+           by   recognizing     and    discarding  duplicate
+           messages.
+
+
+
+                                                                  Chapter 16        Distributed Operating Systems                 691
+           (a)                                                            (b)
+Figure  16.16  Exercises for determining resiliency of distributed systems.
+EXERCISES                                                                                                                         ·
+16.1      Discuss which process synchronization means                        until it receives an acknowledgment of its reply.
+          used in symmetrical multiprocessor systems can                     Analyze the properties of this protocol.
+          be adapted for use in clusters (see Chapter 10).        16.7       a. Determine      the  (i)  site  faults  and  (ii)  link
+16.2      Explore   the  possibility  of  implementing   the                   faults that the systems of Figure 16.16(a) can
+          blocking  and  nonblocking      protocols  through                   tolerate for interprocess communication.
+          monitors. What are the difficulties in the imple-                  b. Determine placement of copies of data D in
+          mentation?                                                           the systems of Figure 16.16(b) if D is to be
+16.3      Write a short note on factors that influence the                     available despite two site/link faults in the
+          duration of the time-out interval in the RRA                         system.
+          protocol of Section 16.4.3.1.                           16.8       The diameter of a distributed system (d) is the
+16.4      Develop schemes to discard duplicate replies                       largest number of links in any shortest path
+          received in the sender site in the blocking and                    between nodes of the system. If the maximum
+          nonblocking versions of the RRA protocol.                          communication delay along any link in the sys-
+16.5      Requests made by nonblocking send calls may                        tem is , what is the maximum communication
+          arrive out of sequence at the destination site                     delay  in  the    system?   Explain       the  conditions
+          when dynamic routing is used. Discuss how a                        under which it occurs.
+          nonblocking RR protocol should discard dupli-           16.9       Compare      the  RPC       and   remote       evaluation
+          cate requests when this property holds (refer to                   paradigms on the following basis
+          Section 16.4.3.2).                                                 a. Flexibility
+16.6      One change is made in the RRA protocol of                          b. Efficiency
+          Section 16.4.3.1: A destination process blocks                     c. Security
+BIBLIOGRAPHY                                                                                                                      ·
+Tanenbaum and van Renesse (1985) is a survey article              procedure calls. Lin and Gannon (1985) discusses a
+on distributed operating systems. It discusses blocking           remote procedure call (RPC) schematic with exactly-
+and nonblocking communication protocols. The texts                once semantics. Stamos and Gifford (1990) discusses
+by Sinha (1997), Tanenbaum and van Steen (2002), and              remote     evaluation.     Tanenbaum         (2001)  discusses  the
+Coulouris et al. (2005) discuss the topics included in this       ISO protocol, the client­server model and the RPC.
+chapter.                                                          Birman (2005) discusses the client­server model and
+Comer          and  Stevens   (2000)   discusses  the    client­  the RPC.
+server  computing     model.  Birrell    and  Nelson     (1984)   Tanenbaum (2003) is a text devoted to computer
+discusses  implementation     of  remote      procedure  calls.   networks. It covers the ISO protocol in great detail.
+Tay and Ananda (1990) is a survey article on remote               Comer (2004) is a broad introduction to networking.
+
+
+
+692  Part 5        Distributed Operating Systems
+It explains the TCP/IP protocol. Stallings (2004) dis-  8.   Stallings, W. (2004): Computer Networking with
+cusses various networking protocols. Stevens and Rago        Internet Protocols, Prentice Hall, Englewood
+(2005) describes network programming in Unix.                Cliffs, N.J.
+1.   Birman, K. (2005): Reliable Distributed Systems:   9.   Stamos, J. W., and D. K. Gifford (1990): "Remote
+     Technologies, Web Services, and Applications,           evaluation," ACM Transactions on Programming
+     Springer, Berlin.                                       Languages and Systems, 12 (4), 537­565.
+2.   Birrell, A. D., and B. J. Nelson (1984):           10.  Stevens, W. R., and S. A. Rago (2005): Advanced
+     "Implementing remote procedure calls," ACM              Programming in the Unix Environment, 2nd ed.,
+     Transactions on Computer Systems, 2, 39­59.             Addison-Wesley Professional.
+3.   Comer, D. (2004): Computer Networks and            11.  Tanenbaum, A. S. (2001): Modern Operating
+     Internets, 4th ed., Prentice Hall, Englewood            Systems, 2nd ed., Prentice Hall, Englewood Cliffs,
+     Cliffs, N.J.                                            N.J.
+4.   Comer, D., and D. Stevens (2000):                  12.  Tanenbaum, A. S. (2003): Computer Networks,
+     Internetworking with TCP/IP, Vol. III:                  4th ed., Prentice Hall, Englewood
+     Client­Server Programming and Applications,             Cliffs, N.J.
+     Linux/POSIX Socket Version, Prentice Hall,         13.  Tanenbaum, A. S., and M. van Steen (2002):
+     Englewood Cliffs, N.J.                                  Distributed Systems: Principles and Paradigms,
+5.   Coulouris, G., J. Dollimore, and T. Kindberg            Prentice Hall, Englewood Cliffs, N.J.
+     (2005): Distributed Systems--Concepts and          14.  Tanenbaum, A. S., and R. Van Renesse (1985):
+     Design, 4th ed., Addison-Wesley, New York.              "Distributed Operating Systems," Computing
+6.   Lin, K. J., and J. D. Gannon (1985): "Atomic            Surveys, 17 (1), 419­470.
+     remote procedure call," IEEE Transactions on       15.  Tay, B. H., and A. L. Ananda (1990): "A survey
+     Software Engineering, 11 (10), 1126­1135.               of remote procedure calls," Operating Systems
+7.   Sinha, P. K. (1997): Distributed Operating              Review, 24 (3), 68­79.
+     Systems, IEEE Press, New York.

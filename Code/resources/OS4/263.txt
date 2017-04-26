@@ -1,0 +1,403 @@
+Scheduling in Practice
+                  To provide a suitable combination of system performance and user service,
+                  an operating system has to adapt its operation to the nature and number of
+                  user requests and availability of resources. A single scheduler using a classical
+                  scheduling policy cannot address all these issues effectively. Hence, a modern
+                  OS employs several schedulers--up to three schedulers, as we shall see later--
+                  and some of the schedulers may use a combination of different scheduling
+                  policies.
+
+
+
+                                                                                  Chapter 7         Scheduling  243
+7.4.1 Long-, Medium-, and Short-Term Schedulers
+These schedulers perform the following functions:
+·  Long-term scheduler: Decides when to admit an arrived process for schedul-
+   ing,  depending   on  its  nature         (whether   CPU-bound     or  I/O-bound)           and
+   on availability of resources like kernel data structures and disk space for
+   swapping.
+·  Medium-term scheduler: Decides when to swap-out a process from memory
+   and when to load it back, so that a sufficient number of ready processes would
+   exist in memory.
+·  Short-term scheduler: Decides which ready process to service next on the CPU
+   and for how long.
+   Thus, the short-term scheduler is the one that actually selects a process for
+operation. Hence it is also called the process scheduler, or simply the scheduler.
+Figure 7.9 shows an overview of scheduling and related actions. As discussed in
+Sections 2.3 and 5.2.2, the operation of the kernel is interrupt-driven. Every event
+that requires the kernel's attention causes an interrupt. The interrupt processing
+                                             Interrupts
+                                             Interrupt
+                                             processing
+                                             routine
+        PCB lists     Start       Memory                Suspend/      Create/     Event
+   ECB lists          I/O     ··  handler    ····        resume   ··  terminate   handlers
+                                                         process      process
+                                             Long-term
+                                             scheduler
+                                             Medium-term              Schedulers
+                                             scheduler
+                                             Short-term
+                                             scheduler
+                                                                                 Control flow
+                                                                                 Data flow
+                                             Dispatcher
+Figure  7.9  Event handling and scheduling.
+
+
+
+244  Part 2  Process Management
+             routine performs a context save function and invokes an event handler. The event
+             handler analyzes the event and changes the state of the process, if any, affected
+             by it. It then invokes the long-term, medium-term, or short-term scheduler as
+             appropriate. For example, the event handler that creates a new process invokes the
+             long-term scheduler, event handlers for suspension and resumption of processes
+             (see Section 5.2.1.1) invoke the medium-term scheduler, and the memory handler
+             may invoke the medium-term scheduler if it runs out of memory. Most other
+             event handlers directly invoke the short-term scheduler.
+             Long-Term   Scheduling    The long-term scheduler may defer admission of a
+             request for two reasons: it may not be able to allocate sufficient resources like
+             kernel data structures or I/O devices to a request when it arrives, or it may find
+             that admission of a request would affect system performance in some way; e.g., if
+             the system currently contained a large number of CPU-bound requests, the sched-
+             uler might defer admission of a new CPU-bound request, but it might admit a
+             new I/O-bound request right away.
+             Long-term scheduling was used in the 1960s and 1970s for job scheduling
+             because computer systems had limited resources, so a long-term scheduler was
+             required to decide whether a process could be initiated at the present time. It
+             continues to be important in operating systems where resources are limited. It is
+             also used in systems where requests have deadlines, or a set of requests are repeated
+             with a known periodicity, to decide when a process should be initiated to meet
+             response requirements of applications. Long-term scheduling is not relevant in
+             other operating systems.
+             Medium-Term Scheduling    Medium-term scheduling maps the large number
+             of requests that have been admitted to the system into the smaller number
+             of requests that can fit into the memory of the system at any time. Thus its
+             focus is on making a sufficient number of ready processes available to the
+             short-term scheduler by suspending or reactivating processes. The medium-
+             term scheduler decides when to swap out a process from memory and when
+             to swap it back into memory, changes the state of the process appropriately,
+             and enters its process control block (PCB) in the appropriate list of PCBs. The
+             actual swapping-in and swapping-out operations are performed by the memory
+             manager.
+             The kernel can suspend a process when a user requests suspension, when
+             the kernel runs out of free memory, or when it finds that the CPU is not
+             likely to be allocated to the process in the near future. In time-sharing sys-
+             tems, processes in blocked or ready states are candidates for suspension (see
+             Figure 5.5). The decision to reactivate a process is more involved: The medium-
+             term scheduler considers the position occupied by a process in the scheduling
+             list, estimates when it is likely to be scheduled next, and swaps it in ahead of
+             this time.
+             Short-Term Scheduling     Short-term scheduling is concerned with effective use
+             of the CPU. It selects one process from a list of ready processes and hands it
+             to the dispatching mechanism. It may also decide how long the process should
+
+
+
+                                                                                     Chapter 7  Scheduling       245
+                                   Lists of processes
+                                                               Arrived
+                                                               processes
+              Long-
+              term
+              Scheduler
+                                                               Ready swapped,
+                                                               blocked swapped
+                                                               processes
+                                   Swap-out  Swap-in
+              Medium-
+              term                                             Blocked
+              Scheduler                                        processes
+                                                               Ready
+                                                               processes
+              Short-
+              term
+              Scheduler
+                                   CPU
+Figure 7.10  Long-, medium-,  and  short-term scheduling in a  time-sharing system.
+be allowed to use the CPU and instruct the kernel to produce a timer interrupt
+accordingly.
+Example 7.8 illustrates long-, medium-, and short-term scheduling in a time-
+sharing OS.
+                                                                                                                 ·
+Long-, Medium-, and Short-Term Scheduling in Time-Sharing                                       Example     7.8
+Figure 7.10 illustrates scheduling in a time-sharing operating system. The long-
+term scheduler admits a process when kernel resources like control blocks,
+swap space on a disk, and other resources like I/O devices--whether real
+or virtual--can be allocated to it. The kernel copies the code of the pro-
+cess into the swap space, and adds the process to the list of swapped-out
+processes.
+The medium-term scheduler controls swapping of processes and decides
+when to move processes between the ready swapped and ready lists and between
+the blocked swapped and blocked lists (see Figure 5.5). Whenever the CPU
+is free, the short-term scheduler selects one process from the ready list for
+execution. The dispatching mechanism initiates or resumes operation of the
+selected process on the CPU. A process may shuttle between the medium-, and
+short-term schedulers many times as a result of swapping.
+                                                                                     ·
+
+
+
+246  Part 2  Process Management
+                                                            Process                    PCB
+                                                            scheduler                  lists
+                            Scheduling         Process      Context      Priority
+                            mechanisms         dispatching         save  computation,
+                                                                         reordering
+                                 Control flow               Hardware
+                                 Data flow
+             Figure   7.11  A schematic of the process scheduler.
+             7.4.2 Scheduling Data Structures and Mechanisms
+             Figure 7.11 is a schematic diagram of the process scheduler. It uses several lists of
+             PCBs whose organization and use depends on the scheduling policy. The process
+             scheduler selects one process and passes its id to the process dispatching mecha-
+             nism. The process dispatching mechanism loads contents of two PCB fields--the
+             program status word (PSW) and general-purpose registers (GPRs) fields--into
+             the CPU to resume operation of the selected process. Thus, the dispatching mech-
+             anism interfaces with the scheduler on one side and the hardware on the other side.
+             The context save mechanism is a part of the interrupt processing routine.
+             When an interrupt occurs, it is invoked to save the PSW and GPRs of the inter-
+             rupted process. The priority computation and reordering mechanism recomputes
+             the priority of requests and reorders the PCB lists to reflect the new priorities.
+             This mechanism is either invoked explicitly by the scheduler when appropri-
+             ate or invoked periodically. Its exact actions depend on the scheduling policy
+             in use.
+             One question faced by all schedulers is: What should the scheduler do if there
+             are no ready processes? It has no work for the CPU to perform; however, the CPU
+             must remain alert to handle any interrupts that might activate one of the blocked
+             processes. A kernel typically achieves it by executing an idle loop, which is an
+             endless loop containing no-op instructions. When an interrupt causes a blocked
+              ready transition for some process, scheduling would be performed again and
+             that process would get scheduled. However, execution of the idle loop wastes
+             power. In Section 7.4.9, we discuss alternative arrangements that conserve power
+             when there are no ready processes in the system.
+             7.4.3 Priority-Based Scheduling
+             Figure 7.12 shows an efficient arrangement of scheduling data for priority-based
+             scheduling. A separate list of ready processes is maintained for each priority value;
+
+
+
+                                                                                    Chapter 7  Scheduling  247
+                            P1   P4            P8           Highest-priority queue
+                            P7   P5                Lower-than-highest-
+                            ...                             priority queue
+                            P10  P3                         Lowest-priority queue
+Figure 7.12  Ready  queues  in priority-based  scheduling.
+this list is organized as a queue of PCBs, in which a PCB points to the PCB of
+the next process in the queue. The header of a queue contains two pointers. One
+points to the PCB of the first process in the queue, and the other points to the
+header of the queue for the next lower priority. The scheduler scans the headers in
+the order of decreasing priority and selects the first process in the first nonempty
+queue it can find. This way, the scheduling overhead depends on the number of
+distinct priorities, rather than on the number of ready processes.
+Priority-based scheduling can lead to starvation of low-priority processes. As
+discussed in Section 7.1.2, the technique of aging of processes, which increases the
+priority of a ready process if it does not get scheduled within a certain period of
+time, can be used to overcome starvation. In this scheme, process priorities would
+be dynamic, so the PCB of a process would be moved between the different ready
+queues shown in Figure 7.12.
+Starvation in priority-based scheduling can also lead to an undesirable sit-
+uation called priority inversion. Consider a high-priority process that needs a
+resource that is currently allocated to a low-priority process. If the low-priority
+process faces starvation, it cannot use and release the resource. Consequently,
+the high-priority process remains blocked indefinitely. This situation is addressed
+through the priority inheritance protocol, which temporarily raises the priority of
+the low-priority process holding the resource to the priority value of the high-
+priority process that needs the resource. The process holding the resource can now
+obtain the CPU, use the resource, and release it. The kernel changes its priority
+back to the earlier value when it releases the resource.
+7.4.4 Round-Robin Scheduling with Time-Slicing
+Round-robin scheduling can be implemented through a single list of PCBs of
+ready processes. This list is organized as a queue. The scheduler always removes
+the first PCB from the queue and schedules the process described by it. If the time
+slice elapses, the PCB of the process is put at the end of the queue. If a process
+starts an I/O operation, its PCB is added at the end of the queue when its I/O
+operation completes. Thus the PCB of a ready process moves toward the head of
+the queue until the process is scheduled.
+
+
+
+248  Part 2  Process Management
+                  7.4.5 Multilevel Scheduling
+                  The multilevel scheduling policy combines priority-based scheduling and round-
+                  robin scheduling to provide a good combination of system performance and
+                  response times. A multilevel scheduler maintains a number of ready queues. A
+                  priority and a time slice are associated with each ready queue, and round-robin
+                  scheduling with time-slicing is performed within it. The queue at a high priority
+                  level has a small time slice associated with it, which ensures good response times
+                  for processes in this queue, while the queue at a low priority level has a large
+                  time slice, which ensures low process switching overhead. A process at the head
+                  of a queue is scheduled only if the queues for all higher priority levels are empty.
+                  Scheduling is preemptive, so a process is preempted when a new process is added to
+                  a queue at a higher priority level. As in round-robin scheduling with time-slicing,
+                  when a process makes an I/O request, or is swapped out, its PCB is removed from
+                  the ready queue. When the I/O operation completes, or the process is swapped
+                  in, its PCB is added at the end of that ready queue where it existed earlier.
+                     To benefit from the features of multilevel scheduling, the kernel puts highly
+                  interactive processes in the queue at the highest priority level. The small time
+                  slice associated with this queue is adequate for these processes, so they receive
+                  good response times [see Eq. (3.1)]. Moderately interactive processes are put in
+                  a ready queue at a medium priority level where they receive larger time slices.
+                  Noninteractive processes are put in a ready queue at one of the low priority
+                  levels. These processes receive a large time slice, which reduces the scheduling
+                  overhead.
+·
+     Example 7.9  Multilevel Scheduling
+                  Figure 7.12 illustrates ready queues in a multilevel scheduler. Processes P7 and
+                  P5 have a larger time slice than processes P1, P4, and P8. However, they get
+                  a chance to execute only when P1, P4, and P8 are blocked. Processes P10 and
+                  P3 can execute only when all other processes in the system are blocked. Thus,
+                  these two processes would face starvation if this situation is rare.
+                  ·
+                     The multilevel scheduling policy uses static priorities. Hence it inherits the
+                  fundamental shortcoming of priority-based scheduling employed in multipro-
+                  gramming systems: A process is classified a priori into a CPU-bound process or
+                  an I/O-bound process for assignment of priority. If wrongly classified, an I/O-
+                  bound process may receive a low priority, which would affect both user service
+                  and system performance, or a CPU-bound process may receive a high priority,
+                  which would affect system performance. As a result of static priorities, the mul-
+                  tilevel scheduling policy also cannot handle a change in the computational or
+                  I/O behavior of a process, cannot prevent starvation of processes in low priority
+                  levels (see Example 7.9), and cannot employ the priority inheritance protocol to
+                  overcome priority inversion (see Section 7.4.3). All these problems are addressed
+                  by the multilevel adaptive scheduling policy.
+
+
+
+                                                                         Chapter 7          Scheduling  249
+Multilevel Adaptive Scheduling  In multilevel adaptive scheduling, which is also
+called multilevel feedback scheduling, the scheduler varies the priority of a process
+such that the process receives a time slice that is consistent with its requirement
+for CPU time. The scheduler determines the "correct" priority level for a process
+by observing its recent CPU and I/O usage and moves the process to this level.
+This way, a process that is I/O-bound during one phase in its operation and CPU-
+bound during another phase will receive an appropriate priority and time slice at
+all times. This feature eliminates the problems of multilevel scheduling described
+earlier.
+CTSS, a time-sharing OS for the IBM 7094 in the 1960s, is a well-known
+example of multilevel adaptive scheduling. The system used an eight-level priority
+structure, with the levels numbered 0 through 7, 0 being the highest-priority level
+and 7 being the lowest-priority level. Level number n had a time slice of 0.5 × 2n
+CPU seconds associated with it. At initiation, each user process was placed at level
+2 or 3 depending on its memory requirement. It was promoted or demoted in the
+priority structure according to the following rules: If a process completely used up
+the time slice at its current priority level (i.e., it did not initiate an I/O operation),
+it was demoted to the next higher numbered level, whereas if a process spent more
+than a minute in ready state in its current priority level without obtaining any CPU
+service, it was promoted to the next lower numbered level. Further, any process
+performing I/O on the user terminal was promoted to level 2. Subsequently, it
+would be moved to the "correct" priority level through possible demotions.
+7.4.6 Fair Share Scheduling
+A common criticism of all scheduling policies discussed so far is that they try to
+provide equitable service to processes, rather than to users or their applications. If
+applications create different numbers of processes, an application employing more
+processes is likely to receive more CPU attention than an application employing
+fewer processes.
+The notion of a fair share addresses this issue. A fair share is the fraction of
+CPU time that should be devoted to a group of processes that belong to the same
+user or the same application; it ensures an equitable use of the CPU by users
+or applications. The actual share of CPU time received by a group of processes
+may differ from the fair share of the group if all processes in some of the groups
+are inactive. For example, consider five groups of processes, G1­G5, each having
+a 20 percent share of CPU time. If all processes in G1 are blocked, processes of
+each of the other groups should be given 25 percent of the available CPU time
+so that CPU time is not wasted. What should the scheduler do when processes
+of G1 become active after some time? Should it give them only 20 percent of
+CPU time after they wake up, because that is their fair share of CPU time, or
+should it give them all the available CPU time until their actual CPU consumption
+since inception becomes 20 percent? Lottery scheduling, which we describe in the
+following, and the scheduling policies used in the Unix and Solaris operating
+systems (see Section 7.6) differ in the way they handle this situation.
+
+
+
+250  Part 2  Process Management
+             Lottery scheduling is a novel technique proposed for sharing a resource in
+             a probabilistically fair manner. Lottery "tickets" are distributed to all processes
+             sharing a resource in such a manner that a process gets as many tickets as its fair
+             share of the resource. For example, a process would be given five tickets out of a
+             total of 100 tickets if its fair share of the resource is 5 percent. When the resource
+             is to be allocated, a lottery is conducted among the tickets held by processes that
+             actively seek the resource. The process holding the winning ticket is then allocated
+             the resource. The actual share of the resources allocated to the process depends
+             on contention for the resource. Lottery scheduling can be used for fair share CPU
+             scheduling as follows: Tickets can be issued to applications (or users) on the basis
+             of their fair share of CPU time. An application can share its tickets among its
+             processes in any manner it desires. To allocate a CPU time slice, the scheduler
+             holds a lottery in which only tickets of ready processes participate. When the
+             time slice is a few milliseconds, this scheduling method provides fairness even
+             over fractions of a second if all groups of processes are active.
+             7.4.7 Kernel Preemptibility
+             Kernel preemptibility plays a vital role in ensuring effectiveness of a scheduler. A
+             noninterruptible kernel can handle an event without getting further interrupted,
+             so event handlers have a mutually exclusive access to the kernel data structures
+             without having to use data access synchronization. However, if event handlers
+             have large running times, noninterruptibility also causes a large kernel latency, as
+             the kernel cannot respond readily to interrupts. This latency, which could be as
+             much as 100 ms in computers with slow CPUs, causes a significant degradation
+             of response times and a slowdown of the OS operation. When the scheduling
+             of a high-priority process is delayed because the kernel is handling an event
+             concerning a low-priority process, it even causes a situation analogous to pri-
+             ority inversion. Making the kernel preemptible would solve this problem. Now,
+             scheduling would be performed more often, so a high-priority process that is
+             activated by an interrupt would get to execute sooner.
+             7.4.8 Scheduling Heuristics
+             Schedulers in modern operating systems use many heuristics to reduce their
+             overhead, and to provide good user service. These heuristics employ two main
+             techniques:
+             · Use of a time quantum
+             · Variation of process priority
+             A time quantum is the limit on CPU time that a process may be allowed to
+             consume over a time interval. It is employed as follows: Each process is assigned
+             a priority and a time quantum. A process is scheduled according to its priority,
+             provided it has not exhausted its time quantum. As it operates, the amount of
+             CPU time used by it is deducted from its time quantum. After a process has
+             exhausted its time quantum, it would not be considered for scheduling unless
+
+
+
+                                  Chapter 7                                             Scheduling  251
+the kernel grants it another time quantum, which would happen only when all
+active processes have exhausted their quanta. This way, the time quantum of a
+process would control the share of CPU time used by it, so it can be employed to
+implement fair share scheduling.
+Process priority could be varied to achieve various goals. The priority of a
+process could be boosted while it is executing a system call, so that it would quickly
+complete execution of the call, release any kernel resources allocated to it, and
+exit the kernel. This technique would improve response to other processes that
+are waiting for the kernel resources held by the process executing the system call.
+Priority inheritance could be implemented by boosting the priority of a process
+holding a resource to that of the highest-priority process waiting for the resource.
+Process priority may also be varied to more accurately characterize the nature
+of a process. When the kernel initiates a new process, it has no means of knowing
+whether the process is I/O-bound or CPU-bound, so it assigns a default priority to
+the process. As the process operates, the kernel adjusts its priority in accordance
+with its behavior using a heuristic of the following kind: When the process is
+activated after some period of blocking, its priority may be boosted in accordance
+with the cause of blocking. For example, if it was blocked because of an I/O
+operation, its priority would be boosted to provide it a better response time. If it
+was blocked for a keyboard input, it would have waited for a long time for the user
+to respond, so its priority may be given a further boost. If a process used up its
+time slice completely, its priority may be reduced because it is more CPU-bound
+than was previously assumed.
+7.4.9 Power Management
+When no ready processes exist, the kernel puts the CPU into an idle loop (see
+Section 7.4.2). This solution wastes power in executing useless instructions. In
+power-starved systems such as embedded and mobile systems, it is essential to
+prevent this wastage of power.
+To address this requirement, computers provide special modes in the CPU.
+When put in one of these modes, the CPU does not execute instructions, which
+conserves power; however, it can accept interrupts, which enables it to resume
+normal operation when desired. We will use the term sleep mode of the CPU
+generically for such modes. Some computers provide several sleep modes. In the
+"light" sleep mode, the CPU simply stops executing instructions. In a "heavy"
+sleep mode, the CPU not only stops executing instructions, but also takes other
+steps that reduce its power consumption, e.g., slowing the clock and disconnecting
+the CPU from the system bus. Ideally, the kernel should put the CPU into the
+deepest sleep mode possible when the system does not have processes in the ready
+state. However, a CPU takes a longer time to "wake up" from a heavy sleep mode
+than it would from a light sleep mode, so the kernel has to make a trade-off here.
+It starts by putting the CPU in the light sleep mode. If no processes become ready
+for some more time, it puts the CPU into a heavier sleep mode, and so on. This
+way, it provides a trade-off between the need for power saving and responsiveness
+of the system.

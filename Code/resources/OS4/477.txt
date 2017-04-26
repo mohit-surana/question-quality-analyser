@@ -1,0 +1,425 @@
+Case Studies of Virtual Memory Using Paging
+             12.8.1 Unix Virtual Memory
+             Unix has been ported on computer systems with diverse hardware designs. A
+             variety of ingenuous schemes have been devised to exploit features of the pag-
+             ing hardware of different host machines. This section describes some features
+             common to all Unix virtual memory implementations and some interesting tech-
+             niques used in different versions of Unix. Its purpose is to provide a view of the
+             practical issues in virtual memory implementations rather than to study the vir-
+             tual memory manager of any specific Unix version in detail. Wherever possible,
+             we are replacing the Unix terminology with terminology we used in previous
+             sections of this chapter.
+             Logical Address Space and Swap Space  The page table of a process differenti-
+             ates among three kinds of pages--resident, unaccessed, and swapped-out pages.
+             A resident page is currently in memory. An unaccessed page is one that has not
+             been accessed even once during operation of the process and therefore has never
+             been loaded in memory. It will be loaded when a reference to it causes a page fault.
+             As described later, the page exists either in a file or in the swap space, depending
+             on whether it is a text page, i.e., it contains instructions, or it is a data page. A
+             swapped-out page is a page that is currently in the swap space; at a page fault, it
+             is loaded back in memory from its location in the swap space.
+             An unaccessed page may be a text page or a data page. A text page is loaded
+             from an executable file existing in the file system. Locating such a page in the
+             file system may require reading of several disk blocks in the inode and the file
+             allocation table (see Section 13.14.1). To avoid this overhead, the virtual memory
+             manager maintains information about text pages in a separate table and refers
+             to it when a page needs to be loaded. As described later, the 4.3BSD virtual
+             memory manager maintains this information in the page table entry itself. This
+             information gets overwritten by the page frame number when the page is loaded
+             in memory, and so it is not available if the page gets removed from memory
+             and has to be reloaded. To overcome this difficulty, the virtual memory manager
+             writes out a text page into the swap space when it is removed from memory for
+             the first time, and thereafter loads it from the swap space on demand. A data
+             page is called a zero-fill page; it is filled with zeroes when its first use leads to a
+             page fault. Thereafter, it is either a resident page or a swapped-out page.
+             A text page may remain in memory even if it is marked nonresident in its page
+             table entry. This situation arises if some other process is using the page (or has
+             used it in the past). When a page fault occurs for a text page, the virtual memory
+
+
+
+                                                                   Chapter 12              Virtual Memory  457
+manager first checks whether the page already exists in memory. If so, it simply
+puts the page frame information in its page table entry and marks it as resident.
+This action avoids a page-in operation and also conserves memory.
+To conserve disk space, an effort is made to allocate as little swap space as
+possible. To start with, sufficient swap space is allocated to accommodate the
+user stack and the data area. Thereafter swap space is allocated in large chunks
+whenever needed. This approach suffers from the problem that swap space in the
+system may become exhausted when the data area of a process grows; the process
+then has to be suspended or aborted.
+Copy-on-Write     The semantics of fork require that the child process should
+obtain a copy of the parent's address space. These semantics can be implemented
+by allocating distinct memory areas and a swap space for the child process. How-
+ever, child processes frequently discard the copy of their parent's address space
+by loading some other program for execution through the exec call. In any case,
+a child process may not wish to modify much of the parent's data. Hence mem-
+ory and swap space can be optimized through the copy-on-write feature (see
+Section 12.6.1).
+Copy-on-write is implemented as follows: When a process is forked, the ref-
+erence count of all data pages in the parent's address space is incremented by 1
+and all data pages are made read-only by manipulating bits in the access privi-
+leges field of their page table entries. Any attempt at modifying a data page raises
+a protection fault. The virtual memory manager finds that the reference count
+of the page is > 1, so it realizes that this is not a protection fault but a reference
+to a copy-on-write page. It now reduces the count, makes a copy of the page for
+the child process and assigns the read and write privileges to this copy by setting
+appropriate bits in its page table entry. If the new reference count is = 1, it also
+enables the read and write privileges in the page table entry that had led to the
+page fault because the entry no longer pertains to a shared page.
+Efficient Use of Page Table and Paging Hardware  If a page is not present in
+memory, the valid bit of its page table entry is "off." Under these circumstances,
+bits in other fields of this entry, like the ref info field or the page frame # field, do
+not contain any useful information. Hence these bits can be used for some other
+purposes. Unix 4.3BSD uses these bits to store the address of a disk block in the
+file system that contains a text page.
+The VAX 11 architecture does not provide a reference bit to collect page
+reference information. Its absence is compensated by using the valid bit in a
+novel manner. Periodically, the valid bit of a page is turned off even if the page
+is in memory. The next reference to the page causes a page fault. However, the
+virtual memory manager knows that this is not a genuine page fault, and so it
+sets the valid bit and resumes the process. In effect, the valid bit is used as the
+reference bit.
+Page Replacement  The system permits a process to fix a certain fraction of its
+pages in memory to reduce its own page fault rate and improve its own perfor-
+mance. These pages cannot be removed from memory until they are unfixed by
+
+
+
+458  Part 3  Memory Management
+             the process. Interestingly, there is no I/O fixing of pages in Unix since I/O opera-
+             tions take place between a disk block and a block in the buffer cache rather than
+             between a disk block and the address space of a process.
+             Unix page replacement is analogous to the schematic of Figure 12.19, includ-
+             ing the use of a clock algorithm. To facilitate fast page-in operations, Unix virtual
+             memory manager maintain a list of free page frames and try to keep at least 5
+             percent of total page frames on this list at all times. A daemon called the pageout
+             daemon (which is labeled process 2 in the system) is created for this purpose. It
+             is activated any time the total number of free page frames falls below 5 percent.
+             It tries to add pages to the free list and puts itself to sleep when the free list
+             contains more than 5 percent free page frames. Some versions of Unix use two
+             thresholds--a high threshold and a low threshold--instead of a single threshold
+             at 5 percent. The daemon goes to sleep when it finds that the number of pages in
+             the free list exceeds the high threshold. It is activated when this number falls below
+             the low threshold. This arrangement avoids frequent activation and deactivation
+             of the daemon.
+             The virtual memory manager divides pages that are not fixed in memory into
+             active pages, i.e., pages that are actively in use by a process, and inactive pages,
+             i.e., pages that have not been referenced in the recent past. The virtual memory
+             manager maintains two lists, the active list and the inactive list. Both lists are
+             treated as queues. A page is added to the active list when it becomes active, and to
+             the inactive list when it is deemed to have become inactive. Thus the least recently
+             activated page is at the head of the active list and the oldest inactive page is at the
+             head of the inactive list. A page is moved from the inactive list to the active list
+             when it is referenced. The pageout daemon tries to maintain a certain number
+             of pages, computed as a fraction of total resident pages, in the inactive list. If it
+             reaches the end of the inactive list while adding page frames to the free list, it
+             checks whether the total number of pages in the inactive list is smaller than the
+             expected number. If so, it transfers a sufficient number of pages from the active
+             list to the inactive list.
+             The pageout daemon is activated when the number of free page frames falls
+             below the low threshold while the system is handling a page fault. It frees page
+             frames in the following order: page frames containing pages of inactive processes,
+             page frames containing inactive pages of active processes, and page frames con-
+             taining active pages of active processes. The daemon finds inactive processes, if
+             any, and activates the swapper to swap them out. It goes back to sleep if the
+             number of free page frames now exceeds the high threshold.
+             If the number of free page frames after swapping out inactive processes is
+             still below the high threshold, the pageout daemon scans the inactive list and
+             decides whether and when to add page frames occupied by inactive pages to
+             the free list. A page frame containing an inactive page is added to the free list
+             immediately if the page is unreferenced and not dirty. If the page is dirty and
+             not already being swapped out, the pageout daemon starts a page-out operation
+             on the page and proceeds to examine the next inactive page. If a page is being
+             swapped out, the daemon merely skips it. The modified bit of a page is reset when
+             its page-out operation is completed. The page frame containing this page would
+
+
+
+                                                    Chapter 12                                        Virtual Memory  459
+be added to the free list in a subsequent pass if it is still inactive and the daemon
+finds that its page-out operation is complete. The daemon activates the swapper
+if it cannot add a sufficient number of page frames to the free list. The swap-
+per swaps out one or more active processes to free a sufficient number of page
+frames.
+To optimize page traffic, the virtual memory manager writes out dirty pages
+to the swap space in clusters. When the page daemon finds a dirty page during its
+scan, it examines adjacent pages to check if they are also dirty. If so, a cluster of
+dirty pages is written out to the disk in a single I/O operation. Another optimiza-
+tion concerns redundant page-in operations. When a page frame fi occupied by
+some clean page pi is added to the free list, the valid bit of pi's page table entry
+is set to 0. However, the page is not immediately overwritten by loading another
+page in the page frame. This happens sometime later when the page's entry comes
+to the head of the free list and it is allocated to some process. The next reference
+to pi would create a page fault since the valid bit in its page table entry has been
+set to 0. If pi is still in fi, i.e., if fi is still in the free list, fi can be simply taken out of
+the free list and pi can be "reconnected" to the logical address space of the pro-
+cess. This saves a page-in operation and consequent delays to the page-faulting
+process.
+Swapping  The Unix virtual memory manager does not use a working set mem-
+ory allocator because of the high overhead of such an allocator. Instead it focuses
+on maintaining needed pages in memory. A process is swapped out if all its
+required pages cannot be maintained in memory and conditions resembling
+thrashing exist in the system. An inactive process, i.e., a process that is blocked for
+a long time, may also be swapped out in order to maintain a sufficient number of
+free page frames. When this situation arises and a swap-out becomes necessary,
+the pageout daemon activates the swapper, which is always process 0 in the system.
+The swapper finds and swaps out inactive processes. If that does not free sufficient
+memory, it is activated again by the pageout daemon. This time it swaps out the
+process that has been resident the longest amount of time. When swapped out
+processes exist in the system, the swapper periodically checks whether sufficient
+free memory exists to swap some of them back in. A swap-in priority--which is
+a function of when the process was swapped out, when it was last active, its size
+and its nice value--is used for this purpose (see Section 7.6.1 for details of the nice
+value). This function ensures that no process remains swapped out indefinitely.
+In Unix 4.3BSD, a process was swapped-in only if it could be allocated as much
+memory as it held when it was swapped out. In Unix 4.4BSD this requirement
+was relaxed; a process is brought in if enough memory to accommodate its user
+structure and kernel stack can be allocated to it.
+12.8.2 Linux Virtual Memory
+Linux uses a page size of 4 KB. On 64-bit architectures, it uses a three-level page
+table (see Section 12.2.3.2). The three levels are the page global directory, the
+page middle directory and the page table. Accordingly, a logical address consists
+
+
+
+460  Part 3  Memory Management
+             of four parts; three of these are for the three levels and the fourth one is the byte
+             number within a page.
+             Linux uses an interesting arrangement to eliminate page-in operations for
+             pages that were loaded previously in memory, but were marked for removal.
+             This is achieved by using the following states for page frames: A free page frame
+             is one that has not been allocated to a process, while an active page frame is
+             one that is in use by a process to which it has been allocated. An inactive dirty
+             page frame was modified by the process to which it was allocated but it is not
+             in use by the process any more. An inactive laundered page is one what was
+             inactive dirty and is therefore being written out to the disk. An inactive laun-
+             dered page becomes inactive clean when its contents are copied to the disk. If
+             a process page faults for a page that is in a page frame marked inactive clean,
+             the page frame is once again allocated to the process, and the page is simply
+             marked as present in memory. If the page is in a page frame marked inactive
+             laundered, these actions are performed when its disk operation completes. Apart
+             from saving on disk operations, this arrangement also prevents access to a stale
+             copy of a page. An inactive clean page can also be allocated to another process
+             straightaway.
+             Page replacement in Linux is based on a clock algorithm. The kernel tries to
+             maintain a sufficient number of free page frames at all times so that page faults
+             can be quickly serviced by using one of the free page frames. It uses two lists called
+             active list and inactive list, and maintains the size of the active list to two-thirds
+             the size of the inactive list. When the number of free page frames falls below a
+             lower threshold, it executes a loop until a few page frames are freed. In this loop
+             it examines the page frame at the end of the inactive list. If its reference bit is
+             set, it resets the bit and moves the page frame to the head of the list; otherwise,
+             it frees the page frame. When the balance between the active and inactive lists is
+             to be maintained, it processes a few page frames from the end of the active list in
+             a similar manner and either moves them to the head of the active list, or moves
+             them to the head of the inactive list with their reference bits on. A page frame is
+             moved from the inactive list to the active list if it is referenced by a process.
+             Linux uses a buddy system allocator for allocating page frames to processes
+             (see Section 11.5.2). This method facilitates performing of I/O operations through
+             older DMA buses that use physical addresses, because such I/O operations require
+             memory to be contiguously allocated (see Section 12.2.4).
+             The logical address space of a process can consist of several virtual memory
+             regions; each region can have different characteristics and is handled by using
+             separate policies for loading and replacement of pages. A page in a zero-filled
+             memory region is filled with zeroes at its first use. A file-backed region facilitates
+             memory mapping of files. The page table entries of its pages point at the disk
+             buffers used by the file system. This way, any update in a page of such a region
+             is immediately reflected in the file and is visible to concurrent users of the file.
+             A private memory region is handled in a different manner. When a new process
+             is forked, the child process is given a copy of the parent's page table. At this
+             time, pages of a private memory region are given a copy-on-write status. When a
+             process modifies such a page, a private copy of the page is made for it.
+
+
+
+                                  Chapter 12                                              Virtual Memory  461
+12.8.3 Virtual Memory in Solaris
+Solaris provides multiple page size support, whereby it uses both normal pages
+and superpages. Superpages are used automatically for processes with large
+address spaces; other processes can request use of superpages through the mem-
+cntl system call. Superpages are not used for memory-mapped files because a
+small change in a superpage requires the complete superpage to be written to
+the file, which poses a sizable performance penalty because dirty superpages of a
+memory-mapped file are written to the disk frequently to ensure reliability of the
+file (see Section 12.7).
+A component of the virtual memory manager, called the page scanner, tries
+to keep a sufficient number of page frames on the cyclic page cache, which is
+like the inactive clean list of Linux, so that the virtual memory manager can
+allocate a page frame from the cyclic page cache straightaway when a page fault
+occurs. It selects a page for removal from memory, using a two-handed clock
+algorithm on a global basis; writes it out to the disk if it is dirty; and adds its page
+frame to the cyclic page cache. The page scanner is implemented as two kernel
+threads analogous to those shown in Figure 12.19. One thread identifies page
+frames for addition to the cyclic page cache, while the other thread writes out
+dirty pages from these page frames to the disk. If the page for which a process
+page faulted exists in a page frame included in the cyclic page cache, the virtual
+memory manager simply removes the page frame from the cyclic page cache and
+attaches it to the page table of the process. This arrangement saves on a page-in
+operation. To reduce page traffic, the page scanner does not put shared pages
+on the cyclic page cache if a sufficiently large number of processes are sharing
+them.
+lotsfree is a parameter of the page scanner that indicates how many page
+frames should be free at any time. The page scanner starts scanning pages using
+the two-handed clock algorithm when the number of free page frames falls below
+lotsfree. The scan rate, which is the number of pages scanned per second, is varied
+according to the number of page frames that are actually free--it is smaller when
+this number is close to lotsfree and it is increased as the number falls below lotsfree.
+The spread between the two hands of the clock algorithm is calculated at boot
+time on the basis of the amount of memory in the system. This spread and the
+scan rate together determine the elapsed time between the resetting of a bit by one
+hand of the two-handed clock algorithm and its examination by the other hand
+of the algorithm. A smaller elapsed time implies that only most recently accessed
+pages will survive in memory, and a larger elapsed time means that only pages
+that have not been accessed for a long time will be removed from memory. To
+safeguard system performance, the virtual memory manager limits the amount
+of CPU overhead that the page scanner can cause. If the page scanner is not able
+to keep pace with the demand for free pages using the clock algorithm, the virtual
+memory manager swaps out inactive processes and frees all page frames occupied
+by them.
+Solaris virtual memory manager has evolved into its present form through
+several design updates. Prior to Solaris 6, the page scanner maintained a free
+
+
+
+462  Part 3  Memory Management
+             list that contained clean page frames allocated to both user processes and files.
+             The file system took pages from the free list to accommodate data read from
+             files. During periods of heavy file activity, the file system effectively stole pages
+             from address spaces of user processes, which affected their performance. Solaris 6
+             introduced the feature called priority paging, which ensured that only those page
+             frames in the free list that were allocated to file pages would be considered for
+             allocation to data read from files. This way, file processing activity did not affect
+             operation of processes; however, page frames were still allocated from the free
+             list, which caused high scan rates and high overhead of the page scanner. Solaris
+             8 introduced the cyclic page cache described earlier and made the file system steal
+             pages from itself directly, so that the file processing activity does not affect scan
+             rates and overhead of the page scanner.
+             12.8.4 Virtual Memory in Windows
+             Windows operates on several architectures, hence it supports both 32-bit and
+             64-bit logical addresses. The page size is 4 KB. The address space of a process is
+             either 2 GB or 3 GB. The remainder of the logical address space is reserved for
+             OS use; the kernel is mapped into this part of every process's address space. On
+             different architectures, Windows uses two-, three- or four-level page tables and
+             various page table entry formats. The page table of a process is itself stored in the
+             reserved part of the logical address space of the process.
+             On an Intel 80x86 architecture, Windows uses a two-level page table orga-
+             nization similar to the one shown in Figure 12.11. The higher-level page table
+             is called a page directory (PD). The PD contains 1024 entries of 4 bytes each.
+             Each entry in the PD points to a page table (PT). Each page table contains 1024
+             page table entries of 4 bytes each. Each 32-bit logical address is split into three
+             components as shown below:
+                                   10 bits - 10 bits -  12 bits          -
+                                  PD index  PT index    byte index
+             During address translation, the PD index field is used to locate a page table.
+             The PT index field is used to select a 32-bit page table entry (PTE) in the page
+             table, which contains a 20-bit address of the page frame that contains the page;
+             the byte index is concatenated with this address to obtain the effective physical
+             address. The virtual memory manager uses the remaining 12 bits in a page table
+             entry to indicate how the process may access the page--whether read-only or
+             read/write--and whether the page frame allocated to it is dirty, i.e., modified, or
+             accessed, i.e., read from or modified. If the page is not in memory, the 20 address
+             bits would specify the offset into the paging file, i.e., the swap space. If the page
+             contains code, a copy of it would exist in a code file, hence 28 bits in the page
+             table entry would point to a system data structure that indicates its position in
+             the code file. Such a page is directly loaded from the code file, so it is not copied
+             into a paging file.
+
+
+
+                                                                      Chapter 12        Virtual Memory  463
+   A page frame can be in any one of eight states. Some of these states are:
+·  valid: the page is in active use,
+·  free: the page is not in active use,
+·  zeroed: the page is cleaned out and available for immediate use,
+·  standby: the page has been removed from the working set of the process to
+   which it was allocated, but it could be "reconnected" to the process if it were
+   referenced again,
+·  modified: the page is dirty and yet to be written out,
+·  bad: the page cannot be accessed because of a hardware problem.
+   A process cannot use the virtual address space available to it straightaway--it
+must first reserve it for use, and then actually commit it for accommodating spe-
+cific entities like files and objects. Thus, only some portions of the logical address
+space of a process may have been reserved at any time, and only a part of the
+reserved logical address space may be in actual use. An access to a page that has
+not been reserved and committed leads to an access violation. When a thread
+in the process makes a system call to commit virtual memory to a region, the
+virtual memory manager constructs a virtual address descriptor (VAD) describ-
+ing the range of logical addresses committed to it. To minimize the size of the
+page table of a process, the virtual memory manager builds it incrementally--
+the page table entry for a committed page is created only when an access to it
+leads to a page fault. To facilitate this operation, the VADs for committed por-
+tions of the logical address space are stored in an AVL tree, which is a balanced
+binary tree.
+   A section object represents a section of memory that can be shared. It can
+be connected to a file, in which case it provides memory-mapped files, or to
+memory, in which case it provides shared memory. A process maps a view of a
+section into its own address space by making a system call with parameters that
+indicate an offset into the section object, the number of bytes to be mapped, and
+the logical address in its address space where the object is to be mapped. When the
+process accesses a page in the view for the first time, the virtual memory manager
+allocates a page frame and loads it, unless it is already present in memory as
+a result of access by another process. If the memory section has the attribute
+based, the shared memory has the same virtual address in the logical address
+space of each sharing process. It facilitates sharing of code among processes
+(see Section 12.6).
+   A copy-on-write feature is used for sharing the pages (see Section 12.6.1). It
+is implemented by setting the protection field of a page to read only. A protection
+exception is raised when a process tries to modify the page. The virtual memory
+manager now makes a private copy of the page for use by the process.
+   Loading, accessing, and removal of shared pages is performed as follows: A
+prototype PTE is created for each shared page in an area of memory reserved
+for prototype PTEs. Each process that uses the shared page has a PTE for the
+page in its page table. When the shared page does not exist in memory, that is,
+it is either not yet loaded in memory or it has been removed from memory, it is
+marked invalid in the prototype PTE and in the PTEs in page tables of all sharing
+
+
+
+464  Part 3  Memory Management
+             processes. In addition, the PTEs in the page tables of processes are set to point
+             to the prototype PTE. When the shared page is referenced by one of the sharing
+             processes, it is loaded in memory and the page frame number where it is loaded
+             is stored in both the prototype PTE and the PTE of the process. When another
+             process references this page, its PTE is updated by simply copying the page frame
+             number information from the prototype PTE.
+             Translation look-aside buffers are employed to speed up address translation.
+             In 32-bit architectures, they are managed entirely by the MMU hardware, while
+             in 64-bit architectures they are managed by the virtual memory manager. When
+             a memory access by a thread leads to a page fault, the thread is blocked until
+             the page-in operation for the page completes. Several threads may page-fault for
+             a shared page at the same time. These page faults are called collided page faults.
+             The virtual memory manager ensures that all threads whose page faults collided
+             become unblocked when the page-in operation is completed.
+             To reduce the number of page faults through page reference locality, the
+             virtual memory manager always loads a few pages preceding and following a page-
+             faulted page into memory. While booting the system or starting an application,
+             the logical prefetcher loads a few pages into memory and monitors page faults
+             that arise so that it could load a more effective set of pages in memory the next
+             time the system is booted or the application is started.
+             The Windows kernel uses the notion of working sets to control the amount of
+             memory allocated to a process. It defines a minimum and maximum working set
+             size for each process; these sizes are determined by the memory configuration of
+             the system, rather than by the size or nature of a process. For large memory con-
+             figurations, the minimum and maximum working set sizes are 50 and 345 pages,
+             respectively. At a page fault, the kernel considers the amount of free memory
+             in the system, the current working set size of the process, and its minimum and
+             maximum working set sizes. It allocates an additional page frame to the process
+             if its current allocation is smaller than the maximum working set size and free
+             memory exists; otherwise, it replaces one of the pages of the process in memory
+             through a clock algorithm implemented by using the accessed bits in the page
+             table. The working set manager is activated periodically, and when working sets
+             of processes need to be adjusted. If the amount of free memory has fallen below a
+             threshold due to allocation of page frames, it examines working sets whose sizes
+             exceed the minimum working set size and removes from memory those pages
+             that have not been used for a long time. This, too, is performed by using a clock
+             algorithm.
+             The virtual memory manager maintains a number of page lists--a free list,
+             a list of zero-initialized pages, a modified list, and a standby list. When a page
+             is to be removed from memory, or when its process has terminated, it would be
+             moved to the standby list if it were a clean page; otherwise, it would be moved to
+             the modified list. (Recall that a standby page could be simply "reconnected" to
+             a process that wished to use it.) The page writer writes out modified pages and
+             changes their status to standby. It uses two thresholds--an upper threshold on
+             the number of modified pages in the system and a lower threshold on the number
+             of available pages--to decide when pages need to be written out.

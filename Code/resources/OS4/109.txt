@@ -1,0 +1,164 @@
+Virtual Machine Operating Systems
+            Different classes of users need different kinds of user service. Hence running a sin-
+            gle OS on a computer system can disappoint many users. Operating the computer
+            under different OSs during different periods is not a satisfactory solution because
+            it would make accessible services offered under only one of the operating systems
+            at any time. This problem is solved by using a virtual machine operating sys-
+            tem (VM OS) to control the computer system. The VM OS creates several virtual
+            machines. Each virtual machine is allocated to one user, who can use any OS of his
+            own choice on the virtual machine and run his programs under this OS. This way
+            users of the computer system can use different operating systems at the same time.
+            We call each of these operating systems a guest OS and call the virtual machine
+            OS the host OS. The computer used by the VM OS is called the host machine.
+                      A virtual machine is a virtual resource (see Section 1.3.2). Let us consider a
+            virtual machine that has the same architecture as the host machine; i.e., it has a vir-
+            tual CPU capable of executing the same instructions, and similar memory and I/O
+            devices. It may, however, differ from the host machine in terms of some elements
+            of its configuration like memory size and I/O devices. Because of the identical
+            architectures of the virtual and host machines, no semantic gap exists between
+            them, so operation of a virtual machine does not introduce any performance loss
+            (contrast this with the use of the extended machine layer described in Section 4.4);
+            software intervention is also not needed to run a guest OS on a virtual machine.
+                      The VM OS achieves concurrent operation of guest operating systems
+            through an action that resembles process scheduling--it selects a virtual machine
+            and arranges to let the guest OS running on it execute its instructions on the CPU.
+            The guest OS in operation enjoys complete control over the host machine's
+
+
+
+                                                      Chapter 4      Structure of Operating  Systems       89
+environment, including interrupt servicing. The absence of a software layer
+between the host machine and guest OS ensures efficient use of the host machine.
+A guest OS remains in control of the host machine until the VM OS decides
+to switch to another virtual machine, which typically happens in response to
+an interrupt. The VM OS can employ the timer to implement time-slicing and
+round-robin scheduling of guest OSs.
+A somewhat complex arrangement is needed to handle interrupts that arise
+when a guest OS is in operation. Some of the interrupts would arise in its own
+domain, e.g., an I/O interrupt from a device included in its own virtual machine,
+while others would arise in the domains of other guest OSs. The VM OS can
+arrange to get control when an interrupt occurs, find the guest OS whose domain
+the interrupt belongs to, and "schedule" that guest OS to handle it. However, this
+arrangement incurs high overhead because of two context switch operations--the
+first context switch passes control to the VM OS, and the second passes control
+to the correct guest OS. Hence the VM OS may use an arrangement in which the
+guest OS in operation would be invoked directly by interrupts arising in its own
+domain. It is implemented as follows: While passing control to a guest operating
+system, the VM OS replaces its own interrupt vectors (see Section 2.2.5) by those
+defined in the guest OS. This action ensures that an interrupt would switch the
+CPU to an interrupt servicing routine of the guest OS. If the guest OS finds that
+the interrupt did not occur in its own domain, it passes control to the VM OS
+by making a special system call "invoke VM OS." The VM OS now arranges to
+pass the interrupt to the appropriate guest OS. When a large number of virtual
+machines exists, interrupt processing can cause excessive shuffling between virtual
+machines, hence the VM OS may not immediately activate the guest OS in whose
+domain an interrupt occurred--it may simply note occurrence of interrupts that
+occurred in the domain of a guest OS and provide this information to the guest
+OS the next time it is "scheduled."
+Example 4.3 describes how IBM VM/370--a well-known VM OS of the
+1970s--operates.
+                                                                                                           ·
+Structure of VM/370                                                                          Example  4.3
+Figure  4.5  shows  three  of        the  guest  OSs  supported  by  VM/370.         The
+Conversational Monitor System (CMS) is a single-user operating system, while
+the OS/370 and DOS/370 are multiprogramming operating systems. A user
+process is unaware of the presence of the VM/370--it sees only the guest OS
+that it uses. To prevent interference between the guest OSs, the CPU is put in
+the user mode while executing a guest OS. Initiation of I/O operations, which
+involves use of privileged instructions, is handled as follows: When the kernel
+of a guest OS executes an I/O instruction, it appears as an attempt to execute a
+privileged instruction while the CPU is in the user mode, so it causes a program
+interrupt. The interrupt is directed to the VM/370 rather than to the guest OS.
+The VM/370 now initiates the I/O operation by executing the I/O instruction
+that had caused the interrupt.
+                                                                                     ·
+
+
+
+90  Part 1  Overview
+                                        CMS        OS/370         DOS/370
+                                                   VM/370
+            Figure 4.5  Virtual machine operating system VM/370.
+                      Distinction between kernel and user modes of the CPU causes some diffi-
+            culties in the use of a VM OS. The VM OS must protect itself from guest OSs,
+            so it must run guest OSs with the CPU in the user mode. However, this way
+            both a guest OS and user processes under it run in the user mode, which makes
+            the guest OS vulnerable to corruption by a user process. The Intel 80x86 family
+            of computers has a feature that provides a way out of this difficulty. The 80x86
+            computers support four execution modes of the CPU. Hence the host OS can
+            run with the CPU in the kernel mode, a guest OS can execute processes running
+            under it with the CPU in the user mode but can itself run with the CPU in one
+            of the intermediate modes.
+                      Virtualization is the process of mapping the interfaces and resources of a
+            virtual machine into the interfaces and resources of the host machine. Full virtu-
+            alization would imply that the host machine and a virtual machine have identical
+            capabilities, hence an OS can operate identically while running on a bare machine
+            and on a virtual machine supported by a VM OS. However, full virtualization
+            may weaken security. In Example 4.3, we saw how VM/370 lets a guest OS execute
+            a privileged instruction, but its execution causes an interrupt and VM/370 itself
+            executes the instruction on behalf of the guest OS. This arrangement is insecure
+            because VM/370 cannot determine whether use of the privileged instruction is
+            legitimate--it would be legitimate if a guest OS used it, but illegitimate if a user
+            process used it.
+                      Modern virtual machine environments employ the technique of paravirtual-
+            ization to overcome the problems faced in full virtualization. Paravirtualization
+            replaces a nonvirtualizable instruction, i.e., an instruction that cannot be made
+            available in a VM, by easily virtualized instructions. For example, the security
+            issue in VM/370 could be resolved through paravirtualization as follows: The
+            privileged instructions would not be included in a virtual machine. Instead, the
+            virtual machine would provide a special instruction for use by a guest OS that
+            wished to execute a privileged instruction. The special instruction would cause
+            a software interrupt and pass information about the privileged instruction the
+            guest OS wished to execute to the VM OS, and the VM OS would execute the
+            privileged instruction on behalf of the guest OS. The host OS, guest OS, and user
+            processes would use different execution modes of the CPU so that the host OS
+            would know whether the special instruction in the virtual machine was used by
+            a guest OS or by a user process--the latter usage would be considered illegal.
+            Paravirtualization has also been used  to enhance performance of a host OS.
+
+
+
+                                                       Chapter 4  Structure of Operating  Systems  91
+The kernel of an OS typically puts the CPU into an idle loop when none of
+the user processes in the OS wishes to use the CPU. However, CPU time of
+the host machine would be wasted when a guest OS enters into an idle loop.
+Hence paravirtualization could be employed to provide a special instruction
+in the virtual machine to notify this condition to the host OS, so that the
+host OS could take away the CPU from the guest OS for a specified period
+of time.
+   Use of paravirtualization implies that a virtual machine would differ from the
+host machine, so the code of a guest OS would have to be modified to avoid use
+of nonvirtualizable instructions. It can be done by porting a guest OS to operate
+under the VM OS. Alternatively, it can be achieved by employing the technique
+of dynamic binary translation for the kernel of a guest OS, which replaces a por-
+tion of kernel code that contains nonvirtualizable instructions by code that does
+not contain such instructions. To reduce the overhead of this arrangement, the
+modified kernel code is cached so that binary translation does not have to be
+repeated often.
+   Virtual machines are employed for diverse purposes:
+·  To use an existing server for a new application that requires use of a different
+   operating system. This is called workload consolidation; it reduces the hard-
+   ware and operational cost of computing by reducing the number of servers
+   needed in an organization.
+·  To provide security and reliability for applications that use the same host
+   and the same OS. This benefit arises from the fact that virtual machines of
+   different applications cannot access each other's resources.
+·  To test a modified OS (or a new version of application code) on a server
+   concurrently with production runs of that OS.
+·  To     provide  disaster  management  capabilities  by  transferring  a   virtual
+   machine from a server that has to shut down because of an emergency to
+   another server available on the network.
+   A VM OS is large, complex and expensive. To make the benefits of virtual
+machines available widely at a lower cost, virtual machines are also used without
+a VM OS. Two such arrangements are described in the following.
+Virtual Machine Monitors (VMMs)    A VMM, also called a hypervisor, is a soft-
+ware layer that operates on top of a host OS. It virtualizes the resources of the
+host computer and supports concurrent operation of many virtual machines.
+When a guest OS is run in each virtual machine provided by a VMM, the host
+OS and the VMM together provide a capability that is equivalent of a VM OS.
+VMware and XEN are two VMMs that aim at implementing hundreds of guest
+OSs on a host computer while ensuring that a guest OS suffers only a marginal
+performance  degradation     when  compared  to   its  implementation    on  a  bare
+machine.
+Programming Language Virtual Machines        Programming languages have used
+virtual machines to obtain some of the benefits discussed earlier. In the 1970s, the

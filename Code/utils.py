@@ -1,5 +1,6 @@
 import codecs
 import csv
+import os
 import pickle
 import platform
 import random
@@ -25,9 +26,9 @@ mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evalua
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
 if(platform.system() == 'Windows'):
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r', encoding='utf8').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 else:
-    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open('resources/stopwords.txt', 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
+    stopwords = set(re.split(r'[\s]', re.sub('[\W]', '', open(os.path.join(os.path.dirname(__file__), 'resources/stopwords.txt'), 'r').read().lower(), re.M), flags=re.M) + [chr(i) for i in range(ord('a'), ord('z') + 1)])
 stopwords.update(['.', ',', '"', "'", '?', '!', ':', ';', '(', ')', '[', ']', '{', '}'])
 
 regex = re.compile('[%s]' % re.escape(string.punctuation))
@@ -73,7 +74,7 @@ def get_modified_prob_dist(probs):
         xs += probs[j]
         probs[j] = 0
 
-    num_xs = len(probs) - (i + 1) 
+    num_xs = len(probs) - (i + 1)
     if num_xs > 0:
         probs[:i + 1] +=  xs / num_xs
 
@@ -81,13 +82,19 @@ def get_modified_prob_dist(probs):
 
 ########################### SKILL: QUESTION FILTERER ###########################
 
+domain = None
+sklearn_tfidf_ada = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/tfidf_filterer_ada.pkl'), 'rb'))
+sklearn_tfidf_os = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/tfidf_filterer_os.pkl'), 'rb'))
+
 def get_filtered_questions(questions, threshold=0.25, what_type='os'):
+    global domain
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 
-    try:
-        domain = pickle.load(open('resources/domain.pkl',  'rb'))
-    except:
-        domain = pickle.load(open('resources/domain_2.pkl',  'rb'))
+    if not domain:
+        try:
+            domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
+        except:
+            domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
 
     keywords = set()
     for k in domain:
@@ -97,7 +104,12 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     if type(questions) != type([]):
         questions = [questions]
 
-    sklearn_tfidf = pickle.load(open('models/tfidf_filterer_%s.pkl' %what_type.lower(), 'rb'))
+    sklearn_tfidf = None
+    if what_type.lower() == 'os':
+        sklearn_tfidf = sklearn_tfidf_os
+    else:
+        sklearn_tfidf = sklearn_tfidf_ada
+        
     tfidf_matrix = sklearn_tfidf.transform(questions)
     feature_names = sklearn_tfidf.get_feature_names()
 
@@ -145,7 +157,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
     Y_know = []
 
     if 'ada'in what_type:
-        with open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding='utf-8') as csvfile:
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding='utf-8') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[1:]
@@ -165,7 +177,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             Y_cog.extend(Y_cog_temp)
 
     if 'os' in what_type:
-        with open('datasets/OS_Exercise_Questions_Labelled.csv', 'r', encoding='latin-1') as csvfile:
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled.csv'), 'r', encoding='latin-1') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[5:]
@@ -184,7 +196,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             Y_cog.extend(Y_cog_temp)
 
     if 'bcl' in what_type:
-        with open('datasets/BCLs_Question_Dataset.csv', 'r', encoding='utf-8') as csvfile:
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset.csv'), 'r', encoding='utf-8') as csvfile:
             X_temp = []
             Y_cog_temp = []
             all_rows = csvfile.read().splitlines()[1:]
@@ -227,7 +239,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
         Y_test.append(y)
 
     if include_keywords:
-        domain_keywords = pickle.load(open('resources/domain.pkl', 'rb'))
+        domain_keywords = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'), 'rb'))
         for key in domain_keywords:
             for word in domain_keywords[key]:
                 X_train.append(clean(word, return_as_list=True, stem=False))
@@ -262,7 +274,7 @@ def get_knowledge_probs(prob):
 
 ##################### KNOWLEDGE: CONVERT level to hardcoded vector ###############
 
-def get_knowledge_probs_level(level, probs): 
+def get_knowledge_probs_level(level, probs):
     probs = [0.0] * 4
     for i in range(level):
         # probs[i] = (i + 1) * prob / (level * (level + 1) / 2)
@@ -275,7 +287,7 @@ def get_knowledge_probs_level(level, probs):
 
 def get_questions_by_section(subject, skip_files, shuffle=True):
     exercise_content = {}
-    for filename in sorted(os.listdir('./resources/%s' %subject)):
+    for filename in sorted(os.listdir(os.path.join(os.path.dirname(__file__), './resources/%s' %subject))):
         with open('./resources/%s/'%subject + filename, encoding='latin-1') as f:
             contents = f.read()
             title = contents.split('\n')[0].strip()
@@ -306,7 +318,7 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
     X_data = []
     Y_data = []
     if subject == SUBJECT_ADA:
-        with codecs.open('datasets/ADA_Exercise_Questions_Labelled.csv', 'r', encoding="latin-1") as csvfile:
+        with codecs.open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding="latin-1") as csvfile:
             csvreader = csv.reader(csvfile.read().splitlines()[1:])
             for row in csvreader:
                 sentence, label_cog, label_know = row

@@ -1,0 +1,262 @@
+Deadlock Avoidance
+A deadlock avoidance policy grants a resource request only if it can establish
+that granting the request cannot lead to a deadlock either immediately or in the
+future. But it raises an obvious question: Algorithm 8.1 described in Section 8.4
+can be used to check whether granting a resource request results in a deadlock
+immediately, but how would the kernel know whether a deadlock can arise in the
+future?
+     The kernel lacks detailed knowledge about future behavior of processes, so it
+cannot accurately predict deadlocks. To facilitate deadlock avoidance under these
+conditions, it uses the following conservative approach: Each process declares the
+maximum number of resource units of each class that it may require. The kernel
+permits a process to request these resource units in stages--that is, a few resource
+units at a time--subject to the maximum number declared by it, and uses a worst-
+case analysis technique to check for the possibility of future deadlocks. A request
+is granted only if there is no possibility of deadlocks; otherwise, it remains pending
+until it can be granted. This approach is conservative because a process may
+complete its operation without requiring the maximum number of units declared
+by it. Thus, the kernel may defer granting of some resource requests that it would
+have granted immediately had it known about future behavior of processes. This
+effect and the overhead of making this check at every resource request constitute
+the cost of deadlock avoidance. We discuss a well-known algorithm called the
+banker's algorithm that uses this approach.
+     Table 8.4 describes notation of the banker's algorithm. Max_needj,k indicates
+the maximum number of resource units of resource class Rk that a process Pj may
+require. The kernel admits process Pj only if Max_needj,k  Total_resourcesk for
+all k. The kernel may admit any number of processes satisfying this admission cri-
+terion. Thus  j Max_needj,k may exceed Total_resourcesk. Allocated_resourcesj,k
+indicates the actual number of resource units of resource class Rk that are allo-
+cated to Pj, and Total_allock indicates how many units of resource class Rk are
+allocated to processes at present. The banker's algorithm avoids deadlocks by
+
+
+
+296  Part 2  Process Management
+             Table 8.4           Notation  Used in the Banker's Algorithm
+             Notation                      Explanation
+             Requested_resourcesj,k        Number of units of resource class Rk currently requested     by
+                                           process Pj
+             Max_need j ,k                 Maximum number of units of resource class Rk that may        be
+                                           needed by process Pj
+             Allocated_resourcesj,k        Number of units of resource class Rk allocated to process    Pj
+             Total_allock                  Total number of allocated units of resource class Rk, i.e.,
+                                           j Allocated_resourcesj,k
+             Total_resourcesk              Total number of units of resource class Rk existing in the
+                                           system
+             ensuring that at every moment the system is in such an allocation state that
+             all processes can complete their operation without the possibility of deadlocks.
+             It is called the banker's algorithm because bankers need a similar algorithm--
+             they admit loans that collectively exceed the bank's funds and then release each
+             borrower's loan in installments.
+                 The banker's algorithm uses the notion of a safe allocation state to ensure
+             that granting of a resource request cannot lead to a deadlock either immediately
+             or in future.
+             Definition 8.2 Safe Allocation State       An allocation state in which it is possible
+             to construct a sequence of process completion, resource release, and resource
+             allocation events through which each process Pj in the system can obtain
+             Max_needj,k resources for each resource class Rk and complete its operation.
+                 Deadlock avoidance is implemented by taking the system from one safe
+             allocation state to another safe allocation state as follows:
+             1.  When a process makes a request, compute the new allocation state the system
+                 would be in if the request is granted. We will call this state the projected
+                 allocation state.
+             2.  If the projected allocation state is a safe allocation state, grant the request
+                 by updating the arrays Allocated_resources and Total_alloc; otherwise, keep
+                 the request pending.
+             3.  When a process releases any resource(s) or completes its operation, examine
+                 all pending requests and allocate those that would put the system in a new
+                 safe allocation state.
+                 The banker's algorithm determines the safety of a resource allocation state
+             by trying to construct a sequence of process completion, resource release, and
+             resource allocation events through which all processes can complete. It can be per-
+             formed through simulation as in Section 8.4, except for one change: To complete,
+             a process Pl , whether in the running or blocked state, may require (Max_needl,k -
+             Allocated_resourcesl,k) more resource units of each resource class Rk, so the
+
+
+
+                                                                                        Chapter 8  Deadlocks        297
+algorithm checks whether
+            For all Rk : T otal_resourcesk - T otal_allock                              (8.3)
+                          M ax_needl,k - Allocated_resourcesl,k
+When this condition is satisfied, it simulates completion of process Pl and release
+of all resources allocated to it by updating Total_allock for each Rk. It then checks
+whether any other process can satisfy Eq. (8.3), and so on. The next example
+illustrates this method in a system having a single class of resources. Note that,
+as in deadlock detection, the determination of safety of an allocation state is not
+sensitive to the order in which processes are assumed to complete their operation.
+                                                                                                                    ·
+Banker's Algorithm for a Single Resource Class                                                     Example    8.10
+A system contains 10 units of resource class Rk. The maximum resource
+requirements of three processes P1, P2, and P3 are 8, 7, and 5 resource units,
+respectively, and their current allocations are 3, 1, and 3 resource units, respec-
+tively. Figure 8.7 depicts the current allocation state of the system. Process P1
+now makes a request for one resource unit. In the projected allocation state,
+Total_alloc = 8, and so there will be two free units of resource class Rk in the
+system.
+The safety of the projected state is determined as follows: P3 satisfies
+condition (8.3) since it is exactly two units short of its maximum requirements.
+Hence the two available resource units can be allocated to P3 if it requests
+them in the future, and it can complete. That will make five resource units
+available for allocation, so P1's balance requirement of four resource units can
+be allocated to it and it can complete. Now all resource units in the system are
+available to P2, so it, too, can complete. Thus the projected allocation state is
+safe. Hence the algorithm will grant the request by P1.
+The new allocation for the processes is 4, 1, and 3 resource units and
+Total_allock = 8. Now consider the following requests:
+1. P1 makes a request for 2 resource units.
+2. P2 makes a request for 2 resource units.
+3. P3 makes a request for 2 resource units.
+The requests by P1 and P2 do not put the system in safe allocation states
+because condition (8.3) is not satisfied by any process, so these requests will
+not be granted. However, the request by P3 will be granted.
+                                                                                        ·
+            P1  8         P1  3      P1  1      Total        7
+            P2  7         P2  1      P2  0      alloc
+            P3  5         P3  3      P3  0      Total        10
+                                                resources
+                Max       Allocated  Requested
+                need      resources  resources
+Figure 8.7  An allocation state in the banker's algorithm for a single resource class.
+
+
+
+298  Part 2  Process Management
+             Algorithm 8.2 is the banker's algorithm. When a new request is made by
+             a process, its request is entered in the matrix Requested_resources, which stores
+             pending requests of all processes, and the algorithm is invoked with the id of
+             the requesting process. When a process releases some resources allocated to it or
+             completes its operation, the algorithm is invoked once for each process whose
+             request is pending. The algorithm can be outlined as follows: After some initial-
+             izations in Step 1, the algorithm simulates granting of the request in Step 2 by
+             computing the projected allocation state. Step 3 checks whether the projected
+             allocation state is feasible, i.e., whether sufficient free resources exist to permit
+             granting of the request.
+             Step 4 is the core of the algorithm; it is executed only if the projected allo-
+             cation state is feasible. To check whether the projected allocation state is a safe
+             allocation state, it checks whether the maximum need of any active process, i.e.,
+             any process in the sets Running or Blocked, can be satisfied by allocating some
+             of the free resources. If such a process exists, this step simulates its completion
+             by deleting it from the set Active and releasing the resources allocated to it. This
+             action is performed repeatedly until no more processes can be deleted from the
+             set Active. If the set Active is empty at the end of this step, the projected state
+             is a safe allocation state, so Step 5 deletes the request from the list of pending
+             requests and allocates the requested resources. This action is not performed if
+             the projected allocation state is either not feasible or not safe, so the request
+             remains pending.
+             Note    the         similarity  of  Step   4  to     the  deadlock         detection  algorithm
+             (Algorithm 8.1). Accordingly, the algorithm requires an order of n2 × r work.
+             Algorithm 8.2 Banker's Algorithm
+             Inputs
+                     n                           :      Number of processes;
+                     r                           :      Number of resource classes;
+                     Blocked                     :      set of processes;
+                     Running                     :      set of processes;
+                     Prequesting_process         :      Process making the new resource  request;
+                     Max_need                    :      array [1..n, 1..r] of integer;
+                     Allocated_resources         :      array [1..n, 1..r] of integer;
+                     Requested_resources         :      array [1..n, 1..r] of integer;
+                     Total_alloc                 :      array [1..r] of integer;
+                     Total_resources             :      array [1..r] of integer;
+             Data structures
+                     Active                      :      set of processes;
+                     feasible                    :      boolean;
+                     New_request                 :      array [1..r] of integer;
+                     Simulated_allocation        :      array [1..n, 1..r] of integer;
+                     Simulated_total_alloc       :      array [1..r] of integer;
+             1. Active := Running            Blocked ;
+             for k = 1..r
+                     New_request[k] := Requested_resources[requesting_ process, k];
+
+
+
+                                                                            Chapter 8   Deadlocks        299
+2.  Simulated_allocation := Allocated_resources;
+    for k = 1..r        /* Compute projected allocation state */
+    Simulated_allocation[requesting_ process, k] :=
+          Simulated_allocation[requesting_ process, k] + New_request[k];
+    Simulated_total_alloc[k] := Total_alloc[k] + New_request[k];
+3.  feasible := true;
+    for k = 1..r        /* Check whether projected allocation state is feasible */
+    if Total_resources[k] < Simulated_total_alloc[k] then feasible := false;
+4.  if feasible = true
+    then  /* Check whether projected allocation state is a safe allocation state */
+    while set Active contains a process Pl such that
+                  For all k, Total_resources[k] - Simulated_total_alloc[k]
+                         Max_need[l, k] - Simulated_allocation[l, k]
+          Delete Pl from Active;
+          for k = 1..r
+          Simulated_total_alloc[k] :=
+                  Simulated_total_alloc[k] - Simulated_allocation[l, k];
+5.  if set Active is empty
+    then  /* Projected allocation state is a safe allocation state */
+    for k = 1..r            /* Delete the request from pending requests */
+          Requested_resources[requesting_ process, k] := 0;
+          for k = 1..r      /* Grant the request */
+          Allocated_resources[requesting_ process, k] :=
+                  Allocated_resources[requesting_ process, k] + New_request[k];
+          Total_alloc[k] := Total_alloc[k] + New_request[k];
+                                                                                                         ·
+Banker's Algorithm for Multiple Resource Classes                                        Example    8.11
+Figure 8.8 illustrates operation of the banker's algorithm in a system con-
+taining four processes P1, . . . , P4. Four resource classes contain 6, 4, 8, and 5
+resource units, of which 5, 3, 5, and 4 resource units are currently allocated.
+Process P2 has made a request (0, 1, 1, 0), which is about to be processed. The
+algorithm simulates the granting of this request in Step 2, and checks the safety
+of the projected allocation state in Step 4. Figure 8.8(b) shows the data struc-
+tures of the Banker's algorithm at the start of this check. In this state, 1, 0,
+2, and 1 resource units are available, so only process P1 can complete. Hence
+the algorithm simulates its completion. Figure 8.8(c) shows the data structures
+after P1 has completed. Resources allocated to P1 have been freed so they are
+deducted from Simulated_alloc, and P1 is deleted from set Active. Process P4
+needs 0, 1, 3, and 4 resource units to fulfill its maximum resource need, so
+it can be allocated these resources now, and it can complete. The remaining
+processes can complete in the order P2, P3. Hence the request made by process
+P2 is granted.
+                                                                                     ·
+
+
+
+300  Part 2  Process Management
+     (a)     State after Step 1
+                 R1 R2 R3           R4              R1 R2 R3 R4            R1 R2 R3 R4
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0                R1 R2 R3 R4
+             P2  2  4            3  2         P2    2  0  1        0  P2   0  1  1    0   Total        5  3  5      4
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0   alloc
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Allocated           Requested      Active       {P1, P2, P3, P4}
+                    need                               resources           resources
+     (b)     State before while     loop  of  Step  4
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  5  4  6      4
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active       {P1, P2, P3, P4}
+                    need                               allocation          resources
+     (c) State after simulating completion of Process P1
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  4  3  5      3
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active       {P2, P3, P4}
+                    need                               allocation          resources
+     (d) State after simulating completion of Process P4
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  4  1  4      2
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active          {P2, P3}
+                    need                               allocation          resources
+     (e) State after simulating completion of Process P2
+             P1  2  1            2  1         P1    1  1  1        1  P1   0  0  0    0   Simulated
+             P2  2  4            3  2         P2    2  1  2        0  P2   0  1  1    0   total_alloc  2  0  2      2
+             P3  5  4            2  2         P3    2  0  2        2  P3   0  0  0    0
+             P4  0  3            4  1         P4    0  2  1        1  P4   0  0  0    0   Total        6  4  8      5
+                                                                                          exist
+                    Max                                Simulated           Requested      Active          {P3}
+                    need                               allocation          resources
+     Figure 8.8  Operation of the banker's algorithm                  for  Example 8.11.

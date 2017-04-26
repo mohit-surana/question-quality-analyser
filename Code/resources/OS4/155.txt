@@ -1,0 +1,483 @@
+Threads
+             Applications use concurrent processes to speed up their operation. However,
+             switching between processes within an application incurs high process switch-
+             ing overhead because the size of the process state information is large (see
+             Section 5.2.3), so operating system designers developed an alternative model of
+
+
+
+                                                    Chapter 5         Processes and Threads  135
+execution of a program, called a thread, that could provide concurrency within
+an application with less overhead.
+    To understand the notion of threads, let us analyze process switching over-
+head and see where a saving can be made. Process switching overhead has two
+components:
+·   Execution related overhead: The CPU state of the running process has to be
+    saved and the CPU state of the new process has to be loaded in the CPU.
+    This overhead is unavoidable.
+·   Resource-use related overhead: The process context also has to be switched.
+    It involves switching of the information about resources allocated to the
+    process, such as memory and files, and interaction of the process with other
+    processes. The large size of this information adds to the process switching
+    overhead.
+    Consider child processes Pi and Pj of the primary process of an application.
+These processes inherit the context of their parent process. If none of these pro-
+cesses have allocated any resources of their own, their context is identical; their
+state information differs only in their CPU states and contents of their stacks.
+Consequently, while switching between Pi and Pj, much of the saving and loading
+of process state information is redundant. Threads exploit this feature to reduce
+the switching overhead.
+Definition 5.3 Thread    An execution of a program that uses the resources of
+a process.
+    A process creates a thread through a system call. The thread does not have
+resources of its own, so it does not have a context; it operates by using the context
+of the process, and accesses the resources of the process through it. We use the
+phrases "thread(s) of a process" and "parent process of a thread" to describe the
+relationship between a thread and the process whose context it uses. Note that
+threads are not a substitute for child processes; an application would create child
+processes to execute different parts of its code, and each child process can create
+threads to achieve concurrency.
+    Figure 5.11 illustrates the relationship between threads and processes. In the
+abstract view of Figure 5.11(a), process Pi has three threads, which are represented
+by wavy lines inside the circle representing process Pi. Figure 5.11(b) shows an
+implementation arrangement. Process Pi has a context and a PCB. Each thread
+of Pi is an execution of a program, so it has its own stack and a thread control
+block (TCB), which is analogous to the PCB and stores the following information:
+1.  Thread scheduling information--thread id, priority and state.
+2.  CPU state, i.e., contents of the PSW and GPRs.
+3.  Pointer to PCB of parent process.
+4.  TCB pointer, which is used to make lists of TCBs for scheduling.
+    Use of threads effectively splits the process state into two parts--the resource
+state remains with the process while an execution state, which is the CPU state, is
+
+
+
+136  Part 2  Process Management
+                                       Threads
+                     Process
+                     Pi                                                                      Stacks
+                                                      Memory Resource        File
+                                                           info  info        pointers
+                                                           Code  Data        Stack
+                     Context of                                  Context of             PCB  Thread control
+                     process Pi                                  process Pi                  blocks (TCBs)
+             (a)                                      (b)
+             Figure  5.11 Threads  in  process  Pi :  (a) concept; (b) implementation.
+             associated with a thread. The cost of concurrency within the context of a process
+             is now merely replication of the execution state for each thread. The execution
+             states need to be switched during switching between threads. The resource state is
+             neither replicated nor switched during switching between threads of the process.
+             Thread States and State Transitions                 Barring the difference that threads do not
+             have resources allocated to them, threads and processes are analogous. Hence
+             thread states and thread state transitions are analogous to process states and pro-
+             cess state transitions. When a thread is created, it is put in the ready state because
+             its parent process already has the necessary resources allocated to it. It enters the
+             running state when it is dispatched. It does not enter the blocked state because
+             of resource requests, because it does not make any resource requests; however,
+             it can enter the blocked state because of process synchronization requirements.
+             For example, if threads were used in the real-time data logging application of
+             Example 5.1, thread record_sample would have to enter the blocked state if no
+             data samples exist in buffer_area.
+             Advantages of Threads over Processes                Table 5.8 summarizes the advantages
+             of threads over processes, of which we have already discussed the advantage of
+             lower overhead of thread creation and switching. Unlike child processes, threads
+             share the address space of the parent process, so they can communicate through
+             shared data rather than through messages, thereby eliminating the overhead of
+             system calls.
+                  Applications that service requests received from users, such as airline reser-
+             vation systems or banking systems, are called servers; their users are called clients.
+             (Client­server computing is discussed in Section 16.5.1.) Performance of servers
+             can be improved through concurrency or parallelism (see Section 5.1.4), i.e.,
+             either through interleaving of requests that involve I/O operations or through use
+             of many CPUs to service different requests. Use of threads simplifies their design;
+             we discuss it with the help of Figure 5.12.
+                  Figure 5.12(a) is a view of an airline reservation server. The server enters
+             requests made by its clients in a queue and serves them one after another. If
+
+
+
+                                                                            Chapter 5          Processes  and  Threads  137
+Table 5.8          Advantages of  Threads over Processes
+Advantage                         Explanation
+Lower overhead of creation        Thread state consists only of the state of a
+and switching                     computation. Resource allocation state and
+                                  communication state are not a part of the thread
+                                  state, so creation of threads and switching between
+                                  them incurs a lower overhead.
+More efficient communication      Threads of a process can communicate with one
+                                  another through shared data, thus avoiding the
+                                  overhead of system calls for communication.
+Simplification of design          Use of threads can simplify design and coding of
+                                  applications that service requests concurrently.
+                   Server                      Server                       Server
+                   S                                    S                            S
+Pending                                                                                 Pending
+requests                                                                                requests
+                   Clients                     Clients                      Clients
+          (a)                     (b)                                (c)
+Figure 5.12 Use    of threads in structuring   a server: (a) server  using  sequential  code;
+(b) multithreaded  server; (c) server using a  thread pool.
+several requests are to be serviced concurrently, the server would have to employ
+advanced I/O techniques such as asynchronous I/O, and use complex logic to
+switch between the processing of requests. By contrast, a multithreaded server
+could create a new thread to service each new request it receives, and terminate
+the thread after servicing the request. This server would not have to employ any
+special techniques for concurrency because concurrency is implicit in its creation
+of threads. Figure 5.12(b) shows a multithreaded server, which has created three
+threads because it has received three requests.
+Creation and termination of threads is more efficient than creation and ter-
+mination of processes; however, its overhead can affect performance of the server
+if clients make requests at a very high rate. An arrangement called thread pool
+is used to avoid this overhead by reusing threads instead of destroying them
+after servicing requests. The thread pool consists of one primary thread that per-
+forms housekeeping tasks and a few worker threads that are used repetitively.
+The primary thread maintains a list of pending requests and a list of idle worker
+threads. When a new request is made, it assigns the request to an idle worker
+thread, if one exists; otherwise, it enters the request in the list of pending requests.
+When a worker thread completes servicing of a request, the primary thread either
+assigns a new request to the worker thread to service, or enters it in the list of idle
+
+
+
+138  Part 2  Process Management
+             worker threads. Figure 5.12(c) illustrates a server using a thread pool. It contains
+             three worker threads that are busy servicing three service requests, while three ser-
+             vice requests are pending. If the thread pool facility is implemented in the OS, the
+             OS would provide the primary thread for the pool, which would simplify coding
+             of the server because it would not have to handle concurrency explicitly. The OS
+             could also vary the number of worker threads dynamically to provide adequate
+             concurrency in the application, and also reduce commitment of OS resources to
+             idle worker threads.
+             Coding for Use of Threads  Threads should ensure correctness of data sharing
+             and synchronization (see Section 5.2.5). Section 5.3.1 describes features in the
+             POSIX threads standard that can be used for this purpose. Correctness of data
+             sharing also has another facet. Functions or subroutines that use static or global
+             data to carry values across their successive activations may produce incorrect
+             results when invoked concurrently, because the invocations effectively share the
+             global or static data concurrently without mutual exclusion. Such routines are
+             said to be thread unsafe. An application that uses threads must be coded in a
+             thread safe manner and must invoke routines only from a thread safe library.
+                Signal  handling   requires  special  attention  in  a  multithreaded  applica-
+             tion. Recall that the kernel permits a process to specify signal handlers (see
+             Section 5.2.6). When several threads are created in a process, which thread should
+             handle a signal? There are several possibilities. The kernel may select one of the
+             threads for signal handling. This choice can be made either statically, e.g., either
+             the first or the last thread created in the process, or dynamically, e.g., the highest-
+             priority thread. Alternatively, the kernel may permit an application to specify
+             which thread should handle signals at any time.
+                A synchronous signal arises as a result of the activity of a thread, so it is
+             best that the thread itself handles it. Ideally, each thread should be able to specify
+             which synchronous signals it is interested in handling. However, to provide this
+             feature, the kernel would have to replicate the signal handling arrangement of
+             Figure 5.6 for each thread, so few operating systems provide it. An asynchronous
+             signal can be handled by any thread in a process. To ensure prompt attention to
+             the condition that caused the signal, the highest-priority thread should handle
+             such a signal.
+             5.3.1 POSIX Threads
+             The ANSI/IEEE Portable Operating System Interface (POSIX) standard defines
+             the pthreads application program interface for use by C language programs.
+             Popularly called POSIX threads, this interface provides 60 routines that perform
+             the following tasks:
+             ·  Thread management: Threads are managed through calls on thread library
+                routines for creation of threads, querying status of threads, normal or
+                abnormal termination of threads, waiting for termination of a thread, setting
+                of scheduling attributes, and specifying thread stack size.
+             ·  Assistance for data sharing: Data shared by threads may attain incorrect
+                values if two or more threads update it concurrently. A feature called mutex is
+
+
+
+                                                                  Chapter 5  Processes  and  Threads  139
+   provided to ensure mutual exclusion between threads while accessing shared
+   data, i.e., to ensure that only one thread is accessing shared data at any time.
+   Routines are provided to begin use of shared data in a thread and indicate end
+   of use of shared data. If threads are used in Example 5.5, threads copy_sample
+   and record_sample would use a mutex to ensure that they do not access and
+   update no_of_samples_in_buffer concurrently.
+·  Assistance for synchronization: Condition variables are provided to facilitate
+   coordination between threads so that they perform their actions in the desired
+   order. If threads are used in Example 5.5, condition variables would be used
+   to ensure that thread copy_sample would copy a sample into buffer_area
+   before record_sample would write it from there into the file.
+   Figure 5.13 illustrates use of pthreads in the real-time data logging application
+of Example 5.1. A pthread is created through the call
+            pthread_create(< data structure >, < attributes >,
+            < start routine >, < arguments > )
+where the thread data structure becomes the de facto thread id, and attributes
+indicate scheduling priority and synchronization options. A thread terminates
+through a pthread_exit call which takes a thread status as a parameter. Syn-
+chronization between the parent thread and a child thread is performed through
+the pthread_join call, which takes a thread id and some attributes as param-
+eters. On issuing this call, the parent thread is blocked until the thread indicated
+in the call has terminated; an error is raised if the termination status of the thread
+does not match the attributes indicated in the pthread_join call. Some thread
+implementations require a thread to be created with the attribute "joinable" to
+qualify for such synchronization. The code in Figure 5.13 creates three threads
+to perform the functions performed by processes in Example 5.1. As mentioned
+above, and indicated through comments in Figure 5.13, the threads would use the
+mutex buf_mutex to ensure mutually exclusive access to the buffer and use con-
+dition variables buf_full and buf_empty to ensure that they deposit samples
+into the buffer and take them out of the buffer in the correct order. We do not
+show details of mutexes and condition variables here; they are discussed later in
+Chapter 6.
+5.3.2 Kernel-Level, User-Level, and Hybrid Threads
+These three models of threads differ in the role of the process and the kernel in
+the creation and management of threads. This difference has a significant impact
+on the overhead of thread switching and the concurrency and parallelism within
+a process.
+5.3.2.1 Kernel-Level Threads
+A kernel-level thread is implemented by the kernel. Hence creation and ter-
+mination of kernel-level threads, and checking of their status, is performed
+
+
+
+140              Part 2  Process Management
+              #include        <pthread.h>
+              #include        <stdio.h>
+              int   size,      buffer[100],          no_of_samples_in_buffer;
+              int   main()
+              {
+                 pthread_t           id1,   id2,     id3;
+                 pthread_mutex_t                buf_mutex,      condition_mutex;
+                 pthread_cond_t             buf_full,         buf_empty;
+                 pthread_create(&id1,                    NULL,  move_to_buffer,         NULL);
+                 pthread_create(&id2,                    NULL,  write_into_file,          NULL);
+                 pthread_create(&id3,                    NULL,  analysis,      NULL);
+                 pthread_join(id1,              NULL);
+                 pthread_join(id2,              NULL);
+                 pthread_join(id3,              NULL);
+                 pthread_exit(0);
+              }
+              void   *move_to_buffer()
+              {
+                 /*      Repeat      until      all  samples    are       received  */
+                 /*      If   no     space  in  buffer,         wait  on  buf_full      */
+                 /*      Use   buf_mutex        to   access     the   buffer,      increment     no.   of  samples  */
+                 /*      Signal      buf_empty       */
+                 pthread_exit(0);
+              }
+              void   *write_into_file()
+              {
+                 /*      Repeat      until      all  samples    are       written   into    the  file  */
+                 /*      If   no     data   in  buffer,       wait    on  buf_empty     */
+                 /*      Use   buf_mutex        to   access     the   buffer,      decrement     no.   of  samples  */
+                 /*      Signal      buf_full        */
+                 pthread_exit(0);
+              }
+              void   *analysis()
+              {
+                 /*      Repeat      until      all  samples    are       analyzed  */
+                 /*      Read     a  sample     from     the    buffer    and  analyze      it   */
+                 pthread_exit(0);
+              }
+Figure  5.13     Outline of the data logging application using POSIX threads.
+                                  through system calls. Figure 5.14 shows a schematic of how the kernel handles
+                                  kernel-level threads. When a process makes a create_thread system call, the ker-
+                                  nel creates a thread, assigns an id to it, and allocates a thread control block
+                                  (TCB). The TCB contains a pointer to the PCB of the parent process of the
+                                  thread.
+                                     When an event occurs, the kernel saves the CPU state of the interrupted
+                                  thread in its TCB. After event handling, the scheduler considers TCBs of all
+                                  threads and selects one ready thread; the dispatcher uses the PCB pointer in its
+
+
+
+                                                                    Chapter 5       Processes  and  Threads  141
+                             Pi  PCB                  Pj   PCB
+                                 ···                       Thread control   blocks
+                                                                    (TCBs)
+                                                      PCB  pointer
+                                 Scheduler
+                                            Selected  TCB
+Figure 5.14  Scheduling  of  kernel-level threads.
+TCB to check whether the selected thread belongs to a different process than
+the interrupted thread. If so, it saves the context of the process to which the
+interrupted thread belongs, and loads the context of the process to which the
+selected thread belongs. It then dispatches the selected thread. However, actions
+to save and load the process context are skipped if both threads belong to the same
+process. This feature reduces the switching overhead, hence switching between
+kernel-level threads of a process could be as much as an order of magnitude
+faster, i.e., 10 times faster, than switching between processes.
+Advantages and Disadvantages of Kernel-Level Threads                A kernel-level thread
+is like a process except that it has a smaller amount of state information. This
+similarity is convenient for programmers--programming for threads is no dif-
+ferent from programming for processes. In a multiprocessor system, kernel-level
+threads provide parallelism (see Section 5.1.4), as many threads belonging to a
+process can be scheduled simultaneously, which is not possible with the user-level
+threads described in the next section, so it provides better computation speedup
+than user-level threads.
+However, handling threads like processes has its disadvantages too. Switching
+between threads is performed by the kernel as a result of event handling. Hence
+it incurs the overhead of event handling even if the interrupted thread and the
+selected thread belong to the same process. This feature limits the savings in the
+thread switching overhead.
+5.3.2.2 User-Level Threads
+User-level threads are implemented by a thread library, which is linked to the
+code of a process. The library sets up the thread implementation arrangement
+shown in Figure 5.11(b) without involving the kernel, and itself interleaves oper-
+ation of threads in the process. Thus, the kernel is not aware of presence of
+user-level threads in a process; it sees only the process. Most OSs implement the
+
+
+
+142  Part 2  Process Management
+             pthreads application program interface provided in the IEEE POSIX standard
+             (see Section 5.3.1) in this manner.
+             An overview of creation and operation of threads is as follows: A process
+             invokes the library function create_thread to create a new thread. The library
+             function creates a TCB for the new thread and starts considering the new thread
+             for "scheduling." When the thread in the running state invokes a library function
+             to perform synchronization, say, wait until a specific event occurs, the library
+             function performs "scheduling" and switches to another thread of the process.
+             Thus, the kernel is oblivious to switching between threads; it believes that the
+             process is continuously in operation. If the thread library cannot find a ready
+             thread in the process, it makes a "block me" system call. The kernel now blocks
+             the process. It will be unblocked when some event activates one of its threads
+             and will resume execution of the thread library function, which will perform
+             "scheduling" and switch to execution of the newly activated thread.
+             Scheduling of User-Level Threads     Figure 5.15 is a schematic diagram of schedul-
+             ing of user-level threads. The thread library code is a part of each process. It
+             performs "scheduling" to select a thread, and organizes its execution. We view
+             this operation as "mapping" of the TCB of the selected thread into the PCB of
+             the process.
+             The thread library uses information in the TCBs to decide which thread
+             should operate at any time. To "dispatch" the thread, the CPU state of the thread
+             should become the CPU state of the process, and the process stack pointer should
+             point to the thread's stack. Since the thread library is a part of a process, the
+             CPU is in the user mode. Hence a thread cannot be dispatched by loading new
+             information into the PSW; the thread library has to use nonprivileged instructions
+             to change PSW contents. Accordingly, it loads the address of the thread's stack
+                                         Pi                   Pj
+             Process context
+              thread library
+                                                                            Thread control blocks
+                                                                                  (TCBs)
+                                                  ···                       Mapping performed
+                                                                            by thread library
+                                                                            Process control blocks
+                                                                                  (PCBs)
+                                                  Scheduler
+                                                              Selected PCB
+             Figure 5.15 Scheduling  of  user-level threads.
+
+
+
+                                                    Chapter 5        Processes          and Threads       143
+into the stack address register, obtains the address contained in the program
+counter (PC) field of the thread's CPU state found in its TCB, and executes a
+branch instruction to transfer control to the instruction which has this address.
+The next example illustrates interesting situations during scheduling of user-level
+threads.
+                                                                                                          ·
+Scheduling of User-Level Threads                                                        Example      5.7
+Figure 5.16 illustrates how the thread library manages three threads in a pro-
+cess Pi. The codes N, R, and B in the TCBs represent the states running, ready,
+and blocked, respectively. Process Pi is in the running state and the thread
+library is executing. It dispatches thread h1, so h1's state is shown as N, i.e.
+running. Process Pi is preempted sometime later by the kernel. Figure 5.16(a)
+illustrates states of the threads and of process Pi. Thread h1 is in the running
+state, and process Pi is in the ready state. Thread h1 would resume its operation
+when process Pi is scheduled next. The line from h1's TCB to Pi's PCB indi-
+cates that h1's TCB is currently mapped into Pi's PCB. This fact is important
+for the dispatching and context save actions of the thread library.
+Thread h2 is in the ready state in Figure 5.16(a), so its TCB contains the
+code R. Thread h3 awaits a synchronization action by h1, so it is in the blocked
+state. Its TCB contains the code B, and h1 to indicate that it is awaiting an
+event that is a synchronization action by h1. Figure 5.16(b) shows the situation
+when the kernel dispatches Pi and changes its state to running.
+The thread library overlaps operation of threads using the timer. While
+"scheduling" h1, the library would have requested an interrupt after a small
+interval of time. When the timer interrupt occurs, it gets control through the
+event handling routine of the kernel for timer interrupts, and decides to pre-
+empt h1. So it saves the CPU state in h1's TCB, and "schedules" h2. Hence
+the state codes in the TCB's of h1 and h2 change to R and N, respectively
+(Figure 5.16(c)). Note that thread scheduling performed by the thread library
+is invisible to the kernel. All through these events, the kernel sees process Pi in
+the running state.
+A user thread should not make a blocking system call; however, let us see
+what would happen if h2 made a system call to initiate an I/O operation on
+device d2, which is a blocking system call. The kernel would change the state
+of process Pi to blocked and note that it is blocked because of an I/O operation
+on device d2 (Figure 5.16(d)). Some time after the I/O operation completes,
+the kernel would schedule process Pi, and operation of h2 would resume. Note
+that the state code in h2's TCB remains N, signifying the running state, all
+through its I/O operation!
+                                                                                     ·
+Advantages and Disadvantages of User-Level Threads  Thread synchronization
+and scheduling is implemented by the thread library. This arrangement avoids
+
+
+
+144  Part 2  Process  Management
+                                  h1  h2  h3           h1  h2  h3           h1  h2  h3           h1  h2  h3
+                                              Pi                   Pi                   Pi                      Pi
+                      TCBs   N        R   B       N        R   B       R        N   B       R        N      B
+                                          h1                   h1                    h1                     h1
+                      PCB         Ready                Running              Running              Blocked
+                      of Pi                                                                          d2
+                             (a)                  (b)                  (c)                  (d)
+             Figure 5.16     Actions of the thread library (N, R, B indicate running, ready, and blocked).
+             the overhead of a system call for synchronization between threads, so the thread
+             switching overhead could be as much as an order of magnitude smaller than in
+             kernel-level threads. This arrangement also enables each process to use a schedul-
+             ing policy that best suits its nature. A process implementing a real-time application
+             may use priority-based scheduling of its threads to meet its response require-
+             ments, whereas a process implementing a multithreaded server may perform
+             round-robin scheduling of its threads. However, performance of an application
+             would depend on whether scheduling of user-level threads performed by the
+             thread library is compatible with scheduling of processes performed by the kernel.
+             For example, round-robin scheduling in the thread library would be compatible
+             with either round-robin scheduling or priority-based scheduling in the kernel,
+             whereas priority-based scheduling would be compatible only with priority-based
+             scheduling in the kernel.
+                      Managing threads without involving the kernel also has a few drawbacks.
+             First, the kernel does not know the distinction between a thread and a process,
+             so if a thread were to block in a system call, the kernel would block its parent
+             process. In effect, all threads of the process would get blocked until the cause of
+             the blocking was removed--In Figure 5.16(d) of Example 5.7, thread h1 cannot be
+             scheduled even though it is in the ready state because thread h2 made a blocking
+             system call. Hence threads must not make system calls that can lead to blocking.
+             To facilitate this, an OS would have to make available a nonblocking version
+             of each system call that would otherwise lead to blocking of a process. Second,
+             since the kernel schedules a process and the thread library schedules the threads
+             within a process, at most one thread of a process can be in operation at any time.
+             Thus, user-level threads cannot provide parallelism (see Section 5.1.4), and the
+             concurrency provided by them is seriously impaired if a thread makes a system
+             call that leads to blocking.
+
+
+
+                                                         Chapter 5  Processes                   and  Threads  145
+5.3.2.3  Hybrid Thread Models
+A hybrid thread model has both user-level threads and kernel-level threads and
+a method of associating user-level threads with kernel-level threads. Different
+methods of associating user- and kernel-level threads provide different combina-
+tions of the low switching overhead of user-level threads and the high concurrency
+and parallelism of kernel-level threads.
+     Figure 5.17 illustrates three methods of associating user-level threads with
+kernel-level threads. The thread library creates user-level threads in a process and
+associates a thread control block (TCB) with each user-level thread. The kernel
+creates kernel-level threads in a process and associates a kernel thread control block
+(KTCB) with each kernel-level thread. In the many-to-one association method,
+a single kernel-level thread is created in a process by the kernel and all user-
+level threads created in a process by the thread library are associated with this
+kernel-level thread. This method of association provides an effect similar to mere
+user-level threads: User-level threads can be concurrent without being parallel,
+thread switching incurs low overhead, and blocking of a user-level thread leads
+to blocking of all threads in the process.
+     In the one-to-one method of association, each user-level thread is perma-
+nently mapped into a kernel-level thread. This association provides an effect
+similar to mere kernel-level threads: Threads can operate in parallel on different
+CPUs of a multiprocessor system; however, switching between threads is per-
+formed at the kernel level and incurs high overhead. Blocking of a user-level
+thread does not block other user-level threads of the process because they are
+mapped into different kernel-level threads.
+     The many-to-many association method permits a user-level thread to be
+mapped into different kernel-level threads at different times (see Figure 5.17(c)).
+It provides parallelism between user-level threads that are mapped into different
+kernel-level threads at the same time, and provides low overhead of switching
+             PCB                             PCB                    PCB
+             TCBs                            TCBs                   TCBs
+             KTCBs                           KTCBs                  KTCBs
+(a)                 (b)                             (c)
+Figure 5.17  (a) Many-to-one; (b) one-to-one; (c) many-to-many associations in hybrid threads.

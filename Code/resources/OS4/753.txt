@@ -1,0 +1,125 @@
+Distributed Termination Detection
+             A process ties up system resources such as kernel data structures and memory.
+             The kernel releases these resources either when the process makes a "terminate
+             me" system call at the end of its operation, or when it is killed by another process.
+             This method is not adequate for processes of a distributed computation because
+             they may not be able to decide when they should terminate themselves or kill
+             other processes. For example, consider a distributed computation whose processes
+             have a client­server relationship. A server would not know whether any more
+             requests would be made to it, because it would not know who its clients are and
+             whether all of them have completed their operation. In such cases, the kernel
+             employs methods of distributed termination detection to check whether the entire
+             distributed computation has terminated. If so, it winds up all processes of the
+             computation and releases the resources allocated to them.
+             We define two process states in our system model to facilitate termination
+             detection. A process is in the passive state when it has no work to perform;
+             such a process is dormant and waits for some other process to send it some
+             work through an interprocess message. A process is in the active state when it
+             is engaged in performing some work. It can be performing I/O, waiting for a
+             resource, waiting for the CPU to be allocated to it, or executing instructions. The
+             state of a process changes several times during its execution. A passive process
+             becomes active immediately on receiving a message, sends an acknowledgment
+             to the sender of the message, and starts processing the message. An active process
+             acknowledges a message immediately, though it may delay its processing until a
+             convenient time. An active process becomes passive when it finishes its current
+             work and does not have other work to perform. It is assumed that both control
+             and basic messages travel along the same interprocess channels.
+             A distributed computation is said to have terminated if it satisfies the
+             distributed termination condition (DTC). The DTC comprises two parts:
+             1. All processes of a distributed computation are passive.
+             2. No basic messages are in transit.                                   (18.1)
+             The second part is needed because a message in transit will make its destination
+             process active when it is delivered. We discuss two approaches to determining
+             whether DTC holds for a distributed computation.
+             Credit-Distribution-Based Termination Detection   In this approach by Mattern
+             (1989), every activity or potential activity in a distributed computation is assigned
+             a numerical weightage called credit. A distributed computation is initiated with
+             a known finite amount of credit C. This credit is distributed among its processes.
+             The manner of its distribution is immaterial so long as each process Pi receives
+             a nonzero credit ci. When a process sends a basic message to another process,
+
+
+
+                                                         Chapter 18     Distributed Control  Algorithms  733
+it puts a part of its credit into the message--again, it is immaterial how much
+credit is put into a message, so long as it is neither zero nor the entire credit of the
+process. A process receiving a message adds the credit from the message to its own
+credit before processing the message. When a process becomes passive, it sends
+its entire credit to a special system process called the collector process, which
+accumulates all credit it receives. The distributed computation is known to have
+terminated when the credit accumulated by the collector process equals C. This
+algorithm is simple and elegant; however, credit may be distributed indefinitely,
+so a convenient representation of credit should be used in its implementation.
+Diffusion Computation-Based Termination Detection        Each process that becomes
+passive initiates a diffusion computation to determine whether the DTC holds.
+Thus, every process has the capability to detect termination. We discuss detection
+of the DTC in a system where the following three rules hold:
+1.  Processes are neither created nor destroyed dynamically during execution
+    of the computation; i.e., all processes are created when the distributed
+    computation is initiated, and remain in existence until the computation
+    terminates.
+2.  Interprocess communication channels are FIFO.
+3.  Processes communicate with one another through synchronous communi-
+    cation; i.e., the sender of a message becomes blocked until it receives an
+    acknowledgment for the message.
+    Rule 3 simplifies checking for the DTC as follows: The sender of a basic
+message becomes blocked; it resumes its operation after it receives the acknowl-
+edgment. It may enter the passive state only after finishing its work. Thus, the
+basic message sent by a process cannot be in transit when it becomes passive and
+the system cannot have any basic messages in transit when all processes are pas-
+sive. Hence it is sufficient to check only the first part of the DTC condition, i.e.,
+whether all processes are passive. Algorithm 18.6 performs this check through a
+diffusion computation over a graph whose nodes represent processes and edges
+represent interprocess communication. Example 18.4 illustrates operation of
+Algorithm 18.6.
+Algorithm 18.6 Distributed Termination Detection
+1.  When a process becomes passive: The process initiates a diffusion computa-
+    tion through the following actions:
+    a. Send "Shall I declare distributed termination?" queries along all edges
+    connected to it.
+    b. Remember the number of queries sent out, and await replies.
+    c. After  replies  are  received  for  all  of  its  queries,  declare  distributed
+    termination if all replies are yes.
+2.  When a process receives an engaging query: If the process is in the active state,
+    it sends a no reply; otherwise, it performs the following actions:
+    a. Send queries along all edges connected to it excepting the edge on which
+    it received the engaging query.
+
+
+
+734  Part 5  Distributed Operating Systems
+                      b. Remember the number of queries sent out, and await replies.
+                      c. After replies are received for all of its queries: If all replies are yes, send a yes
+                      reply to the process from which it received the engaging query; otherwise,
+                      send a no reply.
+                      3. When a process receives a nonengaging query: The process immediately sends
+                      a yes reply to the process from which it received the query.
+·
+     Example 18.4  Distributed Termination Detection
+                   Figure 18.10 shows a distributed computation. Only processes P1 and P2 are
+                   active; all other processes are passive. Now the following events occur:
+                      1. Process P2 becomes passive, initiates termination detection and sends a
+                      query to process P1.
+                      2. Process P1 sends a basic message to process P5 along the edge (P1, P5)
+                      and becomes passive at the earliest opportunity.
+                      The receive event in P5 for the basic message of P1, and events concerning
+                   sending and receipt of queries and their replies by the processes could occur in
+                   several different sequences. Two sequences of interest are as follows: If process
+                   P1 received the query from P2 before it became passive, it would send a no reply
+                   to P2, so P2 would not declare termination. If process P1 received the query
+                   from P2 after it became passive, according to Rule 3, it would have already
+                   received an acknowledgment to the basic message it had sent to process P5
+                   in Step 2, so process P5 must have become active after receiving P1's message
+                   before P1 became passive. Now, when P1 receives the query from P2, it would
+                   send a query to each of P3­P7. P5 would send a no reply to P1, which would
+                   send a no reply to P2, so P2 would not declare termination. If Rules 2 and 3
+                   of the system are removed, the algorithm would suffer from safety problems
+                   in some situations.
+                   ·
+                      Distributed termination detection algorithms become complex when they
+                   try to remove Rules 1­3 of the system. Papers cited in the Bibliography discuss
+                   details of such algorithms.
+                                                P7      P6
+                                            P2      P1                               P5
+                                                P3      P4
+                   Figure 18.10  Illustration of distributed termination detection.

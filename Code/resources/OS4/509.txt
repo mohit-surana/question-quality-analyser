@@ -1,0 +1,268 @@
+Directories
+             A directory contains information about a group of files. Each entry in a directory
+             contains the attributes of one file, such as its type, organization, size, location, and
+             the manner in which it may be accessed by various users in the system. Figure 13.6
+
+
+
+                                                                             Chapter 13              File  Systems  489
+   File       Type and    Location     Protection   Open                                       Misc
+   name        size       info         info         count             Lock   Flags             info
+   Field                  Description
+   File name              Name of the file. If this field has a fixed size, long file names
+                          beyond a certain length will be truncated.
+   Type and size          The file's type and size. In many file systems, the type of file is
+                          implicit in its extension; e.g., a file with extension .c is a byte
+                          stream file containing a C program, and a file with extension
+                          .obj is an object program file, which is often a structured file.
+   Location info          Information about the file's location on a disk. This information
+                          is typically in the form of a table or a linked list containing
+                          addresses of disk blocks allocated to a file.
+   Protection info        Information about which users are permitted to access this file,
+                          and in what manner.
+   Open count             Number of processes currently accessing the file.
+   Lock                   Indicates whether a process is currently accessing the file in an
+                          exclusive manner.
+   Flags                  Information about the nature of the file--whether the file is a
+                          directory, a link, or a mounted file system.
+   Misc info              Miscellaneous information like id of owner, date and time of
+                          creation, last use, and last modification.
+Figure 13.6 Fields in  a  typical directory entry.
+shows the fields of a typical directory entry. The open count and lock fields are
+used when several processes open a file concurrently. The open count indicates
+the number of such processes. As long as this count is nonzero, the file system
+keeps some of the metadata concerning the file in memory to speed up accesses
+to the data in the file. The lock field is used when a process desires exclusive
+access to a file. The flags field is used to differentiate between different kinds of
+directory entries. We put the value "D" in this field to indicate that a file is a
+directory, "L" to indicate that it is a link, and "M" to indicate that it is a mounted
+file system. Later sections in this chapter will describe these uses. The misc info
+field contains information such as the file's owner, its time of creation, and last
+modification.
+   A file system houses files owned by several users. Therefore it needs to grant
+users two important prerogatives:
+·  File naming freedom: A user's ability to give any desired name to a file, without
+   being constrained by file names chosen by other users.
+·  File sharing: A user's ability to access files created by other users, and ability
+   to permit other users to access his files.
+
+
+
+490  Part 4  File Systems and I/O Management
+                           Master
+                           Directory
+                           User
+                           Directories              A             B                        C
+                           (UDs)
+                                              beta  alpha  gamma  beta  calendar
+             Figure  13.7  A directory structure composed of master and user directories.
+             The file system creates several directories and uses a directory structure to
+             organize them for providing file naming freedom and file sharing. We include
+             schematic diagrams to illustrate directory structures, using the convention that
+             a directory is represented by a rectangle, while a file is represented by a circle.
+             Figure 13.7 shows a simple directory structure containing two kinds of directories.
+             A user directory (UD) contains entries describing the files owned by one user. The
+             master directory contains information about the UDs of all registered users of the
+             system; each entry in the master directory is an ordered pair consisting of a user id
+             and a pointer to a UD. In the file system shown, users A and B have each created
+             their own file named beta. These files have entries in the users' respective UDs.
+             We describe the directory structure shown in Figure 13.7 as a two-level directory
+             structure.
+             Use of separate UDs is what provides naming freedom. When a process
+             created by user A executes the statement open (beta,       ...), the file system
+             searches the master directory to locate A's UD, and searches for beta in it. If
+             the call open(beta,        ...) had instead been executed by some process created
+             by B, the file system would have searched B's UD for beta. This arrangement
+             ensures that the correct file is accessed even if many files with identical names
+             exist in the system.
+             Use of UDs has one drawback, however. It inhibits users from sharing their
+             files with other users. A special syntax may have to be provided to enable a user to
+             refer to another user's file. For example, a process created by user C may execute
+             the statement open       (Abeta,       ...) to open A's file beta. The file system
+             can implement this simply by using A's UD, rather than C's UD, to search and
+             locate file beta. To implement file protection, the file system must determine
+             whether user C is permitted to open A's file beta. It checks the protection info
+             field of beta's directory entry for this purpose. Details of file protection are
+             discussed in Section 13.6.
+             13.4.1 Directory Trees
+             The MULTICS file system of the 1960s contained features that allowed the user
+             to create a new directory, give it a name of his choice, and create files and other
+             directories in it up to any desired level. The resulting directory structure is a tree;
+
+
+
+                                                                            Chapter 13   File  Systems  491
+                                        root
+                  X                     A                        B
+                                 admin                           projects
+                          alpha
+                                                                 real_time
+                                           beta
+                                              main_pgm
+Figure  13.8  Directory trees of the file system and of user A.
+we call it the directory tree. After MULTICS, most file systems have provided
+directory trees.
+A user can create a file to hold data or to act as a directory. When a distinction
+between the two is important, we will call these files respectively data files and
+directory files, or simply directories. The file system provides a directory called
+root that contains the home directory for each user, which is a directory file that
+typically has the same name as the user's name. A user structures his informa-
+tion by creating directory files and data files in his home directory, creating files
+and other directories in a directory file, and so on. We will assume that the file
+system puts a "D" in the flags field of a file's entry if the file is a directory file.
+Figure 13.8 shows the directory tree of the file system. The root of this tree is
+the directory root, which contains a home directory for each user that bears the
+user's name. User A has created a file called alpha and directories called admin
+and projects. The projects directory contains a directory real_time,
+which contains a file main_pgm. Thus user A has a directory tree of his own; its
+root is his home directory.
+At any time, a user is said to be "in" some specific directory, which is called his
+current directory. When the user wishes to open a file, the file name is searched for
+in this directory. Whenever the user logs in, the OS puts him in his home directory;
+the home directory is then the user's current directory. A user can change his
+current directory at any time through a "change directory" command.
+A file's name may not be unique in the file system, so a user or a process
+uses a path name to identify it in an unambiguous manner. A path name is a
+sequence of one or more path components separated by a slash (/), where each
+path component is a reference through a directory and the last path component
+is the name of the file.
+Path names for locating a file from the current directory are called relative
+path names. Relative path names are often short and convenient to use; how-
+ever, they can be confusing because a file may have different relative path names
+when accessed from different current directories. For example, in Figure 13.8, the
+
+
+
+492  Part 4  File Systems and I/O Management
+                   file alpha has the simple relative path name alpha when accessed from cur-
+                   rent directory A, whereas it has relative path names of the form ../alpha and
+                   ../../alpha when accessed from the directories projects and real_time,
+                   respectively.      To  facilitate    use  of  relative   path  names,  each   directory   stores
+                   information about its own parent directory in the directory structure.
+                       The absolute path name of a file starts on the root directory of the file system's
+                   directory tree. Identically named files created in different directories differ in their
+                   absolute path names. We will use the convention that the first path component in
+                   an absolute path is a null symbol, and the home directory of a user A is specified
+                   as~A. Thus, in Figure 13.8, the absolute path name of file alpha is /A/alpha.
+                   An alternative path name for it is ~A/alpha.
+                   13.4.2 Directory Graphs
+                   In a directory tree, each file except the root directory has exactly one parent direc-
+                   tory. This directory structure provides total separation of different users' files and
+                   complete file naming freedom. However, it makes file sharing rather cumbersome.
+                   A user wishing to access another user's files has to use a path name that involves
+                   two or more directories. For example, in Figure 13.8, user B can access file beta
+                   using the path name ../A/projects/beta or ~A/projects/beta.
+                       Use of the tree structure leads to a fundamental asymmetry in the way dif-
+                   ferent users can access a shared file. The file will be located in some directory
+                   belonging to one of the users, who can access it with a shorter path name than
+                   can other users. This problem can be solved by organizing the directories in an
+                   acyclic graph structure. In this structure, a file can have many parent directories,
+                   and so a shared file can be pointed to by directories of all users who have access
+                   to it. Acyclic graph structures are implemented through links.
+                   Links    A link is a directed connection between two existing files in the directory
+                   structure. It can be written as a triple (<from_ file_name>, <to_ file_name>,
+                   <link_name>), where <from_ file_name> is a directory and <to_ file_name> can
+                   be a directory or a file. Once a link is established, <to_ file_name> can be accessed
+                   as if it were a file named <link_name> in the directory <from_ file_name>. The
+                   fact that <link_name> is a link in the directory <from_ file_name> is indicated
+                   by putting the value "L" in its flags field. Example 13.4 illustrates how a link is
+                   set up.
+·
+     Example 13.4  Link in a Directory Structure
+                   Figure   13.9      shows      the  directory   structure  after  user   C    creates  a   link
+                   using    the   command         (~C,  ~C/software/web_server,                  quest).     The
+                   name     of   the  link   is   quest.     The  link  is  made  in  the  directory     ~C  and
+                   it  points    to   the   file      ~C/software/web_server.              This  link    permits
+                   ~C/software/web_server to be accessed by the name ~C/quest.
+                   ·
+
+
+
+                                                                                    Chapter 13      File  Systems  493
+                                C
+                                                                         quest
+                personal        job                              software
+                                                            web  server
+Figure  13.9  A link in the directory structure.
+An      unlink  command         nullifies         a  link.  Implementation      of  the  link  and
+unlink commands involves manipulation of directories that contain the files
+<from_ file_name> and <to_ file_name>. Deadlocks may arise while link and
+unlink commands are implemented if several processes issue these commands
+simultaneously. The file system can use some simple policy to ensure absence of
+deadlocks (see Section 8.8.1).
+13.4.3 Operations on Directories
+A search is the most frequent operation on directories. Other operations on
+directories are maintenance operations like creating or deleting files, updating
+file entries when a process performs a close operation, listing a directory, and
+deleting a directory.
+The deletion operation specifies a path name for the file to be deleted. It
+becomes complicated when the directory structure is a graph because a file may
+have multiple parents. A file is deleted only if it has a single parent; otherwise, it is
+simply made inaccessible from its parent directory in the path name specified in
+the delete command. To simplify the delete operation, the file system maintains a
+link count with each file. The count is set to 1 when the file is created, incremented
+by 1 whenever a link is set to point to it, and decremented by 1 at a delete
+command. The file can be deleted only when its link count becomes 0.
+This simple strategy is not adequate if the directory structure contains cycles.
+A cycle develops when a link is set from a directory to one of its ancestor direc-
+tories, e.g., if a link is set up from the directory real_time in Figure 13.8 to the
+directory projects. Now the link count of projects is 2, so its deletion by
+using the path name ~A/projects would lead only to deletion of the entry of
+projects in A. However, there is no reason to retain directory projects and
+files reachable from it, since projects would not be accessible from the home
+directory of any user! This problem can be solved either by using a technique
+to detect cycles that are not reachable from any home directories, which can be
+expensive, or by preventing cycles from arising in the directory structure, which
+is equally expensive.
+13.4.4 Organization of Directories
+A directory could be a flat file that is searched linearly to find the required file
+entry. However, this organization is inefficient if the directory contains a large
+
+
+
+494  Part 4  File Systems and I/O Management
+             number of entries. Hash tables and B+ trees are used to provide greater search
+             efficiency.
+             Hash Table Directory       A hash table using the hash with chaining organization was
+             discussed in Section 12.2.3 in connection with inverted page tables. A directory
+             can be maintained by using a simpler hash table organization called hash with
+             open addressing that requires a single table. When a new file is to be created in a
+             directory, a hashing function h is applied to a bit string obtained from the file's
+             name, which yields an entry number e. If the eth entry in the directory is already
+             occupied by another file, the entry given by (e + 1)mod(n), where n is the size
+             of the hash table, is checked and so on until an unused entry is found, and the
+             new file's details are entered in it. When a file is to be opened, a similar search
+             is carried out to locate its entry in the directory. Hash table organizations that
+             do not require more than two comparisons to locate a required file name are
+             practical, so a hash table directory can be searched efficiently. However, use of
+             a hash table directory organization has a few drawbacks--it is cumbersome to
+             change the size of a directory, or to delete an entry from it.
+             B+ Tree Directory     A B+ tree is an m-way search tree where m  2 × d, d being
+             an integer called the order of the tree. The B+ tree is a balanced tree; i.e., the
+             length of the path from the root to any leaf node is the same. This property has a
+             useful implication for directory search--it takes approximately the same amount
+             of time to find the information concerning any file name existing in the directory.
+             A B+ tree directory is organized as follows: Information about files is
+             recorded only in leaf nodes of the tree; nonleaf nodes are used merely to direct
+             search to appropriate parts of the tree. The nonleaf nodes of the tree contain
+             index entries, where each index entry is an ordered pair consisting of a pointer to
+             another node in the tree and a file name. The last index entry in a node does not
+             contain a file name; it contains only a pointer to another node in the tree. The
+             leaf nodes of the tree contain only information entries for files--each entry is an
+             ordered pair consisting of a pointer to information associated with a file name
+             and the file name itself.
+             The root node contains between 2 and 2 × d entries, both inclusive, where
+             d is the order of the tree. A nonroot node contains between d and 2 × d entries,
+             both inclusive. To facilitate search for a file name, the entries in a node--whether
+             index entries or information entries--are lexicographically ordered on file names.
+             Thus, a file name in an entry is "larger" than the file name in the preceding entry
+             in the node, and "smaller" than the file name in the following entry in the node. A
+             leaf node contains two extra pointers. These pointers point to tree nodes that are
+             to its left and to its right in the tree, if any, respectively. These pointers are used
+             to facilitate insertion and deletion of entries. We do not discuss their use here.
+             To locate a file in a directory, the directory B+ tree is searched, starting with
+             its root node. The file's name is compared with the file name in the first index
+             entry in the node. If it is lexicographically "smaller" than the file name in the
+             entry, the pointer in the index entry is used to locate another tree node, where the
+             search is continued; otherwise, the search is continued with the next index entry
+             in the node, if any, and so on. If the next index entry is the last index entry in the

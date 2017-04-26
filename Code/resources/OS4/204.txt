@@ -1,0 +1,305 @@
+Classic Process Synchronization Problems
+A solution to a process synchronization problem should meet three important
+criteria:
+·    Correctness:     Data  access  synchronization  and   control    synchronization
+     should be performed in accordance with synchronization requirements of
+     the problem.
+·    Maximum concurrency: A process should be able to operate freely except
+     when it needs to wait for other processes to perform synchronization actions.
+·    No busy waits: To avoid performance degradation, synchronization should
+     be    performed  through  blocking  rather      than  through  busy     waits   (see
+     Section 6.5.1).
+     As discussed in sections 6.3 and 6.4, critical sections and signaling are the
+key elements of process synchronization, so a solution to a process synchroniza-
+tion problem should incorporate a suitable combination of these elements. In
+this section, we analyze some classic problems in process synchronization, which
+are representative of synchronization problems in various application domains,
+and discuss issues (and common mistakes) in designing their solutions. In later
+Sections we implement their solutions using various synchronization features
+provided in programming languages.
+6.7.1 Producers--Consumers with Bounded Buffers
+A producers­consumers system with bounded buffers consists of an unspecified
+number of producer and consumer processes and a finite pool of buffers (see
+Figure 6.13). Each buffer is capable of holding one item of information--it is said
+to become full when a producer writes a new item into it, and become empty when
+a consumer copies out an item contained in it; it is empty when the producers­
+consumers system starts its operation. A producer process produces one item of
+information at a time and writes it into an empty buffer. A consumer process
+consumes information one item at a time from a full buffer.
+     A producers­consumers system with bounded buffers is a useful abstraction
+for many practical synchronization problems. A print service is a good example
+              Producers                                    Consumers
+                                    Buffer pool
+Figure  6.13  A producers­consumers system with bounded buffers.
+
+
+
+184  Part 2  Process Management
+             in the OS domain. A fixed-size queue of print requests is the bounded buffer. A
+             process that adds a print request to the queue is a producer process, and a print
+             daemon is a consumer process. The data logging application of Example 5.1 would
+             also be an instance of the producers­consumers problem if the housekeeping
+             process is omitted--the copy_sample process is the producer since it writes a data
+             sample into a buffer. The record_sample process is a consumer since it removes a
+             data sample from the buffer and writes it into the disk file.
+                 A solution to the producers­consumers problem must satisfy the following
+             conditions:
+             1.  A producer must not overwrite a full buffer.
+             2.  A consumer must not consume an empty buffer.
+             3.  Producers        and  consumers          must  access  buffers  in  a   mutually     exclusive
+                 manner.
+             The following condition is also sometimes imposed:
+             4.  Information must be consumed in the same order in which it is put into the
+                 buffers, i.e., in FIFO order.
+                 Figure 6.14 shows an outline for the producers­consumers problem. Pro-
+             ducer and consumer processes access a buffer inside a critical section. A producer
+             enters its critical section and checks whether an empty buffer exists. If so, it pro-
+             duces into that buffer; otherwise, it merely exits from its critical section. This
+             sequence is repeated until it finds an empty buffer. The boolean variable produced
+             is used to break out of the while loop after the producer produces into an empty
+             buffer. Analogously, a consumer makes repeated checks until it finds a full buffer
+             to consume from.
+                 This outline suffers from two problems--poor concurrency and busy waits.
+             The pool contains many buffers, and so it should be possible for producers and
+             consumers to concurrently access empty and full buffers, respectively. However,
+                           begin
+                           Parbegin
+                           var produced : boolean;              var consumed : boolean;
+                           repeat                               repeat
+                                  produced := false             consumed := false;
+                                  while produced = false        while consumed = false
+                                     if an empty buffer exists            if a full buffer exists
+                                     then                                 then
+                                       { Produce in a buffer }            { Consume a buffer       }
+                                       produced := true;                  consumed := true;
+                                  { Remainder of the cycle }    { Remainder of the cycle }
+                           forever;                             forever;
+                           Parend;
+                           end.
+                                     Producer                             Consumer
+             Figure  6.14  An outline for producers­consumers using critical sections.
+
+
+
+                                                                     Chapter 6   Process Synchronization  185
+both produce and consume actions take place in critical sections for the entire
+buffer pool, and so only one process, whether producer or consumer, can access
+a buffer at any time.
+Busy waits exist in both producers and consumers. A producer repeatedly
+checks for an empty buffer and a consumer repeatedly checks for a full buffer. To
+avoid busy waits, a producer process should be blocked if an empty buffer is not
+available. When a consumer consumes from a buffer, it should activate a producer
+that is waiting for an empty buffer. Similarly, a consumer should be blocked if
+a full buffer is not available. A producer should activate such a consumer after
+producing in a buffer.
+When we reanalyze the producers­consumers problem in this light, we notice
+that though it involves mutual exclusion between a producer and a consumer
+that use the same buffer, it is really a signaling problem. After producing an
+item of information in a buffer, a producer should signal a consumer that wishes
+to consume the item from that buffer. Similarly, after consuming an item in a
+buffer, a consumer should signal a producer that wishes to produce an item of
+information in that buffer. These requirements can be met by using the signaling
+arrangement discussed in Section 6.4.
+An improved outline using this approach is shown in Figure 6.15 for a simple
+producers­consumers system that consists of a single producer, a single consumer,
+and a single buffer. The operation check_b_empty performed by the producer
+blocks it if the buffer is full, while the operation post_b_ full sets buffer_ full to
+true and activates the consumer if the consumer is blocked for the buffer to become
+full. Analogous operations check_b_ full and post_b_empty are defined for use by
+the consumer process. The boolean flags producer_blocked and consumer_blocked
+are used by these operations to note whether the producer or consumer process
+             var
+                      buffer : . . . ;
+                      buffer_ full : boolean;
+                      producer_blocked, consumer_blocked : boolean;
+             begin
+                      buffer_ full := false;
+                      producer_blocked := false;
+                      consumer_blocked := false;
+             Parbegin
+             repeat                               repeat
+                    check_b_empty;                check_b_ full;
+                    {Produce in the buffer}       {Consume from the buffer}
+                    post_b_ full;                 post_b_empty;
+                    {Remainder of the cycle}      {Remainder of the cycle}
+             forever;                             forever;
+             Parend;
+             end.
+                        Producer                            Consumer
+Figure 6.15  An improved outline for a single buffer producers­consumers system  using
+signaling.
+
+
+
+186  Part 2  Process Management
+                     procedure check_b_empty                 procedure check_b_full
+                     begin                                   begin
+                           if buffer_full = true                   if buffer_full = false
+                           then                                    then
+                                 producer_blocked := true;          consumer_blocked := true;
+                                 block (producer);                  block (consumer);
+                     end;                                    end;
+                     procedure post_b_full                   procedure post_b_empty
+                     begin                                   begin
+                           buffer_full := true;                    buffer_full := false;
+                           if consumer_blocked = true              if producer_blocked = true
+                           then                                    then
+                                 consumer_blocked := false;         producer_blocked := false;
+                                 activate (consumer);               activate (producer);
+                     end;                                    end;
+                            Operations of producer                 Operations of consumer
+             Figure  6.16  Indivisible operations for the producers­consumers problem.
+             is blocked at any moment. Figure 6.16 shows details of the indivisible opera-
+             tions. This outline will need to be extended to handle multiple buffers or multiple
+             producer/consumer processes. We discuss this aspect in Section 6.9.2.
+             6.7.2 Readers and Writers
+             A readers­writers system consists of shared data, an unspecified number of reader
+             processes that only read the data, and an unspecified number of writer processes
+             that modify or update the data. We use the terms reading and writing for accesses
+             to the shared data made by reader and writer processes, respectively. A solution
+             to the readers­writers problem must satisfy the following conditions:
+             1.  Many readers can perform reading concurrently.
+             2.  Reading is prohibited while a writer is writing.
+             3.  Only one writer can perform writing at any time.
+             Conditions 1­3 do not specify which process should be preferred if a reader and
+             a writer process wish to access the shared data at the same time. The following
+             additional condition is imposed if it is important to give a higher priority to
+             readers in order to meet some business goals:
+             4.  A reader has a nonpreemptive priority over writers; i.e., it gets access to
+                 the shared data ahead of a waiting writer, but it does not preempt an active
+                 writer.
+             This system is called a readers preferred readers­writers system. A writers preferred
+             readers­writers system is analogously defined.
+
+
+
+                                                                         Chapter 6  Process Synchronization  187
+                                       Bank account
+                   print                                         credit
+                   statement
+                   stat                                          debit
+                   analysis
+                              Readers                   Writers
+Figure  6.17  Readers and writers in a banking system.
+Figure 6.17 illustrates an example of a readers­writers system. The readers
+and writers share a bank account. The reader processes print statement and stat
+analysis merely read the data from the bank account; hence they can execute
+concurrently. credit and debit modify the balance in the account. Clearly only
+one of them should be active at any moment and none of the readers should
+be concurrent with it. In an airline reservation system, processes that merely
+query the availability of seats on a flight are reader processes, while processes that
+make reservations are writer processes since they modify parts of the reservation
+database.
+We determine the synchronization requirements of a readers­writers system
+as follows: Conditions 1­3 permit either one writer to perform writing or many
+readers to perform concurrent reading. Hence writing should be performed in
+a critical section for the shared data. When a writer finishes writing, it should
+either enable another writer to enter its critical section, or activate all waiting
+readers using a signaling arrangement and a count of waiting readers. If readers
+are reading, a waiting writer should be enabled to perform writing when the last
+reader finishes reading. This action would require a count of concurrent readers
+to be maintained.
+Figure 6.18 is an outline for a readers­writers system. Writing is performed
+in a critical section. A critical section is not used in a reader, because that would
+prevent concurrency between readers. A signaling arrangement is used to handle
+blocking and activation of readers and writers. For simplicity, details of main-
+taining and using counts of waiting readers and readers reading concurrently are
+not shown in the outline; we shall discuss these in Section 6.9.3. The outline of
+Figure 6.18 does not provide bounded waits for readers and writers; however, it
+provides maximum concurrency. This outline does not prefer either readers or
+writers.
+6.7.3 Dining Philosophers
+Five philosophers sit around a table pondering philosophical issues. A plate of
+spaghetti is kept in front of each philosopher, and a fork is placed between each
+pair of philosophers (see Figure 6.19). To eat, a philosopher must pick up the
+two forks placed between him and the neighbors on either side, one at a time.
+The problem is to design processes to represent the philosophers such that each
+philosopher can eat when hungry and none dies of hunger.
+
+
+
+188  Part 2  Process Management
+                     Parbegin
+                           repeat                                        repeat
+                                 If a writer is writing                  If reader(s) are reading, or a
+                                 then                                            writer is writing
+                                   { wait };                             then
+                                 { read }                                        { wait };
+                                 If no other readers reading             { write }
+                                 then                                    If reader(s) or writer(s) waiting
+                                   if writer(s) waiting                  then
+                                   then                                          activate either one waiting
+                                           activate one waiting writer;            writer or all waiting readers;
+                           forever;                                      forever;
+                     Parend;
+                     end.
+                                     Reader(s)                                     Writer(s)
+             Figure  6.18  An outline for a readers­writers system.
+                                                              P
+                                                P                                  P
+                                                         P               P
+             Figure  6.19  Dining philosophers.
+             The correctness condition in the dining philosophers system is that a hungry
+             philosopher should not face indefinite waits when he decides to eat. The challenge
+             is to design a solution that does not suffer from either deadlocks, where processes
+             become blocked waiting for each other (see Section 1.4.2), or livelocks, where pro-
+             cesses are not blocked but defer to each other indefinitely. Consider the outline
+             of a philosopher process Pi shown in Figure 6.20, where details of process syn-
+             chronization have been omitted. A philosopher picks up the forks one at a time,
+             say, first the left fork and then the right fork. This solution is prone to deadlock,
+             because if all philosophers simultaneously lift their left forks, none will be able
+             to lift the right fork! It also contains race conditions because neighbors might
+             fight over a shared fork. We can avoid deadlocks by modifying the philosopher
+             process so that if the right fork is not available, the philosopher would defer to
+             his left neighbor by putting down the left fork and repeating the attempt to take
+             the forks sometime later. However, this approach suffers from livelocks because
+             the same situation may recur.
+
+
+
+                                                                                   Chapter 6      Process Synchronization  189
+                             repeat
+                                  if left fork is not available
+                                  then
+                                      block (Pi);
+                                  lift left fork;
+                                  if right fork is not available
+                                  then
+                                      block (Pi);
+                                  lift right fork;
+                                  { eat }
+                                  put down both forks
+                                  if left neighbor is waiting for his right  fork
+                                  then
+                                      activate (left neighbor);
+                                  if right neighbor is waiting for his left  fork
+                                  then
+                                      activate (right neighbor);
+                                  { think }
+                             forever
+Figure 6.20  Outline  of  a  philosopher process Pi.
+                             var        successful : boolean;
+                             repeat
+                                  successful := false;
+                                  while (not successful)
+                                     if both forks are available then
+                                        lift the forks one at a time;
+                                        successful := true;
+                                      if successful = false
+                                      then
+                                  { eat }  block (Pi);
+                                  put down both forks;
+                                  if left neighbor is waiting for his right  fork
+                                  then
+                                      activate (left neighbor);
+                                  if right neighbor is waiting for his left  fork
+                                  then
+                                      activate (right neighbor);
+                                  { think }
+                             forever
+Figure 6.21  An  improved outline of a philosopher process.
+An  improved              outline     for    the    dining       philosophers      problem    is  given  in
+Figure 6.21. A philosopher checks availability of forks in a CS and also picks
+up the forks in the CS. Hence race conditions cannot arise. This arrangement
+ensures that at least some philosopher(s) can eat at any time and deadlocks can-
+not arise. A philosopher who cannot get both forks at the same time blocks
