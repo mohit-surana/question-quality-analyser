@@ -2,7 +2,7 @@ import os
 import pickle
 from collections import defaultdict
 
-import dill
+import pickle
 import numpy as np
 from sklearn import model_selection, svm
 from sklearn.externals import joblib
@@ -10,10 +10,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import classification_report
 from sklearn.pipeline import Pipeline
 
-from utils import get_data_for_cognitive_classifiers
+from utils import get_data_for_cognitive_classifiers, get_glove_vectors
 
 np.random.seed(42)
-    
+
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
@@ -23,8 +23,11 @@ X = []
 Y_cog = []
 Y_know = []
 
-TRAIN_SVM_GLOVE = True
-TEST_SVM_GLOVE = True
+TRAIN = True
+USE_CUSTOM_GLOVE_MODELS = True
+TEST = True
+
+VEC_SIZE = 100
 
 domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
 
@@ -32,9 +35,13 @@ keywords = set()
 for k in domain:
     keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
     
-def lamb1(x):
+def foo(x):
     return x
 
+def foo2():
+    return gVar
+
+gVar = None
 class TfidfEmbeddingVectorizer(object):
     def __init__(self, word2vec):
         self.word2vec = word2vec
@@ -49,12 +56,13 @@ class TfidfEmbeddingVectorizer(object):
                                 use_idf=True,
                                 smooth_idf=False,
                                 sublinear_tf=True,
-                                analyzer=lamb1)
+                                analyzer=foo)
         tfidf.fit(X + list(keywords))
 
         max_idf = max(tfidf.idf_)
+        gVar = max_idf
 
-        self.word2weight = defaultdict(lambda: max_idf,
+        self.word2weight = defaultdict(foo2,
             [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
     
         return self
@@ -81,65 +89,54 @@ class TfidfEmbeddingVectorizer(object):
         main_temp = np.array(main_temp)
         return main_temp
 
-def train(X_train, Y_train):
-# Load Glove w2v only if training is required
-    print()
-    filename = 'glove.6B.%dd.txt' %100
-    
-    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])):
-        print()
-        with open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + filename), "r", encoding='utf-8') as lines:
-            w2v = {}
-            for row, line in enumerate(lines):
-                try:
-                    w = line.split()[0]
-                    vec = np.array(list(map(float, line.split()[1:])))
-                    w2v[w] = vec
-                except:
-                    continue
-                finally:
-                    if((row + 1) % 100000 == 0):
-                        print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
-        
-        dill.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
-    else:
-        w2v = dill.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
-            
-    print('Loaded Glove w2v')
-
-    parameters = {'kernel' : ['poly'],
-                  'C': [0.5]}
-                 
-    gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True), parameters, n_jobs=-1)
-    clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)),
-                          ('SVC', gscv) ])
-
-    clf.fit(X_train, Y_train)
-    print('Fitting done')
-
-    print('Best params:', gscv.best_params_)
-
-    joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model.pkl'))
-    print('Saving done')
-    return clf
 		
 if __name__ == '__main__':
     ################ BEGIN LOADING DATA ################
 
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0, 0.1, 0.15, 0.2], ['ada', 'os', 'bcl'], 0.8, include_keywords=False)
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0.2, 0.25, 0.3, 0.35], ['ada', 'os', 'bcl'], 0.8, include_keywords=True)
     print('Loaded/Preprocessed data')
 
     vocabulary = {'the'}
 
-    ################ BEGIN TRAINING CODE ################
+    if TRAIN:
+        # Load Glove w2v only if training is required    
+        savepath = 'glove.%dd.pkl' %VEC_SIZE
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath)):
+            print()
+            w2v = {}
+            w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.6B.%dd.txt' %VEC_SIZE))
 
-    if TRAIN_SVM_GLOVE:
-        clf = train(X_train, Y_train)
+            if USE_CUSTOM_GLOVE_MODELS:
+                print('Loading custom vectors')
+                print()
+                w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.ADA.%dd.txt' %VEC_SIZE))
+                print()
+                w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.OS.%dd.txt' %VEC_SIZE))
+            
+            pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'wb'))
+        else:
+            w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
+            print('Loaded Glove w2v')
+
+        parameters = {'kernel' : ['poly'],
+                      'C': [0.5, 0.6]}
+                     
+        gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True), parameters, n_jobs=-1)
+        clf = Pipeline([ ('GloVe-Vectorizer', TfidfEmbeddingVectorizer(w2v)),
+                              ('SVC', gscv) ])
+
+        clf.fit(X_train, Y_train)
+        print('Fitting done')
+
+        print('Best params:', gscv.best_params_)
+
+        joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model.pkl'))
+        print('Saving done')
 
     ################ BEGIN TESTING CODE ################
-    if TEST_SVM_GLOVE:
-        if not TRAIN_SVM_GLOVE:
-            clf = joblib.load(os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model_83.pkl'))
+    if TEST:
+        if not TRAIN:
+            clf = joblib.load(os.path.join(os.path.dirname(__file__), 'models/SVM/glove_svm_model.pkl'))
 
         Y_true, Y_pred = Y_test, clf.predict(X_test)
 

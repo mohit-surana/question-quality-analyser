@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 
-from utils import get_data_for_cognitive_classifiers
+from utils import get_data_for_cognitive_classifiers, get_glove_vectors
 
 sys.setrecursionlimit(2 * 10 ** 7)
 
@@ -223,17 +223,17 @@ class BiDirectionalRNN:
 
 
 def save_model(clf):
-    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model_pkl.pkl'), 'wb') as f:
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'wb') as f:
         pickle.dump(clf, f)
 
 def load_model():
-    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model_pkl.pkl'), 'rb') as f:
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'rb') as f:
         clf = pickle.load(f)
     return clf
 
 if __name__ == "__main__":
     NUM_CLASSES = 6
-    INPUT_SIZE = 300
+    INPUT_SIZE = 100
 
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K'
@@ -241,32 +241,30 @@ if __name__ == "__main__":
     X_data = []
     Y_data = []
 
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 
     X_data = X_train + X_test
     Y_data = Y_train + Y_test
 
     vocabulary = {'the'}
 
-    filename = 'glove.6B.%dd.txt' %INPUT_SIZE
-
-    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0])):
+    savepath = 'glove.%dd.pkl' %INPUT_SIZE
+    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath)):
         print()
-        with open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + filename), "r", encoding='utf-8') as lines:
-            w2v = {}
-            for row, line in enumerate(lines):
-                try:
-                    w = line.split()[0]
-                    vec = np.array(list(map(float, line.split()[1:])))
-                    w2v[w] = vec
-                except:
-                    continue
-                finally:
-                    print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+        w2v = {}
+        w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.6B.%dd.txt' %INPUT_SIZE))
 
-        pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'wb'))
+        if USE_CUSTOM_GLOVE_MODELS:
+            print('Loading custom vectors')
+            print()
+            w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.ADA.%dd.txt' %INPUT_SIZE))
+            print()
+            w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.OS.%dd.txt' %INPUT_SIZE))
+        
+        pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'wb'))
     else:
-        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/%s_saved.pkl' %filename.split('.txt')[0]), 'rb'))
+        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
+        print('Loaded Glove w2v')
 
     X_data = sent_to_glove(X_data, w2v)
 
@@ -291,11 +289,11 @@ if __name__ == "__main__":
     HIDDEN_SIZE = 128
     OUTPUT_SIZE = NUM_CLASSES
 
-    EPOCHS = 5
+    EPOCHS = 2
     LEARNING_RATE = 0.010
 
     TRAIN = True
-    RETRAIN = False
+    RETRAIN = True
 
     BRNN = None
     if TRAIN:

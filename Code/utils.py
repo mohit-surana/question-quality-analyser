@@ -64,6 +64,24 @@ def clean_no_stopwords(text, as_list=True, stem=True):
         return ' '.join(tokens)
 
 
+################ GLOVE RETRIEVAL CODE #######################
+def get_glove_vectors(path):
+    with open(os.path.join(os.path.dirname(__file__), path), "r", encoding='utf-8') as lines:
+        __w2v = {}
+        for row, line in enumerate(lines):
+            try:
+                w = line.split()[0]
+                vec = np.array(list(map(float, line.split()[1:])))
+                __w2v[w] = vec
+            except:
+                continue
+            finally:
+                if((row + 1) % 100 == 0):
+                    print(CURSOR_UP_ONE + ERASE_LINE + 'Processed {} GloVe vectors'.format(row + 1))
+
+    return __w2v
+
+
 ########################### PROB. DIST MODIFIER ###########################
 
 def get_modified_prob_dist(probs):
