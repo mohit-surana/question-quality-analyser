@@ -126,6 +126,8 @@ def load_texts(subject):
     for i in doc_set:
         texts.append(__preprocess(i, stop_strength=1).split())
 
+    return docs, texts
+
 #########################################################################
 #                            MAIN BEGINS HERE                           #
 #########################################################################
@@ -133,6 +135,8 @@ if __name__ == '__main__':
     MODEL = ['LDA', 'LSA', 'D2V']
 
     USE_MODELS = MODEL[0:1]
+
+    docs, texts = load_texts(subject) 
 
     dictionary = corpora.Dictionary(texts)
     dictionary.save('models/Nsquared/%s/dictionary.dict' %subject)  # store the dictionary, for future reference
@@ -146,7 +150,7 @@ if __name__ == '__main__':
     tfidf_model.save('models/Nsquared/%s/tfidf.model' %subject)
 
     if MODEL[0] in USE_MODELS:
-        TRAIN_LDA = False
+        TRAIN_LDA = True
         
         if TRAIN_LDA:
             lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 10000),
@@ -168,7 +172,7 @@ if __name__ == '__main__':
             lda.per_word_topics = False
 
     if MODEL[1] in USE_MODELS:
-        TRAIN_LSA = False
+        TRAIN_LSA = True
         
         if TRAIN_LSA:
             lsi_model = models.LsiModel(corpus=tfidf_model[corpus],
@@ -188,7 +192,7 @@ if __name__ == '__main__':
 
     if MODEL[2] in USE_MODELS:
         
-        TRAIN_D2V = False
+        TRAIN_D2V = True
         
         if TRAIN_D2V:
             x_train = []
@@ -205,7 +209,6 @@ if __name__ == '__main__':
             d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
         else:
             d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
-
 
     clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
 
