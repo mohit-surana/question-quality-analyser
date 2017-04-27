@@ -69,6 +69,8 @@ def clean_no_stopwords(text, as_list=True, stem=True):
 
 ################ GLOVE RETRIEVAL CODE #######################
 def get_glove_vectors(path):
+    CURSOR_UP_ONE = '\x1b[1A'
+    ERASE_LINE = '\x1b[2K'
     with open(os.path.join(os.path.dirname(__file__), path), "r", encoding='utf-8') as lines:
         __w2v = {}
         for row, line in enumerate(lines):

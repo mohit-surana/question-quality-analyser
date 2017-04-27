@@ -7,7 +7,7 @@ import pickle
 import random
 import brnn
 import os
-from brnn import BiDirectionalRNN, sent_to_glove, clip
+from brnn import *#BiDirectionalRNN, sent_to_glove, clip, RNN, relu
 from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers
 from sklearn.externals import joblib
 from sklearn.model_selection import train_test_split
