@@ -21,6 +21,7 @@ from sklearn.neural_network import MLPClassifier
 
 from utils import get_data_for_knowledge_classifiers
 from nsquared import DocumentClassifier
+from collections import defaultdict
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -32,6 +33,8 @@ subject = 'ADA'
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 TRAIN_ANN = False
+USE_CUSTOM_GLOVE_MODELS = True
+VEC_SIZE = 100
 
 knowledge_mapping = {'Metacognitive': 3, 'Procedural': 2, 'Conceptual': 1, 'Factual': 0}
 
@@ -47,6 +50,54 @@ else:
 stopwords.update(punkt)
 
 stopwords2 = stp.words('english')
+
+def foo(x):
+    return x
+
+def foo2():
+    return gVar
+
+gVar = None
+class TfidfEmbeddingVectorizer(object):
+    def __init__(self, word2vec):
+        self.word2vec = word2vec
+        self.word2weight = None
+        self.dim = len(word2vec['the'])
+        
+    def fit(self, X, y):
+        global gVar
+        tfidf = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/tfidf_filterer_%s.pkl' % (subject, )), 'rb'))
+        #tfidf.fit(X)
+
+        max_idf = max(tfidf.idf_)
+        gVar = max_idf
+
+        self.word2weight = defaultdict(foo2,
+            [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
+    
+        return self
+    
+    def transform(self, X, mean=True):
+        main_temp = []
+        temp = []
+        if mean:
+            return np.array([
+                np.mean([self.word2vec[w] * self.word2weight[w]
+                         for w in words if w in self.word2vec and w in self.word2weight] or
+                        [np.zeros(self.dim)], axis=0)
+                for words in X
+            ])
+        else:
+            for words in X:
+                temp = []
+                for w in words:
+                    if w in self.word2vec:
+                        temp.append(self.word2vec[w] * self.word2weight[w])
+                    else:
+                        temp.append(np.zeros(self.dim))
+                main_temp.append(temp)
+        main_temp = np.array(main_temp)
+        return main_temp
 
 def __preprocess(text, stop_strength=0, remove_punct=True):
     text = re.sub('-\n', '', text).lower()
@@ -72,10 +123,10 @@ def get_know_models(__subject):
     subject = __subject
     load_texts(subject)
 
-    nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
+    nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared_69.pkl' % (subject, )), 'rb'))
     lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
-    # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_66.pkl' %subject)
-    ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
+    # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject)
+    ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject))
     lda.minimum_phi_value = 0.01
     lda.minimum_probability = 0.01
     lda.per_word_topics = False
@@ -132,9 +183,9 @@ def load_texts(subject):
 #                            MAIN BEGINS HERE                           #
 #########################################################################
 if __name__ == '__main__':
-    MODEL = ['LDA', 'LSA', 'D2V']
+    MODEL = ['LDA', 'GLOVE', 'LSA', 'D2V']
 
-    USE_MODELS = MODEL[0:1]
+    USE_MODELS = ['LDA', 'GLOVE']
 
     docs, texts = load_texts(subject) 
 
@@ -150,7 +201,7 @@ if __name__ == '__main__':
     tfidf_model.save('models/Nsquared/%s/tfidf.model' %subject)
 
     if MODEL[0] in USE_MODELS:
-        TRAIN_LDA = True
+        TRAIN_LDA = False
         
         if TRAIN_LDA:
             lda = models.LdaModel(corpus=gensim.utils.RepeatCorpus(corpus, 10000),
@@ -170,9 +221,45 @@ if __name__ == '__main__':
             lda.minimum_phi_value = 0.01
             lda.minimum_probability = 0.01
             lda.per_word_topics = False
-
+            
+            
     if MODEL[1] in USE_MODELS:
-        TRAIN_LSA = True
+        TRAIN_GLOVE = False
+        
+        if TRAIN_GLOVE:
+            x_train = []
+            # Load Glove w2v only if training is required    
+            savepath = 'glove.%dd.pkl' %VEC_SIZE
+            if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath)):
+                print()
+                w2v = {}
+                w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.6B.%dd.txt' %VEC_SIZE))
+
+                if USE_CUSTOM_GLOVE_MODELS:
+                    print('Loading custom vectors')
+                    print()
+                    w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.ADA.%dd.txt' %VEC_SIZE))
+                    print()
+                    w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.OS.%dd.txt' %VEC_SIZE))
+                
+                pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'wb'))
+            else:
+                w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
+                print('Loaded Glove w2v')
+
+            clf_glove = TfidfEmbeddingVectorizer(w2v)
+            clf_glove.fit([], [])
+
+            joblib.dump(clf_glove, os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/glove_model.pkl' % (subject,)) )
+            print('Saving done')
+        else:
+            #Load the model here
+            print('Loading 300mb glove model :/')
+            clf_glove = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/glove_model.pkl' % (subject,)) )
+        
+    
+    if MODEL[2] in USE_MODELS:
+        TRAIN_LSA = False
         
         if TRAIN_LSA:
             lsi_model = models.LsiModel(corpus=tfidf_model[corpus],
@@ -190,9 +277,10 @@ if __name__ == '__main__':
         index = similarities.MatrixSimilarity(lsi_model[tfidf_model[corpus]], num_features=lsi_model.num_topics)
         index.save('models/Nsquared/%s/lsi.index' %subject)
 
-    if MODEL[2] in USE_MODELS:
+    
+    if MODEL[3] in USE_MODELS:
         
-        TRAIN_D2V = True
+        TRAIN_D2V = False
         
         if TRAIN_D2V:
             x_train = []
@@ -209,6 +297,9 @@ if __name__ == '__main__':
             d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
         else:
             d2v_model = models.doc2vec.Doc2Vec.load('models/Nsquared/%s/d2v.model' %subject)
+    
+    
+    
 
     clf = pickle.load(open('models/Nsquared/%s/nsquared.pkl' % (subject, ), 'rb'))
 
@@ -244,6 +335,7 @@ if __name__ == '__main__':
         
         p_list = []
         if MODEL[0] in USE_MODELS:
+            ################ BEGIN TESTING FOR LDA ##################
             s1 = lda[dictionary.doc2bow(docs[c].split())]
             s2 = lda[dictionary.doc2bow(cleaned_question.split())]
             d1 = sparse2full(s1, lda.num_topics)
@@ -254,6 +346,18 @@ if __name__ == '__main__':
             p_list.extend(list(d2))
         
         if MODEL[1] in USE_MODELS:
+            ################ BEGIN TESTING for GLOVE ################
+            c_glove = docs[c].split()
+            c_glove = [w for w in c_glove]
+            
+            question_g = cleaned_question.split()
+            question_g = [w for w in question_g]
+            section = clf_glove.transform([c_glove])[0]
+            question_glove = clf_glove.transform([question_g])[0]
+            glove_p = cosine_similarity(section, question_glove)[0]
+            p_list.extend(glove_p)
+
+        if MODEL[2] in USE_MODELS:
             s1 = lsi_model[tfidf_model[dictionary.doc2bow(docs[c].split())]]
             s2 = lsi_model[tfidf_model[dictionary.doc2bow(cleaned_question.split() )]]
             d1 = sparse2full(s1, lsi_model.num_topics)
@@ -263,14 +367,14 @@ if __name__ == '__main__':
             p_list.extend(list(d1))
             p_list.extend(list(d2))
         
-        if MODEL[2] in USE_MODELS:
+        if MODEL[3] in USE_MODELS:
             d1 = np.mean([d2v_model.infer_vector(s.split()) for s in nltk.sent_tokenize(docs[c])], axis=0).reshape(1, -1)
             d2 = d2v_model.infer_vector(cleaned_question.split()).reshape(1, -1)
             d2v_p = cosine_similarity(d1, d2)[0][0]
             #p_list.append(d2v_p)
             p_list.extend(list(d1[0]))
             p_list.extend(list(d2[0]))
-        
+                    
         p_list.extend([k])
         #y_pred = np.argmax(get_knowledge_probs(abs(p_list[0])))
         y_probs.append(p_list)
@@ -293,7 +397,7 @@ if __name__ == '__main__':
         joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
 
     else:
-        ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
+        ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf_54_glove_shrey.pkl' %subject)
         
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
