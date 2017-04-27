@@ -19,6 +19,9 @@ porter = PorterStemmer()
 snowball = SnowballStemmer('english')
 wordnet = WordNetLemmatizer()
 
+CURSOR_UP_ONE = '\x1b[1A'
+ERASE_LINE = '\x1b[2K'
+
 SUBJECT_ADA = 'ADA'
 SUBJECT_OS = 'OS'
 
@@ -273,6 +276,11 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
 
     return X_train, Y_train, X_test, Y_test
 
+########################### SKILL: GET TEST DATA FOR COGNITVE (prereq: test csv must exist) ###########################
+def get_test_data_for_cognitive_classifiers():
+    pass
+
+
 ##################### KNOWLEDGE: CONVERT PROB TO HARDCODED VECTOR #####################
 
 def get_knowledge_probs(prob):
@@ -366,3 +374,7 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
         Y_data = [x[1] for x in X]
 
     return X_data, Y_data
+
+
+if __name__ == '__main__':
+    pass # write a train - test split code here
