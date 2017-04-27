@@ -1,14 +1,16 @@
 import os
 import sys
-
+import random
 import pickle
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.model_selection import train_test_split
 
 from utils import get_data_for_cognitive_classifiers, get_glove_vectors
 
 sys.setrecursionlimit(2 * 10 ** 7)
 
+USE_CUSTOM_GLOVE_MODELS = False
 
 def sent_to_glove(questions, w2v):
     questions_w2glove = []
@@ -106,8 +108,10 @@ class RNN:
             param += -self.learning_rate * dparam / np.sqrt(mem + 1e-8) # adagrad update
 
 class BiDirectionalRNN:
-    def __init__(self, input_size, hidden_size, output_size, learning_rate=0.01):
+    def __init__(self, w2v, input_size, hidden_size, output_size, learning_rate=0.01):
+        self.input_size = input_size
         self.hidden_size = hidden_size
+        self.output_size = output_size
         self.learning_rate = learning_rate
 
         self.right = RNN(input_size, hidden_size, output_size, learning_rate, direction="right")
@@ -115,6 +119,8 @@ class BiDirectionalRNN:
 
         self.by = np.zeros((output_size, 1))
         self.mby = np.zeros_like(self.by)
+
+        self.w2v = w2v
 
     def forward(self, x):
         seq_length = len(x)
@@ -130,25 +136,20 @@ class BiDirectionalRNN:
 
         return np.argmax(y_pred[-1])
 
-    def predict_proba(self, x):
-        seq_length = len(x)
+    def transform(self, X):
+        return sent_to_glove(X, self.w2v)
 
-        y_pred = []
-        dby = np.zeros_like(self.by)
-        xsl, hsl, ysl, psl = self.left.forward(x, np.zeros((self.hidden_size, 1)))
-        xsr, hsr, ysr, psr = self.right.forward(x, np.zeros((self.hidden_size, 1)))
+    def fit(self, X, Y, validation_data=None, epochs=5, do_dropout=False):
+        X = self.transform(X)
 
-        for ind in range(seq_length):
-            this_y = np.dot(self.right.Why, hsr[ind]) + np.dot(self.left.Why, hsl[ind]) + self.by
-            y_pred.append(this_y)
-
-        return y_pred[-1]
-
-    def train(self, training_data, validation_data, epochs=5, do_dropout=False):
         for e in range(epochs):
             print('Epoch {}'.format(e + 1))
 
-            for x, y in zip(*training_data):
+            data = list(zip(X, Y))
+            random.shuffle(data)
+            X = [x[0] for x in data]
+            Y = [x[1] for x in data]
+            for x, y in zip(X, Y):
                 x = clip(x)
 
                 hprevr = np.zeros((self.hidden_size, 1))
@@ -185,15 +186,44 @@ class BiDirectionalRNN:
                 self.right.update_params(dWxhr, dWhhr, dWhyr, dbhr, dbyr)
                 self.left.update_params(dWxhl, dWhhl, dWhyl, dbhl, dbyl)
 
-            self.predict(validation_data)
+            if validation_data is not None:
+                self.get_accuracy_score(validation_data[0], validation_data[1])
 
-        save_model(self)
         print("\nTraining done.")
 
-    def predict(self, testing_data, test=False):
+    def predict(self, X): 
+        X = self.transform(X)
+        predictions = []
+        for x in X:
+            x = clip(x)
+            predictions.append(self.forward(x))
+
+        return np.array(predictions)
+
+    def predict_proba(self, X):
+        X = self.transform(X)
+        prob_predictions = []
+        for x in X:
+            seq_length = len(x)
+
+            y_pred = []
+            dby = np.zeros_like(self.by)
+            xsl, hsl, ysl, psl = self.left.forward(x, np.zeros((self.hidden_size, 1)))
+            xsr, hsr, ysr, psr = self.right.forward(x, np.zeros((self.hidden_size, 1)))
+
+            for ind in range(seq_length):
+                this_y = np.dot(self.right.Why, hsr[ind]) + np.dot(self.left.Why, hsl[ind]) + self.by
+                y_pred.append(this_y)
+
+            prob_predictions.append(y_pred[-1].reshape(-1,))
+
+        return prob_predictions
+
+    def get_accuracy_score(self, X, Y, test=False):
+        X = self.transform(X)
         targets = []
         predictions = []
-        for x, y in zip(*testing_data):
+        for x, y in zip(X, Y):
             x = clip(x)
             tr = np.argmax(y)
             op = self.forward(x)
@@ -213,22 +243,20 @@ class BiDirectionalRNN:
 
         return accuracy_score(targets, predictions)
 
-    def classify(self, X):
-        predictions = []
-        for x in X:
-            x = clip(x)
-            predictions.append(self.forward(x))
-
-        return np.array(predictions)
-
-
-def save_model(clf):
+def save_brnn_model(clf):
+    params =  clf.input_size, clf.hidden_size, clf.output_size, clf.learning_rate, clf.right, clf.left, clf.by, clf.mby
     with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'wb') as f:
-        pickle.dump(clf, f)
+        pickle.dump(params, f)
 
-def load_model():
-    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/brnn_model.pkl'), 'rb') as f:
-        clf = pickle.load(f)
+def load_brnn_model(model_name, w2v):
+    with open(os.path.join(os.path.dirname(__file__), 'models/BiRNN/' + model_name), 'rb') as f:
+        params = pickle.load(f)
+        clf = BiDirectionalRNN(w2v, params[0], params[1], params[2], params[3])
+        clf.right = params[4]
+        clf.left = params[5]
+        clf.by = params[6]
+        clf.mby = params[7]
+
     return clf
 
 if __name__ == "__main__":
@@ -237,43 +265,59 @@ if __name__ == "__main__":
 
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K'
-    USE_CUSTOM_GLOVE_MODELS = True
-    X_data = []
-    Y_data = []
-
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
-
-    X_data = X_train + X_test
-    Y_data = Y_train + Y_test
 
     vocabulary = {'the'}
 
-    savepath = 'glove.%dd.pkl' %INPUT_SIZE
+    if USE_CUSTOM_GLOVE_MODELS:
+        savepath = 'glove.%dd_custom.pkl' %INPUT_SIZE
+    else:
+        savepath = 'glove.%dd.pkl' %INPUT_SIZE
+
     if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath)):
-        print()
         w2v = {}
-        w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.6B.%dd.txt' %INPUT_SIZE))
-        
         if USE_CUSTOM_GLOVE_MODELS:
             print('Loading custom vectors')
             print()
             w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.ADA.%dd.txt' %INPUT_SIZE))
             print()
             w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.OS.%dd.txt' %INPUT_SIZE))
-        
+
+        print()
+        w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.6B.%dd.txt' %INPUT_SIZE))
         pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'wb'))
     else:
-        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
-        print('Loaded Glove w2v')
+        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb')) 
+    print('Loaded Glove w2v')
 
-    X_data = sent_to_glove(X_data, w2v)
+    X_data = []
+    Y_data = []
+
+    #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
+
+    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], 
+                                                                          what_type=['ada', 'os'], 
+                                                                          split=0.8, 
+                                                                          include_keywords=True, 
+                                                                          keep_dup=False)
+
+    X2_train, Y2_train, X2_test, Y2_test = get_data_for_cognitive_classifiers(threshold=[0.5, 0.75, 1], 
+                                                                          what_type=['bcl'], 
+                                                                          split=0.8, 
+                                                                          include_keywords=False, 
+                                                                          keep_dup=False)
+
+    X_train = X_train + X2_train
+    Y_train = Y_train + Y2_train
+    X_test = X_test + X2_test
+    Y_test = Y_test + Y2_test
+
+    X_data = X_train + X_test
+    Y_data = Y_train + Y_test
 
     for i in range(len(Y_data)):
         v = np.zeros(NUM_CLASSES)
         v[Y_data[i]] = 1
         Y_data[i] = v
-
-    Y_data = np.array(Y_data)
 
     X_train = np.array(X_data[: int(len(X_data) * 0.75) ])
     Y_train = np.array(Y_data[: int(len(X_data) * 0.75) ])
@@ -286,27 +330,28 @@ if __name__ == "__main__":
 
     print('Data Loaded/Preprocessed')
 
-    HIDDEN_SIZE = 128
+    HIDDEN_SIZE = 200
     OUTPUT_SIZE = NUM_CLASSES
 
-    EPOCHS = 5
+    EPOCHS = 1
     LEARNING_RATE = 0.010
 
     TRAIN = True
-    RETRAIN = False
+    RETRAIN = True
 
     BRNN = None
     if TRAIN:
-        if(RETRAIN):
-            BRNN = load_model()
+        if RETRAIN:
+            BRNN = load_brnn_model(w2v=w2v)
         else:
-            BRNN = BiDirectionalRNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
-        BRNN.train(training_data=(X_train, Y_train), validation_data=(X_val, Y_val), epochs=EPOCHS, do_dropout=False)
-        save_model(BRNN)
+            BRNN = BiDirectionalRNN(w2v, INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
+
+        BRNN.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=EPOCHS, do_dropout=False)
+        save_brnn_model(BRNN)
     else:
-        BRNN = load_model()
+        BRNN = load_brnn_model(w2v=w2v)
 
     print()
-    accuracy = BRNN.predict((X_test, Y_test), True)
+    accuracy = BRNN.get_accuracy_score(X_test, Y_test, True)
 
     print("Accuracy: {:.2f}%".format(accuracy * 100))
