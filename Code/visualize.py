@@ -2,7 +2,7 @@ import numpy as np
 
 from tkinter import *
 
-from brnn        import BiDirectionalRNN, sent_to_glove, clip
+from brnn        import *#BiDirectionalRNN, sent_to_glove, clip
 from svm_glove   import TfidfEmbeddingVectorizer
 from maxent      import features
 from cogvoter    import predict_cog_label, get_cog_models

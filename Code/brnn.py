@@ -233,11 +233,11 @@ def load_model():
 
 if __name__ == "__main__":
     NUM_CLASSES = 6
-    INPUT_SIZE = 100
+    INPUT_SIZE = 300
 
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K'
-
+    USE_CUSTOM_GLOVE_MODELS = True
     X_data = []
     Y_data = []
 
@@ -253,7 +253,7 @@ if __name__ == "__main__":
         print()
         w2v = {}
         w2v.update(get_glove_vectors('resources/GloVe/' + 'glove.6B.%dd.txt' %INPUT_SIZE))
-
+        
         if USE_CUSTOM_GLOVE_MODELS:
             print('Loading custom vectors')
             print()
@@ -289,11 +289,11 @@ if __name__ == "__main__":
     HIDDEN_SIZE = 128
     OUTPUT_SIZE = NUM_CLASSES
 
-    EPOCHS = 2
+    EPOCHS = 5
     LEARNING_RATE = 0.010
 
     TRAIN = True
-    RETRAIN = True
+    RETRAIN = False
 
     BRNN = None
     if TRAIN:
