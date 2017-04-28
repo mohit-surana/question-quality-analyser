@@ -38,33 +38,22 @@ class MNBC(BaseEstimator, ClassifierMixin):
 		return self.clf.predict_proba(self.transform(X))
 
 if __name__ == '__main__':
-	X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.3, 0.4, 0.5, 0.6, 0.7], 
-																		  what_type=['ada', 'os'], 
-																		  split=0.8, 
-																		  include_keywords=False, 
-																		  keep_dup=False)
+	X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.1, 0.15, 0.2, 0.25, 0.3], 
+														  what_type=['ada', 'os', 'bcl'],
+														  include_keywords=True, 
+														  keep_dup=False)
 
-	X2_train, Y2_train, X2_test, Y2_test = get_data_for_cognitive_classifiers(threshold=[1], 
-																		  what_type=['bcl'], 
-																		  split=0.8, 
-																		  include_keywords=False, 
-																		  keep_dup=False)
-
-	X_train = X_train + X2_train
-	Y_train = Y_train + Y2_train
-	X_test = X_test + X2_test
-	Y_test = Y_test + Y2_test
-
-	X = X_train + X_test
-	Y = Y_train + Y_test
-
-	X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25)
+	X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
+													    what_type=['ada', 'os', 'bcl'], 
+													    what_for='test',
+													    include_keywords=False, 
+													    keep_dup=False)
 
 
 	print('Loaded/Preprocessed data')
 
 	if TRAIN:
-	    clf = MNBC(tfidf_ngram_range=(1, 2), mnbc_alpha=.01)
+	    clf = MNBC(tfidf_ngram_range=(1, 2), mnbc_alpha=.05)
 	    clf.fit(X_train, Y_train)
 	    joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
 

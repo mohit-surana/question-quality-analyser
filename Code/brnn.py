@@ -294,62 +294,55 @@ if __name__ == "__main__":
 
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], 
-                                                                          what_type=['ada', 'os'], 
-                                                                          split=0.8, 
-                                                                          include_keywords=True, 
-                                                                          keep_dup=False)
+    X_train1, Y_train1 = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
+                                                          what_type=['ada', 'os', 'bcl'],
+                                                          include_keywords=True, 
+                                                          keep_dup=False)
 
-    X2_train, Y2_train, X2_test, Y2_test = get_data_for_cognitive_classifiers(threshold=[0.5, 0.75, 1], 
-                                                                          what_type=['bcl'], 
-                                                                          split=0.8, 
-                                                                          include_keywords=False, 
-                                                                          keep_dup=False)
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
+                                                        what_type=['ada', 'os', 'bcl'], 
+                                                        what_for='test',
+                                                        include_keywords=False, 
+                                                        keep_dup=False)
 
-    X_train = X_train + X2_train
-    Y_train = Y_train + Y2_train
-    X_test = X_test + X2_test
-    Y_test = Y_test + Y2_test
-
-    X_data = X_train + X_test
-    Y_data = Y_train + Y_test
-
-    for i in range(len(Y_data)):
+    for i in range(len(Y_train1)):
         v = np.zeros(NUM_CLASSES)
-        v[Y_data[i]] = 1
-        Y_data[i] = v
+        v[Y_train1[i]] = 1
+        Y_train1[i] = v
 
-    X_train = np.array(X_data[: int(len(X_data) * 0.75) ])
-    Y_train = np.array(Y_data[: int(len(X_data) * 0.75) ])
+    for i in range(len(Y_test)):
+        v = np.zeros(NUM_CLASSES)
+        v[Y_test[i]] = 1
+        Y_test[i] = v
 
-    X_val = np.array(X_data[int(len(X_data) * 0.75) : int(len(X_data) * 0.80)])
-    Y_val = np.array(Y_data[int(len(X_data) * 0.75) : int(len(X_data) * 0.80)])
+    X_train = np.array(X_train1[: int(len(X_train1) * 0.8) ])
+    Y_train = np.array(Y_train1[: int(len(X_train1) * 0.8) ])
 
-    X_test = np.array(X_data[int(len(X_data) * 0.80) :])
-    Y_test = np.array(Y_data[int(len(X_data) * 0.80) :])
+    X_val = np.array(X_train1[int(len(X_train1) * 0.8) : ])
+    Y_val = np.array(Y_train1[int(len(X_train1) * 0.8) : ])
 
     print('Data Loaded/Preprocessed')
 
     HIDDEN_SIZE = 200
     OUTPUT_SIZE = NUM_CLASSES
 
-    EPOCHS = 1
+    EPOCHS = 5
     LEARNING_RATE = 0.010
 
     TRAIN = True
-    RETRAIN = True
+    RETRAIN = False
 
     BRNN = None
     if TRAIN:
         if RETRAIN:
-            BRNN = load_brnn_model(w2v=w2v)
+            BRNN = load_brnn_model('brnn_model.pkl', w2v=w2v)
         else:
             BRNN = BiDirectionalRNN(w2v, INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
 
         BRNN.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=EPOCHS, do_dropout=False)
         save_brnn_model(BRNN)
     else:
-        BRNN = load_brnn_model(w2v=w2v)
+        BRNN = load_brnn_model('brnn_model.pkl', w2v=w2v)
 
     print()
     accuracy = BRNN.get_accuracy_score(X_test, Y_test, True)

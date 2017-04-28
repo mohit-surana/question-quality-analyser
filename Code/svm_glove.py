@@ -25,7 +25,7 @@ X = []
 Y_cog = []
 Y_know = []
 
-TRAIN = False
+TRAIN = True
 USE_CUSTOM_GLOVE_MODELS = False
 TEST = True
 
@@ -108,27 +108,17 @@ if __name__ == '__main__':
     ################ BEGIN LOADING DATA ################
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0.2, 0.25, 0.3, 0.35], ['ada', 'os', 'bcl'], 0.8, include_keywords=True)
 
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], 
-                                                                          what_type=['ada', 'os'], 
-                                                                          split=0.8, 
-                                                                          include_keywords=False, 
-                                                                          keep_dup=False)
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
+                                                          what_type=['ada', 'os', 'bcl'],
+                                                          include_keywords=True, 
+                                                          keep_dup=False)
 
-    X2_train, Y2_train, X2_test, Y2_test = get_data_for_cognitive_classifiers(threshold=[0.5, 0.75, 1], 
-                                                                          what_type=['bcl'], 
-                                                                          split=0.8, 
-                                                                          include_keywords=False, 
-                                                                          keep_dup=False)
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
+                                                        what_type=['ada', 'os', 'bcl'], 
+                                                        what_for='test',
+                                                        include_keywords=False, 
+                                                        keep_dup=False)
 
-    X_train = X_train + X2_train
-    Y_train = Y_train + Y2_train
-    X_test = X_test + X2_test
-    Y_test = Y_test + Y2_test
-
-    X = X_train + X_test
-    Y = Y_train + Y_test
-
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20)
 
     print('Loaded/Preprocessed data')
 

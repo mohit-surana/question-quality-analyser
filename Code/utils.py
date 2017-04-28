@@ -6,6 +6,8 @@ import platform
 import random
 import re
 import string
+import copy
+import pprint
 
 import nltk
 import numpy as np
@@ -26,6 +28,7 @@ SUBJECT_ADA = 'ADA'
 SUBJECT_OS = 'OS'
 
 mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
+mapping_cog2 = {v : k for k, v in mapping_cog.items()}
 mapping_know = {'Factual': 0, 'Conceptual': 1, 'Procedural': 2, 'Metacognitive': 3}
 
 if(platform.system() == 'Windows'):
@@ -69,8 +72,6 @@ def clean_no_stopwords(text, as_list=True, stem=True):
 
 ################ GLOVE RETRIEVAL CODE #######################
 def get_glove_vectors(path):
-    CURSOR_UP_ONE = '\x1b[1A'
-    ERASE_LINE = '\x1b[2K'
     with open(os.path.join(os.path.dirname(__file__), path), "r", encoding='utf-8') as lines:
         __w2v = {}
         for row, line in enumerate(lines):
@@ -168,21 +169,30 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
             except:
                 pass
 
-        new_questions.append(new_question.strip())
+        if len(new_question.strip()) == 0:
+            new_question = re.sub(' [^a-z]*? ', ' ', questions[i].lower())
+        else:
+            new_questions.append(new_question.strip())
 
     return new_questions if len(new_questions) > 1 else new_questions[0]
 
 ########################### SKILL: GET FILTERED DATA FROM APPROPRIATE DATASETS ###########################
 
-def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada', 'os', 'bcl'], split=0.7, include_keywords=True, keep_dup=False, shuffle=True):
-    X = []
-    Y_cog = []
-    Y_know = []
+def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada', 'os', 'bcl'], what_for='train', include_keywords=True, keep_dup=False, shuffle=True):
+    X_data = []
+    Y_data = []
+
+    if what_for == 'test':
+        threshold = [threshold[0]]
+        include_keywords = False
+        suffix = '_v2_test'
+    else:
+        suffix = '_v2'
 
     if 'ada'in what_type:
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding='utf-8') as csvfile:
-            X_temp = []
-            Y_cog_temp = []
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled%s.csv' %suffix), 'r', encoding='utf-8') as csvfile:
+            X_data_temp = []
+            Y_data_temp = []
             all_rows = csvfile.read().splitlines()[1:]
             csvreader = csv.reader(all_rows)
             for row in csvreader:
@@ -191,18 +201,21 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
                 sentence = m.groups()[2]
                 label_cog = label_cog.split('/')[0]
                 clean_sentence = clean(sentence, return_as_list=False, stem=False)
-                X_temp.append(clean_sentence)
-                Y_cog_temp.append(mapping_cog[label_cog])
+                X_data_temp.append(clean_sentence)
+                Y_data_temp.append(mapping_cog[label_cog])
 
         for t in threshold:
-            X_temp_2 = get_filtered_questions(X_temp, threshold=t, what_type='ada')
-            X.extend(X_temp_2)
-            Y_cog.extend(Y_cog_temp)
+            if t != 1:
+                X_data_temp_2 = get_filtered_questions(X_data_temp, threshold=t, what_type='ada')
+            else:
+                X_data_temp_2 = X_data_temp
+            X_data.extend(X_data_temp_2)
+            Y_data.extend(Y_data_temp)
 
     if 'os' in what_type:
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled.csv'), 'r', encoding='latin-1') as csvfile:
-            X_temp = []
-            Y_cog_temp = []
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled%s.csv' %suffix), 'r', encoding='latin-1') as csvfile:
+            X_data_temp = []
+            Y_data_temp = []
             all_rows = csvfile.read().splitlines()[5:]
             csvreader = csv.reader(all_rows)
             for row in csvreader:
@@ -210,81 +223,66 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
                 label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
                 label_cog = label_cog.strip()
                 clean_sentence = clean(row[0], return_as_list=False, stem=False)
-                X_temp.append(clean_sentence)
-                Y_cog_temp.append(mapping_cog[label_cog])
+                X_data_temp.append(clean_sentence)
+                Y_data_temp.append(mapping_cog[label_cog])
 
         for t in threshold:
-            X_temp_2 = get_filtered_questions(X_temp, threshold=t, what_type='ada')
-            X.extend(X_temp_2)
-            Y_cog.extend(Y_cog_temp)
+            if t != 1:
+                X_data_temp_2 = get_filtered_questions(X_data_temp, threshold=t, what_type='os')
+            else:
+                X_data_temp_2 = X_data_temp
+            X_data.extend(X_data_temp_2)
+            Y_data.extend(Y_data_temp)
 
     if 'bcl' in what_type:
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset.csv'), 'r', encoding='utf-8') as csvfile:
-            X_temp = []
-            Y_cog_temp = []
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset%s.csv' %suffix), 'r', encoding='utf-8') as csvfile:
+            X_data_temp = []
+            Y_data_temp = []
             all_rows = csvfile.read().splitlines()[1:]
             csvreader = csv.reader(all_rows)
             for row in csvreader:
                 sentence, label_cog = row
                 clean_sentence = clean(sentence, return_as_list=False, stem=False)
-                X_temp.append(clean_sentence)
-                Y_cog_temp.append(mapping_cog[label_cog])
+                X_data_temp.append(clean_sentence)
+                Y_data_temp.append(mapping_cog[label_cog])
 
         for t in threshold:
-            X_temp_2 = get_filtered_questions(X_temp, threshold=t, what_type='ada')
-            X.extend(X_temp_2)
-            Y_cog.extend(Y_cog_temp)
+            if t != 1:
+                X_data_temp_2 = get_filtered_questions(X_data_temp, threshold=t, what_type='ada')
+            else:
+                X_data_temp_2 = X_data_temp
+            X_data.extend(X_data_temp_2)
+            Y_data.extend(Y_data_temp)
 
     if keep_dup:
-        X = [x.split() for x in X]
+        X_data = [x.split() for x in X_data]
     else:
-        X = [list(np.unique(x.split())) for x in X]
-    dataset = list(zip(X, Y_cog))
-
+        X_data = [list(np.unique(x.split())) for x in X_data]
+    
     if shuffle:
+        dataset = list(zip(X_data, Y_data))
         random.shuffle(dataset)
-
-    X_train = []
-    Y_train = []
-    X_test = []
-    Y_test = []
-
-    for x, y in dataset[:int(len(dataset) * split)]:
-        if len(x) == 0:
-            continue
-        X_train.append(x)
-        Y_train.append(y)
-
-    for x, y in dataset[int(len(dataset) * split):]:
-        if len(x) == 0:
-            continue
-        X_test.append(x)
-        Y_test.append(y)
+        X_data = [x[0] for x in dataset]
+        Y_data = [x[1] for x in dataset]
 
     if include_keywords:
         domain_keywords = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'), 'rb'))
         for key in domain_keywords:
             for word in domain_keywords[key]:
-                X_train.append(clean(word, return_as_list=True, stem=False))
-                Y_train.append(mapping_cog[key])
-
-        dataset = list(zip(X_train, Y_train))
+                X_data.append(clean(word, return_as_list=True, stem=False))
+                Y_data.append(mapping_cog[key])
 
         if shuffle:
+            dataset = list(zip(X_data, Y_data))
             random.shuffle(dataset)
 
-        X_train = [x[0] for x in dataset]
-        Y_train = [y[1] for y in dataset]
+            X_data = [x[0] for x in dataset]
+            Y_data = [x[1] for x in dataset]
 
-    return X_train, Y_train, X_test, Y_test
-
-########################### SKILL: GET TEST DATA FOR COGNITVE (prereq: test csv must exist) ###########################
-def get_test_data_for_cognitive_classifiers():
-    pass
+    return X_data, Y_data
 
 
 ##################### KNOWLEDGE: CONVERT PROB TO HARDCODED VECTOR #####################
-
 def get_knowledge_probs(prob):
     hardcoded_matrix = [1.0, 0.6, 0.3, 0.1, 0]
     for i, r in enumerate(zip(hardcoded_matrix[1:], hardcoded_matrix[:-1])):
@@ -379,4 +377,153 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
 
 
 if __name__ == '__main__':
-    pass # write a train - test split code here
+    ########### train - test split code - ada / os / bcl ##############
+    X_ada, X_os, X_bcl = [], [], []
+    Y_ada, Y_os, Y_bcl = [], [], []
+
+    # read all csv files and keep track of which question belongs to which type
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding='utf-8') as csvfile:
+        all_rows = csvfile.read().splitlines()[1:]
+        csvreader = csv.reader(all_rows)
+        for row in csvreader:
+            sentence, label_cog, label_know = row
+            m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+            sentence = m.groups()[2]
+            label_cog = label_cog.split('/')[0]
+            X_ada.append(sentence)
+            Y_ada.append(mapping_cog[label_cog])
+
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled.csv'), 'r', encoding='latin-1') as csvfile:
+        all_rows = csvfile.read().splitlines()[5:]
+        csvreader = csv.reader(all_rows)
+        for row in csvreader:
+            shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0], row[4].split('/')[0], row[6].split('/')[0]
+            label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
+            label_cog = label_cog.strip()
+            X_os.append(row[0])
+            Y_os.append(mapping_cog[label_cog])
+
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset.csv'), 'r', encoding='utf-8') as csvfile:
+        all_rows = csvfile.read().splitlines()[1:]
+        csvreader = csv.reader(all_rows)
+        for row in csvreader:
+            sentence, label_cog = row
+            X_bcl.append(sentence)
+            Y_bcl.append(mapping_cog[label_cog])
+
+    data_ada, data_os, data_bcl = {}, {}, {}
+
+    data_ada = { k[0] : k[1] for k in enumerate(list(zip(X_ada, Y_ada))) }
+    data_os = { len(data_ada) + k[0] : k[1] for k in enumerate(list(zip(X_os, Y_os))) }
+    data_bcl = { len(data_ada) + len(data_os) + k[0] : k[1] for k in enumerate(list(zip(X_bcl, Y_bcl))) }
+
+    data_combined = copy.deepcopy(data_ada)
+    data_combined.update(data_os)
+    data_combined.update(data_bcl)
+
+    index = []
+    x_data = []
+    y_data = []
+    for k, v in data_combined.items():
+        index.append(k)
+        x_data.append(v[0])
+        y_data.append(v[1])
+
+    y = np.bincount(y_data)
+    ii = np.nonzero(y)[0]
+    print(list(zip(ii, y[ii])))
+
+    skill_dict = { i : [] for i in range(6) }
+    for i, x, y in zip(index, x_data, y_data):
+        skill_dict[y].append((i, x, y)) 
+    
+    data_test = []
+    for k in skill_dict:
+        x = skill_dict[k]
+        random.shuffle(x)
+        x = x[:25]
+        data_test.extend(x)
+
+    data_ada_new = copy.copy(data_ada)
+    data_os_new = copy.copy(data_os)
+    data_bcl_new = copy.copy(data_bcl)
+
+    X_ada_test, X_os_test, X_bcl_test = [], [], []
+    Y_ada_test, Y_os_test, Y_bcl_test = [], [], []
+
+    for i, x, y in data_test:
+        if i in data_ada:
+            X_ada_test.append(x)
+            Y_ada_test.append(y)
+            del data_ada_new[i]
+        elif i in data_os:
+            X_os_test.append(x)
+            Y_os_test.append(y)
+            del data_os_new[i]
+        elif i in data_bcl:
+            X_bcl_test.append(x)
+            Y_bcl_test.append(y)
+            del data_bcl_new[i]
+
+    X_ada, X_os, X_bcl = [], [], []
+    Y_ada, Y_os, Y_bcl = [], [], []
+    for k, v in data_ada_new.items():
+        X_ada.append(v[0])
+        Y_ada.append(v[1])
+    
+    for k, v in data_os_new.items():
+        X_os.append(v[0])
+        Y_os.append(v[1])
+    
+    for k, v in data_bcl_new.items():
+        X_bcl.append(v[0])
+        Y_bcl.append(v[1])
+
+    X_test = [x[1] for x in data_test]
+    Y_test = [x[2] for x in data_test]
+
+    ################ DUMP TRAINING DATA ################
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled_v2.csv'), 'w', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['', '', ''])
+        for x, y in zip(X_ada, Y_ada):
+            writer.writerow([x, mapping_cog2[y], ''])
+
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled_v2.csv'), 'w', encoding='latin-1') as csvfile:
+        writer = csv.writer(csvfile)
+        for i in range(5):
+            writer.writerow(['', '', '', '', '', '', ''])
+        for x, y in zip(X_os, Y_os):
+            writer.writerow([x, '', mapping_cog2[y], '', '', '', ''])
+
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset_v2.csv'), 'w', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['', ''])
+        for x, y in zip(X_bcl, Y_bcl):
+            writer.writerow([x, mapping_cog2[y]])
+
+    ################ DUMP TESTING DATA ################
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled_v2_test.csv'), 'w', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['', '', ''])
+        for x, y in zip(X_ada_test, Y_ada_test):
+            writer.writerow([x, mapping_cog2[y], ''])
+
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled_v2_test.csv'), 'w', encoding='latin-1') as csvfile:
+        writer = csv.writer(csvfile)
+        for i in range(5):
+            writer.writerow(['', '', ''])
+        for x, y in zip(X_os_test, Y_os_test):
+            writer.writerow([x, '', mapping_cog2[y], '', '', '', ''])
+
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset_v2_test.csv'), 'w', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['', '', ''])
+        for x, y in zip(X_bcl_test, Y_bcl_test):
+            writer.writerow([x, mapping_cog2[y]])
+
+
+
+
+    
+
