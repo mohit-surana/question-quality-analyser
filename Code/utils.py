@@ -196,13 +196,14 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             all_rows = csvfile.read().splitlines()[1:]
             csvreader = csv.reader(all_rows)
             for row in csvreader:
-                sentence, label_cog, label_know = row
-                m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
-                sentence = m.groups()[2]
-                label_cog = label_cog.split('/')[0]
-                clean_sentence = clean(sentence, return_as_list=False, stem=False)
-                X_data_temp.append(clean_sentence)
-                Y_data_temp.append(mapping_cog[label_cog])
+                if row:
+                    sentence, label_cog, label_know = row
+                    m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
+                    sentence = m.groups()[2]
+                    label_cog = label_cog.split('/')[0]
+                    clean_sentence = clean(sentence, return_as_list=False, stem=False)
+                    X_data_temp.append(clean_sentence)
+                    Y_data_temp.append(mapping_cog[label_cog])
 
         for t in threshold:
             if t != 1:
@@ -219,12 +220,15 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             all_rows = csvfile.read().splitlines()[5:]
             csvreader = csv.reader(all_rows)
             for row in csvreader:
-                shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0], row[4].split('/')[0], row[6].split('/')[0]
-                label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
-                label_cog = label_cog.strip()
-                clean_sentence = clean(row[0], return_as_list=False, stem=False)
-                X_data_temp.append(clean_sentence)
-                Y_data_temp.append(mapping_cog[label_cog])
+                if row:
+                    shrey_cog, shiva_cog, mohit_cog = row[2].split('/')[0], row[4].split('/')[0], row[6].split('/')[0]
+                    label_cog = mohit_cog if mohit_cog else (shiva_cog if shiva_cog else shrey_cog)
+                    label_cog = label_cog.strip()
+                    if(label_cog == ''):
+                        continue
+                    clean_sentence = clean(row[0], return_as_list=False, stem=False)
+                    X_data_temp.append(clean_sentence)
+                    Y_data_temp.append(mapping_cog[label_cog])
 
         for t in threshold:
             if t != 1:
@@ -241,10 +245,11 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             all_rows = csvfile.read().splitlines()[1:]
             csvreader = csv.reader(all_rows)
             for row in csvreader:
-                sentence, label_cog = row
-                clean_sentence = clean(sentence, return_as_list=False, stem=False)
-                X_data_temp.append(clean_sentence)
-                Y_data_temp.append(mapping_cog[label_cog])
+                if row:
+                    sentence, label_cog = row
+                    clean_sentence = clean(sentence, return_as_list=False, stem=False)
+                    X_data_temp.append(clean_sentence)
+                    Y_data_temp.append(mapping_cog[label_cog])
 
         for t in threshold:
             if t != 1:
@@ -512,7 +517,7 @@ if __name__ == '__main__':
     with open(os.path.join(os.path.dirname(__file__), 'datasets/OS_Exercise_Questions_Labelled_v2_test.csv'), 'w', encoding='latin-1') as csvfile:
         writer = csv.writer(csvfile)
         for i in range(5):
-            writer.writerow(['', '', ''])
+            writer.writerow(['', '', '', '', '', '', ''])
         for x, y in zip(X_os_test, Y_os_test):
             writer.writerow([x, '', mapping_cog2[y], '', '', '', ''])
 
