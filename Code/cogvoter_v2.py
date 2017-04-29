@@ -38,7 +38,7 @@ VEC_SIZE_SVM = 100
 VEC_SIZE_BRNN = 300
 NUM_QUESTIONS = 1000
 NUM_CLASSES = 6
-CUSTOM_GLOVE_SVM = True
+CUSTOM_GLOVE_SVM = False
 CUSTOM_GLOVE_BRNN = False 
 
 savepath = 'glove.%dd%s.pkl' %(VEC_SIZE_SVM, '_custom' if CUSTOM_GLOVE_SVM else '')
@@ -137,18 +137,27 @@ if __name__ == '__main__':
     X_data = []
     Y_data = []
 
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.5], what_type=['ada', 'os'], split=0.8, include_keywords=True, keep_dup=False)
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35, 0.4, 0.45],
+                                                            what_type=['ada', 'os', 'bcl'],
+                                                            include_keywords=True,
+                                                            keep_dup=False)
+
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25],
+                                                        what_type=['ada', 'os', 'bcl'],
+                                                        what_for='test',
+                                                        include_keywords=False,
+                                                        keep_dup=False)
 
     ################# BRNN MODEL #################
-    clf_brnn = load_brnn_model('brnn_model_91.pkl', brnn_w2v)
+    clf_brnn = load_brnn_model('brnn_model.pkl', brnn_w2v)
     print('Loaded BiRNN model')
     
     ################# SVM-GLOVE MODEL #################
-    clf_svm = load_svm_model('glove_svm_model_81-100d-custom.pkl', svm_w2v)
+    clf_svm = load_svm_model('glove_svm_model.pkl', svm_w2v)
     print('Loaded SVM-GloVe model')
     
     ################# MNBC MODEL #################
-    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc_89.pkl'))
+    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
     print('Loaded MNBC model')
 
     eclf = EnsembleClassifier(clfs=[clf_brnn, clf_svm, clf_mnbc], weights=None)

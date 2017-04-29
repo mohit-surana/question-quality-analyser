@@ -421,6 +421,8 @@ if __name__ == '__main__':
     data_combined.update(data_os)
     data_combined.update(data_bcl)
 
+    total = len(data_combined)
+
     index = []
     x_data = []
     y_data = []
@@ -441,7 +443,7 @@ if __name__ == '__main__':
     for k in skill_dict:
         x = skill_dict[k]
         random.shuffle(x)
-        x = x[:25]
+        x = x[:int(len(x)*len(x)/total)]
         data_test.extend(x)
 
     data_ada_new = copy.copy(data_ada)
