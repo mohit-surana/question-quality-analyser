@@ -60,36 +60,21 @@ def check_for_synonyms(word):
 if __name__ == '__main__':
     TRAIN = True
     
-    X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.15, 0.20, 0.25, 0.30, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=False, keep_dup=False)
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85], 
+                                                          what_type=['ada', 'os', 'bcl'],
+                                                          include_keywords=True, 
+                                                          keep_dup=False)
+    print(len(X_train))
+
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.75], 
+                                                        what_type=['ada', 'os', 'bcl'], 
+                                                        what_for='test',
+                                                        keep_dup=False)
     print('Loaded/Preprocessed data')
 
-    X = X_train + X_test
-    Y = Y_train + Y_test
 
-    '''
-    ctr = { i : ([], []) for i in range(6)}
-
-    for x, y in zip(X, Y):
-        ctr[y][0].append(x)
-        ctr[y][1].append(y)
-
-    X = []
-    Y = []
-    for k in ctr:
-        X.extend(ctr[k][0])
-        Y.extend(ctr[k][1])
-
-    data = list(zip(X, Y))
-    random.shuffle(data)
-    X = [t[0] for t in data]
-    Y = [t[1] for t in data]
-    '''
-
-    featuresets = [(features(X[i]), Y[i]) for i in range(len(X))]
-
-    train_percentage = 0.80
-
-    train_set, test_set = featuresets[ : int(len(X) * train_percentage)], featuresets[int(len(X) * train_percentage) : ]
+    train_set = [(features(X_train[i]), Y_train[i]) for i in range(len(X_train))]
+    test_set = [(features(X_test[i]), Y_test[i]) for i in range(len(X_test))]
 
     if TRAIN:
         classifier = MaxentClassifier.train(train_set, max_iter=100)
@@ -103,9 +88,6 @@ if __name__ == '__main__':
     actual = [x[1] for x in test_set]
     for t, l in test_set:
         pred.append(classifier.classify(t))
-
-    print(pred)
-    print(actual)
 
     print(classify.accuracy(classifier, test_set))
 
