@@ -31,7 +31,7 @@ TEST = True
 
 VEC_SIZE = 100
 
-domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
+domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
 keywords = set()
 for k in domain:
@@ -103,20 +103,20 @@ if __name__ == '__main__':
 
         pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'wb'))
     else:
-        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
+        w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))
     print('Loaded Glove w2v')
 
     ################ BEGIN LOADING DATA ################
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0.2, 0.25, 0.3, 0.35], ['ada', 'os', 'bcl'], 0.8, include_keywords=True)
 
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25, 0.3], 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25, 0.3],
                                                           what_type=['ada', 'os', 'bcl'],
-                                                          include_keywords=True, 
+                                                          include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
-                                                        what_type=['ada', 'os', 'bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25],
+                                                        what_type=['ada', 'os', 'bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
 

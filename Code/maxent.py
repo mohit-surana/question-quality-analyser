@@ -7,10 +7,7 @@ from nltk import MaxentClassifier, classify
 
 from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
 
-try:
-    domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
-except:
-    domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
+domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
 domain = { k : set(clean_no_stopwords(' '.join(list(domain[k])), stem=False)) for k in domain.keys() }
 inverted_domain = {}
@@ -60,14 +57,14 @@ def check_for_synonyms(word):
 if __name__ == '__main__':
     TRAIN = True
     
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85], 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
                                                           what_type=['ada', 'os', 'bcl'],
-                                                          include_keywords=True, 
+                                                          include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.75], 
-                                                        what_type=['ada', 'os', 'bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.75],
+                                                        what_type=['ada', 'os', 'bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
     print('Loaded/Preprocessed data')

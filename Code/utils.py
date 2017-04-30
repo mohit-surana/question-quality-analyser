@@ -148,10 +148,7 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 
     if not domain:
-        try:
-            domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
-        except:
-            domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
+        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
     keywords = set()
     for k in domain:

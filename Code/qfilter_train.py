@@ -28,10 +28,7 @@ if __name__ == '__main__':
     print('Loading corpus data')
     stopwords = set(stopwords.words('english'))
 
-    try:
-        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
-    except:
-        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain_2.pkl'),  'rb'))
+    domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
     keywords = set()
     for k in domain:
