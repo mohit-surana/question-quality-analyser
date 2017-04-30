@@ -2,6 +2,7 @@ import os
 import sys
 import random
 import pickle
+import signal
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
@@ -136,11 +137,11 @@ class BiDirectionalRNN:
 
         return np.argmax(y_pred[-1])
 
-    def transform(self, X):
+    def __sent_to_glove(self, X):
         return sent_to_glove(X, self.w2v)
 
     def fit(self, X, Y, validation_data=None, epochs=5, do_dropout=False):
-        X = self.transform(X)
+        X = self.__sent_to_glove(X)
 
         for e in range(epochs):
             print('Epoch {}'.format(e + 1))
@@ -191,8 +192,10 @@ class BiDirectionalRNN:
 
         print("\nTraining done.")
 
+        return self
+
     def predict(self, X): 
-        X = self.transform(X)
+        X = self.__sent_to_glove(X)
         predictions = []
         for x in X:
             x = clip(x)
@@ -201,7 +204,7 @@ class BiDirectionalRNN:
         return np.array(predictions)
 
     def predict_proba(self, X):
-        X = self.transform(X)
+        X = self.__sent_to_glove(X)
         prob_predictions = []
         for x in X:
             seq_length = len(x)
@@ -220,7 +223,7 @@ class BiDirectionalRNN:
         return prob_predictions
 
     def get_accuracy_score(self, X, Y, test=False):
-        X = self.transform(X)
+        X = self.__sent_to_glove(X)
         targets = []
         predictions = []
         for x, y in zip(X, Y):
@@ -294,32 +297,32 @@ if __name__ == "__main__":
 
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 
-    X_train1, Y_train1 = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35], 
                                                           what_type=['ada', 'os', 'bcl'],
                                                           include_keywords=True, 
                                                           keep_dup=False)
+    print(len(X_train))
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
+    X_test1, Y_test1 = get_data_for_cognitive_classifiers(threshold=[0.2], 
                                                         what_type=['ada', 'os', 'bcl'], 
                                                         what_for='test',
-                                                        include_keywords=False, 
                                                         keep_dup=False)
 
-    for i in range(len(Y_train1)):
+    for i in range(len(Y_train)):
         v = np.zeros(NUM_CLASSES)
-        v[Y_train1[i]] = 1
-        Y_train1[i] = v
+        v[Y_train[i]] = 1
+        Y_train[i] = v
 
-    for i in range(len(Y_test)):
+    for i in range(len(Y_test1)):
         v = np.zeros(NUM_CLASSES)
-        v[Y_test[i]] = 1
-        Y_test[i] = v
+        v[Y_test1[i]] = 1
+        Y_test1[i] = v
 
-    X_train = np.array(X_train1[: int(len(X_train1) * 0.8) ])
-    Y_train = np.array(Y_train1[: int(len(X_train1) * 0.8) ])
+    X_test = np.array(X_test1[: int(len(X_test1) * 0.8) ])
+    Y_test = np.array(Y_test1[: int(len(X_test1) * 0.8) ])
 
-    X_val = np.array(X_train1[int(len(X_train1) * 0.8) : ])
-    Y_val = np.array(Y_train1[int(len(X_train1) * 0.8) : ])
+    X_val = np.array(X_test1[int(len(X_test1) * 0.8) : ])
+    Y_val = np.array(Y_test1[int(len(X_test1) * 0.8) : ])
 
     print('Data Loaded/Preprocessed')
 
@@ -339,7 +342,13 @@ if __name__ == "__main__":
         else:
             BRNN = BiDirectionalRNN(w2v, INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, learning_rate=LEARNING_RATE)
 
-        BRNN.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=EPOCHS, do_dropout=False)
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+
+        try:
+            BRNN.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=EPOCHS, do_dropout=False)
+        except KeyboardInterrupt:
+            print('\tTraining stopped: keyboard interrupt')
+
         save_brnn_model(BRNN)
     else:
         BRNN = load_brnn_model('brnn_model.pkl', w2v=w2v)

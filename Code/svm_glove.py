@@ -57,16 +57,17 @@ class TfidfEmbeddingVectorizer(object):
         tfidf.fit(X + list(keywords))
 
         max_idf = max(tfidf.idf_)
+        self.max_idf = max_idf
 
         self.word2weight = defaultdict(lambda: max_idf,
             [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
-    
+
         return self
     
     def transform(self, X):
         return np.array([
-            np.mean([self.w2v[w] * self.word2weight[w]
-                     for w in words if w in self.w2v and w in keywords] or
+            np.mean([self.w2v[w] * (self.max_idf - self.word2weight[w])
+                     for w in words if w in self.w2v] or
                     [np.zeros(self.dim)], axis=0)
             for words in X
         ])
@@ -108,15 +109,15 @@ if __name__ == '__main__':
     ################ BEGIN LOADING DATA ################
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0.2, 0.25, 0.3, 0.35], ['ada', 'os', 'bcl'], 0.8, include_keywords=True)
 
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25, 0.3], 
                                                           what_type=['ada', 'os', 'bcl'],
                                                           include_keywords=True, 
                                                           keep_dup=False)
+    print(len(X_train))
 
     X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
                                                         what_type=['ada', 'os', 'bcl'], 
                                                         what_for='test',
-                                                        include_keywords=False, 
                                                         keep_dup=False)
 
 
