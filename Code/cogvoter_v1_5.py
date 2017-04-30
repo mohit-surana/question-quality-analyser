@@ -112,7 +112,17 @@ if __name__ == '__main__':
     clf_svm, clf_mnbc, clf_brnn, _ = get_cog_models(get_ann=False)
 
     ######### GET LABEL FOR EXERCISE QUESTIONS #########
-    X_train1, Y_train1, X_test1, Y_test1 = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25, 0.3], what_type=['ada', 'os'], split=0.8, include_keywords=True, keep_dup=False)
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
+                                                          what_type=['ada', 'os', 'bcl'],
+                                                          include_keywords=True, 
+                                                          keep_dup=False)
+
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
+                                                        what_type=['ada', 'os', 'bcl'], 
+                                                        what_for='test',
+                                                        include_keywords=False, 
+                                                        keep_dup=False)
+    
     X_all_data = list(zip(X_train1 + X_test1, Y_train1 + Y_test1))
     random.shuffle(X_all_data)
     X1 = [x[0] for x in X_all_data if len(x[0]) > 0]
