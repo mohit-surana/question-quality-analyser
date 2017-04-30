@@ -26,6 +26,7 @@ def __get_cleaned_section_text(subject, mode):
             content += file_contents + ' '
 
     return content.strip()
+    
 def get_cleaned_section_text(subject, mode='section'):
     if subject == 'ADA':
         return __get_cleaned_section_text(subject, mode)
