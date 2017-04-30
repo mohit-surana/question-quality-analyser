@@ -4,10 +4,33 @@ import json
 import os
 import pickle
 import re
+import sys
 
+import nltk
+from nltk import word_tokenize
 from nltk.corpus import stopwords
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+def get_cleaned_section_text(subject, mode):
+    __skip_files = {'__', '.DS_Store'}
+    contents = []
+    if mode == 'section':
+        path = 'resources/%s/' %subject
+    else:
+        path = 'resources/%s[chapters]/' %subject
+    for filename in sorted(os.listdir(os.path.join(os.path.dirname(__file__), path))):
+        with open(path + filename, encoding='latin-1') as f:
+            file_contents = f.read().lower()
+            title = file_contents.split('\n')[0].strip()
+            
+            if len([1 for k in __skip_files if (k in title or k in filename)]):
+                continue
+
+            file_contents = ' '.join(nltk.word_tokenize(re.sub('[^a-zA-Z.!? ]', '', re.sub('[\s]+', ' ', re.sub('-[\s]+', '', file_contents.replace('\n', ' ').replace('--', ' ') , flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL)))
+            contents.append(file_contents.strip())
+
+    return contents
 
 def clean_no_stemma_stopwords(text, as_list=True):
     tokens = [re.sub('[^.?!a-z]', '', w) for w in text.lower().strip().split() if w.isalpha() or re.search('[.!?](?:[ ]|$)', w)]
@@ -23,7 +46,10 @@ if __name__ == '__main__':
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K'
 
-    textbook = 'ADA'
+    if len(sys.argv) < 2:
+        textbook = 'ADA'
+
+    textbook = sys.argv[1]
 
     print('Loading corpus data')
     stopwords = set(stopwords.words('english'))
@@ -38,24 +64,18 @@ if __name__ == '__main__':
         keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
     stopwords = stopwords - keywords
 
-    if textbook == 'OS':
-        questions = [clean_no_stemma_stopwords(q, as_list=False) for q in json.load(open(os.path.join(os.path.dirname(__file__), 'resources/os_questions.json')))]
-    else:
+
+    if textbook == 'ADA':
+        contents = get_cleaned_section_text(textbook, 'section')
         questions = []
 
-    contents = []
-    os.chdir(os.path.join(os.path.dirname(__file__), 'resources/%s' %textbook))
-    for filename in sorted(os.listdir('.')):
-        if '__' in filename or '.DS_Store' in filename:
-            continue
-        try:
-            f = open(filename, encoding='latin-1')
-        except:
-            f = open(filename)
-        contents.append(clean_no_stemma_stopwords(f.read(), as_list=False))
-        f.close()
+    elif textbook == 'OS':
+        contents = get_cleaned_section_text('OS', 'section')
+        contents.extend(get_cleaned_section_text('OS2', 'section'))
+        contents.extend(get_cleaned_section_text('OS3', 'section'))
+        contents.extend(get_cleaned_section_text('OS4', 'section'))
 
-    os.chdir(os.path.join(os.path.dirname(__file__), '../..'))
+        questions = [clean_no_stemma_stopwords(q, as_list=False) for q in json.load(open(os.path.join(os.path.dirname(__file__), 'resources/os_questions.json')))]
 
     print('Training tfidf')
     sklearn_tfidf = TfidfVectorizer(norm='l2',

@@ -56,7 +56,6 @@ if __name__ == '__main__':
     if TRAIN:
         clf = MNBC(tfidf_ngram_range=(1, 2), mnbc_alpha=.05)
         clf.fit(X_train, Y_train)
-
         joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
 
     else:
