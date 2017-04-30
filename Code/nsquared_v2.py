@@ -77,27 +77,14 @@ class TfidfEmbeddingVectorizer(object):
     
         return self
     
-    def transform(self, X, mean=True):
-        main_temp = []
-        temp = []
-        if mean:
-            return np.array([
-                np.mean([self.word2vec[w] * self.word2weight[w]
-                         for w in words if w in self.word2vec and w in self.word2weight] or
-                        [np.zeros(self.dim)], axis=0)
-                for words in X
-            ])
-        else:
-            for words in X:
-                temp = []
-                for w in words:
-                    if w in self.word2vec:
-                        temp.append(self.word2vec[w] * self.word2weight[w])
-                    else:
-                        temp.append(np.zeros(self.dim))
-                main_temp.append(temp)
-        main_temp = np.array(main_temp)
-        return main_temp
+    def transform(self, X):
+        return np.array([
+            np.mean([self.word2vec[w] * self.word2weight[w]
+                     for w in words if w in self.word2vec and w in self.word2weight] or
+                    [np.zeros(self.dim)], axis=0)
+            for words in X
+        ])
+    
 
 def __preprocess(text, stop_strength=0, remove_punct=True):
     text = re.sub('-\n', '', text).lower()
@@ -118,7 +105,6 @@ def __preprocess(text, stop_strength=0, remove_punct=True):
 ####################### ONE TIME MODEL LOADING #########################
 
 def get_know_models(__subject):
-
     global subject
     subject = __subject
     load_texts(subject)
@@ -153,12 +139,17 @@ def predict_know_label(question, models, subject='ADA'):
     s2 = lda[dictionary.doc2bow(cleaned_question.split())]
     d1 = sparse2full(s1, lda.num_topics)
     d2 = sparse2full(s2, lda.num_topics)
+    lda_p = cossim(s1, s2)
+    s1.sort(key = lambda x:-x[1])
+    p_list.append(s2[s1[0][0]][1])
+    p_list.append(lda_p)
     p_list.extend(list(d1))
     p_list.extend(list(d2))
     p_list.extend([k])
 
     return ann.predict([p_list])[0], ann.predict_proba([p_list])[0]
 
+    
 def load_texts(subject):
     global docs, texts
     docs = {}
@@ -168,7 +159,6 @@ def load_texts(subject):
             title = content.split('\n')[0]
             if len([1 for k in skip_files if (k in title or k in file_name)]):
                 continue
-
             docs[title] = __preprocess(content, stop_strength=1, remove_punct=False)
 
     doc_set = list(docs.values())
@@ -185,9 +175,9 @@ def load_texts(subject):
 if __name__ == '__main__':
     MODEL = ['LDA', 'GLOVE', 'LSA', 'D2V']
 
-    USE_MODELS = ['LDA', 'GLOVE']
+    docs, texts = load_docs(subject)
 
-    docs, texts = load_texts(subject) 
+    USE_MODELS = MODEL[0:1]
 
     dictionary = corpora.Dictionary(texts)
     dictionary.save('models/Nsquared/%s/dictionary.dict' %subject)  # store the dictionary, for future reference
@@ -210,6 +200,7 @@ if __name__ == '__main__':
                                   update_every=1,
                                   passes=2)
             # Hack to fix a big
+
             lda.minimum_phi_value = 0.01
             lda.minimum_probability = 0.01
             lda.per_word_topics = False
@@ -287,11 +278,11 @@ if __name__ == '__main__':
             for i, k in enumerate(docs):
                 x_train.append(models.doc2vec.LabeledSentence(docs[k].split(), [k]))
             
-            d2v_model = models.doc2vec.Doc2Vec(size=64, alpha=0.025, min_alpha=0.025, window=2, min_count=3, dbow_words=1, workers=4)  # use fixed learning rate
+            d2v_model = models.doc2vec.Doc2Vec(size=128, alpha=0.025, min_alpha=0.025, window=2, min_count=2, dbow_words=1, workers=4)  # use fixed learning rate
             d2v_model.build_vocab(x_train)
-            for epoch in range(10):
-                d2v_model.train(x_train, total_examples=d2v_model.corpus_count, epochs=d2v_model.iter)
-                d2v_model.alpha -= 0.002
+            for epoch in range(15):
+                d2v_model.train(x_train, total_examples=d2v_model.corpus_count, epochs=5)
+                d2v_model.alpha -= 0.001
                 d2v_model.min_alpha = d2v_model.alpha
             
             d2v_model.save('models/Nsquared/%s/d2v.model' %subject)
@@ -341,7 +332,10 @@ if __name__ == '__main__':
             d1 = sparse2full(s1, lda.num_topics)
             d2 = sparse2full(s2, lda.num_topics)
             lda_p = cossim(s1, s2)
-            #p_list.append(lda_p)
+            s1.sort(key = lambda x:-x[1])
+            
+            p_list.append(s2[s1[0][0]][1])
+            p_list.append(lda_p)
             p_list.extend(list(d1))
             p_list.extend(list(d2))
         

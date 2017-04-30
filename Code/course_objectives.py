@@ -46,5 +46,3 @@ if __name__ == '__main__':
                 chapter_knowledge_levels[chapter_name].append(know_level)
 
     pprint.pprint(section_wise_objectives)
-
-
