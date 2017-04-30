@@ -5,6 +5,7 @@ import pickle
 import random
 import brnn
 import os
+import platform
 
 from sklearn.externals import joblib
 from sklearn.model_selection import train_test_split
@@ -52,16 +53,21 @@ print('Loaded GloVe models')
 
 ####################### ONE TIME MODEL LOADING #########################
 def get_cog_models(get_ann=True):
+    if platform.system() == 'Windows':
+        suffix = '_windows'
+    else:
+        suffix = ''
+
     ################# BRNN MODEL #################
-    clf_brnn = load_brnn_model('brnn_model_91.pkl', brnn_w2v)
+    clf_brnn = load_brnn_model('brnn_model%s.pkl' %suffix, brnn_w2v)
     print('Loaded BiRNN model')
     
     ################# SVM-GLOVE MODEL #################
-    clf_svm = load_svm_model('glove_svm_model_81-100d-custom.pkl', svm_w2v)
+    clf_svm = load_svm_model('glove_svm_model%s.pkl' %suffix, svm_w2v)
     print('Loaded SVM-GloVe model')
     
     ################# MNBC MODEL #################
-    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc_89.pkl'))
+    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
     print('Loaded MNBC model')
 
     ################# MLP MODEL #################
@@ -81,27 +87,35 @@ def predict_cog_label(question, models, subject='ADA'):
     X1 = np.array(question.split()).reshape(1, -1)
 
     # softmax probabilities
-    ptest_svm = clf_svm.predict_proba(X1)
-    for i in range(len(ptest_svm)):
-        probs = ptest_svm[i]
-        ptest_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
-    ptest_svm = np.array(ptest_svm)
+    
+    probs_svm, probs_mnbc, probs_brnn = get_model_probs(X1, models)
 
-    ptest_mnbc = clf_mnbc.predict_proba(X1)
-    for i in range(len(ptest_mnbc)):
-        probs = ptest_mnbc[i]
-        ptest_mnbc[i] = np.exp(probs) / np.sum(np.exp(probs))
-    ptest_mnbc = np.array(ptest_mnbc)
-
-    ptest_brnn = clf_brnn.predict_proba(X1)
-    for i in range(len(ptest_brnn)):
-        probs = ptest_brnn[i]
-        ptest_brnn[i] = np.exp(probs) / np.sum(np.exp(probs))
-    ptest_brnn = np.array(ptest_brnn)
-
-    X = np.hstack((ptest_brnn, ptest_svm, ptest_mnbc)).reshape(1, -1) # concatenating the vectors
+    X = np.hstack((probs_brnn, probs_svm, probs_mnbc)).reshape(1, -1) # concatenating the vectors
     return nn.predict(X)[0], nn.predict_proba(X)[0]
 
+##################### PREDICTION HELPER PARAMS ############################
+def get_model_probs(X, models):
+    clf_svm, clf_mnbc, clf_brnn, nn = models
+
+    probs_svm = clf_svm.predict_proba(X)
+    for i in range(len(probs_svm)):
+        probs = probs_svm[i]
+        probs_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
+    probs_svm = np.array(probs_svm)
+
+    probs_mnbc = clf_mnbc.predict_proba(X)
+    for i in range(len(probs_mnbc)):
+        probs = probs_mnbc[i]
+        probs_mnbc[i] = np.exp(probs) / np.sum(np.exp(probs))
+    probs_mnbc = np.array(probs_mnbc)
+
+    probs_brnn = clf_brnn.predict_proba(X)
+    for i in range(len(probs_brnn)):
+        probs = probs_brnn[i]
+        probs_brnn[i] = np.exp(probs) / np.sum(np.exp(probs))
+    probs_brnn = np.array(probs_brnn)
+
+    return probs_svm, probs_mnbc, probs_brnn
 
 #########################################################################
 #                            MAIN BEGINS HERE                           #
@@ -109,10 +123,10 @@ def predict_cog_label(question, models, subject='ADA'):
 if __name__ == '__main__':
  
     ################ MODEL LOADING ##################
-    clf_svm, clf_mnbc, clf_brnn, _ = get_cog_models(get_ann=False)
+    models = get_cog_models(get_ann=False)
+    clf_svm, clf_mnbc, clf_brnn, _ = models
 
-    ######### GET LABEL FOR EXERCISE QUESTIONS #########
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25], 
                                                           what_type=['ada', 'os', 'bcl'],
                                                           include_keywords=True, 
                                                           keep_dup=False)
@@ -123,56 +137,35 @@ if __name__ == '__main__':
                                                         include_keywords=False, 
                                                         keep_dup=False)
     
-    X_all_data = list(zip(X_train1 + X_test1, Y_train1 + Y_test1))
-    random.shuffle(X_all_data)
-    X1 = [x[0] for x in X_all_data if len(x[0]) > 0]
-    Y1 = [x[1] for x in X_all_data if len(x[0]) > 0]
 
     # softmax probabilities
-    ptest_svm = clf_svm.predict_proba(X1)
-    for i in range(len(ptest_svm)):
-        probs = ptest_svm[i]
-        ptest_svm[i] = np.exp(probs) / np.sum(np.exp(probs))
-    ptest_svm = np.array(ptest_svm)
-
-    ptest_mnbc = clf_mnbc.predict_proba(X1)
-    for i in range(len(ptest_mnbc)):
-        probs = ptest_mnbc[i]
-        ptest_mnbc[i] = np.exp(probs) / np.sum(np.exp(probs))
-    ptest_mnbc = np.array(ptest_mnbc)
-
-    ptest_brnn = clf_brnn.predict_proba(X1)
-    for i in range(len(ptest_brnn)):
-        probs = ptest_brnn[i]
-        ptest_brnn[i] = np.exp(probs) / np.sum(np.exp(probs))
-    ptest_brnn = np.array(ptest_brnn)
+    ptrain_svm, ptrain_mnbc, ptrain_brnn = get_model_probs(X_train, models)
+    ptest_svm, ptest_mnbc, ptest_brnn = get_model_probs(X_test, models)
 
     print('Loaded data for voting system')
 
-    X = np.hstack((ptest_brnn, ptest_svm, ptest_mnbc)) # concatenating the vectors
-    Y = np.array(Y1)
-
-    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.20)
+    X_train = np.hstack((ptrain_brnn, ptrain_svm, ptrain_mnbc)) # concatenating the vectors
+    X_test = np.hstack((ptest_brnn, ptest_svm, ptest_mnbc)) # concatenating the vectors
 
     ###### NEURAL NETWORK BASED VOTING SYSTEM ########
     clf = MLPClassifier(solver='adam', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=16, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
-    clf.fit(x_train, y_train)
+    clf.fit(X_train, Y_train)
     print('ANN training completed')
-    y_real, y_pred = y_test, clf.predict(x_test)
+    Y_real, Y_pred = Y_test, clf.predict(X_test)
 
     joblib.dump(clf, os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
 
-    print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
+    print('Accuracy: {:.2f}%'.format(accuracy_score(Y_real, Y_pred) * 100))
 
     y_pred_svm = []
     y_pred_mnbc = []
     y_pred_brnn = []
 
-    for x in x_test:
+    for x in X_test:
         y_pred_svm.append(np.argmax(x[:6]))
         y_pred_mnbc.append(np.argmax(x[6:12]))
         y_pred_brnn.append(np.argmax(x[12:]))
 
-    print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred_svm) * 100))
-    print('MNBC Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred_mnbc) * 100))
-    print('BiRNN Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred_brnn) * 100))
+    print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(Y_real, y_pred_svm) * 100))
+    print('MNBC Accuracy: {:.2f}%'.format(accuracy_score(Y_real, y_pred_mnbc) * 100))
+    print('BiRNN Accuracy: {:.2f}%'.format(accuracy_score(Y_real, y_pred_brnn) * 100))

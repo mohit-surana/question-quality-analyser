@@ -6,6 +6,7 @@ import random
 import brnn
 import os
 import operator
+import platform
 
 from brnn import BiDirectionalRNN, RNN, relu, relu_prime, sent_to_glove, clip, load_brnn_model
 from svm_glove import TfidfEmbeddingVectorizer, foo, load_svm_model
@@ -149,33 +150,24 @@ if __name__ == '__main__':
                                                         include_keywords=False, 
                                                         keep_dup=False)
     
-    # MAKE CHANGES TO FILE NAME HERE (FOR WINDOWS OS)
-    if(platform.system() == 'Windows'):
-        ################# BRNN MODEL #################
-        clf_brnn = load_brnn_model('brnn_model_windows.pkl', brnn_w2v)
-        print('Loaded BiRNN model')
-        
-        ################# SVM-GLOVE MODEL #################
-        clf_svm = load_svm_model('glove_svm_model_windows.pkl', svm_w2v)
-        print('Loaded SVM-GloVe model')
-        
-        ################# MNBC MODEL #################
-        clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc_89.pkl'))
-        print('Loaded MNBC model')
-
-    # MAKE CHANGES TO FILE NAME HERE ( FOR MAC OS)
+    if platform.system() == 'Windows':
+        suffix = '_windows'
     else:
-        ################# BRNN MODEL #################
-        clf_brnn = load_brnn_model('brnn_model.pkl', brnn_w2v)
-        print('Loaded BiRNN model')
-        
-        ################# SVM-GLOVE MODEL #################
-        clf_svm = load_svm_model('glove_svm_model.pkl', svm_w2v)
-        print('Loaded SVM-GloVe model')
-        
-        ################# MNBC MODEL #################
-        clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc_89.pkl'))
-        print('Loaded MNBC model')
+        suffix = ''
+
+    ################# BRNN MODEL #################
+    clf_brnn = load_brnn_model('brnn_model%s.pkl' %suffix, brnn_w2v)
+    print('Loaded BiRNN model')
+    
+    ################# SVM-GLOVE MODEL #################
+    clf_svm = load_svm_model('glove_svm_model%s.pkl' %suffix, svm_w2v)
+    print('Loaded SVM-GloVe model')
+    
+    ################# MNBC MODEL #################
+    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
+    print('Loaded MNBC model')
+
+
     eclf = EnsembleClassifier(clfs=[clf_brnn, clf_svm, clf_mnbc], weights=None)
 
     Y_real, Y_pred = Y_test, eclf.predict(X_test)
