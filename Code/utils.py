@@ -44,16 +44,20 @@ regex = re.compile('[%s]' % re.escape(string.punctuation))
 
 
 ########################### PREPROCESSING UTILITY CODE ###########################
-def clean(sentence, stem=True, return_as_list=True):
-    sentence = sentence.lower()
+def clean(sentence, stem=True, lemmatize=True, return_as_list=True):
+    sentence = re.sub('-\n', '', sentence).lower()
+    sentence = re.sub('\n', ' ', sentence)
+    sentence = re.sub('[^a-z.?! ]', '', sentence)
+
     final_sentence = []
     for word in word_tokenize(sentence):
         word = regex.sub(u'', word)
         if not (word == u'' or word == ''):
-            word = wordnet.lemmatize(word)
+            if lemmatize:
+                word = wordnet.lemmatize(word)
             if stem:
                 word = porter.stem(word)
-            #word = snowball.stem(word)
+            
             final_sentence.append(word)
 
     return final_sentence if return_as_list else ' '.join(final_sentence)
@@ -62,10 +66,15 @@ def clean2(text):
     tokens = [word for word in nltk.word_tokenize(text) if word.lower() not in stopwords]
     return ' '.join(list(set([porter.stem(i) for i in [j for j in tokens if re.match('[a-zA-Z]', j) ]])))
 
-def clean_no_stopwords(text, as_list=True, stem=True):
-    tokens = [wordnet.lemmatize(w) for w in text.lower().split() if w.isalpha()]
+def clean_no_stopwords(text, stem=True, lemmatize=True, as_list=True):
+    tokens = [w for w in text.lower().split() if w.isalpha()]
+    
+    if lemmatize:
+        tokens = [wordnet.lemmatize(w) for w in tokens]
+
     if stem:
         tokens = [porter.stem(w) for w in tokens]
+    
     if as_list:
         return tokens
     else:
@@ -148,7 +157,7 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     t_stopwords = set(nltk.corpus.stopwords.words('english'))
 
     if not domain:
-        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
+        domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))  
 
     keywords = set()
     for k in domain:
@@ -228,7 +237,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
                     m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
                     sentence = m.groups()[2]
                     label_cog = label_cog.split('/')[0]
-                    clean_sentence = clean(sentence, return_as_list=False, stem=False)
+                    clean_sentence = clean(sentence, stem=False, lemmatize=False, return_as_list=False)
                     X_data_temp.append(clean_sentence)
                     Y_data_temp.append(mapping_cog[label_cog])
 
@@ -251,7 +260,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
                     label_cog = label_cog.strip()
                     if(label_cog == ''):
                         continue
-                    clean_sentence = clean(row[0], return_as_list=False, stem=False)
+                    clean_sentence = clean(row[0], stem=False, lemmatize=False, return_as_list=False)
                     X_data_temp.append(clean_sentence)
                     Y_data_temp.append(mapping_cog[label_cog])
 
@@ -270,7 +279,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             for row in csvreader:
                 if row:
                     sentence, label_cog = row
-                    clean_sentence = clean(sentence, return_as_list=False, stem=False)
+                    clean_sentence = clean(sentence, stem=False, lemmatize=False, return_as_list=False)
                     X_data_temp.append(clean_sentence)
                     Y_data_temp.append(mapping_cog[label_cog])
 
@@ -292,8 +301,8 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
         domain_keywords = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'), 'rb'))
         for key in domain_keywords:
             for word in domain_keywords[key]:
-                X_data.append(clean(word, return_as_list=True, stem=False))
-                X_data_orig.append(clean(word, return_as_list=True, stem=False))
+                X_data.append(clean(word, stem=False, lemmatize=False, return_as_list=True))
+                X_data_orig.append(clean(word, stem=False, lemmatize=False, return_as_list=False))
                 Y_data.append(mapping_cog[key])
 
         if shuffle:
@@ -406,6 +415,12 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
 
 
 if __name__ == '__main__':
+    get_data_for_cognitive_classifiers(threshold=[0.20, 0.25], 
+                                                  what_type=['bcl'],
+                                                  include_keywords=True, 
+                                                  keep_dup=False)
+    exit()
+
     ########### train - test split code - ada / os / bcl ##############
     X_ada, X_os, X_bcl = [], [], []
     Y_ada, Y_os, Y_bcl = [], [], []
