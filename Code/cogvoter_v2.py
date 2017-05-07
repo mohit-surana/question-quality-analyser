@@ -9,7 +9,7 @@ import operator
 import platform
 
 from brnn import BiDirectionalRNN, RNN, relu, relu_prime, sent_to_glove, clip, load_brnn_model
-from svm_glove import TfidfEmbeddingVectorizer, foo, load_svm_model
+from svm_glove import TfidfEmbeddingVectorizer, load_svm_model
 from mnbc import MNBC
 from utils import get_filtered_questions, clean_no_stopwords, clean, get_data_for_cognitive_classifiers, get_glove_vectors
 from sklearn import model_selection, svm
@@ -139,13 +139,13 @@ if __name__ == '__main__':
     Y_data = []
 
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.5], what_type=['ada', 'os'], split=0.8, include_keywords=True, keep_dup=False)
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35, 0.4, 0.45], 
-                                                          what_type=['ada', 'os', 'bcl'],
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.10, 0.10], 
+                                                          what_type=['bcl'],
                                                           include_keywords=True, 
                                                           keep_dup=False)
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
-                                                        what_type=['ada', 'os', 'bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.10], 
+                                                        what_type=['bcl'], 
                                                         what_for='test',
                                                         include_keywords=False, 
                                                         keep_dup=False)
@@ -166,7 +166,6 @@ if __name__ == '__main__':
     ################# MNBC MODEL #################
     clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
     print('Loaded MNBC model')
-
 
     eclf = EnsembleClassifier(clfs=[clf_brnn, clf_svm, clf_mnbc], weights=None)
 

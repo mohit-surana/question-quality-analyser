@@ -7,6 +7,7 @@ import random
 import re
 import string
 import copy
+from collections import defaultdict
 import pprint
 
 import nltk
@@ -67,6 +68,10 @@ def clean2(text):
     return ' '.join(list(set([porter.stem(i) for i in [j for j in tokens if re.match('[a-zA-Z]', j) ]])))
 
 def clean_no_stopwords(text, stem=True, lemmatize=True, as_list=True):
+    text = re.sub('-\n', '', text).lower()
+    text = re.sub('-', ' ', text)
+    text = re.sub('\n', ' ', text)
+    text = re.sub('[^a-z.?! ]', '', text)
     tokens = [w for w in text.lower().split() if w.isalpha()]
     
     if lemmatize:
@@ -114,7 +119,7 @@ def splitXY(X, Y, split):
 
 ################ GLOVE RETRIEVAL CODE #######################
 def get_glove_vectors(path):
-    with open(os.path.join(os.path.dirname(__file__), path), "r", encoding='utf-8') as lines:
+    with open(os.path.join(os.path.dirname(__file__), path), "r", encoding='latin-1') as lines:
         __w2v = {}
         for row, line in enumerate(lines):
             try:
@@ -176,12 +181,15 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
     tfidf_matrix = sklearn_tfidf.transform(questions)
     feature_names = sklearn_tfidf.get_feature_names()
 
+    max_idf = max(sklearn_tfidf.idf_)
+
     new_questions = []
 
     for i in range(0, len(questions)):
         feature_index = tfidf_matrix[i,:].nonzero()[1]
         tfidf_scores = zip(feature_index, [tfidf_matrix[i, x] for x in feature_index])
-        word_dict = {w : s for w, s in [(feature_names[j], s) for (j, s) in tfidf_scores]}
+        word_dict = defaultdict(lambda: max_idf)
+        word_dict.update({w : s for w, s in [(feature_names[j], s) for (j, s) in tfidf_scores]})
 
         question = re.sub(' [^a-z]*? ', ' ', questions[i].lower())
         question = re.split('([.!?])', question)
@@ -202,11 +210,8 @@ def get_filtered_questions(questions, threshold=0.25, what_type='os'):
 
         new_question = ''
         for word in re.sub('[^a-z ]', '', questions[i].lower()).split():
-            try:
-                if word.isalpha() and (word_dict[word] < threshold or word in keywords) and word not in t_stopwords:
-                    new_question += word + ' '
-            except:
-                pass
+            if word.isalpha() and (word_dict[word] < threshold or word in keywords) and word not in t_stopwords:
+                new_question += word + ' '
 
         new_questions.append(new_question.strip())
 
@@ -226,7 +231,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
         suffix = '_v2'
 
     if 'ada'in what_type:
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled%s.csv' %suffix), 'r', encoding='utf-8') as csvfile:
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled%s.csv' %suffix), 'r', encoding='latin-1') as csvfile:
             X_data_temp = []
             Y_data_temp = []
             all_rows = csvfile.read().splitlines()[1:]
@@ -271,7 +276,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
             Y_data.extend(Y_data_temp)
 
     if 'bcl' in what_type:
-        with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset%s.csv' %suffix), 'r', encoding='utf-8') as csvfile:
+        with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset%s.csv' %suffix), 'r', encoding='latin-1') as csvfile:
             X_data_temp = []
             Y_data_temp = []
             all_rows = csvfile.read().splitlines()[1:]
@@ -294,7 +299,7 @@ def get_data_for_cognitive_classifiers(threshold=[0, 0.1, 0.15], what_type=['ada
     else:
         X_data = [list(np.unique(x.split())) for x in X_data]
     
-    if shuffle:
+    if shuffle and len(what_type) > 0:
         X_data, X_data_orig, Y_data = shuffle_generic(X_data, X_data_orig, Y_data)
 
     if include_keywords:
@@ -415,18 +420,12 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
 
 
 if __name__ == '__main__':
-    get_data_for_cognitive_classifiers(threshold=[0.20, 0.25], 
-                                                  what_type=['bcl'],
-                                                  include_keywords=True, 
-                                                  keep_dup=False)
-    exit()
-
     ########### train - test split code - ada / os / bcl ##############
     X_ada, X_os, X_bcl = [], [], []
     Y_ada, Y_os, Y_bcl = [], [], []
 
     # read all csv files and keep track of which question belongs to which type
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding='utf-8') as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding='latin-1') as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
         csvreader = csv.reader(all_rows)
         for row in csvreader:
@@ -447,7 +446,7 @@ if __name__ == '__main__':
             X_os.append(row[0])
             Y_os.append(mapping_cog[label_cog])
 
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset.csv'), 'r', encoding='utf-8') as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset.csv'), 'r', encoding='latin-1') as csvfile:
         all_rows = csvfile.read().splitlines()[1:]
         csvreader = csv.reader(all_rows)
         for row in csvreader:
@@ -477,8 +476,8 @@ if __name__ == '__main__':
 
     data_combined = list(zip(index, x_data, y_data))
 
-    data_train = data_combined[: int(len(data_combined) * 0.8)]
-    data_test = data_combined[int(len(data_combined) * 0.8) :]
+    data_train = data_combined[: int(len(data_combined) * 0.7)]
+    data_test = data_combined[int(len(data_combined) * 0.7) :]
 
     X_ada_train, X_os_train, X_bcl_train = [], [], []
     Y_ada_train, Y_os_train, Y_bcl_train = [], [], []
@@ -508,7 +507,7 @@ if __name__ == '__main__':
 
 
     ################ DUMP TRAINING DATA ################
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled_v2.csv'), 'w', encoding='utf-8') as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled_v2.csv'), 'w', encoding='latin-1') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['', '', ''])
         for x, y in zip(X_ada_train, Y_ada_train):
@@ -521,14 +520,14 @@ if __name__ == '__main__':
         for x, y in zip(X_os_train, Y_os_train):
             writer.writerow([x, '', mapping_cog2[y], '', '', '', ''])
 
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset_v2.csv'), 'w', encoding='utf-8') as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset_v2.csv'), 'w', encoding='latin-1') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['', ''])
         for x, y in zip(X_bcl_train, Y_bcl_train):
             writer.writerow([x, mapping_cog2[y]])
 
     ################ DUMP TESTING DATA ################
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled_v2_test.csv'), 'w', encoding='utf-8') as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled_v2_test.csv'), 'w', encoding='latin-1') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['', '', ''])
         for x, y in zip(X_ada_test, Y_ada_test):
@@ -541,7 +540,7 @@ if __name__ == '__main__':
         for x, y in zip(X_os_test, Y_os_test):
             writer.writerow([x, '', mapping_cog2[y], '', '', '', ''])
 
-    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset_v2_test.csv'), 'w', encoding='utf-8') as csvfile:
+    with open(os.path.join(os.path.dirname(__file__), 'datasets/BCLs_Question_Dataset_v2_test.csv'), 'w', encoding='latin-1') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['', '', ''])
         for x, y in zip(X_bcl_test, Y_bcl_test):

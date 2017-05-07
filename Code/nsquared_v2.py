@@ -14,7 +14,7 @@ from nltk import stem
 from nltk.corpus import stopwords as stp
 from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.externals import joblib
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
@@ -32,7 +32,7 @@ subject = 'ADA'
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
-TRAIN_ANN = False
+TRAIN_ANN = True
 USE_CUSTOM_GLOVE_MODELS = True
 VEC_SIZE = 100
 
@@ -175,7 +175,7 @@ def load_texts(subject):
 if __name__ == '__main__':
     MODEL = ['LDA', 'GLOVE', 'LSA', 'D2V']
 
-    docs, texts = load_docs(subject)
+    docs, texts = load_texts(subject)
 
     USE_MODELS = MODEL[0:1]
 
@@ -334,7 +334,7 @@ if __name__ == '__main__':
             lda_p = cossim(s1, s2)
             s1.sort(key = lambda x:-x[1])
             
-            p_list.append(s2[s1[0][0]][1])
+            #p_list.append(s2[s1[0][0]][1])
             p_list.append(lda_p)
             p_list.extend(list(d1))
             p_list.extend(list(d2))
@@ -391,7 +391,7 @@ if __name__ == '__main__':
         joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
 
     else:
-        ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf_54_glove_shrey.pkl' %subject)
+        ann_clf = joblib.load('models/Nsquared/%s/know_ann_clf.pkl' %subject)
         
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
@@ -407,6 +407,7 @@ if __name__ == '__main__':
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
     print(classification_report(y_real, y_pred))
+    print(confusion_matrix(y_real, y_pred))
 
     print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
 

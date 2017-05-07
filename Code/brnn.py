@@ -29,7 +29,7 @@ def sent_to_glove(questions, w2v):
 
 def relu(z):
     y = z * (z > 0)
-    return np.clip(y, 0, 10)
+    return np.clip(y, 0, 15)
 
 def relu_prime(z):
     return (z > 0)
@@ -297,17 +297,16 @@ if __name__ == "__main__":
 
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.2, 0.25, 0.3, 0.35], what_type=['ada', 'bcl', 'os'], split=0.8, include_keywords=True, keep_dup=False)
 
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35], 
-                                                          what_type=['ada', 'os', 'bcl'],
-                                                          include_keywords=True, 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25, 0.25],
+                                                          what_type=['bcl'],
+                                                          include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
-    X_test1, Y_test1 = get_data_for_cognitive_classifiers(threshold=[0.2], 
-                                                        what_type=['ada', 'os', 'bcl'], 
+    X_test1, Y_test1 = get_data_for_cognitive_classifiers(threshold=[0.25],
+                                                        what_type=['bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
-
     for i in range(len(Y_train)):
         v = np.zeros(NUM_CLASSES)
         v[Y_train[i]] = 1

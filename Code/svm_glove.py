@@ -9,10 +9,10 @@ from sklearn import model_selection, svm
 from sklearn.model_selection import train_test_split
 from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.pipeline import Pipeline
 
-from utils import get_data_for_cognitive_classifiers, get_glove_vectors
+from utils import get_data_for_cognitive_classifiers, get_glove_vectors, clean_no_stopwords
 
 np.random.seed(42)
 
@@ -25,7 +25,7 @@ X = []
 Y_cog = []
 Y_know = []
 
-TRAIN = True
+TRAIN = False
 USE_CUSTOM_GLOVE_MODELS = False
 TEST = True
 
@@ -34,11 +34,12 @@ VEC_SIZE = 100
 domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
 keywords = set()
+keyword_doc = ['' for i in range(len(mapping_cog))]
 for k in domain:
-    keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
-    
-def foo(x):
-    return x
+    for word in domain[k]:
+        cleaned_word = clean_no_stopwords(word, lemmatize=False, stem=False, as_list=False)
+        keywords.add(cleaned_word)
+        keyword_doc[mapping_cog[k]] += cleaned_word + '. '
 
 class TfidfEmbeddingVectorizer(object):
     def __init__(self, w2v):
@@ -46,15 +47,23 @@ class TfidfEmbeddingVectorizer(object):
         self.w2v = w2v
         self.dim = len(w2v['the'])
         
-    def fit(self, X, y):
+    def fit(self, X, Y):
         tfidf = TfidfVectorizer(norm='l2',
                                 min_df=1,
                                 decode_error="ignore",
                                 use_idf=True,
                                 smooth_idf=False,
-                                sublinear_tf=True,
-                                analyzer=foo)
-        tfidf.fit(X + list(keywords))
+                                sublinear_tf=True)
+
+        docs_train = ['' for i in range(len(mapping_cog))]
+
+        for x, y in zip(X, Y):
+            docs_train[y] += ' '.join(x) + '. '
+
+        for i in range(len(docs_train)):
+            docs_train[i] += keyword_doc[i]
+
+        tfidf.fit(docs_train)
 
         max_idf = max(tfidf.idf_)
         self.max_idf = max_idf
@@ -62,11 +71,15 @@ class TfidfEmbeddingVectorizer(object):
         self.word2weight = defaultdict(lambda: max_idf,
             [(w, tfidf.idf_[i]) for w, i in tfidf.vocabulary_.items()])
 
+        keyword_dict = { k : max_idf for k in keywords}
+
+        self.word2weight.update(keyword_dict)
+
         return self
     
     def transform(self, X):
         return np.array([
-            np.mean([self.w2v[w] * (self.max_idf - self.word2weight[w])
+            np.mean([self.w2v[w] * (self.word2weight[w])
                      for w in words if w in self.w2v] or
                     [np.zeros(self.dim)], axis=0)
             for words in X
@@ -109,14 +122,14 @@ if __name__ == '__main__':
     ################ BEGIN LOADING DATA ################
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0.2, 0.25, 0.3, 0.35], ['ada', 'os', 'bcl'], 0.8, include_keywords=True)
 
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25, 0.3],
-                                                          what_type=['ada', 'os', 'bcl'],
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.10, 0.10],
+                                                          what_type=['bcl'],
                                                           include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25],
-                                                        what_type=['ada', 'os', 'bcl'],
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.10],
+                                                        what_type=['bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
 
@@ -126,10 +139,10 @@ if __name__ == '__main__':
     vocabulary = {'the'}
 
     if TRAIN:
-        parameters = {'kernel' : ['poly'], 'C': [0.5]}
+        parameters = {'kernel' : ['poly'], 'C': [0.7]}
                      
         vec = TfidfEmbeddingVectorizer(w2v)
-        gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=True, class_weight='balanced', probability=True), parameters, n_jobs=-1)
+        gscv = model_selection.GridSearchCV(svm.SVC(decision_function_shape='ovr', verbose=False, class_weight='balanced', probability=True), parameters, n_jobs=-1)
         clf = Pipeline([ ('GloVe-Vectorizer', vec),
                               ('SVC', gscv) ])
 
@@ -143,7 +156,7 @@ if __name__ == '__main__':
 
     ################ BEGIN TESTING CODE ################
     if TEST:
-        clf = load_svm_model('glove_svm_model.pkl', w2v)
+        clf = load_svm_model('glove_svm_model_bcl.pkl', w2v)
 
         Y_true, Y_pred = Y_test, clf.predict(X_test)
 
@@ -159,5 +172,5 @@ if __name__ == '__main__':
         print('Accuracy: {:.3f}%'.format(nCorrect / len(Y_test) * 100))
 
         print(classification_report(Y_true, Y_pred))
-
+        print(confusion_matrix(Y_true, Y_pred))
     #print(utils.get_glove_vector(['What is horners rule?']))

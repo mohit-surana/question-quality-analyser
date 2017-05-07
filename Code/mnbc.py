@@ -1,5 +1,6 @@
 import os 
 import random
+import pickle
 
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -15,14 +16,31 @@ from utils import clean_no_stopwords, get_data_for_cognitive_classifiers
 
 TRAIN = True
 
+mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evaluate': 4, 'Create': 5}
+
+domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
+
+keywords = set()
+keyword_doc = ['' for i in range(len(mapping_cog))]
+for k in domain:
+    for word in domain[k]:
+        cleaned_word = clean_no_stopwords(word, lemmatize=False, stem=False, as_list=False)
+        keywords.add(cleaned_word)
+        keyword_doc[mapping_cog[k]] += cleaned_word + '. '
+
 class MNBC(BaseEstimator, ClassifierMixin):
     def __init__(self, tfidf_ngram_range=(1, 2), mnbc_alpha=.05):
-        self.clf = Pipeline([ ('vectorizer', TfidfVectorizer(sublinear_tf=True,
-                                                             ngram_range=tfidf_ngram_range,
-                                                             stop_words='english',
-                                                             strip_accents='unicode',
-                                                             decode_error="ignore")),
-                        ('classifier', MultinomialNB(alpha=mnbc_alpha))])
+        self.tfidf_ngram_range = tfidf_ngram_range
+        self.mnbc_alpha = mnbc_alpha
+
+        tfidf = TfidfVectorizer(norm='l2',
+                                min_df=1,
+                                decode_error="ignore",
+                                use_idf=False,
+                                sublinear_tf=True,)
+
+        self.clf = Pipeline([ ('vectorizer', tfidf),
+                              ('classifier', MultinomialNB(alpha=self.mnbc_alpha))])
 
     def __prep_data(self, X):
         if type(X[0]) == type([]):
@@ -30,8 +48,18 @@ class MNBC(BaseEstimator, ClassifierMixin):
         
         return X
 
-    def fit(self, X, y):
-        self.clf.fit(self.__prep_data(X), y)
+    def fit(self, X, Y):
+        docs_train = ['' for i in range(len(mapping_cog))]
+
+        for x, y in zip(X, Y):
+            docs_train[y] += ' '.join(x) + '. '
+
+        for i in range(len(docs_train)):
+            docs_train[i] += keyword_doc[i]
+
+        tfidf = self.clf.named_steps['vectorizer']
+
+        self.clf.fit(self.__prep_data(X), Y)
 
     def predict(self, X):
         return self.clf.predict(self.__prep_data(X))
@@ -41,13 +69,13 @@ class MNBC(BaseEstimator, ClassifierMixin):
 
 if __name__ == '__main__':
     X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.25], 
-                                                          what_type=['ada', 'os', 'bcl'],
+                                                          what_type=['bcl'],
                                                           include_keywords=True, 
                                                           keep_dup=False)
     print(len(X_train))
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.20], 
-                                                        what_type=['ada', 'os', 'bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
+                                                        what_type=['bcl'], 
                                                         what_for='test',
                                                         keep_dup=False)
 

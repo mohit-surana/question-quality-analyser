@@ -12,6 +12,8 @@ from nltk.corpus import stopwords
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from utils import clean_no_stopwords
+
 def get_cleaned_section_text(subject, mode):
     __skip_files = {'__', '.DS_Store'}
     contents = []
@@ -48,8 +50,8 @@ if __name__ == '__main__':
 
     if len(sys.argv) < 2:
         textbook = 'ADA'
-
-    textbook = sys.argv[1]
+    else:
+        textbook = sys.argv[1]
 
     print('Loading corpus data')
     stopwords = set(stopwords.words('english'))
@@ -58,7 +60,10 @@ if __name__ == '__main__':
 
     keywords = set()
     for k in domain:
-        keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
+        for word in domain[k]:
+            keywords.add(clean_no_stopwords(word, lemmatize=False, stem=False, as_list=False))
+
+        #keywords = keywords.union(set(list(map(str.lower, map(str, list(domain[k]))))))
     stopwords = stopwords - keywords
 
 
@@ -89,11 +94,6 @@ if __name__ == '__main__':
     feature_names = sklearn_tfidf.get_feature_names()
 
     new_questions = []
-
-    try:
-        print()
-    except:
-        print
 
     for i in range(0, len(questions)):
         feature_index = tfidf_matrix[i,:].nonzero()[1]

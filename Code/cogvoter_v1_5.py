@@ -16,7 +16,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
 
 from brnn import BiDirectionalRNN, RNN, relu, relu_prime, sent_to_glove, clip, load_brnn_model
-from svm_glove import TfidfEmbeddingVectorizer, foo, load_svm_model
+from svm_glove import TfidfEmbeddingVectorizer, load_svm_model
 from mnbc import MNBC
 from utils import get_filtered_questions, clean_no_stopwords, get_data_for_cognitive_classifiers, get_glove_vectors
 
@@ -126,13 +126,13 @@ if __name__ == '__main__':
     models = get_cog_models(get_ann=False)
     clf_svm, clf_mnbc, clf_brnn, _ = models
 
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.25], 
-                                                          what_type=['ada', 'os', 'bcl'],
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.20], 
+                                                          what_type=['bcl'],
                                                           include_keywords=True, 
                                                           keep_dup=False)
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
-                                                        what_type=['ada', 'os', 'bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.20], 
+                                                        what_type=['bcl'], 
                                                         what_for='test',
                                                         include_keywords=False, 
                                                         keep_dup=False)
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     X_test = np.hstack((ptest_brnn, ptest_svm, ptest_mnbc)) # concatenating the vectors
 
     ###### NEURAL NETWORK BASED VOTING SYSTEM ########
-    clf = MLPClassifier(solver='adam', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=16, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
+    clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(128, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True)
     clf.fit(X_train, Y_train)
     print('ANN training completed')
     Y_real, Y_pred = Y_test, clf.predict(X_test)
@@ -169,3 +169,7 @@ if __name__ == '__main__':
     print('SVM-GloVe Accuracy: {:.2f}%'.format(accuracy_score(Y_real, y_pred_svm) * 100))
     print('MNBC Accuracy: {:.2f}%'.format(accuracy_score(Y_real, y_pred_mnbc) * 100))
     print('BiRNN Accuracy: {:.2f}%'.format(accuracy_score(Y_real, y_pred_brnn) * 100))
+'''
+
+
+'''
