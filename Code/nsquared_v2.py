@@ -32,7 +32,7 @@ subject = 'OS'
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
-TRAIN_ANN = True
+TRAIN_ANN = False
 USE_CUSTOM_GLOVE_MODELS = True
 VEC_SIZE = 100
 
@@ -109,10 +109,10 @@ def get_know_models(__subject):
     subject = __subject
     load_texts(subject)
 
-    nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared_69.pkl' % (subject, )), 'rb'))
+    nsq = pickle.load(open(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/nsquared.pkl' % (subject, )), 'rb'))
     lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
-    # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject)
-    ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject))
+    ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf.pkl' %subject))
+    # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject))
     lda.minimum_phi_value = 0.00 # 0.01
     lda.minimum_probability = 0.00 # 0.01
     lda.per_word_topics = False
@@ -334,7 +334,7 @@ if __name__ == '__main__':
             lda_p = cossim(s1, s2)
             s1.sort(key = lambda x:-x[1])
             
-            #p_list.append(s2[s1[0][0]][1])
+            p_list.append(s2[s1[0][0]][1])
             p_list.append(lda_p)
             p_list.extend(list(d1))
             p_list.extend(list(d2))

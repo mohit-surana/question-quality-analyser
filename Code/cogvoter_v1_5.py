@@ -41,10 +41,10 @@ VEC_SIZE_BRNN = 300
 NUM_QUESTIONS = 1000
 NUM_CLASSES = 6
 CUSTOM_GLOVE_SVM = True
-CUSTOM_GLOVE_BRNN = False 
+CUSTOM_GLOVE_BRNN = False
 
 savepath = 'glove.%dd%s.pkl' %(VEC_SIZE_SVM, '_custom' if CUSTOM_GLOVE_SVM else '')
-svm_w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
+svm_w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))
     
 savepath = 'glove.%dd%s.pkl' %(VEC_SIZE_BRNN, '_custom' if CUSTOM_GLOVE_BRNN else '')
 brnn_w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))
@@ -126,15 +126,15 @@ if __name__ == '__main__':
     models = get_cog_models(get_ann=False)
     clf_svm, clf_mnbc, clf_brnn, _ = models
 
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.20], 
-                                                          what_type=['bcl'],
-                                                          include_keywords=True, 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.20],
+                                                          what_type=['ada', 'bcl', 'os'],
+                                                          include_keywords=True,
                                                           keep_dup=False)
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.20], 
-                                                        what_type=['bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.20],
+                                                        what_type=['ada', 'bcl', 'os'],
                                                         what_for='test',
-                                                        include_keywords=False, 
+                                                        include_keywords=False,
                                                         keep_dup=False)
     
 

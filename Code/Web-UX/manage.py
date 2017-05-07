@@ -8,6 +8,7 @@ import numpy as np
 from nsquared import DocumentClassifier
 from svm_glove import TfidfEmbeddingVectorizer
 from brnn import *
+from mnbc import MNBC
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "qqa.settings")

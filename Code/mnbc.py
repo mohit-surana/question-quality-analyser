@@ -1,4 +1,4 @@
-import os 
+import os
 import random
 import pickle
 
@@ -43,7 +43,7 @@ class MNBC(BaseEstimator, ClassifierMixin):
                               ('classifier', MultinomialNB(alpha=self.mnbc_alpha))])
 
     def __prep_data(self, X):
-        if type(X[0]) == type([]):
+        if type(X[0]) != str:
             return [' '.join(x) for x in X]
         
         return X
@@ -68,14 +68,14 @@ class MNBC(BaseEstimator, ClassifierMixin):
         return self.clf.predict_proba(self.__prep_data(X))
 
 if __name__ == '__main__':
-    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.25], 
+    X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.25],
                                                           what_type=['bcl'],
-                                                          include_keywords=True, 
+                                                          include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
-    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25], 
-                                                        what_type=['bcl'], 
+    X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25],
+                                                        what_type=['bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
 
