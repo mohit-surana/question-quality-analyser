@@ -393,7 +393,7 @@ def get_data_for_knowledge_classifiers(subject='ADA', shuffle=True):
         with codecs.open(os.path.join(os.path.dirname(__file__), 'datasets/ADA_Exercise_Questions_Labelled.csv'), 'r', encoding="latin-1") as csvfile:
             csvreader = csv.reader(csvfile.read().splitlines()[1:])
             for row in csvreader:
-                sentence, label_cog, label_know = row
+                sentence, label_cog, label_know = row[:3]
                 m = re.match('(\d+\. )?([a-z]\. )?(.*)', sentence)
                 X_data.append(m.groups()[2])
                 Y_data.append(mapping_know[label_know.split('/')[0]])
