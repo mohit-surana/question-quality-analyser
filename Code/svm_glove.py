@@ -25,11 +25,11 @@ X = []
 Y_cog = []
 Y_know = []
 
-TRAIN = False
+TRAIN = True
 USE_CUSTOM_GLOVE_MODELS = True
-TEST = False
+TEST = True
 
-VEC_SIZE = 100
+VEC_SIZE = 300
 
 domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
@@ -156,7 +156,7 @@ if __name__ == '__main__':
 
     ################ BEGIN TESTING CODE ################
     if TEST:
-        clf = load_svm_model('glove_svm_model_bcl.pkl', w2v)
+        clf = load_svm_model('glove_svm_model.pkl', w2v)
 
         Y_true, Y_pred = Y_test, clf.predict(X_test)
 

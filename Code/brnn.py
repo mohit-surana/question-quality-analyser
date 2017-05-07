@@ -11,8 +11,6 @@ from utils import get_data_for_cognitive_classifiers, get_glove_vectors
 
 sys.setrecursionlimit(2 * 10 ** 7)
 
-USE_CUSTOM_GLOVE_MODELS = False
-
 def sent_to_glove(questions, w2v):
     questions_w2glove = []
 
@@ -29,7 +27,7 @@ def sent_to_glove(questions, w2v):
 
 def relu(z):
     y = z * (z > 0)
-    return np.clip(y, 0, 15)
+    return np.clip(y, 0, 5)
 
 def relu_prime(z):
     return (z > 0)
@@ -265,6 +263,9 @@ def load_brnn_model(model_name, w2v):
 if __name__ == "__main__":
     NUM_CLASSES = 6
     INPUT_SIZE = 300
+    USE_CUSTOM_GLOVE_MODELS = True
+    TRAIN = True
+    RETRAIN = False
 
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K'
@@ -330,9 +331,6 @@ if __name__ == "__main__":
 
     EPOCHS = 5
     LEARNING_RATE = 0.010
-
-    TRAIN = True
-    RETRAIN = False
 
     BRNN = None
     if TRAIN:
