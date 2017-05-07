@@ -69,13 +69,13 @@ class MNBC(BaseEstimator, ClassifierMixin):
 
 if __name__ == '__main__':
     X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.20, 0.25],
-                                                          what_type=['bcl'],
+                                                          what_type=['ada', 'os', 'bcl'],
                                                           include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
     X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.25],
-                                                        what_type=['bcl'],
+                                                        what_type=['ada', 'os', 'bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
 

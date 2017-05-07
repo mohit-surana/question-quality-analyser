@@ -36,12 +36,21 @@ mapping_cog = {'Remember': 0, 'Understand': 1, 'Apply': 2, 'Analyse': 3, 'Evalua
 mapping_cog2 = { v : k for k, v in mapping_cog.items()}
 
 # transformation for BiRNN. This should actually become a part of the RNN for better code maintainability
+NUM_CLASSES = 6
+
+''' these params are for BCL models '''
+VEC_SIZE_SVM = 300
+VEC_SIZE_BRNN = 300
+CUSTOM_GLOVE_SVM = False
+CUSTOM_GLOVE_BRNN = False
+
+''' these params are for normal models '''
+'''
 VEC_SIZE_SVM = 100
 VEC_SIZE_BRNN = 300
-NUM_QUESTIONS = 1000
-NUM_CLASSES = 6
-CUSTOM_GLOVE_SVM = True
-CUSTOM_GLOVE_BRNN = False
+CUSTOM_GLOVE_SVM = False
+CUSTOM_GLOVE_BRNN = True
+'''
 
 savepath = 'glove.%dd%s.pkl' %(VEC_SIZE_SVM, '_custom' if CUSTOM_GLOVE_SVM else '')
 svm_w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))
@@ -59,21 +68,21 @@ def get_cog_models(get_ann=True):
         suffix = ''
 
     ################# BRNN MODEL #################
-    clf_brnn = load_brnn_model('brnn_model%s.pkl' %suffix, brnn_w2v)
+    clf_brnn = load_brnn_model('brnn_model_bcl%s.pkl' %suffix, brnn_w2v)
     print('Loaded BiRNN model')
     
     ################# SVM-GLOVE MODEL #################
-    clf_svm = load_svm_model('glove_svm_model%s.pkl' %suffix, svm_w2v)
+    clf_svm = load_svm_model('glove_svm_model_bcl%s.pkl' %suffix, svm_w2v)
     print('Loaded SVM-GloVe model')
     
     ################# MNBC MODEL #################
-    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc.pkl'))
+    clf_mnbc = joblib.load(os.path.join(os.path.dirname(__file__), 'models/MNBC/mnbc_bcl.pkl'))
     print('Loaded MNBC model')
 
     ################# MLP MODEL #################
     nn = None
     if get_ann:
-        nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter.pkl'))
+        nn = joblib.load(os.path.join(os.path.dirname(__file__), 'models/cog_ann_voter_bcl.pkl'))
         print('Loaded MLP model')
 
     return clf_svm, clf_mnbc, clf_brnn, nn
@@ -81,7 +90,7 @@ def get_cog_models(get_ann=True):
 ##################### PREDICTION WITH PARAMS ############################
 def predict_cog_label(question, models, subject='ADA'):
     clf_svm, clf_mnbc, clf_brnn, nn = models
-    question2 = get_filtered_questions(question, threshold=0.5, what_type=subject.lower()) # svm and birnn
+    question2 = get_filtered_questions(question, threshold=0.15, what_type=subject.lower()) # svm and birnn
     if len(question2) > 0:
         question = question2[0]
     X1 = np.array(question.split()).reshape(1, -1)

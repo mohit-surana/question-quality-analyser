@@ -26,10 +26,10 @@ Y_cog = []
 Y_know = []
 
 TRAIN = True
-USE_CUSTOM_GLOVE_MODELS = True
+USE_CUSTOM_GLOVE_MODELS = False
 TEST = True
 
-VEC_SIZE = 300
+VEC_SIZE = 100
 
 domain = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/domain.pkl'),  'rb'))
 
@@ -123,13 +123,13 @@ if __name__ == '__main__':
     #X_train, Y_train, X_test, Y_test = get_data_for_cognitive_classifiers([0.2, 0.25, 0.3, 0.35], ['ada', 'os', 'bcl'], 0.8, include_keywords=True)
 
     X_train, Y_train = get_data_for_cognitive_classifiers(threshold=[0.10, 0.10],
-                                                          what_type=['bcl'],
+                                                          what_type=['ada', 'os', 'bcl'],
                                                           include_keywords=True,
                                                           keep_dup=False)
     print(len(X_train))
 
     X_test, Y_test = get_data_for_cognitive_classifiers(threshold=[0.10],
-                                                        what_type=['bcl'],
+                                                        what_type=['ada', 'os', 'bcl'],
                                                         what_for='test',
                                                         keep_dup=False)
 
