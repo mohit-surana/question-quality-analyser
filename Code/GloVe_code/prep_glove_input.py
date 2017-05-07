@@ -3,10 +3,29 @@ import os
 import re
 
 import nltk
-from nltk import word_tokenize
+from nltk.stem.wordnet import WordNetLemmatizer
+
+wordnet = WordNetLemmatizer()
 
 __skip_files={'__', '.DS_Store', 'Key Terms, Review Questions, and Problems', 'Recommended Reading and Web Sites', 'Recommended Reading', 'Exercises', }
 
+def clean_no_stopwords(text, stem=True, lemmatize=True, as_list=True):
+    text = re.sub('-\n', '', text).lower()
+    text = re.sub('-', ' ', text)
+    text = re.sub('\n', ' ', text)
+    text = re.sub('[^a-z.?! ]', '', text)
+    tokens = [w for w in text.lower().split() if w.isalpha()]
+    
+    if lemmatize:
+        tokens = [wordnet.lemmatize(w) for w in tokens]
+
+    if stem:
+        tokens = [porter.stem(w) for w in tokens]
+    
+    if as_list:
+        return tokens
+    else:
+        return ' '.join(tokens)
 
 def __get_cleaned_section_text(subject, mode):
     content = ''
@@ -22,7 +41,7 @@ def __get_cleaned_section_text(subject, mode):
             if len([1 for k in __skip_files if (k in title or k in filename)]):
                 continue
 
-            file_contents = ' '.join(nltk.word_tokenize(re.sub('[^a-zA-Z ]', '', re.sub('[\s]+', ' ', re.sub('-[\s]+', '', file_contents.replace('\n', ' ').replace('--', ' ') , flags=re.M | re.DOTALL), flags=re.M | re.DOTALL), flags=re.M | re.DOTALL)))
+            file_contents = clean_no_stopwords(file_contents, stem=False, lemmatize=True, as_list=False)
             content += file_contents + ' '
 
     return content.strip()
