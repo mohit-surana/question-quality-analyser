@@ -28,7 +28,7 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 stemmer = stem.porter.PorterStemmer()
 wordnet = WordNetLemmatizer()
 
-subject = 'ADA'
+subject = 'OS'
 
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
@@ -113,8 +113,8 @@ def get_know_models(__subject):
     lda = models.LdaModel.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/lda.model' % (subject, )))
     # ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject)
     ann = joblib.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/know_ann_clf_51_shrey.pkl' %subject))
-    lda.minimum_phi_value = 0.01
-    lda.minimum_probability = 0.01
+    lda.minimum_phi_value = 0.00 # 0.01
+    lda.minimum_probability = 0.00 # 0.01
     lda.per_word_topics = False
 
     dictionary = corpora.Dictionary.load(os.path.join(os.path.dirname(__file__), 'models/Nsquared/%s/dictionary.dict' % (subject, )))
@@ -201,16 +201,16 @@ if __name__ == '__main__':
                                   passes=2)
             # Hack to fix a big
 
-            lda.minimum_phi_value = 0.01
-            lda.minimum_probability = 0.01
+            lda.minimum_phi_value = 0.00 # 0.01
+            lda.minimum_probability = 0.00 # 0.01
             lda.per_word_topics = False
             lda.save('models/Nsquared/%s/lda.model' % (subject, ))
             
             print('Model training done')
         else:
             lda = models.LdaModel.load('models/Nsquared/%s/lda.model' % (subject, ))
-            lda.minimum_phi_value = 0.01
-            lda.minimum_probability = 0.01
+            lda.minimum_phi_value = 0.00 # 0.01
+            lda.minimum_probability = 0.00 # 0.01
             lda.per_word_topics = False
             
             
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         
         if TRAIN_GLOVE:
             x_train = []
-            # Load Glove w2v only if training is required    
+            # Load Glove w2v only if training is required
             savepath = 'glove.%dd.pkl' %VEC_SIZE
             if not os.path.exists(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath)):
                 print()
@@ -235,7 +235,7 @@ if __name__ == '__main__':
                 
                 pickle.dump(w2v, open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'wb'))
             else:
-                w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))    
+                w2v = pickle.load(open(os.path.join(os.path.dirname(__file__), 'resources/GloVe/' + savepath), 'rb'))
                 print('Loaded Glove w2v')
 
             clf_glove = TfidfEmbeddingVectorizer(w2v)
@@ -385,7 +385,7 @@ if __name__ == '__main__':
 
     ###### NEURAL NETWORK BASED SIMVAL -> KNOW MAPPING ########
     if TRAIN_ANN:
-        ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 8), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
+        ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
         ann_clf.fit(x_train, y_train)
         print('ANN training completed')
         joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
@@ -396,18 +396,6 @@ if __name__ == '__main__':
     y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
 
     print(classification_report(y_real, y_pred))
-
-    print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
-
-    ann_clf = MLPClassifier(solver='adam', activation='relu', alpha=1e-5, hidden_layer_sizes=(32, 16), batch_size=4, learning_rate='adaptive', learning_rate_init=0.001, verbose=True, max_iter=500)
-    ann_clf.fit(x_train, y_train)
-    print('ANN training completed')
-    joblib.dump(ann_clf, 'models/Nsquared/%s/know_ann_clf.pkl' %subject)
-
-    y_real, y_pred = np.array(y_test), ann_clf.predict(x_test)
-
-    print(classification_report(y_real, y_pred))
     print(confusion_matrix(y_real, y_pred))
 
     print('Accuracy: {:.2f}%'.format(accuracy_score(y_real, y_pred) * 100))
-

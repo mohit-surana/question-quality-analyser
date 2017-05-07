@@ -26,8 +26,8 @@ Y_cog = []
 Y_know = []
 
 TRAIN = False
-USE_CUSTOM_GLOVE_MODELS = False
-TEST = True
+USE_CUSTOM_GLOVE_MODELS = True
+TEST = False
 
 VEC_SIZE = 100
 

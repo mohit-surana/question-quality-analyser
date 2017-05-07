@@ -4,7 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import numpy as np
 
-from cogvoter import predict_cog_label, get_cog_models
+from cogvoter_v1_5 import predict_cog_label, get_cog_models
 from nsquared import DocumentClassifier
 from nsquared_v2 import predict_know_label, get_know_models
 from utils import get_modified_prob_dist
